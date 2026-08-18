@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Data & outputs (never commit datasets)
+*.gpkg
+*.gpkg-journal
+*.shp
+*.shx
+*.dbf
+*.prj
+*.tif
+*.tiff
+*.parquet
+*.provenance.json
+data/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

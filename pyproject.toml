@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mapsmith"
+version = "0.1.0"
+description = "Professional-grade geoprocessing for AI agents via MCP, with verifiable provenance"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "AGPL-3.0-or-later"
+authors = [{ name = "Mapsmith", email = "hello@mapsmith.ai" }]
+keywords = ["mcp", "gis", "geoprocessing", "geospatial", "ai-agents", "provenance"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: GIS",
+  "Programming Language :: Python :: 3",
+]
+dependencies = [
+  "mcp>=1.2",
+  "geopandas>=1.0",
+  "shapely>=2.0",
+  "pyproj>=3.6",
+  "pyogrio>=0.9",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+mapsmith = "mapsmith.server:main"
+
+[project.urls]
+Homepage = "https://mapsmith.ai"
+Repository = "https://github.com/mapsmith-ai/mapsmith"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mapsmith"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
