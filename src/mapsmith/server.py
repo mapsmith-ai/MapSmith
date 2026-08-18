@@ -166,7 +166,7 @@ def server_info() -> dict[str, Any]:
         "name": "mapsmith",
         "version": __version__,
         "license": "AGPL-3.0-or-later",
-        "homepage": "https://github.com/mapsmith-ai/mapsmith",
+        "homepage": "https://github.com/mapsmith-ai/MapSmith",
         "engines": dispatch.available_engines(),
     }
 

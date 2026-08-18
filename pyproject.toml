@@ -35,8 +35,8 @@ test = ["pytest>=8.0", "ruff>=0.16,<0.17"]
 mapsmith = "mapsmith.server:main"
 
 [project.urls]
-Homepage = "https://github.com/mapsmith-ai/mapsmith"
-Repository = "https://github.com/mapsmith-ai/mapsmith"
+Homepage = "https://github.com/mapsmith-ai/MapSmith"
+Repository = "https://github.com/mapsmith-ai/MapSmith"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mapsmith"]
