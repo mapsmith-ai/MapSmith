@@ -87,7 +87,7 @@ def server_info() -> dict[str, str]:
         "name": "mapsmith",
         "version": __version__,
         "license": "AGPL-3.0-or-later",
-        "homepage": "https://mapsmith.ai",
+        "homepage": "https://github.com/mapsmith-ai/mapsmith",
     }
 
 

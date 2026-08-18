@@ -17,7 +17,7 @@ Mapsmith is an open-source [MCP](https://modelcontextprotocol.io) server that gi
 
 ```bash
 # Docker (the supported path)
-docker run -i --rm -v $(pwd)/data:/data mapsmith/mapsmith
+docker run -i --rm -v $(pwd)/data:/data ghcr.io/mapsmith-ai/mapsmith
 
 # or from PyPI
 uvx mapsmith
@@ -108,6 +108,6 @@ Every tool that writes an output also writes `<output>.provenance.json` next to 
 - Mapsmith server and engines: **AGPL-3.0-or-later** (see `LICENSE`)
 - Client SDK and tool-schema definitions (future `sdk/`): **Apache-2.0**
 
-You can self-host Mapsmith freely, forever. If you modify it and offer it as a service, the AGPL asks you to share your changes — or [talk to us](mailto:hello@mapsmith.ai) about a commercial license.
+You can self-host Mapsmith freely, forever. If you modify it and offer it as a service, the AGPL asks you to share your changes — or [talk to us](mailto:mapsmith@proton.me) about a commercial license.
 
 "Mapsmith" is a trademark of the Mapsmith project — see `TRADEMARKS.md`.

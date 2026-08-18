@@ -12,4 +12,4 @@
 - Use "Mapsmith" (or a confusingly similar name) as the name of a fork, product, service, company, domain name, or package.
 - Imply endorsement by or affiliation with the Mapsmith project.
 
-Forks are welcome — under their own name. Questions: hello@mapsmith.ai
+Forks are welcome — under their own name. Questions: mapsmith@proton.me

@@ -9,7 +9,7 @@ description = "Professional-grade geoprocessing for AI agents via MCP, with veri
 readme = "README.md"
 requires-python = ">=3.10"
 license = "AGPL-3.0-or-later"
-authors = [{ name = "Mapsmith", email = "hello@mapsmith.ai" }]
+authors = [{ name = "Mapsmith", email = "mapsmith@proton.me" }]
 keywords = ["mcp", "gis", "geoprocessing", "geospatial", "ai-agents", "provenance"]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -32,7 +32,7 @@ test = ["pytest>=8.0", "ruff>=0.6"]
 mapsmith = "mapsmith.server:main"
 
 [project.urls]
-Homepage = "https://mapsmith.ai"
+Homepage = "https://github.com/mapsmith-ai/mapsmith"
 Repository = "https://github.com/mapsmith-ai/mapsmith"
 
 [tool.hatch.build.targets.wheel]
