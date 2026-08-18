@@ -22,6 +22,9 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+from pyproj import CRS
+
 from .. import verify
 from ..provenance import InputRecord, ProvenanceRecord
 
@@ -45,8 +48,8 @@ def _engine_info() -> dict[str, str]:
     return {"name": "whitebox-workflows", "version": version("whitebox-workflows")}
 
 
-def _read_dem(wbe: Any, dem_path: str) -> tuple[Any, str]:
-    """Read a DEM and return (raster, crs_string). Rejects rasters without a CRS."""
+def _read_dem(wbe: Any, dem_path: str) -> tuple[Any, str, bool]:
+    """Read a DEM: (raster, crs_string, is_geographic). Rejects rasters without a CRS."""
     dem = wbe.read_raster(str(dem_path))
     epsg = dem.crs_epsg()
     wkt = dem.crs_wkt()
@@ -55,7 +58,8 @@ def _read_dem(wbe: Any, dem_path: str) -> tuple[Any, str]:
             f"{dem_path} has no CRS — terrain analysis needs one to be meaningful. "
             "Assign the correct CRS to the source raster first."
         )
-    return dem, (f"EPSG:{epsg}" if epsg else str(wkt))
+    crs_obj = CRS.from_epsg(epsg) if epsg else CRS.from_wkt(str(wkt))
+    return dem, (f"EPSG:{epsg}" if epsg else str(wkt)), crs_obj.is_geographic
 
 
 def _raster_checks(
@@ -68,11 +72,18 @@ def _raster_checks(
 ) -> list[verify.Check]:
     """Deterministic postconditions on a raster output, read back from disk."""
     out = wbe.read_raster(str(output_path))
+    out_wkt = out.crs_wkt()
+    if out.crs_epsg():
+        crs_detail = f"EPSG:{out.crs_epsg()}"
+    elif out_wkt:
+        crs_detail = f"WKT: {str(out_wkt)[:60]}"
+    else:
+        crs_detail = "output has no CRS"
     checks = [
         verify.Check(
             "crs_present",
-            bool(out.crs_epsg() or out.crs_wkt()),
-            f"EPSG:{out.crs_epsg()}" if out.crs_epsg() else "output has no CRS",
+            bool(out.crs_epsg() or out_wkt),
+            crs_detail,
         )
     ]
     if expect_epsg:
@@ -93,7 +104,12 @@ def _raster_checks(
         )
     )
     arr = out.to_numpy(dtype="float64")
-    valid = arr[arr != meta.nodata]
+    # NaN is a common float nodata: NaN != NaN, so an equality mask alone would
+    # let nodata cells leak into the range check as NaN min/max.
+    if math.isnan(meta.nodata):
+        valid = arr[~np.isnan(arr)]
+    else:
+        valid = arr[(arr != meta.nodata) & ~np.isnan(arr)]
     checks.append(
         verify.Check(
             "has_valid_cells",
@@ -130,7 +146,7 @@ def hillshade(
 
     wbe = wb.WbEnvironment()
     wbe.verbose = False
-    dem, crs = _read_dem(wbe, dem_path)
+    dem, crs, geographic = _read_dem(wbe, dem_path)
     record = ProvenanceRecord(
         operation="hillshade",
         parameters={"azimuth": azimuth, "altitude": altitude, "z_factor": z_factor},
@@ -139,7 +155,14 @@ def hillshade(
     )
     record.crs_decisions = {
         "analysis_crs": crs,
-        "reason": "hillshade computed in the DEM's native CRS; no reprojection needed",
+        "reason": (
+            "DEM is in a geographic CRS (degree cells vs meter elevations): shading "
+            "is computed on native cells and relief may be exaggerated — reproject "
+            "to a projected CRS or tune z_factor for metrically faithful shading"
+            if geographic
+            else "hillshade computed in the DEM's native projected CRS; "
+            "no reprojection needed"
+        ),
     }
     result = wbe.terrain.general.hillshade(
         input=dem, azimuth=azimuth, altitude=altitude, z_factor=z_factor
@@ -179,7 +202,13 @@ def flow_accumulation(
 
     wbe = wb.WbEnvironment()
     wbe.verbose = False
-    dem, crs = _read_dem(wbe, dem_path)
+    dem, crs, geographic = _read_dem(wbe, dem_path)
+    if out_type == "sca" and geographic:
+        raise ValueError(
+            "specific catchment area needs a projected CRS (it divides by cell width, "
+            "which is degrees here). Reproject the DEM to a projected CRS first "
+            "(e.g. a UTM zone via reproject workflows), or use out_type='cells'."
+        )
     record = ProvenanceRecord(
         operation="flow_accumulation",
         parameters={
@@ -193,7 +222,13 @@ def flow_accumulation(
     )
     record.crs_decisions = {
         "analysis_crs": crs,
-        "reason": "flow routing computed in the DEM's native CRS; no reprojection needed",
+        "reason": (
+            "cell-count accumulation is independent of cell units; computed in the "
+            "DEM's native geographic CRS"
+            if geographic
+            else "flow routing computed in the DEM's native projected CRS; "
+            "no reprojection needed"
+        ),
     }
     filled = wbe.hydrology.depressions_storage.fill_depressions(dem=dem)
     pointer = wbe.hydrology.flow_routing.d8_pointer(dem=filled)
@@ -251,7 +286,7 @@ def watershed(
 
     wbe = wb.WbEnvironment()
     wbe.verbose = False
-    dem, crs = _read_dem(wbe, dem_path)
+    dem, crs, _geographic = _read_dem(wbe, dem_path)  # watershed topology is unit-free
     record = ProvenanceRecord(
         operation="watershed",
         parameters={"method": "d8", "preprocessing": "fill_depressions", "n_pour_points": len(points)},

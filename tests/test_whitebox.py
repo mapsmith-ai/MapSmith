@@ -116,6 +116,46 @@ def test_flow_accumulation_rejects_bad_out_type(tilted_dem, tmp_path):
         whitebox_engine.flow_accumulation(tilted_dem, str(tmp_path / "x.tif"), out_type="acres")
 
 
+def test_flow_accumulation_rejects_sca_on_geographic_dem(tmp_path):
+    """SCA divides by cell width: meaningless in degrees, must be refused."""
+    zz = np.tile(np.arange(5, dtype=np.float32), (5, 1))
+    dem = _write_dem(tmp_path / "geo.tif", zz, crs="EPSG:4326")
+    with pytest.raises(ValueError, match="projected"):
+        whitebox_engine.flow_accumulation(dem, str(tmp_path / "x.tif"), out_type="sca")
+
+
+def test_hillshade_on_geographic_dem_records_the_caveat(tmp_path):
+    """Geographic DEMs are allowed but the manifest must say cells are degrees."""
+    dem = _write_dem(tmp_path / "geo30.tif", np.full((6, 6), 55.0, dtype=np.float32), crs="EPSG:4326")
+    out = tmp_path / "hs_geo.tif"
+    whitebox_engine.hillshade(dem, str(out))
+    manifest = json.loads((tmp_path / "hs_geo.tif.provenance.json").read_text())
+    assert "geographic" in manifest["crs_decisions"]["reason"]
+
+
+def test_hillshade_handles_nan_nodata(tmp_path):
+    """NaN nodata must not leak into the value-range verification."""
+    data = np.full((8, 8), 200.0, dtype=np.float32)
+    data[0, 0] = np.nan
+    path = tmp_path / "nan_dem.tif"
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=8,
+        width=8,
+        count=1,
+        dtype="float32",
+        crs="EPSG:32631",
+        transform=from_origin(0.0, 8.0, 1.0, 1.0),
+        nodata=float("nan"),
+    ) as dst:
+        dst.write(data, 1)
+    out = tmp_path / "hs_nan.tif"
+    result = whitebox_engine.hillshade(str(path), str(out))
+    assert result["verified"] is True
+
+
 def test_watershed_single_outlet_captures_whole_valley(valley_dem, tmp_path):
     """One outlet at the valley mouth: all 25 cells belong to watershed 1."""
     pts = gpd.GeoDataFrame({"id": [1]}, geometry=[Point(2.5, 0.5)], crs="EPSG:32631")

@@ -687,7 +687,7 @@ def _document(op: dict[str, Any]) -> list[str]:
 
 
 def bm25_scores(query_tokens: list[str], documents: list[list[str]]) -> list[float]:
-    """Okapi BM25 scores of each document against the query (idf floored at 0)."""
+    """Okapi BM25 scores per document (Lucene-style ln(1+x) idf, always non-negative)."""
     n_docs = len(documents)
     if n_docs == 0:
         return []
@@ -700,7 +700,9 @@ def bm25_scores(query_tokens: list[str], documents: list[list[str]]) -> list[flo
     for doc in documents:
         score = 0.0
         length_norm = _K1 * (1 - _B + _B * len(doc) / avg_len) if avg_len else _K1
-        for term in set(query_tokens):
+        # sorted: float addition is not associative, so a hash-ordered iteration
+        # could make scores differ across processes — determinism is the brand.
+        for term in sorted(set(query_tokens)):
             tf = doc.count(term)
             if tf == 0:
                 continue
