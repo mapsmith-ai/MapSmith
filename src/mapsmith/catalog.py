@@ -55,9 +55,10 @@ OPERATIONS: list[dict[str, str]] = [
     },
     {
         "name": "zonal_statistics",
-        "status": "planned",
+        "status": "available",
         "category": "raster",
-        "summary": "Statistics of a raster within vector zones (Rasterio engine)",
+        "summary": "Statistics of a raster within vector zones via exactextract "
+        "(exact fractional pixel coverage); requires the [raster] extra",
     },
     {
         "name": "hillshade",

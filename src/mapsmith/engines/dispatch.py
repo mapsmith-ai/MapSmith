@@ -45,6 +45,13 @@ def available_engines() -> dict[str, bool]:
         status["sedonadb"] = True
     except ImportError:
         status["sedonadb"] = False
+    try:
+        import exactextract  # noqa: F401
+        import rasterio  # noqa: F401
+
+        status["exactextract"] = True
+    except ImportError:
+        status["exactextract"] = False
     return status
 
 

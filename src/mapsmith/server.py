@@ -148,6 +148,33 @@ def run_sql(query: str, output_path: str = "") -> dict[str, Any]:
 
 
 @mcp.tool()
+def zonal_statistics(
+    raster_path: str,
+    zones_path: str,
+    output_path: str,
+    stats: list[str] | None = None,
+) -> dict[str, Any]:
+    """Statistics of a raster within each vector zone (exact fractional pixel coverage).
+
+    stats: subset of count/sum/mean/median/min/max/stdev/variance/majority/minority/
+    variety (default: count, mean, min, max). Zones are aligned to the raster CRS
+    automatically; the decision is recorded in the provenance manifest.
+    Requires the [raster] extra.
+    """
+    from .engines import raster
+
+    return _run(
+        "zonal_statistics",
+        {"raster": raster_path, "zones": zones_path, "output": output_path, "stats": stats},
+        raster.zonal_statistics,
+        raster_path,
+        zones_path,
+        output_path,
+        stats,
+    )
+
+
+@mcp.tool()
 def get_provenance(output_path: str) -> dict[str, Any]:
     """Return the full lineage manifest of a MapSmith output dataset."""
     return read_provenance(output_path)

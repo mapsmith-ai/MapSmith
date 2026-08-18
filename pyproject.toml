@@ -29,6 +29,7 @@ dependencies = [
 
 [project.optional-dependencies]
 sedona = ["apache-sedona[db]>=1.9"]
+raster = ["exactextract>=0.2", "rasterio>=1.3"]
 postgres = ["psycopg[binary]>=3.2"]
 test = ["pytest>=8.0", "ruff>=0.16,<0.17"]
 
