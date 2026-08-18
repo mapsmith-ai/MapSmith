@@ -1,0 +1,24 @@
+# Example Ingress. Adjust host, ingress class and certificate issuer to your cluster.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mapsmith
+  annotations:
+    # cert-manager.io/cluster-issuer: your-issuer
+spec:
+  # ingressClassName: traefik | nginx | ...
+  tls:
+    - hosts:
+        - mapsmith.example.com
+      secretName: mapsmith-tls
+  rules:
+    - host: mapsmith.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mapsmith
+                port:
+                  number: 80

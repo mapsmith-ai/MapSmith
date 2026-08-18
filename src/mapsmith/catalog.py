@@ -37,7 +37,15 @@ OPERATIONS: list[dict[str, str]] = [
         "name": "spatial_join",
         "status": "available",
         "category": "vector",
-        "summary": "Attribute join by spatial predicate: intersects, within, contains",
+        "summary": "Join by spatial predicate (intersects/within/contains); auto-routed to "
+        "SedonaDB or DuckDB for speed, GeoPandas fallback",
+    },
+    {
+        "name": "run_sql",
+        "status": "available",
+        "category": "sql",
+        "summary": "Spatial SQL (DuckDB dialect, ST_* functions) over GeoParquet and GDAL "
+        "formats; materializes GeoParquet outputs with provenance",
     },
     {
         "name": "get_provenance",

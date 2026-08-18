@@ -1,0 +1,86 @@
+# MAPSMITH MCP server — example Kubernetes deployment (Streamable HTTP, stateless).
+# Always declare resources explicitly: many clusters default containers to tiny
+# limits that silently throttle geoprocessing.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mapsmith
+  labels:
+    app: mapsmith
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mapsmith
+  template:
+    metadata:
+      labels:
+        app: mapsmith
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: server
+          image: ghcr.io/mapsmith-ai/mapsmith:main
+          imagePullPolicy: Always
+          env:
+            - name: MAPSMITH_TRANSPORT
+              value: "http"
+            - name: MAPSMITH_HOST
+              value: "0.0.0.0"
+            - name: MAPSMITH_PORT
+              value: "8000"
+          ports:
+            - containerPort: 8000
+              name: http
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+              ephemeral-storage: 512Mi
+            limits:
+              cpu: 800m
+              memory: 1536Mi
+              ephemeral-storage: 2Gi
+          readinessProbe:
+            tcpSocket:
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: workspace
+              mountPath: /data
+      volumes:
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: mapsmith-workspace
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mapsmith-workspace
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+  # storageClassName: nvme-01  # implicit: cluster default
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mapsmith
+  labels:
+    app: mapsmith
+spec:
+  type: ClusterIP
+  selector:
+    app: mapsmith
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000

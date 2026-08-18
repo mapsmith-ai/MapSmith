@@ -18,14 +18,17 @@ classifiers = [
   "Programming Language :: Python :: 3",
 ]
 dependencies = [
-  "mcp>=1.2",
+  "mcp>=1.2,<2",
   "geopandas>=1.0",
   "shapely>=2.0",
   "pyproj>=3.6",
   "pyogrio>=0.9",
+  "duckdb>=1.4",
 ]
 
 [project.optional-dependencies]
+sedona = ["apache-sedona[db]>=1.9"]
+postgres = ["psycopg[binary]>=3.2"]
 test = ["pytest>=8.0", "ruff>=0.16,<0.17"]
 
 [project.scripts]
