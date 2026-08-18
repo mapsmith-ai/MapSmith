@@ -12,6 +12,7 @@ import os
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 from . import __version__, catalog, jobs
 from .engines import dispatch, duckdb_engine, vector
@@ -36,6 +37,17 @@ mcp = FastMCP(
 )
 
 
+# Standard MCP tool annotations (readOnlyHint etc. — hints for clients, spec 2025-06-18).
+# Writers are marked non-destructive: they only (re)write the declared output_path and are
+# deterministic, so re-running with the same arguments reproduces the same dataset.
+_READONLY = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=False)
+_WRITER = ToolAnnotations(
+    readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False
+)
+# run_sql executes arbitrary SQL (COPY, DDL on attached DBs), so it keeps the honest default.
+_SQL = ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False)
+
+
 def _run(operation: str, params: dict[str, Any], fn, *args) -> dict[str, Any]:
     """Execute an engine call as a durable job (no-op ledger without DATABASE_URL)."""
     with jobs.job(operation, params) as (job_id, res):
@@ -45,7 +57,7 @@ def _run(operation: str, params: dict[str, Any], fn, *args) -> dict[str, Any]:
     return result
 
 
-@mcp.tool()
+@mcp.tool(annotations=_READONLY)
 def describe_dataset(path: str) -> dict[str, Any]:
     """Inspect a vector dataset: CRS, geometry types, schema, extent, feature count.
 
@@ -54,7 +66,7 @@ def describe_dataset(path: str) -> dict[str, Any]:
     return vector.describe(path)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_WRITER)
 def buffer_layer(input_path: str, distance_meters: float, output_path: str) -> dict[str, Any]:
     """Buffer all features by a distance in meters.
 
@@ -71,7 +83,7 @@ def buffer_layer(input_path: str, distance_meters: float, output_path: str) -> d
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=_WRITER)
 def clip_layer(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
     """Clip a layer to the area of a mask layer. CRS are aligned automatically."""
     return _run(
@@ -84,7 +96,7 @@ def clip_layer(input_path: str, mask_path: str, output_path: str) -> dict[str, A
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=_WRITER)
 def reproject_layer(input_path: str, target_crs: str, output_path: str) -> dict[str, Any]:
     """Reproject a layer to a target CRS, e.g. 'EPSG:32632' or a WKT string."""
     return _run(
@@ -97,7 +109,7 @@ def reproject_layer(input_path: str, target_crs: str, output_path: str) -> dict[
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=_WRITER)
 def spatial_join(
     left_path: str,
     right_path: str,
@@ -136,7 +148,7 @@ def spatial_join(
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=_SQL)
 def run_sql(query: str, output_path: str = "") -> dict[str, Any]:
     """Run spatial SQL (DuckDB dialect, ST_* functions, read_parquet/ST_Read for files).
 
@@ -147,7 +159,7 @@ def run_sql(query: str, output_path: str = "") -> dict[str, Any]:
     return _run("run_sql", {"query": query, "output": out}, duckdb_engine.run_sql, query, out)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_WRITER)
 def zonal_statistics(
     raster_path: str,
     zones_path: str,
@@ -174,19 +186,26 @@ def zonal_statistics(
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=_READONLY)
 def get_provenance(output_path: str) -> dict[str, Any]:
     """Return the full lineage manifest of a MapSmith output dataset."""
     return read_provenance(output_path)
 
 
-@mcp.tool()
-def list_operations(query: str = "") -> list[dict[str, str]]:
-    """Search the catalog of available and planned operations (progressive discovery)."""
-    return catalog.search(query)
+@mcp.tool(annotations=_READONLY)
+def list_operations(query: str = "", detail: bool = False, limit: int = 10) -> list[dict[str, Any]]:
+    """Search the catalog of available and planned operations (progressive discovery).
+
+    Describe what you need in plain words (e.g. 'statistics of a raster inside
+    polygons') and results come back ranked by relevance (BM25). Compact entries
+    by default; detail=True adds parameters and worked example calls — use it on
+    the exact operation name before calling an unfamiliar tool. Empty query
+    lists the whole catalog including planned (not yet available) operations.
+    """
+    return catalog.search(query, limit=limit, detail=detail)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_READONLY)
 def server_info() -> dict[str, Any]:
     """MapSmith version, licensing, and available engines."""
     return {

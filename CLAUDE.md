@@ -15,7 +15,7 @@ MapSmith gives AI agents professional-grade geoprocessing via MCP, with **verifi
 ## Practical conventions
 
 - Optional engines live behind extras (`[sedona]`, `[raster]`, `[postgres]`) with import guards whose error message names the extra.
-- Version pins are deliberate: `mcp>=1.2,<2` (v2 renamed FastMCP→MCPServer; migration planned with MCP Tasks), `ruff>=0.16,<0.17` (new ruff minors add default rules and break CI).
+- Version pins are deliberate: `mcp>=1.19,<2` (1.19 is the floor for tool `annotations`+`meta`; v2 renamed FastMCP→MCPServer; migration planned with MCP Tasks), `ruff>=0.16,<0.17` (new ruff minors add default rules and break CI).
 - Tests use closed-form expected values (e.g., a known 5×5 raster block → mean=22, sum=550) plus rejection-path tests; `pytest.importorskip` for extras.
 - Run `python -m ruff check .` before committing; CI runs lint + tests on Python 3.10/3.12 + Docker build.
 - Docker (or `uvx` where wheels work) is the only supported install path — keep it true in docs.

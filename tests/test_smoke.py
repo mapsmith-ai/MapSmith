@@ -65,5 +65,16 @@ def test_clip(points_gpkg, tmp_path):
 
 def test_catalog_search():
     assert any(op["name"] == "buffer_layer" for op in catalog.search("buffer"))
-    assert all(op["status"] == "available" or "planned" for op in catalog.search())
+    assert all(op["status"] in {"available", "planned"} for op in catalog.search())
     assert catalog.search("nonexistent-xyz") == []
+
+
+def test_server_tools_carry_mcp_annotations():
+    from mapsmith import server
+
+    tools = {t.name: t for t in server.mcp._tool_manager.list_tools()}
+    assert tools["describe_dataset"].annotations.readOnlyHint is True
+    assert tools["buffer_layer"].annotations.destructiveHint is False
+    assert tools["buffer_layer"].annotations.idempotentHint is True
+    assert tools["run_sql"].annotations.destructiveHint is True
+    assert all(t.annotations is not None for t in tools.values())
