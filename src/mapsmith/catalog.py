@@ -466,15 +466,188 @@ OPERATIONS: list[dict[str, Any]] = [
     },
     {
         "name": "hillshade",
-        "status": "planned",
-        "category": "raster",
-        "summary": "Terrain hillshading from a DEM",
+        "status": "available",
+        "category": "terrain",
+        "summary": "Shaded relief from a DEM (Whitebox engine, in-memory); "
+        "requires the [whitebox] extra",
+        "description": (
+            "Compute a shaded-relief raster from a digital elevation model. Output "
+            "values are scaled 0-32767; nodata cells are preserved. The DEM must have "
+            "a CRS (rejected otherwise). Runs in memory on the Whitebox Next Gen "
+            "engine. Requires: pip install mapsmith[whitebox]."
+        ),
+        "parameters": [
+            {
+                "name": "dem_path",
+                "type": "str",
+                "required": True,
+                "description": "Digital elevation model (GeoTIFF, must have a CRS)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output GeoTIFF path",
+            },
+            {
+                "name": "azimuth",
+                "type": "float",
+                "required": False,
+                "description": "Sun direction in degrees, 0-360 (default 315 = NW)",
+            },
+            {
+                "name": "altitude",
+                "type": "float",
+                "required": False,
+                "description": "Sun angle above the horizon in degrees, 0-90 (default 30)",
+            },
+            {
+                "name": "z_factor",
+                "type": "float",
+                "required": False,
+                "description": "Vertical exaggeration (default 1.0)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Classic NW-lit hillshade for a basemap",
+                "call": {
+                    "tool": "hillshade",
+                    "arguments": {"dem_path": "dem.tif", "output_path": "hillshade.tif"},
+                },
+            },
+            {
+                "goal": "Low morning sun from the east to emphasize subtle relief",
+                "call": {
+                    "tool": "hillshade",
+                    "arguments": {
+                        "dem_path": "dem.tif",
+                        "output_path": "hillshade_east.tif",
+                        "azimuth": 90,
+                        "altitude": 15,
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "flow_accumulation",
+        "status": "available",
+        "category": "hydrology",
+        "summary": "D8 flow accumulation from a DEM with automatic depression filling; "
+        "requires the [whitebox] extra",
+        "description": (
+            "Number of upslope cells draining through each cell (D8 routing). "
+            "Depressions are filled first and the preprocessing is recorded in "
+            "provenance. out_type 'cells' counts cells (each cell counts itself, so "
+            "values run from 1 to the grid size); 'sca' gives specific catchment "
+            "area. Requires: pip install mapsmith[whitebox]."
+        ),
+        "parameters": [
+            {
+                "name": "dem_path",
+                "type": "str",
+                "required": True,
+                "description": "Digital elevation model (GeoTIFF, must have a CRS)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output GeoTIFF path",
+            },
+            {
+                "name": "out_type",
+                "type": "str",
+                "required": False,
+                "description": "'cells' (default) or 'sca' (specific catchment area)",
+            },
+            {
+                "name": "log_transform",
+                "type": "bool",
+                "required": False,
+                "description": "Natural-log transform for visualization (default false)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Find where streams concentrate on a DEM",
+                "call": {
+                    "tool": "flow_accumulation",
+                    "arguments": {"dem_path": "dem.tif", "output_path": "flowacc.tif"},
+                },
+            },
+            {
+                "goal": "Log-scaled accumulation for a drainage-network visualization",
+                "call": {
+                    "tool": "flow_accumulation",
+                    "arguments": {
+                        "dem_path": "dem.tif",
+                        "output_path": "flowacc_log.tif",
+                        "log_transform": True,
+                    },
+                },
+            },
+        ],
     },
     {
         "name": "watershed",
-        "status": "planned",
+        "status": "available",
         "category": "hydrology",
-        "summary": "Watershed delineation (WhiteboxTools engine)",
+        "summary": "Watershed delineation from a DEM and pour points (Whitebox engine); "
+        "requires the [whitebox] extra",
+        "description": (
+            "Delineate the watershed draining to each pour point. Basins get 1-based "
+            "IDs following the pour-point feature order; cells not draining to any "
+            "point stay nodata. Pour points (any GeoPandas-readable format) are "
+            "aligned to the DEM CRS automatically with the decision recorded. "
+            "Depressions are filled before flow routing. "
+            "Requires: pip install mapsmith[whitebox]."
+        ),
+        "parameters": [
+            {
+                "name": "dem_path",
+                "type": "str",
+                "required": True,
+                "description": "Digital elevation model (GeoTIFF, must have a CRS)",
+            },
+            {
+                "name": "pour_points_path",
+                "type": "str",
+                "required": True,
+                "description": "Point layer of outlets (must have a CRS)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output GeoTIFF path (basin IDs, nodata outside)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Catchment upstream of a gauging station",
+                "call": {
+                    "tool": "watershed",
+                    "arguments": {
+                        "dem_path": "dem.tif",
+                        "pour_points_path": "station.gpkg",
+                        "output_path": "catchment.tif",
+                    },
+                },
+            },
+            {
+                "goal": "Drainage basins of several dam sites at once",
+                "call": {
+                    "tool": "watershed",
+                    "arguments": {
+                        "dem_path": "dem.tif",
+                        "pour_points_path": "dam_sites.parquet",
+                        "output_path": "basins.tif",
+                    },
+                },
+            },
+        ],
     },
     {
         "name": "isochrone",

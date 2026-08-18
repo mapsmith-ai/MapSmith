@@ -52,6 +52,12 @@ def available_engines() -> dict[str, bool]:
         status["exactextract"] = True
     except ImportError:
         status["exactextract"] = False
+    try:
+        import whitebox_workflows  # noqa: F401
+
+        status["whitebox"] = True
+    except ImportError:
+        status["whitebox"] = False
     return status
 
 

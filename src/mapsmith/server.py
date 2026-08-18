@@ -186,6 +186,80 @@ def zonal_statistics(
     )
 
 
+@mcp.tool(annotations=_WRITER)
+def hillshade(
+    dem_path: str,
+    output_path: str,
+    azimuth: float = 315.0,
+    altitude: float = 30.0,
+    z_factor: float = 1.0,
+) -> dict[str, Any]:
+    """Shaded relief from a DEM: GeoTIFF in, GeoTIFF out (values scaled 0-32767).
+
+    azimuth = sun direction in degrees (default 315, NW); altitude = sun angle
+    above the horizon (default 30). DEMs without a CRS are rejected.
+    Requires the [whitebox] extra.
+    """
+    from .engines import whitebox_engine
+
+    return _run(
+        "hillshade",
+        {"dem": dem_path, "output": output_path, "azimuth": azimuth, "altitude": altitude},
+        whitebox_engine.hillshade,
+        dem_path,
+        output_path,
+        azimuth,
+        altitude,
+        z_factor,
+    )
+
+
+@mcp.tool(annotations=_WRITER)
+def flow_accumulation(
+    dem_path: str,
+    output_path: str,
+    out_type: str = "cells",
+    log_transform: bool = False,
+) -> dict[str, Any]:
+    """D8 flow accumulation from a DEM (GeoTIFF in/out). Depressions are filled first.
+
+    out_type: 'cells' (upslope cell count, includes the cell itself) or 'sca'
+    (specific catchment area). log_transform=True for visualization-friendly
+    values. Requires the [whitebox] extra.
+    """
+    from .engines import whitebox_engine
+
+    return _run(
+        "flow_accumulation",
+        {"dem": dem_path, "output": output_path, "out_type": out_type},
+        whitebox_engine.flow_accumulation,
+        dem_path,
+        output_path,
+        out_type,
+        log_transform,
+    )
+
+
+@mcp.tool(annotations=_WRITER)
+def watershed(dem_path: str, pour_points_path: str, output_path: str) -> dict[str, Any]:
+    """Watershed of each pour point: DEM + points in, basin raster out (GeoTIFF).
+
+    Basins get 1-based IDs following the pour-point feature order; cells not
+    draining to any point stay nodata. Points are aligned to the DEM CRS
+    automatically (decision recorded). Requires the [whitebox] extra.
+    """
+    from .engines import whitebox_engine
+
+    return _run(
+        "watershed",
+        {"dem": dem_path, "pour_points": pour_points_path, "output": output_path},
+        whitebox_engine.watershed,
+        dem_path,
+        pour_points_path,
+        output_path,
+    )
+
+
 @mcp.tool(annotations=_READONLY)
 def get_provenance(output_path: str) -> dict[str, Any]:
     """Return the full lineage manifest of a MapSmith output dataset."""

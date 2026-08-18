@@ -40,7 +40,7 @@ Then ask your agent things like:
 
 > "Take parcels.gpkg, keep only the parcels within 300 m of the river in rivers.gpkg, and give me the result with the analysis lineage."
 
-## Tools (v0.1)
+## Tools
 
 | Tool | What it does |
 |---|---|
@@ -48,11 +48,22 @@ Then ask your agent things like:
 | `buffer_layer` | Metric buffer with automatic UTM estimation for geographic CRS |
 | `clip_layer` | Clip a layer with a mask layer |
 | `reproject_layer` | Reproject to any CRS (EPSG code or WKT) |
-| `spatial_join` | Join attributes by spatial predicate (intersects/within/contains) |
+| `spatial_join` | Join by spatial predicate, auto-routed to the fastest engine (SedonaDB > DuckDB > GeoPandas) |
+| `run_sql` | Spatial SQL (DuckDB dialect) over GeoParquet and GDAL formats |
+| `zonal_statistics` | Raster statistics per vector zone with exact fractional pixel coverage (`[raster]` extra) |
+| `hillshade` | Shaded relief from a DEM, in-memory Whitebox engine (`[whitebox]` extra) |
+| `flow_accumulation` | D8 flow accumulation with automatic depression filling (`[whitebox]` extra) |
+| `watershed` | Watershed delineation from a DEM and pour points (`[whitebox]` extra) |
 | `get_provenance` | Return the full lineage manifest of any MapSmith output |
-| `list_operations` | Searchable catalog of available operations (progressive discovery) |
+| `list_operations` | BM25-ranked catalog search; `detail=true` returns parameters and worked examples |
+| `server_info` | Version, license, available engines |
 
-Every tool that writes an output also writes `<output>.provenance.json` next to it.
+Every tool that writes an output also writes `<output>.provenance.json` next to it —
+and runs deterministic verification (CRS, dimensions, value invariants) whose results
+are recorded in the manifest *before* any failure is raised.
+
+The Docker image ships with the `[raster]` and `[whitebox]` extras included. With
+`uvx`, pick your extras: `uvx --from "mapsmith[raster,whitebox]" mapsmith`.
 
 ## Provenance example
 
@@ -83,8 +94,10 @@ Every tool that writes an output also writes `<output>.provenance.json` next to 
  ├─────────────────────────────────────────────┤
  │ Engines                                     │
  │  · vector: GeoPandas/Shapely (built-in)     │
- │  · raster: Rasterio (roadmap)               │
- │  · terrain/hydro: WhiteboxTools (roadmap)   │
+ │  · SQL/analytics: DuckDB Spatial (built-in) │
+ │  · heavy joins: SedonaDB ([sedona] extra)   │
+ │  · zonal stats: exactextract ([raster])     │
+ │  · terrain/hydro: Whitebox NG ([whitebox])  │
  │  · qgis_process / GRASS sidecar (roadmap,   │
  │    GPL-isolated via subprocess)             │
  └─────────────────────────────────────────────┘
@@ -92,8 +105,10 @@ Every tool that writes an output also writes `<output>.provenance.json` next to 
 
 ## Roadmap
 
-- [ ] Raster engine (Rasterio): zonal stats, clip, hillshade, algebra
-- [ ] WhiteboxTools adapter: terrain & hydrology (500+ permissive tools)
+- [x] Zonal statistics (exactextract, exact fractional coverage)
+- [x] Whitebox Next Gen adapter: hillshade, flow accumulation, watershed (in-memory, open tier)
+- [ ] More terrain & hydrology: slope/aspect, stream network extraction
+- [ ] Typed analysis plans: the agent proposes a DAG, MapSmith validates it before running
 - [ ] QGIS Processing sidecar (subprocess-isolated): ~900 algorithms
 - [ ] Sandboxed code-execution tool for the long tail
 - [ ] Remote server (Streamable HTTP + OAuth), long-job progress via MCP Tasks
