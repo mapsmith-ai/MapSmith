@@ -9,10 +9,10 @@ from shapely.geometry import box
 exactextract = pytest.importorskip("exactextract")
 rasterio = pytest.importorskip("rasterio")
 
-import numpy as np  # noqa: E402
-from rasterio.transform import from_origin  # noqa: E402
+import numpy as np
+from rasterio.transform import from_origin
 
-from mapsmith.engines import raster  # noqa: E402
+from mapsmith.engines import raster
 
 
 @pytest.fixture()
