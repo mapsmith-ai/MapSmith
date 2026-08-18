@@ -1,4 +1,4 @@
-# Contributing to Mapsmith
+# Contributing to MapSmith
 
 Thanks for your interest! A few ground rules keep this project sustainable for a small team.
 

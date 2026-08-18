@@ -1,4 +1,4 @@
-"""Lineage manifests for every Mapsmith output.
+﻿"""Lineage manifests for every MapSmith output.
 
 Every operation that writes a dataset also writes ``<output>.provenance.json``
 next to it. The manifest is the product's core promise: any result can be
@@ -65,11 +65,11 @@ class ProvenanceRecord:
 
 
 def read_provenance(output_path: str | Path) -> dict[str, Any]:
-    """Read the lineage manifest of a Mapsmith output, if present."""
+    """Read the lineage manifest of a MapSmith output, if present."""
     manifest_path = Path(f"{output_path}.provenance.json")
     if not manifest_path.exists():
         raise FileNotFoundError(
             f"No provenance manifest found for {output_path}. "
-            "Either it was not produced by Mapsmith or the manifest was moved."
+            "Either it was not produced by MapSmith or the manifest was moved."
         )
     return json.loads(manifest_path.read_text(encoding="utf-8"))

@@ -1,6 +1,6 @@
-"""Operation catalog for progressive discovery.
+﻿"""Operation catalog for progressive discovery.
 
-Agent accuracy collapses when hundreds of raw tools are exposed. Mapsmith keeps
+Agent accuracy collapses when hundreds of raw tools are exposed. MapSmith keeps
 a small set of semantic MCP tools and lets agents *search* this catalog to find
 what exists. Entries marked ``planned`` document the roadmap so the agent can
 say "not yet" instead of hallucinating a capability.
@@ -51,7 +51,7 @@ OPERATIONS: list[dict[str, str]] = [
         "name": "get_provenance",
         "status": "available",
         "category": "provenance",
-        "summary": "Full lineage manifest of any Mapsmith output",
+        "summary": "Full lineage manifest of any MapSmith output",
     },
     {
         "name": "zonal_statistics",

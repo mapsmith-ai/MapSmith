@@ -1,4 +1,4 @@
-"""Mapsmith MCP server.
+"""MapSmith MCP server.
 
 Transports:
 - stdio (default): ``mapsmith`` — zero infrastructure, for Claude Desktop & co.
@@ -22,7 +22,7 @@ _HTTP = os.environ.get("MAPSMITH_TRANSPORT", "stdio").lower() in {"http", "strea
 mcp = FastMCP(
     "mapsmith",
     instructions=(
-        "Mapsmith is a deterministic geoprocessing toolbox. Geometry and numbers always "
+        "MapSmith is a deterministic geoprocessing toolbox. Geometry and numbers always "
         "come from tool executions, never from the model. Every output dataset has a "
         "lineage manifest (<output>.provenance.json) retrievable with get_provenance. "
         "Use list_operations to discover capabilities before improvising; if an operation "
@@ -149,7 +149,7 @@ def run_sql(query: str, output_path: str = "") -> dict[str, Any]:
 
 @mcp.tool()
 def get_provenance(output_path: str) -> dict[str, Any]:
-    """Return the full lineage manifest of a Mapsmith output dataset."""
+    """Return the full lineage manifest of a MapSmith output dataset."""
     return read_provenance(output_path)
 
 
@@ -161,7 +161,7 @@ def list_operations(query: str = "") -> list[dict[str, str]]:
 
 @mcp.tool()
 def server_info() -> dict[str, Any]:
-    """Mapsmith version, licensing, and available engines."""
+    """MapSmith version, licensing, and available engines."""
     return {
         "name": "mapsmith",
         "version": __version__,
