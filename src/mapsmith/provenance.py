@@ -47,9 +47,15 @@ class ProvenanceRecord:
     inputs: list[InputRecord]
     crs_decisions: dict[str, str] = field(default_factory=dict)
     engine: dict[str, str] = field(default_factory=dict)
+    verification: list[dict[str, Any]] = field(default_factory=list)
     mapsmith_version: str = __version__
     started_at: str = field(default_factory=_utcnow)
     finished_at: str | None = None
+
+    def add_verification(self, checks: list[Any]) -> ProvenanceRecord:
+        """Attach deterministic check results (objects with .as_dict())."""
+        self.verification.extend(c.as_dict() for c in checks)
+        return self
 
     def finish(self) -> ProvenanceRecord:
         self.finished_at = _utcnow()

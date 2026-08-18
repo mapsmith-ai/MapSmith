@@ -12,6 +12,7 @@ from typing import Any
 
 import geopandas as gpd
 
+from .. import verify
 from ..provenance import InputRecord, ProvenanceRecord
 
 
@@ -68,11 +69,19 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
         buffered = gdf.copy()
         buffered["geometry"] = buffered.geometry.buffer(distance_meters)
     buffered.to_file(output_path)
-    manifest = record.finish().write_for(output_path)
+    checks = verify.verify_vector_output(
+        output_path,
+        expect_crs=str(original_crs),
+        expect_count=len(gdf),
+        expect_geometry={"Polygon", "MultiPolygon"},
+    )
+    manifest = record.add_verification(checks).finish().write_for(output_path)
+    verify.enforce(checks, "buffer_layer")
     return {
         "output": str(output_path),
         "feature_count": len(buffered),
         "provenance": str(manifest),
+        "verified": True,
     }
 
 
@@ -96,11 +105,21 @@ def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
         }
     clipped = gpd.clip(gdf, mask)
     clipped.to_file(output_path)
-    manifest = record.finish().write_for(output_path)
+    mask_bounds = tuple(float(v) for v in mask.total_bounds)
+    checks = verify.verify_vector_output(
+        output_path,
+        expect_crs=str(gdf.crs),
+        max_count=len(gdf),
+        within_bounds=mask_bounds,
+        bounds_margin=1e-6,
+    )
+    manifest = record.add_verification(checks).finish().write_for(output_path)
+    verify.enforce(checks, "clip_layer")
     return {
         "output": str(output_path),
         "feature_count": len(clipped),
         "provenance": str(manifest),
+        "verified": True,
     }
 
 
@@ -114,11 +133,18 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
     )
     reprojected = gdf.to_crs(target_crs)
     reprojected.to_file(output_path)
-    manifest = record.finish().write_for(output_path)
+    checks = verify.verify_vector_output(
+        output_path,
+        expect_crs=target_crs,
+        expect_count=len(gdf),
+    )
+    manifest = record.add_verification(checks).finish().write_for(output_path)
+    verify.enforce(checks, "reproject_layer")
     return {
         "output": str(output_path),
         "crs": str(reprojected.crs),
         "provenance": str(manifest),
+        "verified": True,
     }
 
 
@@ -148,9 +174,12 @@ def spatial_join(
     joined = gpd.sjoin(left, right, predicate=predicate, how="inner")
     joined = joined.drop(columns=[c for c in ("index_right",) if c in joined.columns])
     joined.to_file(output_path)
-    manifest = record.finish().write_for(output_path)
+    checks = verify.verify_vector_output(output_path, expect_crs=str(left.crs))
+    manifest = record.add_verification(checks).finish().write_for(output_path)
+    verify.enforce(checks, "spatial_join")
     return {
         "output": str(output_path),
         "feature_count": len(joined),
         "provenance": str(manifest),
+        "verified": True,
     }
