@@ -25,7 +25,7 @@ def describe(path: str) -> dict[str, Any]:
     return {
         "path": str(path),
         "crs": str(gdf.crs) if gdf.crs else None,
-        "feature_count": int(len(gdf)),
+        "feature_count": len(gdf),
         "geometry_types": sorted(gdf.geom_type.dropna().unique().tolist()),
         "fields": {c: str(t) for c, t in gdf.dtypes.items() if c != gdf.geometry.name},
         "extent": {
@@ -71,7 +71,7 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
     manifest = record.finish().write_for(output_path)
     return {
         "output": str(output_path),
-        "feature_count": int(len(buffered)),
+        "feature_count": len(buffered),
         "provenance": str(manifest),
     }
 
@@ -99,7 +99,7 @@ def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
     manifest = record.finish().write_for(output_path)
     return {
         "output": str(output_path),
-        "feature_count": int(len(clipped)),
+        "feature_count": len(clipped),
         "provenance": str(manifest),
     }
 
@@ -151,6 +151,6 @@ def spatial_join(
     manifest = record.finish().write_for(output_path)
     return {
         "output": str(output_path),
-        "feature_count": int(len(joined)),
+        "feature_count": len(joined),
         "provenance": str(manifest),
     }

@@ -36,7 +36,7 @@ class InputRecord:
     crs: str | None = None
 
     @classmethod
-    def from_path(cls, path: str | Path, crs: str | None = None) -> "InputRecord":
+    def from_path(cls, path: str | Path, crs: str | None = None) -> InputRecord:
         return cls(path=str(path), sha256=sha256_of(path), crs=crs)
 
 
@@ -51,7 +51,7 @@ class ProvenanceRecord:
     started_at: str = field(default_factory=_utcnow)
     finished_at: str | None = None
 
-    def finish(self) -> "ProvenanceRecord":
+    def finish(self) -> ProvenanceRecord:
         self.finished_at = _utcnow()
         return self
 
