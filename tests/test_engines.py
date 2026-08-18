@@ -27,7 +27,7 @@ def duck():
     duckdb_engine = pytest.importorskip("mapsmith.engines.duckdb_engine")
     try:
         duckdb_engine._connect()
-    except Exception as exc:  # spatial extension download can fail offline
+    except Exception as exc:  # noqa: BLE001 — extension download can fail offline
         pytest.skip(f"duckdb spatial extension unavailable: {exc}")
     return duckdb_engine
 

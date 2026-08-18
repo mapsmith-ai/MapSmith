@@ -44,8 +44,7 @@ def _connect():
         return None
     try:
         return psycopg.connect(url, autocommit=True)
-    except Exception:
-        # The ledger must never take the server down.
+    except Exception:  # noqa: BLE001 — the ledger must never take the server down
         return None
 
 
