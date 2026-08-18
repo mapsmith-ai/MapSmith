@@ -23,6 +23,7 @@ dependencies = [
   "shapely>=2.0",
   "pyproj>=3.6",
   "pyogrio>=0.9",
+  "pyarrow>=17",
   "duckdb>=1.4",
 ]
 
