@@ -1,4 +1,4 @@
-﻿"""Lineage manifests for every MapSmith output.
+"""Lineage manifests for every MapSmith output.
 
 Every operation that writes a dataset also writes ``<output>.provenance.json``
 next to it. The manifest is the product's core promise: any result can be

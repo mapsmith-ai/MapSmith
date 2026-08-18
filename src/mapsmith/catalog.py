@@ -1,4 +1,4 @@
-﻿"""Operation catalog for progressive discovery.
+"""Operation catalog for progressive discovery.
 
 Agent accuracy collapses when hundreds of raw tools are exposed. MapSmith keeps
 a small set of semantic MCP tools and lets agents *search* this catalog to find
