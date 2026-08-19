@@ -5,6 +5,10 @@
 [![Python](https://img.shields.io/pypi/pyversions/mapsmith)](https://pypi.org/project/mapsmith/)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 [![Container](https://img.shields.io/badge/ghcr.io-mapsmith--ai%2Fmapsmith-2496ED?logo=docker&logoColor=white)](https://github.com/mapsmith-ai/MapSmith/pkgs/container/mapsmith)
+[![MCP](https://img.shields.io/badge/Model_Context_Protocol-server-654FF0)](https://modelcontextprotocol.io)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![X](https://img.shields.io/badge/@mapsmith__ai-000000?logo=x&logoColor=white)](https://x.com/mapsmith_ai)
+[![Bluesky](https://img.shields.io/badge/Bluesky-mapsmith.bsky.social-0285FF?logo=bluesky&logoColor=white)](https://bsky.app/profile/mapsmith.bsky.social)
 
 **Professional-grade geoprocessing for AI agents — with provenance you can verify.**
 
