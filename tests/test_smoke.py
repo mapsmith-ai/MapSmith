@@ -46,6 +46,16 @@ def test_buffer_writes_output_and_provenance(points_gpkg, tmp_path):
     assert set(buffered.geom_type) == {"Polygon"}
 
 
+def test_buffer_writes_geoparquet(points_gpkg, tmp_path):
+    """GeoParquet is the canonical format: writers must produce it natively."""
+    out = tmp_path / "buffered.parquet"
+    result = vector.buffer(str(points_gpkg), 100.0, str(out))
+    assert result["verified"] is True
+    round_trip = gpd.read_parquet(out)
+    assert len(round_trip) == 2
+    assert round_trip.crs.to_epsg() == 4326
+
+
 def test_buffer_refuses_missing_crs(tmp_path):
     gdf = gpd.GeoDataFrame({"id": [1]}, geometry=[Point(0, 0)], crs=None)
     src = tmp_path / "nocrs.gpkg"

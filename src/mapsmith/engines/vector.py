@@ -20,8 +20,24 @@ def _engine_info() -> dict[str, str]:
     return {"name": "geopandas", "version": gpd.__version__}
 
 
+def _read(path: str) -> gpd.GeoDataFrame:
+    """Read GeoParquet natively, everything else via GDAL (GDAL's Parquet driver
+    is not bundled in the wheels, so routing .parquet through read_file breaks)."""
+    if str(path).lower().endswith(".parquet"):
+        return gpd.read_parquet(path)
+    return gpd.read_file(path)
+
+
+def _write(gdf: gpd.GeoDataFrame, output_path: str) -> None:
+    """Write GeoParquet natively (canonical format), other formats via GDAL."""
+    if str(output_path).lower().endswith(".parquet"):
+        gdf.to_parquet(output_path)
+    else:
+        gdf.to_file(output_path)
+
+
 def describe(path: str) -> dict[str, Any]:
-    gdf = gpd.read_file(path)
+    gdf = _read(path)
     bounds = gdf.total_bounds
     return {
         "path": str(path),
@@ -39,7 +55,7 @@ def describe(path: str) -> dict[str, Any]:
 
 
 def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[str, Any]:
-    gdf = gpd.read_file(input_path)
+    gdf = _read(input_path)
     if gdf.crs is None:
         raise ValueError(
             f"{input_path} has no CRS. Refusing to buffer without knowing the units — "
@@ -68,7 +84,7 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
         }
         buffered = gdf.copy()
         buffered["geometry"] = buffered.geometry.buffer(distance_meters)
-    buffered.to_file(output_path)
+    _write(buffered, output_path)
     checks = verify.verify_vector_output(
         output_path,
         expect_crs=str(original_crs),
@@ -86,8 +102,8 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
 
 
 def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
-    gdf = gpd.read_file(input_path)
-    mask = gpd.read_file(mask_path)
+    gdf = _read(input_path)
+    mask = _read(mask_path)
     record = ProvenanceRecord(
         operation="clip_layer",
         parameters={},
@@ -104,7 +120,7 @@ def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
             "reason": "mask reprojected to the input layer CRS before clipping",
         }
     clipped = gpd.clip(gdf, mask)
-    clipped.to_file(output_path)
+    _write(clipped, output_path)
     mask_bounds = tuple(float(v) for v in mask.total_bounds)
     checks = verify.verify_vector_output(
         output_path,
@@ -124,7 +140,7 @@ def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
 
 
 def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, Any]:
-    gdf = gpd.read_file(input_path)
+    gdf = _read(input_path)
     record = ProvenanceRecord(
         operation="reproject_layer",
         parameters={"target_crs": target_crs},
@@ -132,7 +148,7 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
         engine=_engine_info(),
     )
     reprojected = gdf.to_crs(target_crs)
-    reprojected.to_file(output_path)
+    _write(reprojected, output_path)
     checks = verify.verify_vector_output(
         output_path,
         expect_crs=target_crs,
@@ -154,8 +170,8 @@ def spatial_join(
     allowed = {"intersects", "within", "contains"}
     if predicate not in allowed:
         raise ValueError(f"predicate must be one of {sorted(allowed)}, got {predicate!r}")
-    left = gpd.read_file(left_path)
-    right = gpd.read_file(right_path)
+    left = _read(left_path)
+    right = _read(right_path)
     record = ProvenanceRecord(
         operation="spatial_join",
         parameters={"predicate": predicate},
@@ -173,7 +189,7 @@ def spatial_join(
         }
     joined = gpd.sjoin(left, right, predicate=predicate, how="inner")
     joined = joined.drop(columns=[c for c in ("index_right",) if c in joined.columns])
-    joined.to_file(output_path)
+    _write(joined, output_path)
     checks = verify.verify_vector_output(output_path, expect_crs=str(left.crs))
     manifest = record.add_verification(checks).finish().write_for(output_path)
     verify.enforce(checks, "spatial_join")
