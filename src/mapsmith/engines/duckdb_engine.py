@@ -12,6 +12,7 @@ from typing import Any
 
 import duckdb
 
+from .. import verify
 from ..provenance import InputRecord, ProvenanceRecord
 
 _PREVIEW_ROWS = 50
@@ -56,7 +57,20 @@ def run_sql(query: str, output_path: str | None = None) -> dict[str, Any]:
         count = con.sql(
             f"SELECT count(*) FROM read_parquet('{_quote(output_path)}')"
         ).fetchone()[0]
-        manifest = record.finish().write_for(output_path)
+        # SQL is opaque to static analysis: the cheapest honest check is whether
+        # the materialized result carries georeference metadata (non-critical —
+        # a purely tabular result is legitimate).
+        out_crs = verify.probe_crs(output_path)
+        checks = [
+            verify.Check(
+                "output_has_georeference",
+                out_crs != verify.UNKNOWN_CRS,
+                out_crs if out_crs != verify.UNKNOWN_CRS else
+                "no geo metadata (non-spatial result?)",
+                critical=False,
+            )
+        ]
+        manifest = record.add_verification(checks).finish().write_for(output_path)
         return {"output": str(output_path), "row_count": int(count), "provenance": str(manifest)}
     result = con.sql(query)
     rows = result.fetchmany(_PREVIEW_ROWS)
@@ -75,12 +89,21 @@ def spatial_join(
     if predicate not in predicates:
         raise ValueError(f"predicate must be one of {sorted(predicates)}, got {predicate!r}")
     con = _connect()
+    left_crs = verify.probe_crs(left_path)
     record = ProvenanceRecord(
         operation="spatial_join",
         parameters={"predicate": predicate, "engine": "duckdb"},
-        inputs=[InputRecord.from_path(left_path), InputRecord.from_path(right_path)],
+        inputs=[
+            InputRecord.from_path(left_path, crs=left_crs),
+            InputRecord.from_path(right_path, crs=verify.probe_crs(right_path)),
+        ],
         engine=_engine_info(),
     )
+    record.crs_decisions = {
+        "analysis_crs": left_crs,
+        "reason": "DuckDB fast path joins in the shared input CRS "
+        "(the router only takes this path when both inputs already match)",
+    }
     fn = predicates[predicate]
     query = f"""
         SELECT l.*, r.* EXCLUDE (geometry)
@@ -90,11 +113,17 @@ def spatial_join(
     """
     con.sql(f"COPY ({query}) TO '{_quote(output_path)}' (FORMAT parquet)")
     count = con.sql(f"SELECT count(*) FROM read_parquet('{_quote(output_path)}')").fetchone()[0]
-    manifest = record.finish().write_for(output_path)
+    checks = verify.verify_vector_output(
+        output_path,
+        expect_crs=left_crs if left_crs != verify.UNKNOWN_CRS else None,
+    )
+    manifest = record.add_verification(checks).finish().write_for(output_path)
+    verify.enforce(checks, "spatial_join")
     return {
         "output": str(output_path),
         "feature_count": int(count),
         "provenance": str(manifest),
+        "verified": True,
     }
 
 

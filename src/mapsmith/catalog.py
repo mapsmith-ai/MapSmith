@@ -650,6 +650,172 @@ OPERATIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        "name": "validate_plan",
+        "status": "available",
+        "category": "planning",
+        "summary": "Static validation of a multi-step plan before execution: operations, "
+        "arguments, references, input files, simulated CRS flow",
+        "description": (
+            "Check a multi-step geoprocessing plan without running anything: every "
+            "operation exists and is installed, arguments are complete and well-typed, "
+            "'$step_id' references resolve backwards (mis-ordered steps rejected), "
+            "input files exist, outputs don't collide, and the CRS of every "
+            "intermediate dataset is simulated from the real inputs. Errors carry "
+            "stable codes and name the exact step, so a planner can repair the plan "
+            "and retry. Always validate before execute_plan."
+        ),
+        "parameters": [
+            {
+                "name": "plan",
+                "type": "object",
+                "required": True,
+                "description": "{goal, steps: [{id, operation, arguments, comment?}]}; "
+                "'$step_id' argument values consume earlier outputs",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Check a buffer+clip pipeline before running it",
+                "call": {
+                    "tool": "validate_plan",
+                    "arguments": {
+                        "plan": {
+                            "goal": "buildings within 300 m of rivers",
+                            "steps": [
+                                {
+                                    "id": "buf",
+                                    "operation": "buffer_layer",
+                                    "arguments": {
+                                        "input_path": "rivers.gpkg",
+                                        "distance_meters": 300,
+                                        "output_path": "rivers_300m.parquet",
+                                    },
+                                },
+                                {
+                                    "id": "cut",
+                                    "operation": "clip_layer",
+                                    "arguments": {
+                                        "input_path": "buildings.parquet",
+                                        "mask_path": "$buf",
+                                        "output_path": "buildings_near_rivers.parquet",
+                                    },
+                                },
+                            ],
+                        }
+                    },
+                },
+            },
+            {
+                "goal": "Verify CRS assumptions of a terrain pipeline",
+                "call": {
+                    "tool": "validate_plan",
+                    "arguments": {
+                        "plan": {
+                            "steps": [
+                                {
+                                    "id": "acc",
+                                    "operation": "flow_accumulation",
+                                    "arguments": {
+                                        "dem_path": "dem.tif",
+                                        "output_path": "acc.tif",
+                                        "out_type": "sca",
+                                    },
+                                }
+                            ]
+                        }
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "execute_plan",
+        "status": "available",
+        "category": "planning",
+        "summary": "Validate then run a multi-step plan; per-step provenance plus a "
+        "plan-level manifest tying the chain together",
+        "description": (
+            "Run a validated plan step by step (an invalid plan runs nothing — "
+            "validation is repeated internally). '$step_id' references resolve to "
+            "earlier outputs. Every step writes its own provenance manifest; a "
+            "plan-level manifest (<last output>.plan.json) records the plan sha256, "
+            "goal, per-step outcomes and timings. Stops at the first failing step, "
+            "keeping earlier outputs and manifests on disk."
+        ),
+        "parameters": [
+            {
+                "name": "plan",
+                "type": "object",
+                "required": True,
+                "description": "Same format as validate_plan",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Run a two-step buffer+clip pipeline with full lineage",
+                "call": {
+                    "tool": "execute_plan",
+                    "arguments": {
+                        "plan": {
+                            "goal": "wells inside the flood zone",
+                            "steps": [
+                                {
+                                    "id": "buf",
+                                    "operation": "buffer_layer",
+                                    "arguments": {
+                                        "input_path": "wells.gpkg",
+                                        "distance_meters": 500,
+                                        "output_path": "wells_500m.parquet",
+                                    },
+                                },
+                                {
+                                    "id": "cut",
+                                    "operation": "clip_layer",
+                                    "arguments": {
+                                        "input_path": "$buf",
+                                        "mask_path": "flood_zone.parquet",
+                                        "output_path": "wells_at_risk.parquet",
+                                    },
+                                },
+                            ],
+                        }
+                    },
+                },
+            },
+            {
+                "goal": "DEM to watershed statistics in one verified chain",
+                "call": {
+                    "tool": "execute_plan",
+                    "arguments": {
+                        "plan": {
+                            "steps": [
+                                {
+                                    "id": "ws",
+                                    "operation": "watershed",
+                                    "arguments": {
+                                        "dem_path": "dem.tif",
+                                        "pour_points_path": "outlets.gpkg",
+                                        "output_path": "basins.tif",
+                                    },
+                                },
+                                {
+                                    "id": "stats",
+                                    "operation": "zonal_statistics",
+                                    "arguments": {
+                                        "raster_path": "dem.tif",
+                                        "zones_path": "catchments.parquet",
+                                        "output_path": "basin_elevation.parquet",
+                                        "stats": ["mean", "max"],
+                                    },
+                                },
+                            ]
+                        }
+                    },
+                },
+            },
+        ],
+    },
+    {
         "name": "isochrone",
         "status": "planned",
         "category": "network",

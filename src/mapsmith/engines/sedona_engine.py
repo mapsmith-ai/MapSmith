@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .. import verify
 from ..provenance import InputRecord, ProvenanceRecord
 
 
@@ -32,12 +33,21 @@ def spatial_join(
         raise ValueError(f"predicate must be one of {sorted(predicates)}, got {predicate!r}")
 
     sd = sedona.db.connect()
+    left_crs = verify.probe_crs(left_path)
     record = ProvenanceRecord(
         operation="spatial_join",
         parameters={"predicate": predicate, "engine": "sedonadb", "columns": "left-only"},
-        inputs=[InputRecord.from_path(left_path), InputRecord.from_path(right_path)],
+        inputs=[
+            InputRecord.from_path(left_path, crs=left_crs),
+            InputRecord.from_path(right_path, crs=verify.probe_crs(right_path)),
+        ],
         engine=_engine_info(),
     )
+    record.crs_decisions = {
+        "analysis_crs": left_crs,
+        "reason": "SedonaDB joins in the shared input CRS "
+        "(the router only takes this path when both inputs already match)",
+    }
 
     def _load(path: str, view: str) -> None:
         if str(path).lower().endswith(".parquet"):
@@ -54,9 +64,15 @@ def spatial_join(
         "SELECT count(*) FROM l JOIN r ON " + f"{fn}(l.geometry, r.geometry)"
     ).to_pandas()
     feature_count = int(count.iloc[0, 0])
-    manifest = record.finish().write_for(output_path)
+    checks = verify.verify_vector_output(
+        output_path,
+        expect_crs=left_crs if left_crs != verify.UNKNOWN_CRS else None,
+    )
+    manifest = record.add_verification(checks).finish().write_for(output_path)
+    verify.enforce(checks, "spatial_join")
     return {
         "output": str(output_path),
         "feature_count": feature_count,
         "provenance": str(manifest),
+        "verified": True,
     }

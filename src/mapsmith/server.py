@@ -16,6 +16,7 @@ from mcp.types import ToolAnnotations
 
 from . import __version__, catalog, jobs
 from .engines import dispatch, duckdb_engine, vector
+from .plans import Plan
 from .provenance import read_provenance
 
 _HTTP = os.environ.get("MAPSMITH_TRANSPORT", "stdio").lower() in {"http", "streamable-http"}
@@ -122,15 +123,6 @@ def spatial_join(
     engine='auto' routes to the fastest available engine for the inputs:
     SedonaDB (heavy joins, 10-180x) > DuckDB (GeoParquet fast path) > GeoPandas.
     """
-    chosen = dispatch.pick(dispatch.Workload.HEAVY_JOIN, engine)
-    if chosen == "sedonadb":
-        from .engines import sedona_engine
-
-        fn = sedona_engine.spatial_join
-    elif chosen == "duckdb" and duckdb_engine.supports_inputs(left_path, right_path):
-        fn = duckdb_engine.spatial_join
-    else:
-        fn = vector.spatial_join
     return _run(
         "spatial_join",
         {
@@ -138,13 +130,14 @@ def spatial_join(
             "right": right_path,
             "output": output_path,
             "predicate": predicate,
-            "engine": chosen,
+            "engine": engine,
         },
-        fn,
+        dispatch.spatial_join_routed,
         left_path,
         right_path,
         output_path,
         predicate,
+        engine,
     )
 
 
@@ -257,6 +250,52 @@ def watershed(dem_path: str, pour_points_path: str, output_path: str) -> dict[st
         dem_path,
         pour_points_path,
         output_path,
+    )
+
+
+@mcp.tool(annotations=_READONLY)
+def validate_plan(plan: Plan) -> dict[str, Any]:
+    """Statically validate a multi-step geoprocessing plan BEFORE running anything.
+
+    Write the plan as steps in execution order; each step has a unique id, an
+    operation name from list_operations, and its arguments. Use "$step_id" as an
+    argument value to consume the output dataset of an earlier step. Checks:
+    operations exist and are installed, arguments complete and well-typed,
+    references resolve backwards (mis-ordered steps are rejected), input files
+    exist, outputs don't collide, and CRS flow is simulated end-to-end from the
+    real input files. Returns machine-actionable errors/warnings/notes plus the
+    simulated output CRS per step. Nothing is executed and nothing is written.
+
+    Example plan: {"goal": "wells at risk", "steps": [
+      {"id": "buf", "operation": "buffer_layer", "arguments":
+        {"input_path": "wells.gpkg", "distance_meters": 300, "output_path": "buf.parquet"}},
+      {"id": "cut", "operation": "clip_layer", "arguments":
+        {"input_path": "$buf", "mask_path": "zone.gpkg", "output_path": "risk.parquet"}}]}
+    """
+    from .plans import validate
+
+    return validate(plan).model_dump()
+
+
+@mcp.tool(annotations=_WRITER)
+def execute_plan(plan: Plan) -> dict[str, Any]:
+    """Validate, then execute a geoprocessing plan step by step.
+
+    The plan is re-validated first (an invalid plan runs nothing). Steps run in
+    order; "$step_id" references resolve to the outputs of earlier steps. Every
+    step writes its own provenance manifest, and a plan-level manifest
+    (<last output>.plan.json, with the plan sha256 and per-step outcomes) ties
+    them together. Execution stops at the first failing step; outputs already
+    produced stay on disk with their manifests. Same plan format as
+    validate_plan — validate first, then execute.
+    """
+    from .plans import execute
+
+    return _run(
+        "execute_plan",
+        {"goal": plan.goal, "n_steps": len(plan.steps), "plan_sha256": plan.sha256()},
+        execute,
+        plan,
     )
 
 

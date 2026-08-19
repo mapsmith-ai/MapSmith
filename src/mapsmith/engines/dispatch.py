@@ -75,3 +75,49 @@ def pick(workload: Workload, requested: str = "auto") -> str:
         if engines.get(name, False):
             return name
     raise RuntimeError(f"No engine available for workload {workload}")
+
+
+def spatial_join_routed(
+    left_path: str,
+    right_path: str,
+    output_path: str,
+    predicate: str = "intersects",
+    engine: str = "auto",
+) -> dict:
+    """Run a spatial join on the fastest available engine (single routing source).
+
+    Used by both the MCP tool and the plan executor so routing policy cannot
+    drift between the two entry points. The fast engines (SedonaDB, DuckDB)
+    require both inputs in the same CRS: with engine='auto' mismatched or
+    unknown CRS falls back to the GeoPandas path, which aligns the right layer
+    and records the decision; an explicitly requested fast engine raises a
+    helpful error instead of failing mid-query.
+    """
+    from .. import verify
+    from . import duckdb_engine, vector
+
+    chosen = pick(Workload.HEAVY_JOIN, engine)
+    if chosen == "duckdb" and not duckdb_engine.supports_inputs(left_path, right_path):
+        chosen = "geopandas"  # the DuckDB fast path is GeoParquet-only
+    if chosen in ("sedonadb", "duckdb"):
+        left_crs = verify.probe_crs(left_path)
+        right_crs = verify.probe_crs(right_path)
+        if left_crs == verify.UNKNOWN_CRS or left_crs != right_crs:
+            if engine != "auto":
+                raise ValueError(
+                    f"engine '{chosen}' requires both inputs in the same CRS "
+                    f"(got {left_crs} vs {right_crs}). Reproject first, or use "
+                    "engine='auto' for the aligning GeoPandas path."
+                )
+            chosen = "geopandas"
+    if chosen == "sedonadb":
+        from . import sedona_engine
+
+        fn = sedona_engine.spatial_join
+    elif chosen == "duckdb":
+        fn = duckdb_engine.spatial_join
+    else:
+        fn = vector.spatial_join
+    result = fn(left_path, right_path, output_path, predicate)
+    result["engine_used"] = chosen
+    return result

@@ -62,8 +62,47 @@ def test_duckdb_spatial_join(duck, parquet_layers, tmp_path):
     out = tmp_path / "joined.parquet"
     result = duck.spatial_join(left, right, str(out), "intersects")
     assert result["feature_count"] == 1  # only Milan falls in the zone
+    assert result["verified"] is True
     assert out.exists()
-    assert (tmp_path / "joined.parquet.provenance.json").exists()
+    import json
+
+    manifest = json.loads((tmp_path / "joined.parquet.provenance.json").read_text())
+    # the fast path must carry the same audit trail as the GeoPandas path
+    assert manifest["crs_decisions"]["analysis_crs"] == "EPSG:4326"
+    assert any(c["name"] == "crs_matches" and c["passed"] for c in manifest["verification"])
+
+
+def test_routed_join_falls_back_when_crs_differ(duck, parquet_layers, tmp_path):
+    """auto + mismatched CRS: the router must take the aligning GeoPandas path
+    (the DuckDB fast path would fail mid-query on different CRS)."""
+    left, right = parquet_layers
+    right_utm = gpd.read_parquet(right).to_crs("EPSG:32632")
+    right_path = tmp_path / "zones_utm.parquet"
+    right_utm.to_parquet(right_path)
+    out = tmp_path / "joined_mixed.parquet"
+    result = dispatch.spatial_join_routed(left, str(right_path), str(out))
+    assert result["engine_used"] == "geopandas"
+    assert result["verified"] is True
+    assert result["feature_count"] == 1
+
+
+def test_routed_join_explicit_fast_engine_with_mismatch_raises(duck, parquet_layers, tmp_path):
+    left, right = parquet_layers
+    right_utm = gpd.read_parquet(right).to_crs("EPSG:32632")
+    right_path = tmp_path / "zones_utm2.parquet"
+    right_utm.to_parquet(right_path)
+    with pytest.raises(ValueError, match="same CRS"):
+        dispatch.spatial_join_routed(
+            left, str(right_path), str(tmp_path / "x.parquet"), engine="duckdb"
+        )
+
+
+def test_routed_join_uses_fast_path_when_crs_match(duck, parquet_layers, tmp_path):
+    left, right = parquet_layers
+    out = tmp_path / "joined_fast.parquet"
+    result = dispatch.spatial_join_routed(left, right, str(out))
+    assert result["engine_used"] == "duckdb"  # both parquet, same CRS
+    assert result["verified"] is True
 
 
 def test_duckdb_supports_inputs(duck):

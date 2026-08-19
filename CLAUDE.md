@@ -24,6 +24,7 @@ MapSmith gives AI agents professional-grade geoprocessing via MCP, with **verifi
 ## Layout
 
 - `src/mapsmith/server.py` — MCP tools (stdio default; `MAPSMITH_TRANSPORT=http` for stateless Streamable HTTP)
-- `src/mapsmith/engines/` — dispatch + engines (vector/GeoPandas, duckdb, sedona, raster/exactextract)
+- `src/mapsmith/engines/` — dispatch + engines (vector/GeoPandas, duckdb, sedona, raster/exactextract, whitebox)
+- `src/mapsmith/plans/` — typed plan DAG: models (wire contract), registry (op→engine bindings, kept in sync with the catalog by a test), static validator (stable error codes, simulated CRS flow), sequential executor (plan-level manifest)
 - `src/mapsmith/provenance.py`, `verify.py`, `jobs.py`, `catalog.py`
 - `tests/` — closed-form tests · `deploy/k8s/` — generic example manifests
