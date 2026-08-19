@@ -54,6 +54,7 @@ Then ask your agent things like:
 | `hillshade` | Shaded relief from a DEM, in-memory Whitebox engine (`[whitebox]` extra) |
 | `flow_accumulation` | D8 flow accumulation with automatic depression filling (`[whitebox]` extra) |
 | `watershed` | Watershed delineation from a DEM and pour points (`[whitebox]` extra) |
+| `preview_map` | Interactive in-chat map (MCP Apps) of any datasets, with per-layer provenance and verification badges |
 | `validate_plan` | Statically validate a multi-step plan before running anything: operations, arguments, references, input files, simulated CRS flow |
 | `execute_plan` | Validate then run a plan step by step, with per-step provenance and a plan-level manifest |
 | `get_provenance` | Return the full lineage manifest of any MapSmith output |
@@ -66,6 +67,17 @@ are recorded in the manifest *before* any failure is raised.
 
 The Docker image ships with the `[raster]` and `[whitebox]` extras included. With
 `uvx`, pick your extras: `uvx --from "mapsmith[raster,whitebox]" mapsmith`.
+
+## See results inside the chat
+
+`preview_map` renders your layers on an interactive map panel *inside* Claude,
+ChatGPT, VS Code and every other client supporting the official
+[MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview) extension —
+pan, zoom, toggle layers, and read each layer's provenance card (operation,
+engine, verified ✓) right next to the geometry it explains. The panel is fully
+self-contained (no CDN, no tile servers, no telemetry), so it works under the
+extension's strictest default sandbox. On clients without MCP Apps the same
+call returns the preview as structured data.
 
 ## Plans: reject wrong analyses before they run
 
@@ -155,8 +167,9 @@ loopback/trusted networks until authenticated remote mode ships.
 - [ ] More terrain & hydrology: slope/aspect, stream network extraction
 - [ ] QGIS Processing sidecar (subprocess-isolated): ~900 algorithms
 - [ ] Sandboxed code-execution tool for the long tail
+- [x] MCP Apps in-chat map panel with provenance cards (self-contained, works under the default sandbox)
+- [ ] Map panel tile basemaps (MapLibre + OSM behind declared CSP domains) and shareable viewer URLs
 - [ ] Remote server (Streamable HTTP + OAuth), long-job progress via MCP Tasks
-- [ ] Map rendering: shareable MapLibre viewer URLs, MCP Apps
 
 ## Install support policy
 

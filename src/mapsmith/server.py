@@ -14,7 +14,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-from . import __version__, catalog, jobs
+from . import __version__, catalog, jobs, ui
 from .engines import dispatch, duckdb_engine, vector
 from .plans import Plan
 from .provenance import read_provenance
@@ -303,6 +303,39 @@ def execute_plan(plan: Plan) -> dict[str, Any]:
 def get_provenance(output_path: str) -> dict[str, Any]:
     """Return the full lineage manifest of a MapSmith output dataset."""
     return read_provenance(output_path)
+
+
+@mcp.resource(
+    ui.MAP_UI_URI,
+    name="map-panel",
+    description="Interactive in-chat map panel (MCP Apps): renders preview_map results",
+    mime_type="text/html;profile=mcp-app",
+    meta={"ui": {"prefersBorder": True}},  # no CSP domains: fully self-contained
+)
+def map_panel() -> str:
+    return ui.MAP_HTML
+
+
+@mcp.tool(
+    annotations=_READONLY,
+    meta={
+        "ui": {"resourceUri": ui.MAP_UI_URI, "visibility": ["model", "app"]},
+        "ui/resourceUri": ui.MAP_UI_URI,  # deprecated flat key, kept for pre-final hosts
+    },
+)
+def preview_map(paths: list[str], max_features: int = 2000) -> dict[str, Any]:
+    """Show datasets on the interactive in-chat map panel (MCP Apps).
+
+    Pass the paths of one or more MapSmith outputs or source datasets (vector
+    or GeoTIFF). Layers are previewed in EPSG:4326 with simplified geometry and
+    capped feature counts sized to fit client limits; each layer card shows its
+    provenance summary and verification status. Read-only: the datasets of
+    record stay on disk. On clients without MCP Apps support the same payload
+    is returned as structured data.
+    """
+    from . import preview
+
+    return preview.map_preview(paths, max_features=max_features)
 
 
 @mcp.tool(annotations=_READONLY)

@@ -10,12 +10,12 @@ MapSmith gives AI agents professional-grade geoprocessing via MCP, with **verifi
 4. **Explicit CRS discipline**: reject inputs without a CRS (helpful message); never run metric ops on geographic CRS without a recorded reprojection decision.
 5. **GPL boundary**: QGIS/GRASS only via subprocess (CLI/files/JSON), never in-process imports.
 6. **Few semantic tools**: extend existing tools or the catalog; don't multiply MCP tools (agent accuracy collapses near ~100 exposed tools).
-7. **GeoParquet is the canonical analytical format**; exchange between engines via Arrow.
+7. **GeoParquet is the canonical analytical format**; exchange between engines via Arrow. Geometry never streams through tool payloads — the single deliberate exception is `preview_map` (lossy, read-only, size-capped MCP Apps preview); never cite it as precedent for operational tools.
 
 ## Practical conventions
 
 - Optional engines live behind extras (`[sedona]`, `[raster]`, `[postgres]`) with import guards whose error message names the extra.
-- Version pins are deliberate: `mcp>=1.19,<2` (1.19 is the floor for tool `annotations`+`meta`; v2 renamed FastMCP→MCPServer; migration planned with MCP Tasks), `ruff>=0.16,<0.17` (new ruff minors add default rules and break CI).
+- Version pins are deliberate: `mcp>=1.26,<2` (1.26 is the floor for resource `meta`, needed by the MCP Apps map panel; v2 renamed FastMCP→MCPServer; migration planned with MCP Tasks), `ruff>=0.16,<0.17` (new ruff minors add default rules and break CI).
 - Tests use closed-form expected values (e.g., a known 5×5 raster block → mean=22, sum=550) plus rejection-path tests; `pytest.importorskip` for extras.
 - Run `python -m ruff check .` before committing; CI runs lint + tests on Python 3.10/3.12 + Docker build.
 - Docker (or `uvx` where wheels work) is the only supported install path — keep it true in docs.

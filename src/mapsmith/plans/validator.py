@@ -375,6 +375,16 @@ def _resolve_operation(
             )
         )
         return None
+    if entry is not None and entry.get("category") == "visualization":
+        errors.append(
+            Issue(
+                code="NOT_PLANNABLE",
+                step_id=step.id,
+                message=f"'{step.operation}' is interactive — call it directly "
+                "after the plan has executed",
+            )
+        )
+        return None
     if binding is None or entry is None:
         errors.append(
             Issue(

@@ -49,7 +49,8 @@ def zone(tmp_path):
 def test_every_available_operation_is_bound_or_planning():
     available = {
         op["name"] for op in catalog.OPERATIONS
-        if op["status"] == "available" and op["category"] != "planning"
+        if op["status"] == "available"
+        and op["category"] not in {"planning", "visualization"}
     }
     assert available == set(BINDINGS)
     for name in BINDINGS:
@@ -90,6 +91,13 @@ def test_nested_plans_are_rejected():
         make_plan({"id": "s1", "operation": "execute_plan", "arguments": {}})
     )
     assert codes(report) == ["NESTED_PLAN"]
+
+
+def test_interactive_operations_are_not_plannable():
+    report = validate(
+        make_plan({"id": "s1", "operation": "preview_map", "arguments": {}})
+    )
+    assert codes(report) == ["NOT_PLANNABLE"]
 
 
 def test_duplicate_step_ids(wells, tmp_path):

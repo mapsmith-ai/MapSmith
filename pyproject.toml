@@ -18,7 +18,7 @@ classifiers = [
   "Programming Language :: Python :: 3",
 ]
 dependencies = [
-  "mcp>=1.19,<2",
+  "mcp>=1.26,<2",
   "geopandas>=1.0",
   "shapely>=2.0",
   "pyproj>=3.6",

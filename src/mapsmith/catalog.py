@@ -816,6 +816,52 @@ OPERATIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        "name": "preview_map",
+        "status": "available",
+        "category": "visualization",
+        "summary": "Interactive in-chat map of one or more datasets (MCP Apps panel) "
+        "with per-layer provenance and verification status",
+        "description": (
+            "Show vector datasets and GeoTIFFs on the interactive map panel rendered "
+            "inside the chat (MCP Apps). Layers are previewed in EPSG:4326 with "
+            "simplified geometries and capped feature counts sized to client limits; "
+            "each layer card shows what produced it (operation, engine, verified "
+            "status from the provenance manifest). Read-only preview: the datasets "
+            "of record stay untouched on disk. Use it after an analysis to let the "
+            "user SEE the result."
+        ),
+        "parameters": [
+            {
+                "name": "paths",
+                "type": "list[str]",
+                "required": True,
+                "description": "Dataset paths to show (vector formats or .tif)",
+            },
+            {
+                "name": "max_features",
+                "type": "int",
+                "required": False,
+                "description": "Per-layer feature cap before simplification (default 2000)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Show the result of a buffer+clip analysis with its inputs",
+                "call": {
+                    "tool": "preview_map",
+                    "arguments": {"paths": ["wells.gpkg", "wells_at_risk.parquet"]},
+                },
+            },
+            {
+                "goal": "Inspect a hillshade next to the watershed that was derived from it",
+                "call": {
+                    "tool": "preview_map",
+                    "arguments": {"paths": ["hillshade.tif", "basins.tif"]},
+                },
+            },
+        ],
+    },
+    {
         "name": "isochrone",
         "status": "planned",
         "category": "network",
