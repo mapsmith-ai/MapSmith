@@ -122,6 +122,13 @@ or write any path the process can reach (validation flags such steps with a
 and mount only the data you want it to see; keep the HTTP transport on
 loopback/trusted networks until authenticated remote mode ships.
 
+## Notebook gallery
+
+Three executable, self-contained walkthroughs in [`examples/`](examples/):
+verified buffer+clip with provenance manifests, terrain & hydrology on the
+Whitebox engine, and a deliberately wrong plan rejected before execution and
+then repaired. Each generates its own synthetic data — install and run.
+
 ## Provenance example
 
 ```json

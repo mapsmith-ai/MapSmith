@@ -27,3 +27,6 @@ data/
 Thumbs.db
 .vscode/
 .idea/
+
+# Notebook gallery runtime data
+examples/data/
