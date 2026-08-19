@@ -365,14 +365,19 @@ def test_explicit_missing_engine_rejected_statically(wells, tmp_path):
         assert "ENGINE_NOT_AVAILABLE" not in codes(report)
 
 
-def test_sql_not_sandboxed_warning_under_workspace(tmp_path, monkeypatch):
+def test_sql_not_sandboxed_warning_only_without_workspace(tmp_path, monkeypatch):
+    plan = make_plan({"id": "q", "operation": "run_sql", "arguments": {"query": "SELECT 1"}})
+
+    monkeypatch.delenv("MAPSMITH_WORKSPACE", raising=False)
+    report = validate(plan)
+    assert any(w.code == "SQL_NOT_SANDBOXED" for w in report.warnings)
+
     ws = tmp_path / "jail"
     ws.mkdir()
     monkeypatch.setenv("MAPSMITH_WORKSPACE", str(ws))
-    report = validate(
-        make_plan({"id": "q", "operation": "run_sql", "arguments": {"query": "SELECT 1"}})
-    )
-    assert any(w.code == "SQL_NOT_SANDBOXED" for w in report.warnings)
+    report = validate(plan)
+    # the DuckDB connection sandbox confines SQL file access under a workspace
+    assert not any(w.code == "SQL_NOT_SANDBOXED" for w in report.warnings)
 
 
 def test_output_collision_uses_filesystem_identity(wells, tmp_path):

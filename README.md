@@ -120,17 +120,29 @@ every intermediate dataset from the real input files. `execute_plan` then runs
 the chain with per-step provenance plus a plan-level manifest
 (`<output>.plan.json`) fingerprinting the exact plan that produced the result.
 
-Plan validation also rejects non-local paths outright (UNC hosts, GDAL `/vsi*`
-virtual filesystems, URI schemes) before touching the filesystem.
+Non-local paths (UNC hosts, GDAL `/vsi*` virtual filesystems, URI schemes,
+NTFS alternate data streams) are rejected outright — in plan validation and
+on every tool call — before anything touches the filesystem.
 
-Optional: set `MAPSMITH_WORKSPACE=/data` and plan validation refuses declared
-input/output paths outside that directory. **This is best-effort input
-validation, not a sandbox**: it applies to plans (not to tools called
-directly), and `run_sql` is inherently unconstrained — its SQL text can read
-or write any path the process can reach (validation flags such steps with a
-`SQL_NOT_SANDBOXED` warning). For real isolation run MapSmith in a container
-and mount only the data you want it to see; keep the HTTP transport on
-loopback/trusted networks until authenticated remote mode ships.
+Set `MAPSMITH_WORKSPACE=/data` to confine the server to one directory:
+
+- every path argument of every tool must resolve inside the workspace
+  (checked at the MCP boundary, and again by plan validation with stable
+  error codes);
+- the `run_sql` DuckDB connection is sandboxed at the engine level —
+  filesystem whitelisted to the workspace (`allowed_directories` + external
+  access off, which also covers GDAL-backed `ST_Read`), extension
+  install/load refused, memory and temp-disk capped
+  (`MAPSMITH_DUCKDB_MEMORY`, default 4GB; `MAPSMITH_DUCKDB_TEMP_LIMIT`,
+  default 8GB), configuration locked. SQL text can name any path it likes;
+  the engine refuses to open it.
+
+Without a workspace the server is deliberately unconfined (fine for a local
+stdio server on your own files); plan validation flags `run_sql` steps with a
+`SQL_NOT_SANDBOXED` warning in that mode. Defense in depth still applies: for
+real isolation run MapSmith in a container and mount only the data you want
+it to see; keep the HTTP transport on loopback/trusted networks until
+authenticated remote mode ships.
 
 ## Notebook gallery
 

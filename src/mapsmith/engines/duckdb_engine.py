@@ -7,12 +7,13 @@ we install it on first use (needs network once per environment).
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
 import duckdb
 
-from .. import verify
+from .. import verify, workspace
 from ..provenance import InputRecord, ProvenanceRecord
 
 _PREVIEW_ROWS = 50
@@ -22,13 +23,58 @@ def _engine_info() -> dict[str, str]:
     return {"name": "duckdb", "version": duckdb.__version__}
 
 
+def _sql_dir(path: Path) -> str:
+    """Directory path as a DuckDB SQL string literal: forward slashes (GDAL and
+    DuckDB normalize to them) and a trailing separator, because
+    allowed_directories matches by PREFIX — without it 'C:/ws' would also
+    admit 'C:/ws-evil'."""
+    return (str(path).replace("\\", "/").rstrip("/") + "/").replace("'", "''")
+
+
 def _connect() -> duckdb.DuckDBPyConnection:
-    con = duckdb.connect()
+    """A DuckDB connection with the spatial extension; sandboxed when
+    MAPSMITH_WORKSPACE is set.
+
+    SQL text can name any file, out of reach of the textual path jail at the
+    tool boundary — so the confinement happens in the engine itself. Order is
+    load-bearing (each step would be refused after the next one):
+    extensions first, then the filesystem whitelist, then external access off
+    (which is what ACTIVATES the whitelist: allowed_directories are the
+    exceptions to it), configuration lock last. ST_Read is covered too: the
+    spatial extension routes GDAL I/O through DuckDB's filesystem, and its
+    /vsi* and DRIVER:https:// escapes are refused once external access is off.
+    allowed_directories cannot go in the connect() config dict (VARCHAR[]
+    options crash there — duckdb#17128); SET statements are the supported way.
+    """
+    ws = workspace.root()
+    if ws is None:
+        con = duckdb.connect()
+        try:
+            con.install_extension("spatial")
+        except duckdb.Error:
+            pass  # already installed in this environment, or offline with a cached copy
+        con.load_extension("spatial")
+        return con
+
+    con = duckdb.connect(
+        config={
+            "autoinstall_known_extensions": "false",
+            "autoload_known_extensions": "false",
+            "allow_community_extensions": "false",  # self-locking by design
+            "memory_limit": os.environ.get("MAPSMITH_DUCKDB_MEMORY", "4GB"),
+        }
+    )
     try:
         con.install_extension("spatial")
     except duckdb.Error:
         pass  # already installed in this environment, or offline with a cached copy
     con.load_extension("spatial")
+    con.execute(f"SET allowed_directories = ['{_sql_dir(ws)}']")
+    con.execute(f"SET temp_directory = '{_sql_dir(ws)}.duckdb_tmp'")
+    tmp_limit = os.environ.get("MAPSMITH_DUCKDB_TEMP_LIMIT", "8GB").replace("'", "''")
+    con.execute(f"SET max_temp_directory_size = '{tmp_limit}'")
+    con.execute("SET enable_external_access = false")
+    con.execute("SET lock_configuration = true")
     return con
 
 

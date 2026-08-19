@@ -498,14 +498,18 @@ def _check_step_extras(
                     f"available: {installed} or 'auto'",
                 )
             )
-    if step.operation == "run_sql" and workspace:
+    if step.operation == "run_sql" and not workspace:
+        # With MAPSMITH_WORKSPACE set the DuckDB connection itself is
+        # sandboxed (allowed_directories + external access off), so SQL file
+        # access is confined even though the query text is opaque here.
         warnings.append(
             Issue(
                 code="SQL_NOT_SANDBOXED",
                 step_id=step.id,
-                message="MAPSMITH_WORKSPACE cannot constrain SQL: the query text may "
-                "read or write any path the process can reach — review it before "
-                "executing",
+                message="without MAPSMITH_WORKSPACE the SQL engine is unconfined: "
+                "the query text may read or write any path the process can reach "
+                "— review it before executing, or set MAPSMITH_WORKSPACE to "
+                "sandbox the connection",
             )
         )
 

@@ -15,6 +15,7 @@ MapSmith gives AI agents professional-grade geoprocessing via MCP, with **verifi
 ## Practical conventions
 
 - Optional engines live behind extras (`[sedona]`, `[raster]`, `[postgres]`) with import guards whose error message names the extra.
+- Tool path arguments are untrusted (they come from an LLM agent): every path-taking tool guards them via `workspace.guard` (non-local forms always rejected; containment when `MAPSMITH_WORKSPACE` is set), and the DuckDB connection sandboxes itself under a workspace (`allowed_directories` + external access off + config lock — order is load-bearing, see `duckdb_engine._connect`). New tools and engines must keep both layers.
 - Version pins are deliberate: `mcp>=1.26,<2` (1.26 is the floor for resource `meta`, needed by the MCP Apps map panel; v2 renamed FastMCP→MCPServer; migration planned with MCP Tasks), `ruff>=0.16,<0.17` (new ruff minors add default rules and break CI).
 - Tests use closed-form expected values (e.g., a known 5×5 raster block → mean=22, sum=550) plus rejection-path tests; `pytest.importorskip` for extras.
 - Run `python -m ruff check .` before committing; CI runs lint + tests on Python 3.10/3.12 + Docker build.
