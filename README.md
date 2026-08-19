@@ -223,3 +223,5 @@ then repaired. Each generates its own synthetic data — install and run.
 You can self-host MapSmith freely, forever. If you modify it and offer it as a service, the AGPL asks you to share your changes — or [talk to us](mailto:mapsmith@proton.me) about a commercial license.
 
 "MapSmith" is a trademark of the MapSmith project — see `TRADEMARKS.md`.
+
+<!-- mcp-name: io.github.mapsmith-ai/mapsmith -->
