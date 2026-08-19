@@ -367,9 +367,19 @@ def test_sql_not_sandboxed_warning_under_workspace(tmp_path, monkeypatch):
     assert any(w.code == "SQL_NOT_SANDBOXED" for w in report.warnings)
 
 
-def test_output_collision_is_case_and_separator_insensitive(wells, tmp_path):
-    """'OUT.PARQUET' and 'out.parquet' are the same file on Windows."""
+def test_output_collision_uses_filesystem_identity(wells, tmp_path):
+    """Two spellings of the same file must collide: './x' vs 'x' everywhere,
+    and case differences on case-insensitive filesystems (Windows/macOS)."""
+    import os
+
     out = tmp_path / "out.parquet"
+    case_insensitive_fs = os.path.normcase("A") == "a"
+    alias = (
+        str(out).upper().replace("\\", "/")
+        if case_insensitive_fs
+        else f"{tmp_path}/./out.parquet"  # raw string alias; resolve() unifies it
+    )
+    assert alias != str(out)
     report = validate(
         make_plan(
             {
@@ -382,7 +392,7 @@ def test_output_collision_is_case_and_separator_insensitive(wells, tmp_path):
                 "id": "b",
                 "operation": "buffer_layer",
                 "arguments": {"input_path": wells, "distance_meters": 2,
-                              "output_path": str(out).upper().replace("\\", "/")},
+                              "output_path": alias},
             },
         )
     )
