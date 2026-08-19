@@ -385,12 +385,16 @@ def list_operations(query: str = "", detail: bool = False, limit: int = 10) -> l
 @mcp.tool(annotations=_READONLY)
 def server_info() -> dict[str, Any]:
     """MapSmith version, licensing, and available engines."""
+    ws = workspace.root()
     return {
         "name": "mapsmith",
         "version": __version__,
         "license": "AGPL-3.0-or-later",
         "homepage": "https://github.com/mapsmith-ai/MapSmith",
         "engines": dispatch.available_engines(),
+        # agents plan file paths: tell them the jail root instead of letting
+        # them discover it through a failed call
+        "workspace": str(ws) if ws else None,
     }
 
 

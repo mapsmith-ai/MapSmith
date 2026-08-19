@@ -25,7 +25,7 @@ from typing import Any
 import numpy as np
 from pyproj import CRS
 
-from .. import verify
+from .. import verify, workspace
 from ..provenance import InputRecord, ProvenanceRecord
 
 HILLSHADE_MAX = 32767  # upstream scales hillshade to 0-32767 (basic_terrain_tools.rs)
@@ -312,7 +312,9 @@ def watershed(
     pointer = wbe.hydrology.flow_routing.d8_pointer(dem=filled)
     # whitebox reads vectors as shapefiles: hand it the (possibly reprojected)
     # points through a temporary shapefile so any GeoPandas-readable input works.
-    with tempfile.TemporaryDirectory() as tmp:
+    # Under a workspace even scratch data must not leave it (data governance).
+    ws = workspace.root()
+    with tempfile.TemporaryDirectory(dir=str(ws) if ws else None) as tmp:
         shp = Path(tmp) / "pour_points.shp"
         points.to_file(shp)
         vec = wbe.read_vector(str(shp))

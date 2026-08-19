@@ -120,9 +120,12 @@ every intermediate dataset from the real input files. `execute_plan` then runs
 the chain with per-step provenance plus a plan-level manifest
 (`<output>.plan.json`) fingerprinting the exact plan that produced the result.
 
-Non-local paths (UNC hosts, GDAL `/vsi*` virtual filesystems, URI schemes,
-NTFS alternate data streams) are rejected outright — in plan validation and
-on every tool call — before anything touches the filesystem.
+UNC hosts and NTFS alternate data streams are rejected on every tool call,
+always, before anything touches the filesystem (on Windows even an existence
+check on a UNC path talks to an attacker-chosen host). Remote and virtual
+forms (GDAL `/vsi*`, `https://` COGs) stay available in uncontained mode —
+cloud-native data is a feature — and are refused once a workspace is set.
+Validated plans are stricter by design and reject every non-local form.
 
 Set `MAPSMITH_WORKSPACE=/data` to confine the server to one directory:
 
@@ -139,10 +142,16 @@ Set `MAPSMITH_WORKSPACE=/data` to confine the server to one directory:
 
 Without a workspace the server is deliberately unconfined (fine for a local
 stdio server on your own files); plan validation flags `run_sql` steps with a
-`SQL_NOT_SANDBOXED` warning in that mode. Defense in depth still applies: for
-real isolation run MapSmith in a container and mount only the data you want
-it to see; keep the HTTP transport on loopback/trusted networks until
-authenticated remote mode ships.
+`SQL_NOT_SANDBOXED` warning in that mode. Two fine-print notes: the jail
+assumes a single trusted writer of the workspace filesystem (paths are
+resolved at check time, so symlink swaps by another local process are out of
+scope), and the spatial extension is fetched once per environment — for
+air-gapped deployments pre-install it (`python -c "import duckdb;
+duckdb.connect().install_extension('spatial')"`) before locking the network
+down. Defense in depth still applies: for real isolation run MapSmith in a
+container and mount only the data you want it to see; keep the HTTP
+transport on loopback/trusted networks until authenticated remote mode
+ships.
 
 ## Notebook gallery
 
