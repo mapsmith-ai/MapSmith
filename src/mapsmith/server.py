@@ -310,7 +310,17 @@ def get_provenance(output_path: str) -> dict[str, Any]:
     name="map-panel",
     description="Interactive in-chat map panel (MCP Apps): renders preview_map results",
     mime_type="text/html;profile=mcp-app",
-    meta={"ui": {"prefersBorder": True}},  # no CSP domains: fully self-contained
+    meta={
+        "ui": {
+            "prefersBorder": True,
+            # OSM basemap tiles are a progressive enhancement: the panel probes
+            # one tile and falls back to a plain background if the host blocks it.
+            "csp": {
+                "connectDomains": ["https://tile.openstreetmap.org"],
+                "resourceDomains": ["https://tile.openstreetmap.org"],
+            },
+        }
+    },
 )
 def map_panel() -> str:
     return ui.MAP_HTML

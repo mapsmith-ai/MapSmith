@@ -35,7 +35,17 @@ def test_ui_resource_serves_the_selfcontained_panel():
     assert "ui/initialize" in html
     assert "ui/notifications/tool-result" in html
     assert "<canvas" in html
-    assert "http://" not in html and "https://" not in html  # zero external fetches
+    # the ONLY allowed network surface is the declared OSM basemap enhancement
+    stripped = html.replace("https://tile.openstreetmap.org", "")
+    assert "http://" not in stripped and "https://" not in stripped
+
+
+def test_ui_resource_declares_the_basemap_csp():
+    resources = _run(mcp.list_resources())
+    panel = next(r for r in resources if str(r.uri) == ui.MAP_UI_URI)
+    csp = panel.meta["ui"]["csp"]
+    assert csp["resourceDomains"] == ["https://tile.openstreetmap.org"]
+    assert csp["connectDomains"] == ["https://tile.openstreetmap.org"]
 
 
 def test_preview_map_tool_links_the_panel():

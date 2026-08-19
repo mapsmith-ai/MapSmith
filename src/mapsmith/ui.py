@@ -1,13 +1,17 @@
 """The in-chat map panel (MCP Apps, SEP-1865).
 
 Design constraint that shapes everything here: the extension's DEFAULT content
-security policy allows no network at all (connect-src 'none'), and the one
-open host bug tracks CSP grants being ignored. So the panel is 100%
-self-contained: the JSON-RPC postMessage handshake is hand-rolled to the
-2026-01-26 spec (the official JS SDK would need a CDN), rendering is a small
-canvas engine (no MapLibre, no WebGL, no workers), rasters arrive as data URIs
-(img-src data: is allowed by the default CSP). A tile-based MapLibre upgrade
-behind declared CSP domains is a follow-up once tested on real hosts.
+security policy allows no network at all (connect-src 'none'). So the panel is
+self-contained at its core: the JSON-RPC postMessage handshake is hand-rolled
+to the 2026-01-26 spec (the official JS SDK would need a CDN), rendering is a
+small Web-Mercator canvas engine (no MapLibre, no WebGL, no workers), rasters
+arrive as data URIs (img-src data: is allowed by the default CSP).
+
+The OSM street basemap is a progressive enhancement: the resource declares
+tile.openstreetmap.org in its CSP metadata, the panel probes one tile at
+startup, and only draws the basemap when the probe loads — on hosts that
+enforce the strict default policy everything still works on a plain
+background. Field-tested on Claude Desktop.
 
 The panel receives the preview payload produced by mapsmith.preview via the
 ui/notifications/tool-result notification (structuredContent).
@@ -38,6 +42,9 @@ MAP_HTML = r"""<!doctype html>
   #status { position:absolute; left:10px; top:10px; padding:4px 10px;
             background:var(--panel); border:1px solid var(--line);
             border-radius:6px; color:var(--muted); }
+  #attrib { display:none; position:absolute; right:6px; bottom:4px;
+            font-size:10px; color:#333; background:rgba(255,255,255,.7);
+            padding:1px 6px; border-radius:4px; }
   #side { flex:0 0 240px; overflow-y:auto; border-left:1px solid var(--line);
           background:var(--panel); padding:12px; }
   #side h1 { font-size:13px; letter-spacing:.4px; margin-bottom:10px; }
@@ -56,7 +63,8 @@ MAP_HTML = r"""<!doctype html>
 </head>
 <body>
 <div id="app">
-  <div id="map-wrap"><canvas id="map"></canvas><div id="status">connecting to host…</div></div>
+  <div id="map-wrap"><canvas id="map"></canvas><div id="status">connecting to host…</div>
+    <div id="attrib">© OpenStreetMap contributors</div></div>
   <aside id="side"><h1>MapSmith</h1><div id="layers"></div>
     <footer>preview in EPSG:4326 · datasets and manifests stay on disk</footer>
   </aside>
@@ -153,11 +161,17 @@ function preloadRasters() {
   });
 }
 
-/* ---- canvas map: equirectangular with latitude correction ---- */
+/* ---- canvas map: Web Mercator, with an optional OSM tile basemap ---- */
 var canvas = document.getElementById("map"), ctx2d = canvas.getContext("2d");
-var view = { cx: 0, cy: 0, scale: 1, cosLat: 1 };   // world center + px per degree
+var view = { wx: 0.5, wy: 0.5, scale: 256 };   // world-unit center + px per world unit
 var userInteracted = false;
 var PALETTE = ["#2563eb", "#d97706", "#059669", "#dc2626", "#7c3aed", "#0891b2"];
+function lon2wx(lon) { return (lon + 180) / 360; }
+function lat2wy(lat) {
+  var clamped = Math.max(-85.05, Math.min(85.05, lat));
+  var s = Math.sin(clamped * Math.PI / 180);
+  return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
+}
 function resize() {
   var r = canvas.parentElement.getBoundingClientRect();
   canvas.width = Math.max(1, r.width * devicePixelRatio);
@@ -168,16 +182,61 @@ function resize() {
 }
 new ResizeObserver(resize).observe(canvas.parentElement);
 function fit(b) {
-  var midLat = (b[1] + b[3]) / 2;
-  view.cosLat = Math.max(0.05, Math.cos(midLat * Math.PI / 180));
-  view.cx = (b[0] + b[2]) / 2; view.cy = midLat;
-  var spanX = Math.max(1e-6, (b[2] - b[0]) * view.cosLat);
-  var spanY = Math.max(1e-6, b[3] - b[1]);
+  var x0 = lon2wx(b[0]), x1 = lon2wx(b[2]);
+  var y0 = lat2wy(b[3]), y1 = lat2wy(b[1]);   // mercator y grows southward
+  view.wx = (x0 + x1) / 2; view.wy = (y0 + y1) / 2;
+  var spanX = Math.max(1e-9, x1 - x0), spanY = Math.max(1e-9, y1 - y0);
   view.scale = Math.min(canvas.width / spanX, canvas.height / spanY) / 1.15;
 }
 function px(lon, lat) {
-  return [canvas.width / 2 + (lon - view.cx) * view.cosLat * view.scale,
-          canvas.height / 2 - (lat - view.cy) * view.scale];
+  return [canvas.width / 2 + (lon2wx(lon) - view.wx) * view.scale,
+          canvas.height / 2 + (lat2wy(lat) - view.wy) * view.scale];
+}
+
+/* optional OSM basemap: on only if the host CSP lets a probe tile load */
+function tileUrl(z, x, y) {
+  return "https://tile.openstreetmap.org/" + z + "/" + x + "/" + y + ".png";
+}
+var basemap = false, tiles = {};
+(function probeBasemap() {
+  var probe = new Image();
+  probe.onload = function () {
+    basemap = true;
+    document.getElementById("attrib").style.display = "block";
+    draw();
+  };
+  probe.onerror = function () { basemap = false; };  // strict CSP: plain background
+  probe.src = tileUrl(0, 0, 0);
+})();
+function tileAt(z, x, y) {
+  var key = z + "/" + x + "/" + y;
+  if (tiles[key]) return tiles[key];
+  if (Object.keys(tiles).length > 300) tiles = {};   // crude cache bound
+  var img = new Image();
+  img.onload = draw;
+  img.src = tileUrl(z, x, y);
+  tiles[key] = img;
+  return img;
+}
+function drawBasemap() {
+  var z = Math.max(0, Math.min(19, Math.round(Math.log(view.scale / 256) / Math.LN2)));
+  var n = Math.pow(2, z), tilePx = view.scale / n;
+  var wx0 = view.wx - canvas.width / 2 / view.scale;
+  var wy0 = view.wy - canvas.height / 2 / view.scale;
+  var tx0 = Math.floor(wx0 * n), ty0 = Math.floor(wy0 * n);
+  var tx1 = Math.ceil((wx0 + canvas.width / view.scale) * n);
+  var ty1 = Math.ceil((wy0 + canvas.height / view.scale) * n);
+  for (var tx = tx0; tx < tx1; tx++) {
+    for (var ty = Math.max(0, ty0); ty < Math.min(n, ty1); ty++) {
+      var img = tileAt(z, ((tx % n) + n) % n, ty);
+      if (img.complete && img.naturalWidth) {
+        ctx2d.drawImage(img,
+          canvas.width / 2 + (tx / n - view.wx) * view.scale,
+          canvas.height / 2 + (ty / n - view.wy) * view.scale,
+          tilePx + 0.5, tilePx + 0.5);
+      }
+    }
+  }
 }
 function drawRing(ring) {
   for (var i = 0; i < ring.length; i++) {
@@ -219,6 +278,7 @@ function fillPolygons(polygons, color) {
 function draw() {
   if (!ctx2d) return;
   ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+  if (basemap) drawBasemap();
   if (!PAYLOAD) return;
   PAYLOAD.layers.forEach(function (l, i) {
     if (!l._visible) return;
@@ -243,8 +303,8 @@ canvas.addEventListener("mousedown", function (e) {
 });
 window.addEventListener("mousemove", function (e) {
   if (!dragging) return;
-  view.cx -= (e.clientX - dragging.x) * devicePixelRatio / (view.scale * view.cosLat);
-  view.cy += (e.clientY - dragging.y) * devicePixelRatio / view.scale;
+  view.wx -= (e.clientX - dragging.x) * devicePixelRatio / view.scale;
+  view.wy -= (e.clientY - dragging.y) * devicePixelRatio / view.scale;
   dragging = { x: e.clientX, y: e.clientY }; draw();
 });
 window.addEventListener("mouseup", function () { dragging = null; canvas.style.cursor = "grab"; });
