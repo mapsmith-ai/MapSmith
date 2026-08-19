@@ -14,7 +14,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-from . import __version__, catalog, jobs, ui
+from . import __version__, catalog, jobs, ui, workspace
 from .engines import dispatch, duckdb_engine, vector
 from .plans import Plan
 from .provenance import read_provenance
@@ -49,6 +49,13 @@ _WRITER = ToolAnnotations(
 _SQL = ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False)
 
 
+def _guard(**paths: str) -> None:
+    """Path containment at the MCP boundary: tool arguments come from an LLM
+    agent, so every path is untrusted (see workspace.py for the rules)."""
+    for arg, value in paths.items():
+        workspace.guard(value, arg)
+
+
 def _run(operation: str, params: dict[str, Any], fn, *args) -> dict[str, Any]:
     """Execute an engine call as a durable job (no-op ledger without DATABASE_URL)."""
     with jobs.job(operation, params) as (job_id, res):
@@ -64,6 +71,7 @@ def describe_dataset(path: str) -> dict[str, Any]:
 
     Call this before any analysis on a dataset you have not inspected yet.
     """
+    _guard(path=path)
     return vector.describe(path)
 
 
@@ -74,6 +82,7 @@ def buffer_layer(input_path: str, distance_meters: float, output_path: str) -> d
     Geographic-CRS inputs are reprojected to an estimated UTM zone for the metric
     operation and back; the decision is recorded in the provenance manifest.
     """
+    _guard(input_path=input_path, output_path=output_path)
     return _run(
         "buffer_layer",
         {"input": input_path, "distance_meters": distance_meters, "output": output_path},
@@ -87,6 +96,7 @@ def buffer_layer(input_path: str, distance_meters: float, output_path: str) -> d
 @mcp.tool(annotations=_WRITER)
 def clip_layer(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
     """Clip a layer to the area of a mask layer. CRS are aligned automatically."""
+    _guard(input_path=input_path, mask_path=mask_path, output_path=output_path)
     return _run(
         "clip_layer",
         {"input": input_path, "mask": mask_path, "output": output_path},
@@ -100,6 +110,7 @@ def clip_layer(input_path: str, mask_path: str, output_path: str) -> dict[str, A
 @mcp.tool(annotations=_WRITER)
 def reproject_layer(input_path: str, target_crs: str, output_path: str) -> dict[str, Any]:
     """Reproject a layer to a target CRS, e.g. 'EPSG:32632' or a WKT string."""
+    _guard(input_path=input_path, output_path=output_path)
     return _run(
         "reproject_layer",
         {"input": input_path, "target_crs": target_crs, "output": output_path},
@@ -123,6 +134,7 @@ def spatial_join(
     engine='auto' routes to the fastest available engine for the inputs:
     SedonaDB (heavy joins, 10-180x) > DuckDB (GeoParquet fast path) > GeoPandas.
     """
+    _guard(left_path=left_path, right_path=right_path, output_path=output_path)
     return _run(
         "spatial_join",
         {
@@ -149,6 +161,8 @@ def run_sql(query: str, output_path: str = "") -> dict[str, Any]:
     materializes the full result as GeoParquet with a provenance manifest.
     """
     out = output_path or None
+    if out:
+        _guard(output_path=out)
     return _run("run_sql", {"query": query, "output": out}, duckdb_engine.run_sql, query, out)
 
 
@@ -166,6 +180,7 @@ def zonal_statistics(
     automatically; the decision is recorded in the provenance manifest.
     Requires the [raster] extra.
     """
+    _guard(raster_path=raster_path, zones_path=zones_path, output_path=output_path)
     from .engines import raster
 
     return _run(
@@ -193,6 +208,7 @@ def hillshade(
     above the horizon (default 30). DEMs without a CRS are rejected.
     Requires the [whitebox] extra.
     """
+    _guard(dem_path=dem_path, output_path=output_path)
     from .engines import whitebox_engine
 
     return _run(
@@ -220,6 +236,7 @@ def flow_accumulation(
     (specific catchment area). log_transform=True for visualization-friendly
     values. Requires the [whitebox] extra.
     """
+    _guard(dem_path=dem_path, output_path=output_path)
     from .engines import whitebox_engine
 
     return _run(
@@ -241,6 +258,7 @@ def watershed(dem_path: str, pour_points_path: str, output_path: str) -> dict[st
     draining to any point stay nodata. Points are aligned to the DEM CRS
     automatically (decision recorded). Requires the [whitebox] extra.
     """
+    _guard(dem_path=dem_path, pour_points_path=pour_points_path, output_path=output_path)
     from .engines import whitebox_engine
 
     return _run(
@@ -302,6 +320,7 @@ def execute_plan(plan: Plan) -> dict[str, Any]:
 @mcp.tool(annotations=_READONLY)
 def get_provenance(output_path: str) -> dict[str, Any]:
     """Return the full lineage manifest of a MapSmith output dataset."""
+    _guard(output_path=output_path)
     return read_provenance(output_path)
 
 
@@ -343,6 +362,8 @@ def preview_map(paths: list[str], max_features: int = 2000) -> dict[str, Any]:
     record stay on disk. On clients without MCP Apps support the same payload
     is returned as structured data.
     """
+    for i, p in enumerate(paths):
+        _guard(**{f"paths[{i}]": p})
     from . import preview
 
     return preview.map_preview(paths, max_features=max_features)

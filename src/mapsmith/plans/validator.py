@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .. import catalog, verify
+from .. import catalog, verify, workspace
 from ..engines import dispatch
 from .models import REFERENCE, Issue, Plan, SimulatedOutput, ValidationReport
 from .registry import BINDINGS, PARAM_TYPES, Binding
@@ -46,26 +46,11 @@ def _catalog_entry(name: str) -> dict[str, Any] | None:
     return None
 
 
-def _workspace() -> Path | None:
-    ws = os.environ.get("MAPSMITH_WORKSPACE", "").strip()
-    return Path(ws).resolve() if ws else None
-
-
-def _nonlocal_reason(path: str) -> str | None:
-    """Why a path string is not a plain local path, or None if it is.
-
-    Checked BEFORE any filesystem call: on Windows even Path.exists() on a UNC
-    path opens an SMB/WebDAV connection to an attacker-chosen host (NTLM hash
-    leak), and GDAL /vsi* or URI schemes reach the network inside the drivers.
-    """
-    p = path.strip()
-    if p.startswith(("\\\\", "//")):
-        return "UNC/device paths are not allowed"
-    if p.lower().startswith("/vsi"):
-        return "GDAL /vsi* virtual paths are not allowed"
-    if ":" in p[2:]:  # a colon is only legitimate as the drive separator (C:...)
-        return "URI schemes and NTFS alternate data streams are not allowed"
-    return None
+# Path-safety rules are shared with the runtime jail at the MCP boundary:
+# one definition of "local path" and "inside the workspace" for plans & tools.
+_workspace = workspace.root
+_nonlocal_reason = workspace.nonlocal_reason
+_outside_workspace_shared = workspace.is_outside
 
 
 def _canon(path: str) -> str:
@@ -80,11 +65,8 @@ def _canon(path: str) -> str:
         return os.path.normcase(path)
 
 
-def _outside_workspace(path: str, workspace: Path) -> bool:
-    try:
-        return not Path(path).resolve().is_relative_to(workspace)
-    except (OSError, ValueError):
-        return True
+def _outside_workspace(path: str, ws: Path) -> bool:
+    return _outside_workspace_shared(path, ws)
 
 
 def _parse_crs(value: str) -> str | None:
