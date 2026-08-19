@@ -32,7 +32,7 @@ MAP_HTML = r"""<!doctype html>
   html,body { height:100%; }
   body { background:var(--bg); color:var(--ink);
          font:13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  #app { display:flex; height:100%; }
+  #app { display:flex; height:100%; min-height:420px; }
   #map-wrap { position:relative; flex:1 1 auto; min-width:0; }
   #map { width:100%; height:100%; display:block; cursor:grab; }
   #status { position:absolute; left:10px; top:10px; padding:4px 10px;
@@ -85,7 +85,7 @@ window.addEventListener("message", function (ev) {
     return;
   }
   if (m.id !== undefined && m.method) {          // host request: answer, never hang it
-    if (m.method === "ui/resource-teardown") {
+    if (m.method === "ping" || m.method === "ui/resource-teardown") {
       parent.postMessage({ jsonrpc: "2.0", id: m.id, result: {} }, "*");
     } else {
       parent.postMessage({ jsonrpc: "2.0", id: m.id,
@@ -104,18 +104,27 @@ function setStatus(text) {
   var el = document.getElementById("status");
   el.textContent = text; el.style.display = text ? "block" : "none";
 }
+function sendSize() {
+  notify("ui/notifications/size-changed", {
+    width: Math.ceil(window.innerWidth),
+    height: Math.ceil(document.documentElement.getBoundingClientRect().height)
+  });
+}
 (function init() {
+  // params shape matches the official ext-apps SDK exactly: appInfo,
+  // appCapabilities, protocolVersion — nothing else (hosts validate).
   request("ui/initialize", {
-    protocolVersion: "2026-01-26",
-    clientInfo: { name: "MapSmith map panel", version: "1.0.0" },
-    capabilities: {},
-    appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] }
+    appInfo: { name: "MapSmith map panel", version: "1.0.0" },
+    appCapabilities: {},
+    protocolVersion: "2026-01-26"
   }).then(function (res) {
     applyTheme(res && res.hostContext ? res.hostContext : res);
     notify("ui/notifications/initialized", {});
+    sendSize();
     setStatus("waiting for map data…");
   }).catch(function () { setStatus("host handshake failed"); });
 })();
+window.addEventListener("resize", sendSize);
 
 /* ---- payload intake ---- */
 var PAYLOAD = null;
