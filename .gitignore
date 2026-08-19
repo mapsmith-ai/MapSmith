@@ -30,3 +30,4 @@ Thumbs.db
 
 # Notebook gallery runtime data
 examples/data/
+uv.lock
