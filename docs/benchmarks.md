@@ -47,20 +47,55 @@ measures that idea on a third-party benchmark, with a deterministic evaluator
 Same logs in, same numbers out, every time: the evaluator compares
 trajectories against reference toolchains with no model in the loop.
 
-## Results
-
-> **Pending** — one repetition per arm (57 tasks each) completed on
-> 2026-08-20; evaluation in progress. Numbers, deltas and cost per arm land
-> here.
+## Results (1 repetition per arm, 57 tasks each, 2026-08-19)
 
 | Metric | Arm A (no gate) | Arm B (gate) | Δ |
 |---|---|---|---|
-| TAO F1 | — | — | — |
-| TIO | — | — | — |
-| TEM | — | — | — |
-| PEA | — | — | — |
-| LLM calls / task | — | — | — |
-| Cost / task (USD) | — | — | — |
+| TAO F1 | 0.824 | 0.781 | −0.043 |
+| TIO | 0.743 | 0.680 | −0.063 |
+| TEM | 0.483 | 0.464 | −0.019 |
+| PEA | 0.430 | 0.425 | −0.005 |
+| LLM calls / task | 19.1 | 20.0 | +0.9 |
+| Cost / task (USD, Sonnet 5 intro pricing) | 0.63 | 0.66 | +0.03 |
+
+**The headline is a null result, and the mechanism behind it is the
+interesting part.**
+
+1. **Plan-level interface hallucination is real but rare on a frontier
+   model**: the gate fired on 5/57 plans (three wrong-typed arguments, two
+   unparsable plans) and repaired every one to zero residual issues in ≤2
+   rounds. The failures are *systematic*: arm A's audit shows defective plans
+   on the same tasks (6, 33, 42, 56) in its own independent run.
+2. **A ReAct solver downstream absorbs plan-level repairs.** On the tasks
+   where both arms produced the same defective plan and only arm B repaired
+   it, the final trajectories scored **identically** (tasks 6, 33, 42 —
+   same TAO/TIO/TEM/PEA to three decimals). The solver re-decides tool calls
+   as it goes, so fixing the plan's argument types rarely changes what
+   actually executes. Advisory validation upstream of an improvising agent
+   gets absorbed by the improvisation.
+3. **The aggregate deltas are run-to-run noise, and that is a finding.** On
+   the 52 tasks the gate never touched, the two arms are the same system —
+   yet single-run aggregates differ by 4–6 points of TAO/TIO. Treat any
+   single-repetition agent-benchmark delta below that bar as unproven.
+4. **Where the real headroom is**: PEA sits at ~0.43 in both arms — wrong
+   parameters and missing outputs at *execution* time dominate, exactly the
+   failure class that plan-time advice cannot reach.
+
+## What this says about MapSmith's design
+
+MapSmith does not use its plan validation as advice to an improvising agent
+— that is the configuration this experiment measured, and it measured it
+doing approximately nothing on a frontier model. In MapSmith,
+`validate_plan`'s contract is enforced at the **execution boundary**:
+`execute_plan` runs the validated plan exactly as written (re-validating
+first, resolving `$step` references, recording provenance per step), so a
+repaired plan *is* what executes. The gap this experiment exposes — solvers
+that improvise past their plans and fail on parameters at execution time —
+is the gap that design closes.
+
+Open question worth money: does the gate lift *smaller* models, whose plans
+are dirtier? The harness is ready; a Haiku-class run costs a fraction of
+this one.
 
 ## Reproduce it
 
