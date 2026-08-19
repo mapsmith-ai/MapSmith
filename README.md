@@ -70,6 +70,8 @@ The Docker image ships with the `[raster]` and `[whitebox]` extras included. Wit
 
 ## See results inside the chat
 
+![MapSmith's interactive map panel rendered inside Claude Desktop: OSM basemap, buffer and zone layers, and per-layer provenance cards with verification status](docs/images/map-panel.png)
+
 `preview_map` renders your layers on an interactive map panel *inside* Claude,
 ChatGPT, VS Code and every other client supporting the official
 [MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview) extension —
