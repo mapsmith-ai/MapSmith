@@ -1,7 +1,7 @@
 """Static plan validation: reject wrong plans BEFORE anything runs.
 
-GIS-agent benchmarks attribute ~47% of failures to planning (missing or
-mis-ordered operations) and CRS mismatch halves task success. Every check here
+In GIS-agent benchmarks up to ~47% of failed runs involve planning mistakes
+(missing or mis-ordered operations) and CRS mismatch halves task success. Every check here
 turns one of those silent runtime failures into a machine-actionable error the
 planning agent can repair: codes are stable strings, messages name the exact
 step and argument, and unknown operations come back with BM25 suggestions.

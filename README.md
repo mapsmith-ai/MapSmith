@@ -83,8 +83,8 @@ call returns the preview as structured data.
 
 ## Plans: reject wrong analyses before they run
 
-GIS-agent benchmarks attribute ~47% of failures to planning — missing or
-mis-ordered operations — and CRS mismatches halve task success. MapSmith attacks
+In GIS-agent benchmarks, up to ~47% of failed runs involve planning mistakes —
+missing or mis-ordered operations — and CRS mismatches halve task success. MapSmith attacks
 this where it's cheapest: the agent submits a **typed plan**, and static
 validation rejects unknown operations (with suggestions), missing arguments,
 forward references, absent input files and CRS-unsuitable steps **before
