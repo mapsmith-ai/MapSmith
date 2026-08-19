@@ -32,7 +32,7 @@ MAP_HTML = r"""<!doctype html>
   html,body { height:100%; }
   body { background:var(--bg); color:var(--ink);
          font:13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  #app { display:flex; height:100%; min-height:420px; }
+  #app { display:flex; height:100%; }  /* fill exactly what the host gives: never clip */
   #map-wrap { position:relative; flex:1 1 auto; min-width:0; }
   #map { width:100%; height:100%; display:block; cursor:grab; }
   #status { position:absolute; left:10px; top:10px; padding:4px 10px;
@@ -105,9 +105,11 @@ function setStatus(text) {
   el.textContent = text; el.style.display = text ? "block" : "none";
 }
 function sendSize() {
+  // ask once for a comfortable height; the layout adapts to whatever we get,
+  // so a host that ignores this still renders unclipped.
   notify("ui/notifications/size-changed", {
     width: Math.ceil(window.innerWidth),
-    height: Math.ceil(document.documentElement.getBoundingClientRect().height)
+    height: 420
   });
 }
 (function init() {
@@ -124,7 +126,6 @@ function sendSize() {
     setStatus("waiting for map data…");
   }).catch(function () { setStatus("host handshake failed"); });
 })();
-window.addEventListener("resize", sendSize);
 
 /* ---- payload intake ---- */
 var PAYLOAD = null;
