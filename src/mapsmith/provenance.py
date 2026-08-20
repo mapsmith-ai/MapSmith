@@ -50,6 +50,8 @@ class ProvenanceRecord:
     verification: list[dict[str, Any]] = field(default_factory=list)
     # deterministic repair attempts (issue #3): empty unless something was fixed
     repairs: list[dict[str, Any]] = field(default_factory=list)
+    # disclosures about how the inputs were handled before the engine saw them
+    notes: list[str] = field(default_factory=list)
     mapsmith_version: str = __version__
     started_at: str = field(default_factory=_utcnow)
     finished_at: str | None = None

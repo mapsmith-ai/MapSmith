@@ -30,4 +30,9 @@ Thumbs.db
 
 # Notebook gallery runtime data
 examples/data/
+
+# ...but the gallery's one real-world input is versioned on purpose: a
+# showcase built on synthetic terrain does not show what the tools do.
+!examples/fixtures/
+!examples/fixtures/*.tif
 uv.lock

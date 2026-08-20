@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import math
 import tempfile
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -48,18 +49,102 @@ def _engine_info() -> dict[str, str]:
     return {"name": "whitebox-workflows", "version": version("whitebox-workflows")}
 
 
-def _read_dem(wbe: Any, dem_path: str) -> tuple[Any, str, bool]:
-    """Read a DEM: (raster, crs_string, is_geographic). Rejects rasters without a CRS."""
-    dem = wbe.read_raster(str(dem_path))
-    epsg = dem.crs_epsg()
-    wkt = dem.crs_wkt()
-    if not epsg and not wkt:
-        raise ValueError(
-            f"{dem_path} has no CRS — terrain analysis needs one to be meaningful. "
-            "Assign the correct CRS to the source raster first."
-        )
-    crs_obj = CRS.from_epsg(epsg) if epsg else CRS.from_wkt(str(wkt))
-    return dem, (f"EPSG:{epsg}" if epsg else str(wkt)), crs_obj.is_geographic
+def _needs_plain_copy(path: str) -> str | None:
+    """Why this GeoTIFF must be rewritten before whitebox may read it, or None.
+
+    whitebox_workflows 2.x only computes correct values from *plain* GeoTIFFs:
+    uncompressed and strip-organised. Measured against a NumPy Horn hillshade
+    on a 300x300 synthetic DEM (whitebox-workflows 2.0.6, rasterio 1.4):
+
+        float32, uncompressed, striped -> r = +0.9985   correct
+        int16,   uncompressed, striped -> r = +0.9905   correct
+        float32, any compression       -> r = +0.59     wrong
+        int16,   any compression       -> r = +0.03     wrong
+        either,  tiled (even uncompressed) -> wrong
+
+    The wrong results are *plausible*: shaded relief that looks like terrain,
+    with the same CRS, shape and value range, so no postcondition catches it.
+    They are also deterministic, so this is a systematic defect rather than a
+    race. Since real-world DEMs are compressed, tiled, or both (every
+    Cloud-Optimized GeoTIFF is tiled), converting first is not an edge case —
+    it is the normal path.
+    """
+    try:
+        import rasterio
+    except ImportError:  # rasterio ships with the whitebox extra; be defensive
+        return None
+    try:
+        with rasterio.open(path) as ds:
+            profile = ds.profile
+    except Exception:  # noqa: BLE001 — unreadable here means whitebox will complain
+        return None
+    reasons = []
+    if profile.get("compress"):
+        reasons.append(f"compressed ({str(profile['compress']).lower()})")
+    if profile.get("tiled"):
+        reasons.append("tile-organised")
+    return " and ".join(reasons) or None
+
+
+def _plain_copy(path: str, into: Path) -> str:
+    """An uncompressed, strip-organised copy with byte-identical values.
+
+    Uncompressed is the point, so the copy can be several times the size of
+    the source: the alternative is a silently wrong answer.
+    """
+    import rasterio
+
+    with rasterio.open(path) as src:
+        profile = src.profile
+        data = src.read(1)
+    profile.update(tiled=False)
+    for key in ("compress", "predictor", "blockxsize", "blockysize", "interleave"):
+        profile.pop(key, None)
+    plain = into / f"{Path(path).stem}.plain.tif"
+    with rasterio.open(plain, "w", **profile) as dst:
+        dst.write(data, 1)
+    return str(plain)
+
+
+def _plain_copy_note(reason: str) -> str:
+    return (
+        f"input GeoTIFF is {reason}; the engine was given an uncompressed, "
+        "strip-organised copy with identical values, because "
+        "whitebox_workflows 2.x computes wrong results from any other layout "
+        "(see _needs_plain_copy for the measurements)"
+    )
+
+
+@contextmanager
+def _read_dem(wbe: Any, dem_path: str):
+    """Yield (raster, crs, is_geographic, disclosure note) for a DEM.
+
+    A context manager because whitebox reads lazily: when the layout defect
+    (see :func:`_needs_plain_copy`) forces us to hand the engine a converted
+    copy, that copy has to stay on disk until the operation is done.
+    Rasters without a CRS are rejected — terrain analysis on unknown units is
+    meaningless.
+    """
+    with ExitStack() as stack:
+        reason = _needs_plain_copy(dem_path)
+        if reason:
+            ws = workspace.root()
+            tmp = stack.enter_context(
+                tempfile.TemporaryDirectory(dir=str(ws) if ws else None)
+            )
+            source, note = _plain_copy(dem_path, Path(tmp)), _plain_copy_note(reason)
+        else:
+            source, note = str(dem_path), None
+        dem = wbe.read_raster(source)
+        epsg = dem.crs_epsg()
+        wkt = dem.crs_wkt()
+        if not epsg and not wkt:
+            raise ValueError(
+                f"{dem_path} has no CRS — terrain analysis needs one to be meaningful. "
+                "Assign the correct CRS to the source raster first."
+            )
+        crs_obj = CRS.from_epsg(epsg) if epsg else CRS.from_wkt(str(wkt))
+        yield dem, (f"EPSG:{epsg}" if epsg else str(wkt)), crs_obj.is_geographic, note
 
 
 def _raster_checks(
@@ -146,46 +231,48 @@ def hillshade(
 
     wbe = wb.WbEnvironment()
     wbe.verbose = False
-    dem, crs, geographic = _read_dem(wbe, dem_path)
-    record = ProvenanceRecord(
-        operation="hillshade",
-        parameters={"azimuth": azimuth, "altitude": altitude, "z_factor": z_factor},
-        inputs=[InputRecord.from_path(dem_path, crs=crs)],
-        engine=_engine_info(),
-    )
-    record.crs_decisions = {
-        "analysis_crs": crs,
-        "reason": (
-            "DEM is in a geographic CRS (degree cells vs meter elevations): shading "
-            "is computed on native cells and relief may be exaggerated — reproject "
-            "to a projected CRS or tune z_factor for metrically faithful shading"
-            if geographic
-            else "hillshade computed in the DEM's native projected CRS; "
-            "no reprojection needed"
-        ),
-    }
-    result = wbe.terrain.general.hillshade(
-        input=dem, azimuth=azimuth, altitude=altitude, z_factor=z_factor
-    )
-    wbe.write_raster(result, str(output_path))
+    with _read_dem(wbe, dem_path) as (dem, crs, geographic, input_note):
+        record = ProvenanceRecord(
+            operation="hillshade",
+            parameters={"azimuth": azimuth, "altitude": altitude, "z_factor": z_factor},
+            inputs=[InputRecord.from_path(dem_path, crs=crs)],
+            engine=_engine_info(),
+        )
+        record.crs_decisions = {
+            "analysis_crs": crs,
+            "reason": (
+                "DEM is in a geographic CRS (degree cells vs meter elevations): shading "
+                "is computed on native cells and relief may be exaggerated — reproject "
+                "to a projected CRS or tune z_factor for metrically faithful shading"
+                if geographic
+                else "hillshade computed in the DEM's native projected CRS; "
+                "no reprojection needed"
+            ),
+        }
+        result = wbe.terrain.general.hillshade(
+            input=dem, azimuth=azimuth, altitude=altitude, z_factor=z_factor
+        )
+        wbe.write_raster(result, str(output_path))
 
-    meta = dem.metadata()
-    checks = _raster_checks(
-        wbe,
-        output_path,
-        expect_epsg=dem.crs_epsg(),
-        expect_shape=(meta.rows, meta.columns),
-        value_range=(0, HILLSHADE_MAX),
-    )
-    manifest = record.add_verification(checks).finish().write_for(output_path)
-    verify.enforce(checks, "hillshade")
-    return {
-        "output": str(output_path),
-        "azimuth": azimuth,
-        "altitude": altitude,
-        "provenance": str(manifest),
-        "verified": True,
-    }
+        meta = dem.metadata()
+        checks = _raster_checks(
+            wbe,
+            output_path,
+            expect_epsg=dem.crs_epsg(),
+            expect_shape=(meta.rows, meta.columns),
+            value_range=(0, HILLSHADE_MAX),
+        )
+        if input_note:
+            record.notes.append(input_note)
+        manifest = record.add_verification(checks).finish().write_for(output_path)
+        verify.enforce(checks, "hillshade")
+        return {
+            "output": str(output_path),
+            "azimuth": azimuth,
+            "altitude": altitude,
+            "provenance": str(manifest),
+            "verified": True,
+        }
 
 
 def flow_accumulation(
@@ -202,64 +289,66 @@ def flow_accumulation(
 
     wbe = wb.WbEnvironment()
     wbe.verbose = False
-    dem, crs, geographic = _read_dem(wbe, dem_path)
-    if out_type == "sca" and geographic:
-        raise ValueError(
-            "specific catchment area needs a projected CRS (it divides by cell width, "
-            "which is degrees here). Reproject the DEM to a projected CRS first "
-            "(e.g. a UTM zone via reproject workflows), or use out_type='cells'."
+    with _read_dem(wbe, dem_path) as (dem, crs, geographic, input_note):
+        if out_type == "sca" and geographic:
+            raise ValueError(
+                "specific catchment area needs a projected CRS (it divides by cell width, "
+                "which is degrees here). Reproject the DEM to a projected CRS first "
+                "(e.g. a UTM zone via reproject workflows), or use out_type='cells'."
+            )
+        record = ProvenanceRecord(
+            operation="flow_accumulation",
+            parameters={
+                "method": "d8",
+                "out_type": out_type,
+                "log_transform": log_transform,
+                "preprocessing": "fill_depressions",
+            },
+            inputs=[InputRecord.from_path(dem_path, crs=crs)],
+            engine=_engine_info(),
         )
-    record = ProvenanceRecord(
-        operation="flow_accumulation",
-        parameters={
+        record.crs_decisions = {
+            "analysis_crs": crs,
+            "reason": (
+                "cell-count accumulation is independent of cell units; computed in the "
+                "DEM's native geographic CRS"
+                if geographic
+                else "flow routing computed in the DEM's native projected CRS; "
+                "no reprojection needed"
+            ),
+        }
+        filled = wbe.hydrology.depressions_storage.fill_depressions(dem=dem)
+        pointer = wbe.hydrology.flow_routing.d8_pointer(dem=filled)
+        accum = wbe.hydrology.flow_routing.d8_flow_accum(
+            input=pointer, out_type=out_type, log_transform=log_transform, input_is_pointer=True
+        )
+        wbe.write_raster(accum, str(output_path))
+
+        meta = dem.metadata()
+        cells = meta.rows * meta.columns
+        # 'cells' accumulation counts each cell itself, so valid values live in [1, n_cells]
+        # (or their natural log when log-transformed).
+        bounds = (1.0, float(cells)) if out_type == "cells" else None
+        if bounds and log_transform:
+            bounds = (0.0, math.log(cells))
+        checks = _raster_checks(
+            wbe,
+            output_path,
+            expect_epsg=dem.crs_epsg(),
+            expect_shape=(meta.rows, meta.columns),
+            value_range=bounds,
+        )
+        if input_note:
+            record.notes.append(input_note)
+        manifest = record.add_verification(checks).finish().write_for(output_path)
+        verify.enforce(checks, "flow_accumulation")
+        return {
+            "output": str(output_path),
             "method": "d8",
             "out_type": out_type,
-            "log_transform": log_transform,
-            "preprocessing": "fill_depressions",
-        },
-        inputs=[InputRecord.from_path(dem_path, crs=crs)],
-        engine=_engine_info(),
-    )
-    record.crs_decisions = {
-        "analysis_crs": crs,
-        "reason": (
-            "cell-count accumulation is independent of cell units; computed in the "
-            "DEM's native geographic CRS"
-            if geographic
-            else "flow routing computed in the DEM's native projected CRS; "
-            "no reprojection needed"
-        ),
-    }
-    filled = wbe.hydrology.depressions_storage.fill_depressions(dem=dem)
-    pointer = wbe.hydrology.flow_routing.d8_pointer(dem=filled)
-    accum = wbe.hydrology.flow_routing.d8_flow_accum(
-        input=pointer, out_type=out_type, log_transform=log_transform, input_is_pointer=True
-    )
-    wbe.write_raster(accum, str(output_path))
-
-    meta = dem.metadata()
-    cells = meta.rows * meta.columns
-    # 'cells' accumulation counts each cell itself, so valid values live in [1, n_cells]
-    # (or their natural log when log-transformed).
-    bounds = (1.0, float(cells)) if out_type == "cells" else None
-    if bounds and log_transform:
-        bounds = (0.0, math.log(cells))
-    checks = _raster_checks(
-        wbe,
-        output_path,
-        expect_epsg=dem.crs_epsg(),
-        expect_shape=(meta.rows, meta.columns),
-        value_range=bounds,
-    )
-    manifest = record.add_verification(checks).finish().write_for(output_path)
-    verify.enforce(checks, "flow_accumulation")
-    return {
-        "output": str(output_path),
-        "method": "d8",
-        "out_type": out_type,
-        "provenance": str(manifest),
-        "verified": True,
-    }
+            "provenance": str(manifest),
+            "verified": True,
+        }
 
 
 def watershed(
@@ -286,54 +375,56 @@ def watershed(
 
     wbe = wb.WbEnvironment()
     wbe.verbose = False
-    dem, crs, _geographic = _read_dem(wbe, dem_path)  # watershed topology is unit-free
-    record = ProvenanceRecord(
-        operation="watershed",
-        parameters={"method": "d8", "preprocessing": "fill_depressions", "n_pour_points": len(points)},
-        inputs=[
-            InputRecord.from_path(dem_path, crs=crs),
-            InputRecord.from_path(pour_points_path, crs=str(points.crs)),
-        ],
-        engine=_engine_info(),
-    )
-    if str(points.crs) != crs:
-        points = points.to_crs(crs)
-        record.crs_decisions = {
-            "analysis_crs": crs,
-            "reason": "pour points reprojected to the DEM CRS to align with the flow grid",
-        }
-    else:
-        record.crs_decisions = {
-            "analysis_crs": crs,
-            "reason": "pour points and DEM share the same CRS",
-        }
+    with _read_dem(wbe, dem_path) as (dem, crs, _geographic, input_note):  # topology is unit-free
+        record = ProvenanceRecord(
+            operation="watershed",
+            parameters={"method": "d8", "preprocessing": "fill_depressions", "n_pour_points": len(points)},
+            inputs=[
+                InputRecord.from_path(dem_path, crs=crs),
+                InputRecord.from_path(pour_points_path, crs=str(points.crs)),
+            ],
+            engine=_engine_info(),
+        )
+        if str(points.crs) != crs:
+            points = points.to_crs(crs)
+            record.crs_decisions = {
+                "analysis_crs": crs,
+                "reason": "pour points reprojected to the DEM CRS to align with the flow grid",
+            }
+        else:
+            record.crs_decisions = {
+                "analysis_crs": crs,
+                "reason": "pour points and DEM share the same CRS",
+            }
 
-    filled = wbe.hydrology.depressions_storage.fill_depressions(dem=dem)
-    pointer = wbe.hydrology.flow_routing.d8_pointer(dem=filled)
-    # whitebox reads vectors as shapefiles: hand it the (possibly reprojected)
-    # points through a temporary shapefile so any GeoPandas-readable input works.
-    # Under a workspace even scratch data must not leave it (data governance).
-    ws = workspace.root()
-    with tempfile.TemporaryDirectory(dir=str(ws) if ws else None) as tmp:
-        shp = Path(tmp) / "pour_points.shp"
-        points.to_file(shp)
-        vec = wbe.read_vector(str(shp))
-        basins = wbe.hydrology.watersheds_basins.watershed(d8_pointer=pointer, pour_pts=vec)
-        wbe.write_raster(basins, str(output_path))
+        filled = wbe.hydrology.depressions_storage.fill_depressions(dem=dem)
+        pointer = wbe.hydrology.flow_routing.d8_pointer(dem=filled)
+        # whitebox reads vectors as shapefiles: hand it the (possibly reprojected)
+        # points through a temporary shapefile so any GeoPandas-readable input works.
+        # Under a workspace even scratch data must not leave it (data governance).
+        ws = workspace.root()
+        with tempfile.TemporaryDirectory(dir=str(ws) if ws else None) as tmp:
+            shp = Path(tmp) / "pour_points.shp"
+            points.to_file(shp)
+            vec = wbe.read_vector(str(shp))
+            basins = wbe.hydrology.watersheds_basins.watershed(d8_pointer=pointer, pour_pts=vec)
+            wbe.write_raster(basins, str(output_path))
 
-    meta = dem.metadata()
-    checks = _raster_checks(
-        wbe,
-        output_path,
-        expect_epsg=dem.crs_epsg(),
-        expect_shape=(meta.rows, meta.columns),
-        value_range=(1.0, float(len(points))),
-    )
-    manifest = record.add_verification(checks).finish().write_for(output_path)
-    verify.enforce(checks, "watershed")
-    return {
-        "output": str(output_path),
-        "n_pour_points": len(points),
-        "provenance": str(manifest),
-        "verified": True,
-    }
+        meta = dem.metadata()
+        checks = _raster_checks(
+            wbe,
+            output_path,
+            expect_epsg=dem.crs_epsg(),
+            expect_shape=(meta.rows, meta.columns),
+            value_range=(1.0, float(len(points))),
+        )
+        if input_note:
+            record.notes.append(input_note)
+        manifest = record.add_verification(checks).finish().write_for(output_path)
+        verify.enforce(checks, "watershed")
+        return {
+            "output": str(output_path),
+            "n_pour_points": len(points),
+            "provenance": str(manifest),
+            "verified": True,
+        }
