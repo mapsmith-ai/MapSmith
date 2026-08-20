@@ -10,7 +10,6 @@ Correctness is checked against an independent reference rather than by
 comparing two runs: two wrong answers agreeing would pass.
 """
 
-import itertools
 
 import numpy as np
 import pytest
@@ -19,7 +18,7 @@ from rasterio.transform import from_origin
 
 wb = pytest.importorskip("whitebox_workflows")
 
-from mapsmith.engines import whitebox_engine  # noqa: E402
+from mapsmith.engines import whitebox_engine
 
 SIZE = 300
 RES = 20.0
