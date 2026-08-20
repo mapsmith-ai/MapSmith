@@ -46,16 +46,13 @@ def _connect() -> duckdb.DuckDBPyConnection:
     allowed_directories cannot go in the connect() config dict (VARCHAR[]
     options crash there — duckdb#17128); SET statements are the supported way.
     """
-    ws = workspace.root()
-    if ws is None:
-        con = duckdb.connect()
-        try:
-            con.install_extension("spatial")
-        except duckdb.Error:
-            pass  # already installed in this environment, or offline with a cached copy
-        con.load_extension("spatial")
-        return con
-
+    # These apply in EVERY mode. Unconfined *file access* without a workspace is
+    # a deliberate, documented choice; unconfined *code execution* is not, and
+    # DuckDB's defaults allow the escalation: with autoload and community
+    # extensions on, one statement can install `shellfs` (which runs a shell
+    # command for a filename ending in '|') or autoload httpfs and exfiltrate
+    # results in a URL. SQL written by an LLM from whatever reached its context
+    # is untrusted SQL, so DuckDB's own hardening guidance applies.
     con = duckdb.connect(
         config={
             "autoinstall_known_extensions": "false",
@@ -69,6 +66,11 @@ def _connect() -> duckdb.DuckDBPyConnection:
     except duckdb.Error:
         pass  # already installed in this environment, or offline with a cached copy
     con.load_extension("spatial")
+
+    ws = workspace.root()
+    if ws is None:
+        return con
+
     con.execute(f"SET allowed_directories = ['{_sql_dir(ws)}']")
     con.execute(f"SET temp_directory = '{_sql_dir(ws)}.duckdb_tmp'")
     tmp_limit = os.environ.get("MAPSMITH_DUCKDB_TEMP_LIMIT", "8GB").replace("'", "''")

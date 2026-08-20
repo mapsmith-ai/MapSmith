@@ -19,12 +19,12 @@ classifiers = [
 ]
 dependencies = [
   "mcp>=1.26,<2",
-  "geopandas>=1.0",
+  "geopandas>=1.1.2",  # security floor: CVE-2025-69662 (to_postgis)
   "shapely>=2.0",
   "pyproj>=3.6",
   "pyogrio>=0.9",
   "pyarrow>=17",
-  "duckdb>=1.4",
+  "duckdb>=1.4",  # security floor: CVE-2024-41672 bypassed enable_external_access
 ]
 
 [project.optional-dependencies]

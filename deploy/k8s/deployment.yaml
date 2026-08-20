@@ -25,6 +25,13 @@ spec:
           env:
             - name: MAPSMITH_TRANSPORT
               value: "http"
+            # confine every read and write to the mounted data volume
+            - name: MAPSMITH_WORKSPACE
+              value: "/data"
+            # Host/Origin allow-list for the ingress hostname (the server keeps
+            # DNS rebinding protection on; add yours here)
+            - name: MAPSMITH_ALLOWED_HOSTS
+              value: "mapsmith.example.com,mapsmith.example.com:*"
             - name: MAPSMITH_HOST
               value: "0.0.0.0"
             - name: MAPSMITH_PORT

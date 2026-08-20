@@ -12,6 +12,7 @@ import os
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 
 from . import __version__, catalog, jobs, ui, workspace
@@ -20,6 +21,38 @@ from .plans import Plan
 from .provenance import read_provenance
 
 _HTTP = os.environ.get("MAPSMITH_TRANSPORT", "stdio").lower() in {"http", "streamable-http"}
+_HOST = os.environ.get("MAPSMITH_HOST", "127.0.0.1")
+
+
+def _transport_security() -> TransportSecuritySettings:
+    """Host/Origin validation for the HTTP transport, always on.
+
+    The SDK enables DNS rebinding protection by itself only when the server
+    binds to loopback; bind to 0.0.0.0 — as any container deployment does — and
+    the middleware is constructed with protection *disabled* for backwards
+    compatibility. Since this transport is stateless, one POST with a forged
+    Host header would otherwise be enough for any web page the user visits to
+    drive every tool. So we pass the settings explicitly and keep them on.
+
+    MAPSMITH_ALLOWED_HOSTS / MAPSMITH_ALLOWED_ORIGINS (comma-separated) extend
+    the allow-list for reverse-proxy setups; loopback and the bind host are
+    always included.
+    """
+
+    def listed(name: str) -> list[str]:
+        return [v.strip() for v in os.environ.get(name, "").split(",") if v.strip()]
+
+    hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+    origins = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
+    if _HOST not in ("127.0.0.1", "localhost", "::1", "0.0.0.0"):
+        hosts.append(f"{_HOST}:*")
+        origins += [f"http://{_HOST}:*", f"https://{_HOST}:*"]
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=hosts + listed("MAPSMITH_ALLOWED_HOSTS"),
+        allowed_origins=origins + listed("MAPSMITH_ALLOWED_ORIGINS"),
+    )
+
 
 mcp = FastMCP(
     "mapsmith",
@@ -31,10 +64,11 @@ mcp = FastMCP(
         "is 'planned', say so instead of approximating it with the wrong tool. "
         "Datasets are file paths; GeoParquet is the fast path, GeoPackage also works."
     ),
-    host=os.environ.get("MAPSMITH_HOST", "127.0.0.1"),
+    host=_HOST,
     port=int(os.environ.get("MAPSMITH_PORT", "8000")),
     stateless_http=_HTTP,
     json_response=_HTTP,
+    transport_security=_transport_security() if _HTTP else None,
 )
 
 
@@ -386,6 +420,10 @@ def preview_map(paths: list[str], max_features: int = 2000) -> dict[str, Any]:
     for i, p in enumerate(paths):
         _guard(**{f"paths[{i}]": p})
     from . import preview
+
+    # a negative cap would invert the payload budget (features_floor goes
+    # negative and .head(-1) means "all but one"), so clamp at the boundary
+    max_features = max(1, min(int(max_features), preview.MAX_FEATURES))
 
     return preview.map_preview(paths, max_features=max_features)
 

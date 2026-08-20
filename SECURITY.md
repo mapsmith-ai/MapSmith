@@ -15,6 +15,22 @@ vulnerability:
 - **No network egress in sandbox mode** beyond the documented one-time
   extension install.
 
+**The HTTP transport has no authentication in this release.** Anyone who can
+reach the endpoint can run every tool against everything the process can see,
+so it belongs on loopback or a trusted network until authenticated remote mode
+ships — the shipped examples bind to loopback and set a workspace for that
+reason. Host and Origin validation (DNS rebinding protection) is enabled
+explicitly, including when the server binds to a non-loopback address, and
+`MAPSMITH_ALLOWED_HOSTS` / `MAPSMITH_ALLOWED_ORIGINS` extend the allow-list for
+reverse proxies. A way past that validation *is* a vulnerability; the absence
+of authentication is a documented limitation, not one.
+
+Also worth knowing rather than reporting: with `MAPSMITH_WORKSPACE` unset,
+`run_sql` can read and write any path the process can reach — deliberate, and
+documented in the README. Extension installation, autoloading and community
+extensions are refused in every mode, so that access cannot escalate into code
+execution or network egress.
+
 Out of scope: issues requiring a hostile local process on the same machine
 (the jail assumes a single trusted writer of the workspace filesystem —
 documented in the README), and anything reachable only by running MapSmith

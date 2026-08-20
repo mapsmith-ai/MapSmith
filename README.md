@@ -110,9 +110,11 @@ ChatGPT, VS Code and every other client supporting the official
 [MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview) extension —
 pan, zoom, toggle layers, and read each layer's provenance card (operation,
 engine, verified ✓) right next to the geometry it explains. The panel is fully
-self-contained (no CDN, no tile servers, no telemetry), so it works under the
-extension's strictest default sandbox. On clients without MCP Apps the same
-call returns the preview as structured data.
+self-contained — no CDN, no bundled libraries, no telemetry — with one
+outbound request named here rather than buried: the OpenStreetMap background
+tiles, which reveal the map view you are looking at (never your data), and
+which the panel drops to a plain backdrop when the host blocks them. On clients
+without MCP Apps the same call returns the preview as structured data.
 
 ## Plans: reject wrong analyses before they run
 
@@ -143,8 +145,8 @@ every intermediate dataset from the real input files. `execute_plan` then runs
 the chain with per-step provenance plus a plan-level manifest
 (`<output>.plan.json`) fingerprinting the exact plan that produced the result.
 
-UNC hosts and NTFS alternate data streams are rejected on every tool call,
-always, before anything touches the filesystem (on Windows even an existence
+UNC hosts and NTFS alternate data streams are rejected in every path
+*argument* of every tool call, before anything touches the filesystem (on Windows even an existence
 check on a UNC path talks to an attacker-chosen host). Remote and virtual
 forms (GDAL `/vsi*`, `https://` COGs) stay available in uncontained mode —
 cloud-native data is a feature — and are refused once a workspace is set.
@@ -231,7 +233,7 @@ then repaired. Each generates its own synthetic data — install and run.
 - [ ] QGIS Processing sidecar (subprocess-isolated): ~900 algorithms
 - [ ] Sandboxed code-execution tool for the long tail
 - [x] MCP Apps in-chat map panel with provenance cards (self-contained, works under the default sandbox)
-- [ ] Map panel tile basemaps (MapLibre + OSM behind declared CSP domains) and shareable viewer URLs
+- [ ] Map panel: MapLibre vector rendering and shareable viewer URLs (raster OSM tiles already ship)
 - [ ] Remote server (Streamable HTTP + OAuth), long-job progress via MCP Tasks
 
 ## Install support policy

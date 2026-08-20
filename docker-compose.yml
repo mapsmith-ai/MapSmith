@@ -1,15 +1,21 @@
 # Full local stack: MCP server (HTTP) + Postgres job ledger + MinIO artifact store.
 # The server also runs standalone (stdio) with zero infrastructure: `uvx mapsmith`.
+#
+# The HTTP transport has NO AUTHENTICATION yet. This stack binds the port to
+# loopback and confines the server to /data on purpose; if you publish the port
+# or put an ingress in front of it, anyone who can reach it can run every tool
+# on whatever the container can see.
 services:
   mapsmith:
     build: .
     environment:
       MAPSMITH_TRANSPORT: http
-      MAPSMITH_HOST: 0.0.0.0
+      MAPSMITH_HOST: 0.0.0.0   # inside the container; the port is bound to loopback below
       MAPSMITH_PORT: "8000"
+      MAPSMITH_WORKSPACE: /data   # confine every read and write to the mounted volume
       DATABASE_URL: postgresql://mapsmith:mapsmith@postgres:5432/mapsmith
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./data:/data
     depends_on:
