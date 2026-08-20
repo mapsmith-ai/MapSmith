@@ -20,7 +20,8 @@ as tools, and `preview_map` renders the results on an interactive in-chat map.
 
 `fixtures/mount_st_helens_dem.tif` is a 520 x 520 clip at 23.7 m of the
 **USGS 3D Elevation Program** (U.S. Geological Survey, public domain),
-reprojected to UTM zone 10N and rounded to whole metres. It is stored
-compressed and tiled — like most real rasters, and deliberately so: MapSmith
-has to convert it before the terrain engine reads it, and the notebook shows
-that conversion being disclosed in the provenance manifest.
+reprojected to UTM zone 10N and rounded to whole metres. It is stored with
+DEFLATE and `PREDICTOR=2` — the standard encoding for integer rasters, and
+deliberately so: the terrain engine mishandles the TIFF predictor, so MapSmith
+converts the input first, and the notebook shows that conversion being
+disclosed in the provenance manifest.

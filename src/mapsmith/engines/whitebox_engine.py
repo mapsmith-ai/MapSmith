@@ -52,22 +52,21 @@ def _engine_info() -> dict[str, str]:
 def _needs_plain_copy(path: str) -> str | None:
     """Why this GeoTIFF must be rewritten before whitebox may read it, or None.
 
-    whitebox_workflows 2.x only computes correct values from *plain* GeoTIFFs:
-    uncompressed and strip-organised. Measured against a NumPy Horn hillshade
-    on a 300x300 synthetic DEM (whitebox-workflows 2.0.6, rasterio 1.4):
+    whitebox_workflows 2.x decompresses DEFLATE/LZW rasters without undoing
+    the TIFF *predictor* (tag 317), so every value it computes from such a file
+    is garbage. Measured against a NumPy Horn hillshade on a 300x300 synthetic
+    DEM (whitebox-workflows 2.0.6, rasterio 1.5.1) — correlation with the
+    reference:
 
-        float32, uncompressed, striped -> r = +0.9985   correct
-        int16,   uncompressed, striped -> r = +0.9905   correct
-        float32, any compression       -> r = +0.59     wrong
-        int16,   any compression       -> r = +0.03     wrong
-        either,  tiled (even uncompressed) -> wrong
+        no predictor, or predictor=1   int16 +0.99   float32 +0.99   correct
+        predictor=2 (horizontal diff)  int16 +0.03   float32 +0.59   WRONG
+        predictor=3 (floating point)   -             float32 +0.01   WRONG
 
-    The wrong results are *plausible*: shaded relief that looks like terrain,
-    with the same CRS, shape and value range, so no postcondition catches it.
-    They are also deterministic, so this is a systematic defect rather than a
-    race. Since real-world DEMs are compressed, tiled, or both (every
-    Cloud-Optimized GeoTIFF is tiled), converting first is not an edge case —
-    it is the normal path.
+    Compression on its own is fine, and so is tiling at any block size: the
+    predictor alone decides. It is not an exotic setting — PREDICTOR=2 is the
+    standard recommendation for integer rasters and ships on plenty of
+    published DEMs — and the damage is invisible, because the output has the
+    right CRS, shape and value range and still looks like terrain.
     """
     try:
         import rasterio
@@ -75,43 +74,38 @@ def _needs_plain_copy(path: str) -> str | None:
         return None
     try:
         with rasterio.open(path) as ds:
-            profile = ds.profile
+            predictor = ds.tags(ns="IMAGE_STRUCTURE").get("PREDICTOR")
     except Exception:  # noqa: BLE001 — unreadable here means whitebox will complain
         return None
-    reasons = []
-    if profile.get("compress"):
-        reasons.append(f"compressed ({str(profile['compress']).lower()})")
-    if profile.get("tiled"):
-        reasons.append("tile-organised")
-    return " and ".join(reasons) or None
+    if predictor in ("2", "3"):
+        return f"stored with TIFF predictor {predictor}"
+    return None
 
 
 def _plain_copy(path: str, into: Path) -> str:
-    """An uncompressed, strip-organised copy with byte-identical values.
+    """A copy with byte-identical values and no predictor.
 
-    Uncompressed is the point, so the copy can be several times the size of
-    the source: the alternative is a silently wrong answer.
+    Compression is kept (whitebox decodes it correctly on its own); only the
+    predictor is dropped, so the copy stays roughly the size of the original.
     """
     import rasterio
 
     with rasterio.open(path) as src:
         profile = src.profile
         data = src.read(1)
-    profile.update(tiled=False)
-    for key in ("compress", "predictor", "blockxsize", "blockysize", "interleave"):
-        profile.pop(key, None)
-    plain = into / f"{Path(path).stem}.plain.tif"
-    with rasterio.open(plain, "w", **profile) as dst:
+    profile.pop("predictor", None)
+    plain = into / f"{Path(path).stem}.no-predictor.tif"
+    with rasterio.open(plain, "w", **profile, predictor=1) as dst:
         dst.write(data, 1)
     return str(plain)
 
 
 def _plain_copy_note(reason: str) -> str:
     return (
-        f"input GeoTIFF is {reason}; the engine was given an uncompressed, "
-        "strip-organised copy with identical values, because "
-        "whitebox_workflows 2.x computes wrong results from any other layout "
-        "(see _needs_plain_copy for the measurements)"
+        f"input GeoTIFF is {reason}; the engine was given a copy with identical "
+        "values and no predictor, because whitebox_workflows 2.x does not undo "
+        "the TIFF predictor when decompressing (see _needs_plain_copy for the "
+        "measurements)"
     )
 
 
@@ -119,9 +113,9 @@ def _plain_copy_note(reason: str) -> str:
 def _read_dem(wbe: Any, dem_path: str):
     """Yield (raster, crs, is_geographic, disclosure note) for a DEM.
 
-    A context manager because whitebox reads lazily: when the layout defect
-    (see :func:`_needs_plain_copy`) forces us to hand the engine a converted
-    copy, that copy has to stay on disk until the operation is done.
+    A context manager because whitebox reads lazily: when the predictor
+    defect (see :func:`_needs_plain_copy`) forces us to hand the engine a
+    converted copy, that copy has to stay on disk until the operation ends.
     Rasters without a CRS are rejected — terrain analysis on unknown units is
     meaningless.
     """
