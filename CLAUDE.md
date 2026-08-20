@@ -19,6 +19,10 @@ MapSmith gives AI agents professional-grade geoprocessing via MCP, with **verifi
 - Version pins are deliberate: `mcp>=1.26,<2` (1.26 is the floor for resource `meta`, needed by the MCP Apps map panel; v2 renamed FastMCP→MCPServer; migration planned with MCP Tasks), `ruff>=0.16,<0.17` (new ruff minors add default rules and break CI).
 - Tests use closed-form expected values (e.g., a known 5×5 raster block → mean=22, sum=550) plus rejection-path tests; `pytest.importorskip` for extras.
 - Run `python -m ruff check .` before committing; CI runs lint + tests on Python 3.10/3.12 + Docker build.
+- **The floor is Python 3.10**, and local runs happen on a newer interpreter, so stdlib added
+  after 3.10 breaks only in CI: no `tomllib`, `datetime.UTC`, `StrEnum`, `contextlib.chdir`,
+  `ExceptionGroup` (3.11), no `itertools.batched`, `typing.override` (3.12). Ruff's
+  `target-version` catches too-new *syntax*; too-new *modules* are on you.
 - Docker (or `uvx` where wheels work) is the only supported install path — keep it true in docs.
 - Verify external-library APIs against primary documentation before coding against them; this repo has already been bitten by from-memory APIs three times.
 

@@ -45,6 +45,9 @@ Repository = "https://github.com/mapsmith-ai/MapSmith"
 packages = ["src/mapsmith"]
 
 [tool.ruff]
+# the floor is 3.10: this makes ruff refuse syntax newer than it, which
+# local runs on a newer interpreter would otherwise hide until CI
+target-version = "py310"
 line-length = 100
 src = ["src", "tests"]
 extend-exclude = [

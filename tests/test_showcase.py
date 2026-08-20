@@ -11,7 +11,6 @@ import re
 from pathlib import Path
 
 import pytest
-import tomllib
 
 ROOT = Path(__file__).resolve().parent.parent
 README = ROOT / "README.md"
@@ -111,12 +110,10 @@ def test_declared_dependencies_are_not_advertised_as_future_work():
     """"More to come: X" for an X that already ships reads as either sloppy or
     dishonest, and both cost the same."""
     text = README.read_text(encoding="utf-8")
-    deps = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    # read as text, not via tomllib: that is stdlib only from 3.11 and this
+    # suite has to run on the minimum supported Python (3.10)
+    all_deps = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     shipped = {"WhiteboxTools": "whitebox", "DuckDB": "duckdb", "exactextract": "exactextract"}
-    all_deps = " ".join(
-        deps["project"]["dependencies"]
-        + [d for extra in deps["project"]["optional-dependencies"].values() for d in extra]
-    )
     coming = re.search(r"more to come:([^)]*)\)", text)
     if not coming:
         return
