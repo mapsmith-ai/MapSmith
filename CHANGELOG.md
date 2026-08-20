@@ -4,7 +4,7 @@ All notable changes to MapSmith are documented here, in the format of
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows
 [semantic versioning](https://semver.org/).
 
-## [0.2.0] — unreleased
+## [0.2.0] — 2026-08-20
 
 The first release you can point an agent at and trust the answer: results are
 verified on the way in and on the way out, plans are checked before anything
