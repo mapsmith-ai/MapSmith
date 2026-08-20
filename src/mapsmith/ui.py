@@ -28,10 +28,11 @@ MAP_HTML = r"""<!doctype html>
 <title>MapSmith map panel</title>
 <style>
   :root { --bg:#ffffff; --ink:#1a1d21; --muted:#6a7178; --line:#e3e6e9;
-          --accent:#2563eb; --ok:#15803d; --bad:#b91c1c; --panel:#f6f7f8; }
+          --accent:#2563eb; --ok:#15803d; --bad:#b91c1c; --warn:#b45309;
+          --panel:#f6f7f8; }
   [data-theme="dark"] { --bg:#15181b; --ink:#e8eaed; --muted:#9aa2ab;
           --line:#31363c; --accent:#60a5fa; --ok:#4ade80; --bad:#f87171;
-          --panel:#1d2125; }
+          --warn:#fbbf24; --panel:#1d2125; }
   * { box-sizing:border-box; margin:0; }
   html,body { height:100%; }
   body { background:var(--bg); color:var(--ink);
@@ -57,6 +58,7 @@ MAP_HTML = r"""<!doctype html>
   .meta, .prov { color:var(--muted); font-size:12px; margin-top:4px; }
   .ok { color:var(--ok); font-weight:600; }
   .bad { color:var(--bad); font-weight:600; }
+  .warn { color:var(--warn); font-weight:600; }
   .hidden-layer { opacity:.45; }
   footer { color:var(--muted); font-size:11px; margin-top:10px; }
 </style>
@@ -345,10 +347,26 @@ function buildSidebar() {
       prov.appendChild(document.createTextNode(
         (l.provenance.operation || "?") + " · " + (l.provenance.engine || "?") + " · "));
       var badge = document.createElement("span");
-      badge.className = l.provenance.verified ? "ok" : "bad";
-      badge.textContent = l.provenance.verified ? "verified ✓" : "not verified";
+      var st = l.provenance.status ||
+        (l.provenance.verified ? "verified" : "failed");  // pre-0.3 payloads
+      badge.className = st === "verified" ? "ok" : (st === "failed" ? "bad" : "warn");
+      badge.textContent = st === "verified" ? "verified ✓"
+        : (st === "failed" ? "verification failed" : "not verifiable");
       prov.appendChild(badge);
-      if (l.provenance.crs_reason) prov.title = l.provenance.crs_reason;
+      if (l.provenance.repairs) {
+        var rep = document.createElement("span");
+        rep.className = "warn";
+        rep.textContent = " · repaired";
+        prov.appendChild(rep);
+      }
+      var why = [];
+      if (st === "unchecked") why.push(
+        "no critical check ran: this output's lineage could not be verified");
+      if (!l.provenance.inputs_recorded) why.push("no input datasets recorded");
+      if (l.provenance.repairs) why.push(
+        l.provenance.repairs + " deterministic repair(s) applied to the geometry");
+      if (l.provenance.crs_reason) why.push(l.provenance.crs_reason);
+      if (why.length) prov.title = why.join(" — ");
     } else {
       prov.textContent = "no provenance manifest";
     }

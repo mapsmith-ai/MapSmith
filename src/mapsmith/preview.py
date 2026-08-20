@@ -70,12 +70,31 @@ def provenance_summary(path: str) -> dict[str, Any] | None:
     checks = manifest.get("verification")
     if not isinstance(checks, list):
         checks = []
+    critical = [c for c in checks if c.get("critical", True)]
+    # Three states, because two would lie. "All critical checks passed" is
+    # vacuously true when no critical check ran — which is exactly the run_sql
+    # case (SQL is opaque, so its only check is non-critical), and it would put
+    # a green tick on an output whose single check FAILED and whose manifest
+    # declares no inputs at all. That is the one place where "geometry never
+    # comes from the model" is not structurally guaranteed, so the panel must
+    # not render it like a verified buffer.
+    if any(c.get("passed") is not True for c in critical):
+        status = "failed"
+    elif critical:
+        status = "verified"
+    else:
+        status = "unchecked"
     return {
         "operation": manifest.get("operation"),
         "engine": (manifest.get("engine") or {}).get("name"),
-        "verified": bool(checks)
-        and all(c.get("passed") is True for c in checks if c.get("critical", True)),
+        "status": status,
+        "verified": status == "verified",
         "checks_total": len(checks),
+        "checks_critical": len(critical),
+        # an empty input list means the lineage could not be determined
+        # statically (run_sql), not that there were no inputs
+        "inputs_recorded": bool(manifest.get("inputs")),
+        "repairs": len(manifest.get("repairs") or []),
         "crs_reason": (manifest.get("crs_decisions") or {}).get("reason"),
         "finished_at": manifest.get("finished_at"),
     }
