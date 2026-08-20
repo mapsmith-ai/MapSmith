@@ -8,6 +8,7 @@ we install it on first use (needs network once per environment).
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -68,14 +69,28 @@ def _connect() -> duckdb.DuckDBPyConnection:
     con.load_extension("spatial")
 
     ws = workspace.root()
-    if ws is None:
-        return con
-
-    con.execute(f"SET allowed_directories = ['{_sql_dir(ws)}']")
-    con.execute(f"SET temp_directory = '{_sql_dir(ws)}.duckdb_tmp'")
     tmp_limit = os.environ.get("MAPSMITH_DUCKDB_TEMP_LIMIT", "8GB").replace("'", "''")
+    if ws is not None:
+        con.execute(f"SET allowed_directories = ['{_sql_dir(ws)}']")
+        con.execute(f"SET temp_directory = '{_sql_dir(ws)}.duckdb_tmp'")
+        con.execute("SET enable_external_access = false")
+    else:
+        # No workspace means unconfined FILE access (documented). It must not
+        # also mean network egress: an agent can still LOAD a signed core
+        # extension like httpfs — autoload being off does not stop an explicit
+        # LOAD, and enable_external_access=false would take local files with
+        # it. Disabling the remote filesystems keeps local access intact and
+        # closes the exfiltration channel (verified: read_csv of a URL raises
+        # PermissionException while a local read still works).
+        con.execute("SET disabled_filesystems = 'HTTPFileSystem,S3FileSystem'")
+        # ...and unconfined disk is not part of the deal either: without a
+        # limit a spill fills the volume.
+        con.execute(f"SET temp_directory = '{_sql_dir(Path(tempfile.gettempdir()))}mapsmith'")
     con.execute(f"SET max_temp_directory_size = '{tmp_limit}'")
-    con.execute("SET enable_external_access = false")
+    # Locking is what makes the extension settings above a policy rather than a
+    # default: without it, one multi-statement call re-enables autoload and
+    # then INSTALL/LOAD of a signed extension (httpfs) opens a network egress
+    # path. So it applies in EVERY mode, not just under a workspace.
     con.execute("SET lock_configuration = true")
     return con
 
@@ -129,6 +144,21 @@ def run_sql(query: str, output_path: str | None = None) -> dict[str, Any]:
     }
 
 
+def _write_empty_geoparquet(output_path: str, crs: str) -> None:
+    """Rewrite a zero-row COPY output as a valid, empty GeoParquet."""
+    import geopandas as gpd
+    import pandas as pd
+
+    table = pd.read_parquet(output_path)
+    columns = [c for c in table.columns if c != "geometry"]
+    empty = gpd.GeoDataFrame(
+        {c: pd.Series(dtype=table[c].dtype) for c in columns},
+        geometry=gpd.GeoSeries([], dtype="geometry"),
+        crs=None if crs == verify.UNKNOWN_CRS else crs,
+    )
+    empty.to_parquet(output_path)
+
+
 def spatial_join(
     left_path: str, right_path: str, output_path: str, predicate: str = "intersects"
 ) -> dict[str, Any]:
@@ -159,28 +189,46 @@ def spatial_join(
         JOIN {_rel(right_path)} AS r
           ON {fn}(l.geometry, r.geometry)
     """
-    con.sql(f"COPY ({query}) TO '{_quote(output_path)}' (FORMAT parquet)")
-    count = con.sql(f"SELECT count(*) FROM read_parquet('{_quote(output_path)}')").fetchone()[0]
-    # only worth asking when the result is empty: a non-empty join already
-    # proves both inputs were populated, and counting via SQL (never a
-    # GeoPandas read) keeps the fast path fast
-    inputs_populated = count > 0 or all(
-        con.sql(f"SELECT count(*) FROM {_rel(path)}").fetchone()[0] > 0
-        for path in (left_path, right_path)
-    )
-    checks = verify.verify_vector_output(
+    with verify.audit_on_failure(record, output_path, []):
+        con.sql(f"COPY ({query}) TO '{_quote(output_path)}' (FORMAT parquet)")
+        count = con.sql(
+            f"SELECT count(*) FROM read_parquet('{_quote(output_path)}')"
+        ).fetchone()[0]
+        # only worth asking when the result is empty: a non-empty join already
+        # proves both inputs were populated, and counting via SQL (never a
+        # GeoPandas read) keeps the fast path fast
+        inputs_populated = count > 0 or all(
+            con.sql(f"SELECT count(*) FROM {_rel(path)}").fetchone()[0] > 0
+            for path in (left_path, right_path)
+        )
+    if count == 0:
+        # DuckDB's COPY writes no "geo" metadata for a zero-row result, which
+        # leaves an output that is not a GeoParquet at all: a downstream plan
+        # step reading it would fail on a file we reported as written. An empty
+        # result is a legitimate answer, so it has to be a legitimate file —
+        # rewritten here with the analysis CRS and the joined schema.
+        _write_empty_geoparquet(output_path, left_crs)
+
+    # through audited() like every other writer: reading the output used to
+    # raise before the manifest was written, losing the audit trail for exactly
+    # the case the checks exist to explain
+    manifest, extras = verify.audited(
+        record,
         output_path,
-        expect_crs=left_crs if left_crs != verify.UNKNOWN_CRS else None,
-        on_empty="warn" if inputs_populated else "ignore",
+        operation="spatial_join",
+        checks_fn=lambda: verify.verify_vector_output(
+            output_path,
+            expect_crs=left_crs if left_crs != verify.UNKNOWN_CRS else None,
+            on_empty="warn" if inputs_populated else "ignore",
+        ),
+        repair=False,  # the join's geometry comes straight from the inputs
     )
-    manifest = record.add_verification(checks).finish().write_for(output_path)
-    verify.enforce(checks, "spatial_join")
     return {
         "output": str(output_path),
         "feature_count": int(count),
-        "provenance": str(manifest),
+        "provenance": manifest,
         "verified": True,
-        **verify.result_extras(checks),
+        **extras,
     }
 
 

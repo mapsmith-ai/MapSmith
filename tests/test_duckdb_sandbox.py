@@ -167,10 +167,23 @@ def test_community_extensions_and_autoload_are_off_without_a_workspace(monkeypat
         "autoinstall_known_extensions": "false",
     }
 
+    # the settings are locked, so SQL cannot turn autoload back on
+    with pytest.raises(duckdb.Error):
+        con.execute("SET autoload_known_extensions = true")
     with pytest.raises(duckdb.Error):
         con.execute("INSTALL shellfs FROM community")
-    with pytest.raises(duckdb.Error):
+
+    # loading a *signed core* extension explicitly is still allowed (only
+    # enable_external_access would stop it, and that would take local files
+    # with it), so the egress it would open is closed at the filesystem level
+    with pytest.raises(duckdb.Error, match="(?i)disabled|permission"):
         con.execute("LOAD httpfs")
+        con.sql(
+            "SELECT count(*) FROM "
+            "read_csv('https://raw.githubusercontent.com/duckdb/duckdb/main/README.md')"
+        ).fetchall()
+    with pytest.raises(duckdb.Error):  # and the block cannot be lifted
+        con.execute("SET disabled_filesystems = ''")
 
 
 def test_spatial_still_works_without_a_workspace(tmp_path, monkeypatch):

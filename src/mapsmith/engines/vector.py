@@ -41,7 +41,7 @@ def describe(path: str) -> dict[str, Any]:
     bounds = gdf.total_bounds
     return {
         "path": str(path),
-        "crs": str(gdf.crs) if gdf.crs else None,
+        "crs": verify.crs_label(gdf.crs) if gdf.crs else None,
         "feature_count": len(gdf),
         "geometry_types": sorted(gdf.geom_type.dropna().unique().tolist()),
         "fields": {c: str(t) for c, t in gdf.dtypes.items() if c != gdf.geometry.name},
@@ -64,7 +64,7 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
     record = ProvenanceRecord(
         operation="buffer_layer",
         parameters={"distance_meters": distance_meters},
-        inputs=[InputRecord.from_path(input_path, crs=str(gdf.crs))],
+        inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))],
         engine=_engine_info(),
     )
     pre = verify.verify_loaded_inputs("buffer_layer", input_path=gdf)
@@ -80,7 +80,7 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
         buffered = buffered.to_crs(original_crs)
     else:
         record.crs_decisions = {
-            "analysis_crs": str(original_crs),
+            "analysis_crs": verify.crs_label(original_crs),
             "reason": "input CRS is already projected; distance interpreted in its units",
         }
         buffered = gdf.copy()
@@ -93,7 +93,7 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
         preconditions=pre,
         checks_fn=lambda: verify.verify_vector_output(
             output_path,
-            expect_crs=str(original_crs),
+            expect_crs=verify.crs_label(original_crs),
             expect_count=len(gdf),
             expect_geometry={"Polygon", "MultiPolygon"},
             # a buffer of a non-empty layer cannot be empty: that is a bug
@@ -116,8 +116,8 @@ def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
         operation="clip_layer",
         parameters={},
         inputs=[
-            InputRecord.from_path(input_path, crs=str(gdf.crs)),
-            InputRecord.from_path(mask_path, crs=str(mask.crs)),
+            InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs)),
+            InputRecord.from_path(mask_path, crs=verify.crs_label(mask.crs)),
         ],
         engine=_engine_info(),
     )
@@ -130,7 +130,7 @@ def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
     if gdf.crs != mask.crs:
         mask = mask.to_crs(gdf.crs)
         record.crs_decisions = {
-            "analysis_crs": str(gdf.crs),
+            "analysis_crs": verify.crs_label(gdf.crs),
             "reason": "mask reprojected to the input layer CRS before clipping",
         }
     # extents can only be compared once both layers share a CRS
@@ -146,7 +146,7 @@ def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
         preconditions=pre,
         checks_fn=lambda: verify.verify_vector_output(
             output_path,
-            expect_crs=str(gdf.crs),
+            expect_crs=verify.crs_label(gdf.crs),
             max_count=len(gdf),
             within_bounds=mask_bounds,
             bounds_margin=1e-6,
@@ -172,7 +172,7 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
     record = ProvenanceRecord(
         operation="reproject_layer",
         parameters={"target_crs": target_crs},
-        inputs=[InputRecord.from_path(input_path, crs=str(gdf.crs))],
+        inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))],
         engine=_engine_info(),
     )
     pre = verify.verify_loaded_inputs("reproject_layer", input_path=gdf)
@@ -198,7 +198,7 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
     )
     return {
         "output": str(output_path),
-        "crs": str(reprojected.crs),
+        "crs": verify.crs_label(reprojected.crs),
         "provenance": manifest,
         "verified": True,
         **extras,
@@ -217,8 +217,8 @@ def spatial_join(
         operation="spatial_join",
         parameters={"predicate": predicate},
         inputs=[
-            InputRecord.from_path(left_path, crs=str(left.crs)),
-            InputRecord.from_path(right_path, crs=str(right.crs)),
+            InputRecord.from_path(left_path, crs=verify.crs_label(left.crs)),
+            InputRecord.from_path(right_path, crs=verify.crs_label(right.crs)),
         ],
         engine=_engine_info(),
     )
@@ -229,7 +229,7 @@ def spatial_join(
     if left.crs != right.crs:
         right = right.to_crs(left.crs)
         record.crs_decisions = {
-            "analysis_crs": str(left.crs),
+            "analysis_crs": verify.crs_label(left.crs),
             "reason": "right layer reprojected to the left layer CRS before joining",
         }
     pre += verify.verify_input_pairs("spatial_join", left_path=left, right_path=right)
@@ -244,7 +244,7 @@ def spatial_join(
         preconditions=pre,
         checks_fn=lambda: verify.verify_vector_output(
             output_path,
-            expect_crs=str(left.crs),
+            expect_crs=verify.crs_label(left.crs),
             on_empty="warn" if len(left) and len(right) else "ignore",
         ),
     )

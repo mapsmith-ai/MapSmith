@@ -52,6 +52,23 @@ def probe_crs(path: str) -> str:
         return UNKNOWN_CRS
 
 
+def crs_label(crs: Any) -> str:
+    """Short, stable label for a CRS: 'EPSG:32632' rather than 2.5 KB of PROJJSON.
+
+    `str(crs)` returns the EPSG string for a CRS read from a GeoPackage but the
+    full PROJJSON document for one read from GeoParquet — the canonical format
+    — so manifests and check details grew a JSON blob per field depending on
+    the input format alone.
+    """
+    if crs is None:
+        return UNKNOWN_CRS
+    try:
+        epsg = crs.to_epsg()
+    except AttributeError:
+        return str(crs)
+    return f"EPSG:{epsg}" if epsg else (getattr(crs, "name", None) or str(crs))
+
+
 def _probe_geoparquet_crs(path: str) -> str:
     import json
 
@@ -63,8 +80,20 @@ def _probe_geoparquet_crs(path: str) -> str:
         return UNKNOWN_CRS
     geo_meta = json.loads(geo)
     column = geo_meta.get("primary_column", "geometry")
-    # Per the GeoParquet spec a missing/null "crs" means OGC:CRS84.
-    crs = geo_meta.get("columns", {}).get(column, {}).get("crs") or "OGC:CRS84"
+    spec = geo_meta.get("columns", {}).get(column, {})
+    # The GeoParquet spec distinguishes two cases that must NOT be conflated:
+    # the "crs" field being ABSENT means OGC:CRS84, while an explicit null
+    # means "undefined or unknown". GeoPandas writes null for crs=None and
+    # reads it back as None, so treating null as CRS84 would have MapSmith
+    # invent a coordinate system and record it in the manifest as fact — the
+    # worst possible failure for a provenance product, and it defeated the
+    # CRS precondition in the canonical format.
+    if "crs" not in spec:
+        crs = "OGC:CRS84"
+    elif spec["crs"] is None:
+        return UNKNOWN_CRS
+    else:
+        crs = spec["crs"]
     from pyproj import CRS
 
     parsed = CRS.from_user_input(crs)
@@ -114,13 +143,27 @@ def _read_vector(path: str):
     default — which would verify a layer the operation never wrote and mark an
     unchecked output as verified. MapSmith's writers name the layer after the
     file stem, so prefer that one when it is there.
+
+    A Parquet file with no ``geo`` metadata is read as a plain table rather
+    than refused: DuckDB writes exactly that for a zero-row result, and
+    raising here would kill the writer *before* it could record why the output
+    is empty — losing the manifest for the very case the checks exist to
+    explain.
     """
     lower = str(path).lower()
     if lower.endswith(".parquet"):
-        return gpd.read_parquet(path)
+        try:
+            return gpd.read_parquet(path)
+        except ValueError as exc:
+            if "geo metadata" not in str(exc).lower():
+                raise
+            import pandas as pd
+
+            table = pd.read_parquet(path)
+            return gpd.GeoDataFrame(table, geometry=gpd.GeoSeries([], dtype="geometry"))
     if lower.endswith(".gpkg"):
         stem = Path(path).stem
-        if stem in _gpkg_layers(path):
+        if stem in (_gpkg_layers(path) or []):
             return gpd.read_file(path, layer=stem)
     return gpd.read_file(path)
 
@@ -363,6 +406,11 @@ def _repair_invalid_geometry(output_path: str) -> str:
             "the output. Convert to GeoParquet or fix the geometry upstream."
         )
     layers = _gpkg_layers(output_path) if suffix == ".gpkg" else []
+    if layers is None:
+        raise ValueError(
+            f"the layers of {path.name} could not be listed, so rewriting it "
+            "could drop layers this operation never read; repair skipped."
+        )
     if len(layers) > 1:
         raise ValueError(
             f"{path.name} holds {len(layers)} layers ({', '.join(layers)}): "

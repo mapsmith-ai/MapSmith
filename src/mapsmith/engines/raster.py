@@ -81,7 +81,7 @@ def zonal_statistics(
             parameters={"stats": ops, "bands": ds.count},
             inputs=[
                 InputRecord.from_path(raster_path, crs=str(raster_crs)),
-                InputRecord.from_path(zones_path, crs=str(zones.crs)),
+                InputRecord.from_path(zones_path, crs=verify.crs_label(zones.crs)),
             ],
             engine=_engine_info(),
         )
@@ -120,7 +120,7 @@ def zonal_statistics(
         preconditions=verify.verify_loaded_inputs("zonal_statistics", zones_path=zones),
         checks_fn=lambda: verify.verify_vector_output(
             output_path,
-            expect_crs=str(zones.crs),
+            expect_crs=verify.crs_label(zones.crs),
             expect_count=len(zones),
         ),
     )

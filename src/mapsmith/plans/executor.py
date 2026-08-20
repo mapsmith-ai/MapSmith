@@ -29,6 +29,7 @@ from .validator import validate
 _ECHO_KEYS = (
     "output", "provenance", "feature_count", "crs", "engine_used", "verified",
     "warnings",  # non-critical verification failures (empty results, disjoint inputs)
+    "repairs",  # geometry MapSmith rewrote: must not be invisible at plan level
 )
 
 

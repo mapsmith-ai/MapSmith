@@ -18,7 +18,7 @@ MapSmith is an open-source [MCP](https://modelcontextprotocol.io) server that gi
 
 ## Why MapSmith
 
-- **Real geoprocessing, not map CRUD.** Built on the proven open geospatial stack (GDAL, GeoPandas, Shapely, and more to come: WhiteboxTools, PDAL, DuckDB Spatial, QGIS Processing via sidecar).
+- **Real geoprocessing, not map CRUD.** Built on the proven open geospatial stack: GDAL, GeoPandas, Shapely, DuckDB Spatial, WhiteboxTools and exactextract ship today (more to come: PDAL, QGIS Processing via sidecar).
 - **Provenance by design.** Every layer MapSmith produces ships with a machine-readable lineage manifest: source datasets (with checksums), every tool executed, exact parameters, CRS decisions, software versions, timestamps. Everything needed to re-run the analysis without the LLM is in there. No AI slop.
 - **The LLM orchestrates, tools compute.** Geometry and numbers only ever come from deterministic tool executions — never from model output.
 - **Semantic tools, not a tool dump.** A curated set of goal-level tools plus a searchable operation catalog (progressive discovery), because agent accuracy collapses when you expose hundreds of raw tools.
@@ -178,6 +178,35 @@ container and mount only the data you want it to see; keep the HTTP
 transport on loopback/trusted networks until authenticated remote mode
 ships.
 
+## We measured whether this actually helps
+
+Claims about agent performance are cheap, so
+[**docs/benchmarks.md**](docs/benchmarks.md) reports an A/B on
+[GABench](https://github.com/GeoX-Lab/GABench) — 57 executable GIS tasks over a
+133-tool server, scored by its deterministic evaluator — where the *only*
+variable is whether the agent's typed plan is validated before the solver runs.
+
+The honest headline is a **null result**, on a frontier model and on a small
+one, and the interesting part is why:
+
+| | Arm A (no gate) | Arm B (gate) |
+|---|---|---|
+| Sonnet 5 — TAO / PEA | 0.824 / 0.430 | 0.781 / 0.425 |
+| Haiku 4.5 — TAO / PEA | 0.660 / 0.320 | 0.714 / 0.366 |
+
+Haiku looks like a clean win until you notice the gate only fired on 4 of 57
+plans, and that the 53 tasks it never touched moved by just as much: the
+aggregate delta is run-to-run variance, and measuring that noise floor
+(2–5 points per metric on a single repetition) is the reusable result. What
+survives is narrower — on the plans it did repair, tool selection improved by
++0.19 TAO — and it points at where the failures actually are: PEA around 0.4
+in every arm, i.e. wrong parameters and missing outputs at *execution* time,
+which is why MapSmith enforces its plans at the execution boundary and verifies
+inputs and outputs at runtime rather than advising an agent that improvises.
+
+The harness is in [`benchmarks/gabench-ab/`](benchmarks/gabench-ab/), including
+the `split_analysis.py` that took our own win apart.
+
 ## Notebook gallery
 
 Three executable, self-contained walkthroughs in [`examples/`](examples/):
@@ -189,7 +218,7 @@ then repaired. Each generates its own synthetic data — install and run.
 
 ```json
 {
-  "mapsmith_version": "0.1.0",
+  "mapsmith_version": "0.2.0",
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{"path": "rivers.gpkg", "sha256": "9f2c…", "crs": "EPSG:4326"}],
