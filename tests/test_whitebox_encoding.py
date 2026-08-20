@@ -13,10 +13,15 @@ comparing two runs: two wrong answers agreeing would pass.
 
 import numpy as np
 import pytest
-import rasterio
-from rasterio.transform import from_origin
 
+# importorskip, not a plain import: CONTRIBUTING documents `pip install -e .[test]`
+# and pytest collects every file before running anything, so a module-level
+# `import rasterio` here broke the whole suite for a contributor without the
+# raster extra — including the tests that need neither.
+rasterio = pytest.importorskip("rasterio")
 wb = pytest.importorskip("whitebox_workflows")
+
+from rasterio.transform import from_origin
 
 from mapsmith.engines import whitebox_engine
 

@@ -1,5 +1,7 @@
-# Full local stack: MCP server (HTTP) + Postgres job ledger + MinIO artifact store.
+# Full local stack: MCP server (HTTP) + Postgres job ledger + MinIO.
 # The server also runs standalone (stdio) with zero infrastructure: `uvx mapsmith`.
+# MinIO is scaffolding for the artifact store the job ledger will use: nothing in
+# MapSmith writes to it today.
 #
 # The HTTP transport has NO AUTHENTICATION yet. This stack binds the port to
 # loopback and confines the server to /data on purpose; if you publish the port
@@ -42,9 +44,11 @@ services:
     environment:
       MINIO_ROOT_USER: mapsmith
       MINIO_ROOT_PASSWORD: mapsmith-dev-only
+    # loopback, like the server above: these are default dev credentials and
+    # publishing them on every interface is how a laptop becomes someone's bucket
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - miniodata:/data
 

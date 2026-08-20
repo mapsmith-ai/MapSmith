@@ -13,11 +13,13 @@ runs, and the server can be confined to a single directory.
 ### Added
 
 - **Interactive map inside the chat.** `preview_map` renders your layers on a
-  pan/zoom map panel in Claude, ChatGPT, VS Code and any client supporting the
+  pan/zoom map panel in any client implementing the
   [MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview)
-  extension, with an OpenStreetMap backdrop and a provenance card per layer
-  (operation, engine, verified ✓). Fully self-contained; on clients without
-  MCP Apps the same call returns structured data.
+  extension (field-tested on Claude Desktop), with an OpenStreetMap backdrop
+  and a provenance card per layer showing operation, engine and one of three
+  states: `verified ✓`, `verification failed`, or `not verifiable` when no
+  critical check ran. Fully self-contained; on clients without MCP Apps the
+  same call returns structured data.
 - **Typed plans.** `validate_plan` statically checks a multi-step analysis —
   operations exist and are installed, arguments complete and well-typed,
   `$step` references resolve backwards, input files exist, outputs don't

@@ -27,9 +27,18 @@ of authentication is a documented limitation, not one.
 
 Also worth knowing rather than reporting: with `MAPSMITH_WORKSPACE` unset,
 `run_sql` can read and write any path the process can reach — deliberate, and
-documented in the README. Extension installation, autoloading and community
-extensions are refused in every mode, so that access cannot escalate into code
-execution or network egress.
+documented in the README. Escalation from there is closed on the paths that
+matter: extension autoinstall and autoloading are off, community extensions are
+refused (`shellfs` turns a filename ending in `|` into a shell command),
+unsigned extensions cannot be enabled, the HTTP and S3 filesystems are disabled
+so even an explicitly loaded `httpfs` can neither read nor write over the
+network, and the configuration is locked so SQL cannot undo any of it. What
+remains reachable in that mode — and only in that mode — is `INSTALL <name>` of
+a *signed* extension: DuckDB fetches it, from a repository URL the statement is
+allowed to name, before refusing anything unsigned. So unconfined mode does let
+SQL trigger one outbound request; it does not let it load unsigned code or move
+data over the network. With `MAPSMITH_WORKSPACE` set, both `INSTALL` and `LOAD`
+are refused outright.
 
 Out of scope: issues requiring a hostile local process on the same machine
 (the jail assumes a single trusted writer of the workspace filesystem —

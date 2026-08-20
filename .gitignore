@@ -22,6 +22,12 @@ venv/
 *.provenance.json
 data/
 
+# Scratch databases: probing the DuckDB sandbox (ATTACH, COPY) drops these in
+# the repo root, and one of them reached a public commit before we noticed.
+*.db
+*.duckdb
+*.wal
+
 # OS / editors
 .DS_Store
 Thumbs.db

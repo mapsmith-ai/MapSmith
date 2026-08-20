@@ -1,40 +1,31 @@
-# MapSmith 🔨🗺️
+# MapSmith
 
 [![CI](https://github.com/mapsmith-ai/MapSmith/actions/workflows/ci.yml/badge.svg)](https://github.com/mapsmith-ai/MapSmith/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/mapsmith)](https://pypi.org/project/mapsmith/)
-[![Python](https://img.shields.io/pypi/pyversions/mapsmith)](https://pypi.org/project/mapsmith/)
-[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 [![Container](https://img.shields.io/badge/ghcr.io-mapsmith--ai%2Fmapsmith-2496ED?logo=docker&logoColor=white)](https://github.com/mapsmith-ai/MapSmith/pkgs/container/mapsmith)
 [![MCP](https://img.shields.io/badge/Model_Context_Protocol-server-654FF0)](https://modelcontextprotocol.io)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![X](https://img.shields.io/badge/@mapsmith__ai-000000?logo=x&logoColor=white)](https://x.com/mapsmith_ai)
-[![Bluesky](https://img.shields.io/badge/Bluesky-mapsmith.bsky.social-0285FF?logo=bluesky&logoColor=white)](https://bsky.app/profile/mapsmith.bsky.social)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 
 **Professional-grade geoprocessing for AI agents — with provenance you can verify.**
 
-MapSmith is an open-source [MCP](https://modelcontextprotocol.io) server that gives any AI agent (Claude, ChatGPT, Copilot, Cursor, or your own) real GIS analysis capabilities: not just "make me a map", but buffers, overlays, reprojections, zonal statistics, terrain and network analysis — executed by deterministic engines, never hallucinated by the model.
+MapSmith is an open-source [MCP](https://modelcontextprotocol.io) server that gives an AI
+agent real GIS analysis — buffers, overlays, reprojections, zonal statistics, terrain and
+hydrology — executed by GeoPandas, DuckDB Spatial, exactextract and Whitebox Workflows,
+never written by the model. Every dataset it produces lands on disk next to a lineage
+manifest: inputs with checksums, the exact parameters, the CRS decisions and *why*, engine
+versions, and the deterministic checks that ran on the result.
 
-> Ask for the result. The agent picks the tools. Every output carries its full lineage.
+> Ask for the result. The agent picks the tools. You can check the work afterwards.
 
-## Why MapSmith
-
-- **Real geoprocessing, not map CRUD.** Built on the proven open geospatial stack: GDAL, GeoPandas, Shapely, DuckDB Spatial, WhiteboxTools and exactextract ship today (more to come: PDAL, QGIS Processing via sidecar).
-- **Provenance by design.** Every layer MapSmith produces ships with a machine-readable lineage manifest: source datasets (with checksums), every tool executed, exact parameters, CRS decisions, software versions, timestamps. Everything needed to re-run the analysis without the LLM is in there. No AI slop.
-- **The LLM orchestrates, tools compute.** Geometry and numbers only ever come from deterministic tool executions — never from model output.
-- **Semantic tools, not a tool dump.** A curated set of goal-level tools plus a searchable operation catalog (progressive discovery), because agent accuracy collapses when you expose hundreds of raw tools.
-- **Model-agnostic infrastructure.** Claude, GPT, Qwen, Kimi, GLM — anything that speaks MCP, cloud or local. The leverage is better contracts (typed plans, actionable error codes, a searchable catalog), not weights we would have to maintain. See [the manifesto](MANIFESTO.md).
+Evidence before promises: an [A/B on GABench](docs/benchmarks.md) whose headline is a null
+result — with the analysis that took our own positive number apart — [notebooks](examples/)
+on a real USGS DEM of Mount St. Helens, and an
+[in-chat map panel](#see-results-inside-the-chat) that shows the verification status of
+every layer it draws.
 
 ## Quickstart
 
-```bash
-# Docker (the supported path)
-docker run -i --rm -v $(pwd)/data:/data -e MAPSMITH_WORKSPACE=/data ghcr.io/mapsmith-ai/mapsmith
-
-# or from PyPI
-uvx mapsmith
-```
-
-Add to Claude Desktop / any MCP client (stdio):
+Add MapSmith to any MCP client over stdio (Claude Desktop, Claude Code, Cursor, VS Code):
 
 ```json
 {
@@ -47,6 +38,22 @@ Add to Claude Desktop / any MCP client (stdio):
 }
 ```
 
+Docker is the supported path, and confines the server to the directory you mount:
+
+```json
+{
+  "mcpServers": {
+    "mapsmith": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm",
+               "-v", "/absolute/path/to/your/data:/data",
+               "-e", "MAPSMITH_WORKSPACE=/data",
+               "ghcr.io/mapsmith-ai/mapsmith"]
+    }
+  }
+}
+```
+
 One-click installs:
 
 [![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=mapsmith&config=eyJjb21tYW5kIjoidXZ4IiwiYXJncyI6WyJtYXBzbWl0aCJdfQ%3D%3D)
@@ -54,9 +61,60 @@ One-click installs:
 
 or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":["mapsmith"]}'`
 
+To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
+(Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
+
 Then ask your agent things like:
 
-> "Take parcels.gpkg, keep only the parcels within 300 m of the river in rivers.gpkg, and give me the result with the analysis lineage."
+> "Take parcels.gpkg, keep only the parcels within 300 m of the river in rivers.gpkg, and
+> give me the result with the analysis lineage."
+
+The Docker image includes the `[raster]` and `[whitebox]` extras. With `uvx`, pick your
+own: `uvx --from "mapsmith[raster,whitebox]" mapsmith`. **Docker — or `uvx` on a machine
+with working wheels — is the only supported installation path**: geospatial native
+dependencies across three OSes are a support black hole, and issues about broken local
+environments will be redirected here.
+
+## What you get back
+
+Every dataset comes with the file below, written next to it as
+`<output>.provenance.json` — enough to re-run the analysis without the model that asked
+for it:
+
+```json
+{
+  "mapsmith_version": "0.2.0",
+  "operation": "buffer_layer",
+  "parameters": {"distance_meters": 300.0},
+  "inputs": [{"path": "rivers.gpkg", "sha256": "9f2c…", "crs": "EPSG:4326"}],
+  "crs_decisions": {"analysis_crs": "EPSG:32632", "reason": "estimated UTM zone for metric buffering"},
+  "engine": {"name": "geopandas", "version": "1.0.1"},
+  "started_at": "2026-08-18T10:15:03Z",
+  "finished_at": "2026-08-18T10:15:04Z"
+}
+```
+
+The full manifest also carries the verification checks that ran, and any geometry MapSmith
+had to repair. `get_provenance` returns it for any output.
+
+## Why MapSmith
+
+- **Real geoprocessing, not map CRUD.** Built on the proven open geospatial stack: GDAL,
+  GeoPandas, Shapely, DuckDB Spatial, Whitebox Workflows and exactextract ship today
+  (more to come: PDAL, QGIS Processing via sidecar).
+- **Provenance by design.** Every layer MapSmith produces ships with a machine-readable
+  lineage manifest — source datasets with checksums, tools executed, exact parameters, CRS
+  decisions, software versions, timestamps. Everything needed to re-run the analysis
+  without the LLM is in there. No AI slop.
+- **The engines compute, the model orchestrates.** Geometry and numbers only ever come
+  from deterministic tool executions — never from model output.
+- **Semantic tools, not a tool dump.** 16 goal-level tools plus a searchable operation
+  catalog (progressive discovery), because agent accuracy collapses when you expose
+  hundreds of raw tools.
+- **Model-agnostic infrastructure.** Claude, GPT, Qwen, Kimi, GLM — anything that speaks
+  MCP, cloud or local. The leverage is better contracts (typed plans, actionable error
+  codes, a searchable catalog), not weights we would have to maintain. See
+  [the manifesto](MANIFESTO.md).
 
 ## Tools
 
@@ -72,58 +130,67 @@ Then ask your agent things like:
 | `hillshade` | Shaded relief from a DEM, in-memory Whitebox engine (`[whitebox]` extra) |
 | `flow_accumulation` | D8 flow accumulation with automatic depression filling (`[whitebox]` extra) |
 | `watershed` | Watershed delineation from a DEM and pour points (`[whitebox]` extra) |
-| `preview_map` | Interactive in-chat map (MCP Apps) of any datasets, with per-layer provenance and verification badges |
+| `preview_map` | Interactive in-chat map (MCP Apps) of any datasets, with a provenance card and verification status per layer |
 | `validate_plan` | Statically validate a multi-step plan before running anything: operations, arguments, references, input files, simulated CRS flow |
 | `execute_plan` | Validate then run a plan step by step, with per-step provenance and a plan-level manifest |
 | `get_provenance` | Return the full lineage manifest of any MapSmith output |
 | `list_operations` | BM25-ranked catalog search; `detail=true` returns parameters and worked examples |
 | `server_info` | Version, license, available engines |
 
-Every tool that writes an output also writes `<output>.provenance.json` next to it —
-and runs deterministic verification (CRS, dimensions, value invariants) whose results
-are recorded in the manifest *before* any failure is raised.
+## Verification, in and out
 
-Verification runs on the way in as well as on the way out. The vector
-operations (`buffer_layer`, `clip_layer`, `reproject_layer`, `spatial_join`,
-`zonal_statistics`) check their inputs first for the failures that produce
-*plausible* junk: a layer with no CRS — refused outright, before anything runs
-— and an empty layer; where an operation takes two vector inputs, also extents
-that cannot possibly intersect. Afterwards, where an operation carries geometry through
-unchanged (reprojection, joins, zonal statistics), an output that is
-mechanically broken is repaired deterministically — `make_valid`, at most two
-rounds, written to a temporary file and swapped in only once it is complete —
-and every attempt is recorded in the manifest, because a repaired output must
-never look like one that was right first time. Failures needing judgement are
-never "fixed": an empty result, or geometries eroded away by a wrong distance,
-come back as named warnings with hints, in the tool result and not only in the
-manifest, so the agent sees them instead of assuming success.
+Every tool that writes a dataset also writes `<output>.provenance.json` beside it and
+verifies its own work — CRS agreement, geometry validity, raster dimensions, count and
+extent invariants — recording the results in the manifest *before* raising anything, so
+the audit trail survives the error.
 
-The Docker image ships with the `[raster]` and `[whitebox]` extras included. With
-`uvx`, pick your extras: `uvx --from "mapsmith[raster,whitebox]" mapsmith`.
+Verification runs on the way in as well. Before an operation touches your data, MapSmith
+checks the failures that produce *plausible* junk: an input with no CRS is refused
+outright, because metric maths on unknown units is how a confidently wrong answer gets
+made; an empty input, or two layers whose extents cannot possibly overlap, comes back as
+a named warning with a hint — in the tool result, not only in the manifest, so the agent
+sees it instead of assuming success. (The join fast paths, DuckDB and SedonaDB, only ever
+receive inputs that already share a known CRS; they verify their output and diagnose an
+empty join.)
+
+An output whose geometry is *mechanically* broken — typically invalidity inherited from an
+invalid input — is repaired deterministically: `make_valid`, at most two rounds, written
+to a temporary file and swapped in only once it is complete, and skipped rather than
+risked where a rewrite could drop data (a multi-layer GeoPackage is refused, not
+rewritten). Every attempt lands in the manifest *and* in the tool result, because a
+repaired output must never look like one that was right the first time. Failures that need
+judgement are never "fixed": an empty result, or geometries eroded away by a wrong
+distance, come back as warnings with hints for the agent to act on.
 
 ## See results inside the chat
 
 ![MapSmith's interactive map panel rendered inside Claude Desktop: OSM basemap, buffer and zone layers, and per-layer provenance cards with verification status](docs/images/map-panel.png)
 
-`preview_map` renders your layers on an interactive map panel *inside* Claude,
-ChatGPT, VS Code and every other client supporting the official
-[MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview) extension —
-pan, zoom, toggle layers, and read each layer's provenance card (operation,
-engine, verified ✓) right next to the geometry it explains. The panel is fully
-self-contained — no CDN, no bundled libraries, no telemetry — with one
-outbound request named here rather than buried: the OpenStreetMap background
-tiles, which reveal the map view you are looking at (never your data), and
-which the panel drops to a plain backdrop when the host blocks them. On clients
-without MCP Apps the same call returns the preview as structured data.
+`preview_map` renders your layers on an interactive map panel *inside* the chat — pan,
+zoom, toggle layers, and read each layer's provenance card (operation, engine, and one of
+three honest states: `verified ✓`, `verification failed`, or `not verifiable` when no
+critical check ran) right next to the geometry it explains. Field-tested on Claude
+Desktop; it renders in any client that implements the official
+[MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview) extension, and on
+clients without it the same call returns the preview as structured data.
+
+The panel is self-contained — no CDN, no bundled libraries, no telemetry — with one
+outbound request named here rather than buried: the OpenStreetMap background tiles, which
+reveal the map view you are looking at (never your data) and which the panel drops to a
+plain backdrop when the host blocks them. The preview is deliberately lossy (simplified
+geometry, capped feature counts): the dataset of record stays on disk with its manifest.
 
 ## Plans: reject wrong analyses before they run
 
-In GIS-agent benchmarks, up to ~47% of failed runs involve planning mistakes —
-missing or mis-ordered operations — and CRS mismatches halve task success. MapSmith attacks
-this where it's cheapest: the agent submits a **typed plan**, and static
-validation rejects unknown operations (with suggestions), missing arguments,
-forward references, absent input files and CRS-unsuitable steps **before
-anything executes** — with machine-actionable error codes the agent can repair.
+In [GISAgentBench](https://arxiv.org/abs/2608.01645) — 349 practitioner-sourced tasks over
+128 GIS APIs — the best frontier agent completes 32.7% of tasks under strict scoring, and
+planning defects dominate the failures: missing operations in 28.3% of failed runs and
+wrong operation order in 18.4% (multi-label, so up to ~47% involve a planning mistake),
+against 7.8% for parameter errors. MapSmith attacks this where it is cheapest: the agent
+submits a **typed plan**, and static validation rejects unknown operations (with
+suggestions), missing arguments, forward references, absent input files and CRS-unsuitable
+steps **before anything executes** — with machine-actionable error codes the agent can
+repair.
 
 ```json
 {
@@ -139,44 +206,47 @@ anything executes** — with machine-actionable error codes the agent can repair
 }
 ```
 
-`"$buf"` consumes the output of step `buf`; references may only point backwards,
-so plans are acyclic by construction. `validate_plan` also simulates the CRS of
-every intermediate dataset from the real input files. `execute_plan` then runs
-the chain with per-step provenance plus a plan-level manifest
-(`<output>.plan.json`) fingerprinting the exact plan that produced the result.
+`"$buf"` consumes the output of step `buf`; references may only point backwards, so plans
+are acyclic by construction. `validate_plan` also simulates the CRS of every intermediate
+dataset from the real input files. `execute_plan` then runs the chain with per-step
+provenance plus a plan-level manifest (`<output>.plan.json`) fingerprinting the exact plan
+that produced the result.
 
-UNC hosts and NTFS alternate data streams are rejected in every path
-*argument* of every tool call, before anything touches the filesystem (on Windows even an existence
-check on a UNC path talks to an attacker-chosen host). Remote and virtual
-forms (GDAL `/vsi*`, `https://` COGs) stay available in uncontained mode —
-cloud-native data is a feature — and are refused once a workspace is set.
-Validated plans are stricter by design and reject every non-local form.
+## Confinement
+
+UNC hosts and NTFS alternate data streams are refused in every path *argument* of every
+tool call, before anything touches the filesystem (on Windows even an existence check on a
+UNC path talks to an attacker-chosen host). Remote and virtual forms — GDAL `/vsi*`,
+`https://` COGs — stay available while the server is unconfined, because cloud-native data
+is a feature, and are refused once a workspace is set. Validated plans are stricter by
+design and reject every non-local form.
 
 Set `MAPSMITH_WORKSPACE=/data` to confine the server to one directory:
 
-- every path argument of every tool must resolve inside the workspace
-  (checked at the MCP boundary, and again by plan validation with stable
-  error codes);
-- the `run_sql` DuckDB connection is sandboxed at the engine level —
-  filesystem whitelisted to the workspace (`allowed_directories` + external
-  access off, which also covers GDAL-backed `ST_Read`), extension
-  install/load refused, memory and temp-disk capped
-  (`MAPSMITH_DUCKDB_MEMORY`, default 4GB; `MAPSMITH_DUCKDB_TEMP_LIMIT`,
-  default 8GB), configuration locked. SQL text can name any path it likes;
-  the engine refuses to open it.
+- every path argument of every tool must resolve inside the workspace (checked at the MCP
+  boundary, and again by plan validation with stable error codes);
+- the `run_sql` DuckDB connection is sandboxed in the engine itself, because SQL text is
+  out of reach of a textual path check: filesystem whitelisted to the workspace
+  (`allowed_directories` + external access off, which also covers GDAL-backed `ST_Read`),
+  extension install and load refused, memory and temp disk capped
+  (`MAPSMITH_DUCKDB_MEMORY`, default 4GB; `MAPSMITH_DUCKDB_TEMP_LIMIT`, default 8GB),
+  configuration locked. SQL can name any path it likes; the engine refuses to open it.
 
-Without a workspace the server is deliberately unconfined (fine for a local
-stdio server on your own files); plan validation flags `run_sql` steps with a
-`SQL_NOT_SANDBOXED` warning in that mode. Two fine-print notes: the jail
-assumes a single trusted writer of the workspace filesystem (paths are
-resolved at check time, so symlink swaps by another local process are out of
-scope), and the spatial extension is fetched once per environment — for
-air-gapped deployments pre-install it (`python -c "import duckdb;
-duckdb.connect().install_extension('spatial')"`) before locking the network
-down. Defense in depth still applies: for real isolation run MapSmith in a
-container and mount only the data you want it to see; keep the HTTP
-transport on loopback/trusted networks until authenticated remote mode
-ships.
+Without a workspace, *file* access is deliberately unconfined — fine for a local stdio
+server on your own files — and plan validation flags `run_sql` steps with a
+`SQL_NOT_SANDBOXED` warning. Escalation from there is still closed: extension autoloading
+and community extensions are off (`shellfs` turns a filename into a shell command), the
+HTTP and S3 filesystems are disabled, and the configuration is locked, so untrusted SQL
+cannot turn file access into code execution or data egress. The full threat model — and
+what is explicitly *not* covered — is in [SECURITY.md](SECURITY.md).
+
+Fine print, because it changes how you deploy this: the path jail assumes a single trusted
+writer of the workspace filesystem (paths are resolved at check time, so a symlink swap by
+another local process is out of scope); the DuckDB spatial extension is fetched once per
+environment, so on air-gapped machines pre-install it (`python -c "import duckdb;
+duckdb.connect().install_extension('spatial')"`) before locking the network down; and the
+HTTP transport has no authentication in this release, so keep it on loopback or a trusted
+network. For real isolation, run the container and mount only the data you want it to see.
 
 ## We measured whether this actually helps
 
@@ -209,25 +279,13 @@ the `split_analysis.py` that took our own win apart.
 
 ## Notebook gallery
 
-Three executable, self-contained walkthroughs in [`examples/`](examples/):
-verified buffer+clip with provenance manifests, terrain & hydrology on the
-Whitebox engine, and a deliberately wrong plan rejected before execution and
-then repaired. Each generates its own synthetic data — install and run.
-
-## Provenance example
-
-```json
-{
-  "mapsmith_version": "0.2.0",
-  "operation": "buffer_layer",
-  "parameters": {"distance_meters": 300.0},
-  "inputs": [{"path": "rivers.gpkg", "sha256": "9f2c…", "crs": "EPSG:4326"}],
-  "crs_decisions": {"analysis_crs": "EPSG:32632", "reason": "estimated UTM zone for metric buffering"},
-  "engine": {"name": "geopandas", "version": "1.0.1"},
-  "started_at": "2026-08-18T10:15:03Z",
-  "finished_at": "2026-08-18T10:15:04Z"
-}
-```
+Three executable walkthroughs in [`examples/`](examples/): verified buffer+clip with
+provenance manifests, terrain and hydrology on a real 520×520 USGS DEM of **Mount St.
+Helens**, and a deliberately wrong plan rejected before execution and then repaired. The
+terrain notebook also shows what happens when reality bites: that DEM is stored with the
+standard TIFF predictor, which Whitebox Workflows 2.x does not undo when reading
+([upstream report](https://github.com/jblindsay/whitebox_next_gen/issues/32)), so MapSmith
+detects it, converts the input first, and discloses the workaround in the manifest.
 
 ## Architecture
 
@@ -252,30 +310,57 @@ then repaired. Each generates its own synthetic data — install and run.
  └─────────────────────────────────────────────┘
 ```
 
+## When not to use MapSmith
+
+- **You need an authenticated remote server today.** The Streamable HTTP transport has no
+  authentication in this release: anyone who can reach the endpoint can run every tool
+  against everything the process can see. Loopback or a trusted network only
+  ([SECURITY.md](SECURITY.md)).
+- **You want a sandbox for arbitrary agent code.** MapSmith confines paths and the SQL
+  engine; there is no code-execution tool yet, and a path jail is not a container.
+- **You need cartography.** No styling, no layouts, no print composer. Outputs are
+  datasets, plus a lossy read-only preview panel — not maps you publish.
+- **Your data lives in a database.** MapSmith reads and writes files (GeoParquet,
+  GeoPackage, anything GDAL opens). There is no PostGIS engine and no database catalog —
+  the `[postgres]` extra is for the optional job ledger, not for data.
+- **You want the full breadth of a desktop GIS.** 16 tools plus a catalog that tells the
+  agent what does *not* exist yet. The ~900 QGIS Processing algorithms are on the roadmap,
+  not in the box.
+- **You expect plan validation to make a weak model strong.** Our own A/B says advisory
+  validation upstream of an improvising solver does approximately nothing at aggregate
+  level; MapSmith's answer is enforcement at the execution boundary, and that hypothesis
+  is not measured yet.
+- **You want us to debug your local geospatial toolchain.** Docker, or `uvx` where the
+  wheels work, are the only supported paths; a hand-built native GDAL stack is not, on
+  purpose.
+
 ## Roadmap
 
 - [x] Zonal statistics (exactextract, exact fractional coverage)
 - [x] Whitebox Next Gen adapter: hillshade, flow accumulation, watershed (in-memory, open tier)
 - [x] Typed analysis plans: static validation against the operation registry + simulated CRS flow before execution
-- [ ] Bounded repair: feed verification failures back to the agent for limited retries
+- [x] Runtime verification: input preconditions, warnings with hints in the tool result, bounded deterministic repair recorded in the manifest
+- [x] MCP Apps in-chat map panel with provenance cards (self-contained, works under the default host sandbox)
+- [ ] Agent-loop repair: hand verification failures back to the agent for a bounded number of retries
 - [ ] More terrain & hydrology: slope/aspect, stream network extraction
 - [ ] QGIS Processing sidecar (subprocess-isolated): ~900 algorithms
 - [ ] Sandboxed code-execution tool for the long tail
-- [x] MCP Apps in-chat map panel with provenance cards (self-contained, works under the default sandbox)
 - [ ] Map panel: MapLibre vector rendering and shareable viewer URLs (raster OSM tiles already ship)
-- [ ] Remote server (Streamable HTTP + OAuth), long-job progress via MCP Tasks
+- [ ] Authenticated remote mode (OAuth on the existing Streamable HTTP transport) and long-job progress via MCP Tasks
 
-## Install support policy
+## License and project
 
-**Docker (or `uvx` on a machine with working wheels) is the only supported installation path.** Geospatial native dependencies across three OSes are a support black hole; issues about broken local environments will be redirected here.
-
-## License
-
-- MapSmith server and engines: **AGPL-3.0-or-later** (see `LICENSE`)
+- MapSmith server and engines: **AGPL-3.0-or-later** (see [LICENSE](LICENSE))
 - Client SDK and tool-schema definitions (future `sdk/`): **Apache-2.0**
 
-You can self-host MapSmith freely, forever. If you modify it and offer it as a service, the AGPL asks you to share your changes — or [talk to us](mailto:mapsmith@proton.me) about a commercial license.
+You can self-host MapSmith freely, forever. If you modify it and offer it as a service, the
+AGPL asks you to share your changes — or [talk to us](mailto:mapsmith@proton.me) about a
+commercial license.
 
-"MapSmith" is a trademark of the MapSmith project — see `TRADEMARKS.md`.
+Release notes are in [CHANGELOG.md](CHANGELOG.md), how to contribute in
+[CONTRIBUTING.md](CONTRIBUTING.md), how to report a vulnerability in
+[SECURITY.md](SECURITY.md). "MapSmith" is a trademark of the MapSmith project — see
+[TRADEMARKS.md](TRADEMARKS.md). Updates: [@mapsmith_ai](https://x.com/mapsmith_ai) ·
+[Bluesky](https://bsky.app/profile/mapsmith.bsky.social).
 
 <!-- mcp-name: io.github.mapsmith-ai/mapsmith -->

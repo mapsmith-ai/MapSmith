@@ -16,6 +16,22 @@ ROOT = Path(__file__).resolve().parent.parent
 README = ROOT / "README.md"
 LINK = re.compile(r"\[[^\]]*\]\(([^)#\s]+)(?:#[^)]*)?\)")
 
+# Root pages a visitor is expected to find from the front door. CLAUDE.md is
+# deliberately not here: it is a contributor guide for AI assistants, which
+# clients read by convention, not a page we ask a human to navigate to.
+ROOT_PAGES_NOT_LINKED_ON_PURPOSE = {"README.md", "CLAUDE.md"}
+
+
+def _showcase_pages() -> list[Path]:
+    """Every markdown page the showcase is made of, wherever it lives."""
+    pages = [README, *sorted(ROOT.glob("*.md")), *sorted((ROOT / "docs").glob("*.md"))]
+    pages += [ROOT / "examples" / "README.md", ROOT / "benchmarks" / "gabench-ab" / "README.md"]
+    seen: dict[Path, None] = {}
+    for page in pages:
+        if page.exists():
+            seen.setdefault(page.resolve(), None)
+    return list(seen)
+
 
 def _links(markdown: Path) -> set[str]:
     return {m.group(1) for m in LINK.finditer(markdown.read_text(encoding="utf-8"))}
@@ -49,8 +65,7 @@ def _reachable_from_readme() -> set[Path]:
 
 
 @pytest.mark.parametrize(
-    "page", sorted(p for p in [README, *(ROOT / "docs").glob("*.md")] if p.exists()),
-    ids=lambda p: p.name,
+    "page", _showcase_pages(), ids=lambda p: str(p.relative_to(ROOT)).replace("\\", "/")
 )
 def test_every_local_link_resolves(page):
     """A broken relative link is a 404 for every visitor."""
@@ -67,6 +82,34 @@ def test_every_docs_page_is_reachable_from_the_readme():
     assert not orphans, (
         f"docs pages unreachable from the README within two clicks: {orphans}. "
         "Link them, or they do not exist as far as a visitor is concerned."
+    )
+
+
+def test_every_readme_anchor_points_at_a_heading():
+    """In-page links are how the first screen reaches the proof further down;
+    renaming a heading silently turns them into scroll-to-nowhere."""
+    text = README.read_text(encoding="utf-8")
+    slugs = set()
+    for heading in re.findall(r"^#{1,6}\s+(.+?)\s*$", text, re.MULTILINE):
+        slug = re.sub(r"[^\w\s-]", "", heading.lower()).strip()
+        slugs.add(re.sub(r"\s+", "-", slug))
+    anchors = set(re.findall(r"\]\(#([^)\s]+)\)", text))
+    assert anchors <= slugs, f"README anchors with no matching heading: {sorted(anchors - slugs)}"
+
+
+def test_every_root_page_is_reachable_from_the_readme():
+    """SECURITY.md sat unlinked for two releases: GitHub renders a tab for it,
+    so nobody noticed the README never pointed at the one page that documents
+    what MapSmith does *not* protect."""
+    reachable = _reachable_from_readme()
+    orphans = [
+        p.name
+        for p in sorted(ROOT.glob("*.md"))
+        if p.name not in ROOT_PAGES_NOT_LINKED_ON_PURPOSE and p.resolve() not in reachable
+    ]
+    assert not orphans, (
+        f"root pages unreachable from the README within two clicks: {orphans}. "
+        "Link them, or accept that visitors will never read them."
     )
 
 
@@ -95,6 +138,143 @@ def test_the_readme_tool_table_matches_the_registered_tools():
     )
 
 
+def test_the_readme_tool_count_matches_the_registered_tools():
+    """"16 goal-level tools" is a number, and numbers rot. The claim appears
+    twice (the pitch and the limitations), so both have to move together."""
+    from mapsmith import server
+
+    registered = len(server.mcp._tool_manager.list_tools())
+    text = README.read_text(encoding="utf-8")
+    counted = {int(n) for n in re.findall(r"\b(\d+)\s+(?:goal-level\s+)?tools\b", text)}
+    wrong = {n for n in counted if n != registered}
+    assert not wrong, (
+        f"the README claims {sorted(wrong)} tools but {registered} are registered"
+    )
+
+
+def test_the_roadmap_does_not_list_a_shipped_tool_as_future_work():
+    """A roadmap that promises what already runs makes the rest look sloppy."""
+    from mapsmith import server
+
+    registered = {t.name for t in server.mcp._tool_manager.list_tools()}
+    todo = re.findall(r"^- \[ \] (.+)$", README.read_text(encoding="utf-8"), re.MULTILINE)
+    shipped_but_promised = {
+        name for name in registered for item in todo if re.search(rf"\b{name}\b", item)
+    }
+    assert not shipped_but_promised, (
+        f"the roadmap lists shipped tools as future work: {sorted(shipped_but_promised)}. "
+        "Tick the box, or say precisely which part is still missing."
+    )
+
+
+def test_the_changelog_covers_the_released_version():
+    """A release with no entry means the visitor cannot tell what changed —
+    and the version in pyproject is what PyPI will publish, so they must agree."""
+    from mapsmith import __version__
+
+    # regex, not tomllib: that is stdlib only from 3.11 and this suite runs on
+    # the minimum supported Python (3.10)
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    declared = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.MULTILINE)
+    assert declared and declared.group(1) == __version__, (
+        f"pyproject says {declared.group(1) if declared else '?'}, "
+        f"the package says {__version__}"
+    )
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert re.search(rf"^## \[{re.escape(__version__)}\]", changelog, re.MULTILINE), (
+        f"CHANGELOG.md has no section for the current version {__version__}"
+    )
+
+
+# Words that promise instead of stating. Each one has a concrete replacement:
+# a number, a mechanism, or a link to a measurement.
+_MARKETING = (
+    "revolutionary", "seamless", "blazing", "cutting-edge", "game-chang", "effortless",
+    "state-of-the-art", "unleash", "supercharge", "next-generation", "world-class",
+    "turbocharg", "magical",
+)
+
+
+@pytest.mark.parametrize(
+    "page", _showcase_pages(), ids=lambda p: str(p.relative_to(ROOT)).replace("\\", "/")
+)
+def test_the_showcase_states_instead_of_selling(page):
+    """The audience is GIS engineers: an adjective where a number belongs reads
+    as a claim nobody measured."""
+    text = page.read_text(encoding="utf-8").lower()
+    found = sorted({w for w in _MARKETING if w in text})
+    assert not found, f"{page.name} sells instead of stating: {found}"
+
+
+def test_every_screenshot_is_actually_shown():
+    """An image nobody links to is either a stale UI we forgot to delete or a
+    screenshot we forgot to publish. Both are worth one line of test."""
+    images = sorted((ROOT / "docs" / "images").glob("*"))
+    if not images:
+        return
+    referenced = {
+        (page.parent / target).resolve()
+        for page in _showcase_pages()
+        for target in _local_links(page)
+    }
+    unused = [i.name for i in images if i.resolve() not in referenced]
+    assert not unused, f"images in docs/images nobody displays: {unused}"
+
+
+def _notebook_output_text(notebook: Path) -> str:
+    import json
+
+    cells = json.loads(notebook.read_text(encoding="utf-8"))["cells"]
+    chunks = []
+    for cell in cells:
+        for output in cell.get("outputs", []):
+            chunks.append("".join(output.get("text", [])))
+            chunks.append(json.dumps(output.get("data", {})))
+            if output.get("output_type") == "error":
+                chunks.append("\n".join(output.get("traceback", [])))
+    return "\n".join(chunks)
+
+
+@pytest.mark.parametrize(
+    "notebook", sorted((ROOT / "examples").glob("*.ipynb")), ids=lambda p: p.name
+)
+def test_the_gallery_shows_the_current_release(notebook):
+    """The notebooks are committed *with their outputs*: that is the point (a
+    visitor reads results without running anything), and it is also how a
+    manifest from the previous release stays on display forever."""
+    from mapsmith import __version__
+
+    text = _notebook_output_text(notebook)
+    shown = set(re.findall(r'"mapsmith_version":\s*"([^"]+)"', text))
+    assert shown <= {__version__}, (
+        f"{notebook.name} displays manifests from {sorted(shown)} but this is "
+        f"{__version__} — re-run the notebook instead of editing its output"
+    )
+
+
+@pytest.mark.parametrize(
+    "notebook", sorted((ROOT / "examples").glob("*.ipynb")), ids=lambda p: p.name
+)
+def test_the_gallery_notebooks_ran_clean(notebook):
+    """An unexecuted cell or a traceback in the gallery reads as "this does not
+    work", whatever the surrounding prose says."""
+    import json
+
+    cells = json.loads(notebook.read_text(encoding="utf-8"))["cells"]
+    code = [c for c in cells if c["cell_type"] == "code" and "".join(c["source"]).strip()]
+    silent = [i for i, c in enumerate(code) if not c.get("outputs")]
+    errors = [
+        i
+        for i, c in enumerate(code)
+        if any(o.get("output_type") == "error" for o in c.get("outputs", []))
+    ]
+    assert not errors, f"{notebook.name} ships a traceback in cells {errors}"
+    assert not silent, (
+        f"{notebook.name} has code cells with no saved output ({silent}): the gallery "
+        "is meant to be readable without running it"
+    )
+
+
 def test_no_stale_version_strings_in_the_docs():
     """The provenance example in the README carries a version; a stale one
     tells visitors they are reading about an old release."""
@@ -113,7 +293,9 @@ def test_declared_dependencies_are_not_advertised_as_future_work():
     # read as text, not via tomllib: that is stdlib only from 3.11 and this
     # suite has to run on the minimum supported Python (3.10)
     all_deps = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    shipped = {"WhiteboxTools": "whitebox", "DuckDB": "duckdb", "exactextract": "exactextract"}
+    # substrings, so the check survives renaming "WhiteboxTools" to the name of
+    # the library we actually depend on ("Whitebox Workflows")
+    shipped = {"Whitebox": "whitebox", "DuckDB": "duckdb", "exactextract": "exactextract"}
     coming = re.search(r"more to come:([^)]*)\)", text)
     if not coming:
         return

@@ -137,8 +137,8 @@ is the gap that design closes.
 It also redirected the roadmap: the next piece of work is not more plan-time
 validation but runtime verification — preconditions that refuse an analysis
 whose inputs cannot produce a meaningful answer, and results that come back
-with named warnings instead of a silent "success" (shipped, see the README's
-verification section).
+with named warnings instead of a silent "success"
+([shipped](../README.md#verification-in-and-out)).
 
 Open leads, in order of value: repeat with 3+ repetitions on the ~10% of tasks
 where plans are actually defective (where the +0.19 TAO signal lives, and

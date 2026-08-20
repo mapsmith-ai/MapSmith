@@ -1,6 +1,7 @@
 """Engine dispatcher: route each workload class to the fastest available engine.
 
-The 2025-2026 benchmarks are unambiguous (see docs in the repo wiki):
+The 2025-2026 published engine benchmarks are unambiguous (upstream figures,
+not ours — MapSmith's own measurements live in docs/benchmarks.md):
 - SedonaDB wins heavy joins/KNN by 10-180x, in-process, optional dependency.
 - DuckDB spatial wins filters/aggregations/point-in-polygon (~2M rows/sec).
 - GeoPandas/Shapely stays as the long-tail lane (<~1M features).
