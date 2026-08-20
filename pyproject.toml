@@ -47,7 +47,10 @@ packages = ["src/mapsmith"]
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
-extend-exclude = ["examples"]  # notebooks are pedagogy, not library code
+extend-exclude = [
+    "examples",     # notebooks are pedagogy, not library code
+    "benchmarks",   # research harness: follows the upstream benchmark's conventions
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

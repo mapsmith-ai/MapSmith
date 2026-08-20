@@ -99,17 +99,17 @@ this one.
 
 ## Reproduce it
 
-The A/B harness (planner subclass, static gate, runner) subclasses GABench
-without modifying it. Reproduction steps:
+The harness lives in [`benchmarks/gabench-ab/`](../benchmarks/gabench-ab/) —
+it subclasses GABench instead of modifying it, so the upstream evaluator scores
+our logs unchanged. Full instructions in its README; the short version:
 
-1. Clone GABench and follow its `uv sync` setup; add your model endpoint to
-   its `config.yaml`.
-2. Fetch our harness (published alongside the results) into a sibling
-   directory.
-3. `python run_ab.py --arm a --model <key> --all --rep 1`, then the same with
-   `--arm b`.
-4. Assemble each arm's artifacts into the layout GABench's evaluator expects
-   and run `evaluation/step_by_step.py`.
+```bash
+git clone https://github.com/GeoX-Lab/GABench && cd GABench && uv sync
+export GABENCH_ROOT=$PWD
+python <path>/benchmarks/gabench-ab/run_ab.py --arm a --model <key> --all --rep 1
+python <path>/benchmarks/gabench-ab/run_ab.py --arm b --model <key> --all --rep 1
+python <path>/benchmarks/gabench-ab/assemble_eval.py <key> a b
+```
 
 Fine print: task 55 of arm A was re-run once after a local network drop cut
 the API connection mid-task (infrastructure error, not an agent failure);
