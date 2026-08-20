@@ -59,7 +59,9 @@ OPERATIONS: list[dict[str, Any]] = [
             "Buffer every feature by a distance in meters. Inputs in a geographic CRS "
             "(degrees) are reprojected to an estimated UTM zone for the metric operation "
             "and back; the decision is recorded in the provenance manifest. Output "
-            "geometries are polygons in the input CRS."
+            "geometries are polygons in the input CRS. A negative distance erodes "
+            "features; if it erases them all, the result carries a 'warnings' entry "
+            "saying so rather than reporting a clean success."
         ),
         "parameters": [
             {
@@ -114,7 +116,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "description": (
             "Keep only the parts of the input that fall inside the mask layer's area. "
             "The mask is reprojected to the input CRS when they differ, and the decision "
-            "is recorded in the provenance manifest."
+            "is recorded in the provenance manifest. Inputs without a CRS are refused. "
+            "An empty result is legitimate but reported: the result then carries a "
+            "'warnings' list (with hints) instead of passing silently as a success."
         ),
         "parameters": [
             {
@@ -169,7 +173,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "description": (
             "Transform a dataset to a target coordinate reference system. Use it before "
             "combining layers that must share a CRS, or to move data into a metric CRS "
-            "for measurement. Inputs without a CRS are rejected."
+            "for measurement. Inputs without a CRS are rejected. Geometry is carried "
+            "through unchanged, so invalid input geometry is repaired deterministically "
+            "and reported in a 'repairs' key (the geometry type may change)."
         ),
         "parameters": [
             {
@@ -226,7 +232,9 @@ OPERATIONS: list[dict[str, Any]] = [
             "Attach attributes from one layer to another based on a spatial relationship "
             "(intersects, within, contains). engine='auto' routes to the fastest engine "
             "available for the inputs: SedonaDB (heavy joins) > DuckDB (GeoParquet fast "
-            "path) > GeoPandas. The engine that actually ran is recorded in provenance."
+            "path) > GeoPandas. The engine that actually ran is recorded in provenance. "
+            "Inputs without a CRS are refused; an empty join, or inputs whose extents do "
+            "not overlap, come back in a 'warnings' list with hints."
         ),
         "parameters": [
             {

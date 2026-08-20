@@ -64,9 +64,16 @@ def spatial_join(
         "SELECT count(*) FROM l JOIN r ON " + f"{fn}(l.geometry, r.geometry)"
     ).to_pandas()
     feature_count = int(count.iloc[0, 0])
+    # only when the result is empty: a non-empty join already proves the inputs
+    # were populated, and each count is another distributed job
+    inputs_populated = feature_count > 0 or all(
+        int(sd.sql(f"SELECT count(*) FROM {view}").to_pandas().iloc[0, 0]) > 0
+        for view in ("l", "r")
+    )
     checks = verify.verify_vector_output(
         output_path,
         expect_crs=left_crs if left_crs != verify.UNKNOWN_CRS else None,
+        on_empty="warn" if inputs_populated else "ignore",
     )
     manifest = record.add_verification(checks).finish().write_for(output_path)
     verify.enforce(checks, "spatial_join")
@@ -75,4 +82,5 @@ def spatial_join(
         "feature_count": feature_count,
         "provenance": str(manifest),
         "verified": True,
+        **verify.result_extras(checks),
     }

@@ -67,6 +67,7 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
         inputs=[InputRecord.from_path(input_path, crs=str(gdf.crs))],
         engine=_engine_info(),
     )
+    pre = verify.verify_loaded_inputs("buffer_layer", input_path=gdf)
     original_crs = gdf.crs
     if original_crs.is_geographic:
         analysis_crs = gdf.estimate_utm_crs()
@@ -85,19 +86,26 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
         buffered = gdf.copy()
         buffered["geometry"] = buffered.geometry.buffer(distance_meters)
     _write(buffered, output_path)
-    checks = verify.verify_vector_output(
+    manifest, extras = verify.audited(
+        record,
         output_path,
-        expect_crs=str(original_crs),
-        expect_count=len(gdf),
-        expect_geometry={"Polygon", "MultiPolygon"},
+        operation="buffer_layer",
+        preconditions=pre,
+        checks_fn=lambda: verify.verify_vector_output(
+            output_path,
+            expect_crs=str(original_crs),
+            expect_count=len(gdf),
+            expect_geometry={"Polygon", "MultiPolygon"},
+            # a buffer of a non-empty layer cannot be empty: that is a bug
+            on_empty="fail" if len(gdf) else "ignore",
+        ),
     )
-    manifest = record.add_verification(checks).finish().write_for(output_path)
-    verify.enforce(checks, "buffer_layer")
     return {
         "output": str(output_path),
         "feature_count": len(buffered),
-        "provenance": str(manifest),
+        "provenance": manifest,
         "verified": True,
+        **extras,
     }
 
 
@@ -113,29 +121,49 @@ def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
         ],
         engine=_engine_info(),
     )
+    # the CRS gate comes first: aligning CRS is what would raise a raw pyproj
+    # error on a CRS-less input, before our own check could explain it
+    pre = verify.verify_loaded_inputs("clip_layer", input_path=gdf, mask_path=mask)
+    if verify.has_critical_failure(pre):
+        record.add_verification(pre).finish().write_for(output_path)
+        verify.enforce(pre, "clip_layer")
     if gdf.crs != mask.crs:
         mask = mask.to_crs(gdf.crs)
         record.crs_decisions = {
             "analysis_crs": str(gdf.crs),
             "reason": "mask reprojected to the input layer CRS before clipping",
         }
-    clipped = gpd.clip(gdf, mask)
-    _write(clipped, output_path)
+    # extents can only be compared once both layers share a CRS
+    pre += verify.verify_input_pairs("clip_layer", input_path=gdf, mask_path=mask)
+    with verify.audit_on_failure(record, output_path, pre):
+        clipped = gpd.clip(gdf, mask)
+        _write(clipped, output_path)
     mask_bounds = tuple(float(v) for v in mask.total_bounds)
-    checks = verify.verify_vector_output(
+    manifest, extras = verify.audited(
+        record,
         output_path,
-        expect_crs=str(gdf.crs),
-        max_count=len(gdf),
-        within_bounds=mask_bounds,
-        bounds_margin=1e-6,
+        operation="clip_layer",
+        preconditions=pre,
+        checks_fn=lambda: verify.verify_vector_output(
+            output_path,
+            expect_crs=str(gdf.crs),
+            max_count=len(gdf),
+            within_bounds=mask_bounds,
+            bounds_margin=1e-6,
+            # an empty clip is legitimate (extents can overlap while geometries
+            # miss), so warn loudly instead of failing a valid analysis
+            on_empty="warn" if len(gdf) and len(mask) else "ignore",
+        ),
+        # gpd.clip goes through GEOS overlay, which always returns valid
+        # geometry: there is nothing here for make_valid to fix
+        repair=False,
     )
-    manifest = record.add_verification(checks).finish().write_for(output_path)
-    verify.enforce(checks, "clip_layer")
     return {
         "output": str(output_path),
         "feature_count": len(clipped),
-        "provenance": str(manifest),
+        "provenance": manifest,
         "verified": True,
+        **extras,
     }
 
 
@@ -147,20 +175,33 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
         inputs=[InputRecord.from_path(input_path, crs=str(gdf.crs))],
         engine=_engine_info(),
     )
-    reprojected = gdf.to_crs(target_crs)
-    _write(reprojected, output_path)
-    checks = verify.verify_vector_output(
+    pre = verify.verify_loaded_inputs("reproject_layer", input_path=gdf)
+    if verify.has_critical_failure(pre):
+        record.add_verification(pre).finish().write_for(output_path)
+        verify.enforce(pre, "reproject_layer")
+    with verify.audit_on_failure(record, output_path, pre):
+        reprojected = gdf.to_crs(target_crs)
+        _write(reprojected, output_path)
+    # reprojection carries geometry through verbatim, so an invalid input gives
+    # an invalid output: this is where mechanical repair actually earns its keep
+    manifest, extras = verify.audited(
+        record,
         output_path,
-        expect_crs=target_crs,
-        expect_count=len(gdf),
+        operation="reproject_layer",
+        preconditions=pre,
+        checks_fn=lambda: verify.verify_vector_output(
+            output_path,
+            expect_crs=target_crs,
+            expect_count=len(gdf),
+            on_empty="fail" if len(gdf) else "ignore",
+        ),
     )
-    manifest = record.add_verification(checks).finish().write_for(output_path)
-    verify.enforce(checks, "reproject_layer")
     return {
         "output": str(output_path),
         "crs": str(reprojected.crs),
-        "provenance": str(manifest),
+        "provenance": manifest,
         "verified": True,
+        **extras,
     }
 
 
@@ -181,21 +222,36 @@ def spatial_join(
         ],
         engine=_engine_info(),
     )
+    pre = verify.verify_loaded_inputs("spatial_join", left_path=left, right_path=right)
+    if verify.has_critical_failure(pre):
+        record.add_verification(pre).finish().write_for(output_path)
+        verify.enforce(pre, "spatial_join")
     if left.crs != right.crs:
         right = right.to_crs(left.crs)
         record.crs_decisions = {
             "analysis_crs": str(left.crs),
             "reason": "right layer reprojected to the left layer CRS before joining",
         }
-    joined = gpd.sjoin(left, right, predicate=predicate, how="inner")
-    joined = joined.drop(columns=[c for c in ("index_right",) if c in joined.columns])
-    _write(joined, output_path)
-    checks = verify.verify_vector_output(output_path, expect_crs=str(left.crs))
-    manifest = record.add_verification(checks).finish().write_for(output_path)
-    verify.enforce(checks, "spatial_join")
+    pre += verify.verify_input_pairs("spatial_join", left_path=left, right_path=right)
+    with verify.audit_on_failure(record, output_path, pre):
+        joined = gpd.sjoin(left, right, predicate=predicate, how="inner")
+        joined = joined.drop(columns=[c for c in ("index_right",) if c in joined.columns])
+        _write(joined, output_path)
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="spatial_join",
+        preconditions=pre,
+        checks_fn=lambda: verify.verify_vector_output(
+            output_path,
+            expect_crs=str(left.crs),
+            on_empty="warn" if len(left) and len(right) else "ignore",
+        ),
+    )
     return {
         "output": str(output_path),
         "feature_count": len(joined),
-        "provenance": str(manifest),
+        "provenance": manifest,
         "verified": True,
+        **extras,
     }

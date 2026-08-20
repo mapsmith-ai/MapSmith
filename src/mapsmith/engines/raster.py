@@ -111,17 +111,24 @@ def zonal_statistics(
     else:
         out.to_file(output_path)
 
-    checks = verify.verify_vector_output(
+    # the zone geometries are carried through verbatim, so an invalid input
+    # yields an invalid output: mechanical repair applies here
+    manifest, extras = verify.audited(
+        record,
         output_path,
-        expect_crs=str(zones.crs),
-        expect_count=len(zones),
+        operation="zonal_statistics",
+        preconditions=verify.verify_loaded_inputs("zonal_statistics", zones_path=zones),
+        checks_fn=lambda: verify.verify_vector_output(
+            output_path,
+            expect_crs=str(zones.crs),
+            expect_count=len(zones),
+        ),
     )
-    manifest = record.add_verification(checks).finish().write_for(output_path)
-    verify.enforce(checks, "zonal_statistics")
     return {
         "output": str(output_path),
         "feature_count": len(out),
         "statistics": ops,
-        "provenance": str(manifest),
+        "provenance": manifest,
         "verified": True,
+        **extras,
     }

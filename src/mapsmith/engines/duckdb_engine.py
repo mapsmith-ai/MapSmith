@@ -159,9 +159,17 @@ def spatial_join(
     """
     con.sql(f"COPY ({query}) TO '{_quote(output_path)}' (FORMAT parquet)")
     count = con.sql(f"SELECT count(*) FROM read_parquet('{_quote(output_path)}')").fetchone()[0]
+    # only worth asking when the result is empty: a non-empty join already
+    # proves both inputs were populated, and counting via SQL (never a
+    # GeoPandas read) keeps the fast path fast
+    inputs_populated = count > 0 or all(
+        con.sql(f"SELECT count(*) FROM {_rel(path)}").fetchone()[0] > 0
+        for path in (left_path, right_path)
+    )
     checks = verify.verify_vector_output(
         output_path,
         expect_crs=left_crs if left_crs != verify.UNKNOWN_CRS else None,
+        on_empty="warn" if inputs_populated else "ignore",
     )
     manifest = record.add_verification(checks).finish().write_for(output_path)
     verify.enforce(checks, "spatial_join")
@@ -170,6 +178,7 @@ def spatial_join(
         "feature_count": int(count),
         "provenance": str(manifest),
         "verified": True,
+        **verify.result_extras(checks),
     }
 
 

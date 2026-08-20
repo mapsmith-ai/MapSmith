@@ -19,9 +19,10 @@ MapSmith is an open-source [MCP](https://modelcontextprotocol.io) server that gi
 ## Why MapSmith
 
 - **Real geoprocessing, not map CRUD.** Built on the proven open geospatial stack (GDAL, GeoPandas, Shapely, and more to come: WhiteboxTools, PDAL, DuckDB Spatial, QGIS Processing via sidecar).
-- **Provenance by design.** Every layer MapSmith produces ships with a machine-readable lineage manifest: source datasets (with checksums), every tool executed, exact parameters, CRS decisions, software versions, timestamps. Re-run it bit-identical, without the LLM. No AI slop.
+- **Provenance by design.** Every layer MapSmith produces ships with a machine-readable lineage manifest: source datasets (with checksums), every tool executed, exact parameters, CRS decisions, software versions, timestamps. Everything needed to re-run the analysis without the LLM is in there. No AI slop.
 - **The LLM orchestrates, tools compute.** Geometry and numbers only ever come from deterministic tool executions — never from model output.
 - **Semantic tools, not a tool dump.** A curated set of goal-level tools plus a searchable operation catalog (progressive discovery), because agent accuracy collapses when you expose hundreds of raw tools.
+- **Model-agnostic infrastructure.** Claude, GPT, Qwen, Kimi, GLM — anything that speaks MCP, cloud or local. The leverage is better contracts (typed plans, actionable error codes, a searchable catalog), not weights we would have to maintain. See [the manifesto](MANIFESTO.md).
 
 ## Quickstart
 
@@ -81,6 +82,21 @@ Then ask your agent things like:
 Every tool that writes an output also writes `<output>.provenance.json` next to it —
 and runs deterministic verification (CRS, dimensions, value invariants) whose results
 are recorded in the manifest *before* any failure is raised.
+
+Verification runs on the way in as well as on the way out. The vector
+operations (`buffer_layer`, `clip_layer`, `reproject_layer`, `spatial_join`,
+`zonal_statistics`) check their inputs first for the failures that produce
+*plausible* junk: a layer with no CRS — refused outright, before anything runs
+— and an empty layer; where an operation takes two vector inputs, also extents
+that cannot possibly intersect. Afterwards, where an operation carries geometry through
+unchanged (reprojection, joins, zonal statistics), an output that is
+mechanically broken is repaired deterministically — `make_valid`, at most two
+rounds, written to a temporary file and swapped in only once it is complete —
+and every attempt is recorded in the manifest, because a repaired output must
+never look like one that was right first time. Failures needing judgement are
+never "fixed": an empty result, or geometries eroded away by a wrong distance,
+come back as named warnings with hints, in the tool result and not only in the
+manifest, so the agent sees them instead of assuming success.
 
 The Docker image ships with the `[raster]` and `[whitebox]` extras included. With
 `uvx`, pick your extras: `uvx --from "mapsmith[raster,whitebox]" mapsmith`.

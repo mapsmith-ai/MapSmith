@@ -81,6 +81,8 @@ def buffer_layer(input_path: str, distance_meters: float, output_path: str) -> d
 
     Geographic-CRS inputs are reprojected to an estimated UTM zone for the metric
     operation and back; the decision is recorded in the provenance manifest.
+    A `warnings` key in the result flags a suspicious-but-valid outcome with a
+    hint — e.g. a negative distance that eroded every geometry away.
     """
     _guard(input_path=input_path, output_path=output_path)
     return _run(
@@ -95,7 +97,12 @@ def buffer_layer(input_path: str, distance_meters: float, output_path: str) -> d
 
 @mcp.tool(annotations=_WRITER)
 def clip_layer(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
-    """Clip a layer to the area of a mask layer. CRS are aligned automatically."""
+    """Clip a layer to the area of a mask layer. CRS are aligned automatically.
+
+    A `warnings` key in the result means the analysis ran but something is worth
+    your attention (typically an empty result, or inputs whose extents do not
+    overlap); each entry carries a hint. Inputs without a CRS are refused.
+    """
     _guard(input_path=input_path, mask_path=mask_path, output_path=output_path)
     return _run(
         "clip_layer",
@@ -109,7 +116,13 @@ def clip_layer(input_path: str, mask_path: str, output_path: str) -> dict[str, A
 
 @mcp.tool(annotations=_WRITER)
 def reproject_layer(input_path: str, target_crs: str, output_path: str) -> dict[str, Any]:
-    """Reproject a layer to a target CRS, e.g. 'EPSG:32632' or a WKT string."""
+    """Reproject a layer to a target CRS, e.g. 'EPSG:32632' or a WKT string.
+
+    Inputs without a CRS are refused. Geometry passes through unchanged, so an
+    invalid input yields an invalid output: mechanically broken geometry is
+    repaired deterministically and reported in a `repairs` key — read it, the
+    geometry type may have changed.
+    """
     _guard(input_path=input_path, output_path=output_path)
     return _run(
         "reproject_layer",
@@ -133,6 +146,8 @@ def spatial_join(
 
     engine='auto' routes to the fastest available engine for the inputs:
     SedonaDB (heavy joins, 10-180x) > DuckDB (GeoParquet fast path) > GeoPandas.
+    A `warnings` key in the result flags an empty join or inputs whose extents
+    do not overlap, each with a hint. Inputs without a CRS are refused.
     """
     _guard(left_path=left_path, right_path=right_path, output_path=output_path)
     return _run(
@@ -178,6 +193,8 @@ def zonal_statistics(
     stats: subset of count/sum/mean/median/min/max/stdev/variance/majority/minority/
     variety (default: count, mean, min, max). Zones are aligned to the raster CRS
     automatically; the decision is recorded in the provenance manifest.
+    Zones without a CRS are refused; `warnings` and `repairs` keys in the result
+    flag a suspicious outcome or geometry MapSmith had to repair.
     Requires the [raster] extra.
     """
     _guard(raster_path=raster_path, zones_path=zones_path, output_path=output_path)
@@ -306,6 +323,10 @@ def execute_plan(plan: Plan) -> dict[str, Any]:
     them together. Execution stops at the first failing step; outputs already
     produced stay on disk with their manifests. Same plan format as
     validate_plan — validate first, then execute.
+
+    A `step_warnings` key in the response means the plan ran but some step
+    produced a suspicious result (an empty output, non-overlapping inputs):
+    read it before treating a completed plan as a correct one.
     """
     from .plans import execute
 

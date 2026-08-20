@@ -21,7 +21,10 @@ measures that idea on a third-party benchmark, with a deterministic evaluator
   system prompt embeds compact tool signatures instead of raw tool objects
   (~26k chars instead of ~148k; declared methodology change, applied to both
   arms).
-- **Model**: `claude-sonnet-5` for planner and solver in both arms.
+- **Models**: `claude-sonnet-5` and `claude-haiku-4-5` — planner and solver
+  are the same model within a run. The second model tests the obvious
+  hypothesis: a smaller model writes dirtier plans, so validation should
+  help it more.
 - **The single experimental variable**:
   - **Arm A** — the typed plan goes straight to the solver.
   - **Arm B** — the typed plan is first validated statically against the live
@@ -47,7 +50,9 @@ measures that idea on a third-party benchmark, with a deterministic evaluator
 Same logs in, same numbers out, every time: the evaluator compares
 trajectories against reference toolchains with no model in the loop.
 
-## Results (1 repetition per arm, 57 tasks each, 2026-08-19)
+## Results (1 repetition per arm per model, 57 tasks each, 2026-08-19/20)
+
+### Sonnet 5
 
 | Metric | Arm A (no gate) | Arm B (gate) | Δ |
 |---|---|---|---|
@@ -58,34 +63,70 @@ trajectories against reference toolchains with no model in the loop.
 | LLM calls / task | 19.1 | 20.0 | +0.9 |
 | Cost / task (USD, Sonnet 5 intro pricing) | 0.63 | 0.66 | +0.03 |
 
-**The headline is a null result, and the mechanism behind it is the
-interesting part.**
+### Haiku 4.5
 
-1. **Plan-level interface hallucination is real but rare on a frontier
-   model**: the gate fired on 5/57 plans (three wrong-typed arguments, two
-   unparsable plans) and repaired every one to zero residual issues in ≤2
-   rounds. The failures are *systematic*: arm A's audit shows defective plans
-   on the same tasks (6, 33, 42, 56) in its own independent run.
-2. **A ReAct solver downstream absorbs plan-level repairs.** On the tasks
-   where both arms produced the same defective plan and only arm B repaired
-   it, the final trajectories scored **identically** (tasks 6, 33, 42 —
-   same TAO/TIO/TEM/PEA to three decimals). The solver re-decides tool calls
-   as it goes, so fixing the plan's argument types rarely changes what
-   actually executes. Advisory validation upstream of an improvising agent
-   gets absorbed by the improvisation.
-3. **The aggregate deltas are run-to-run noise, and that is a finding.** On
-   the 52 tasks the gate never touched, the two arms are the same system —
-   yet single-run aggregates differ by 4–6 points of TAO/TIO. Treat any
-   single-repetition agent-benchmark delta below that bar as unproven.
-4. **Where the real headroom is**: PEA sits at ~0.43 in both arms — wrong
-   parameters and missing outputs at *execution* time dominate, exactly the
-   failure class that plan-time advice cannot reach.
+| Metric | Arm A (no gate) | Arm B (gate) | Δ |
+|---|---|---|---|
+| TAO F1 | 0.660 | 0.714 | **+0.054** |
+| TIO | 0.596 | 0.644 | **+0.048** |
+| TEM | 0.424 | 0.447 | **+0.023** |
+| PEA | 0.320 | 0.366 | **+0.046** |
+| LLM calls / task | 16.9 | 16.5 | −0.4 |
+| Cost / task (USD) | 0.44 | 0.42 | −0.02 |
+
+Every metric improves, the gate arm is slightly *cheaper*, and the smaller
+model is worse than Sonnet across the board — a tidy story. **It is also
+wrong, and the way it is wrong is the most useful thing we measured.**
+
+## Why the Haiku "win" is not a win
+
+The gate can only affect a task whose plan it actually repaired. On Haiku that
+was **4 of 57** tasks. So we split the per-task deltas into the tasks the gate
+touched and the 53 it never saw — where the two arms are the *same system*,
+differing only by sampling:
+
+| Group | n | ΔTAO | ΔTIO | ΔTEM | ΔPEA |
+|---|---|---|---|---|---|
+| Plans repaired by the gate | 4 | **+0.188** | −0.028 | 0.000 | +0.111 |
+| Never touched by the gate | 53 | +0.043 | +0.054 | +0.024 | +0.042 |
+
+(Reproduce with `benchmarks/gabench-ab/split_analysis.py haiku`; the two rows
+weight back to the aggregate deltas above.)
+
+The untouched tasks move by almost exactly the aggregate delta. **The
+headline improvement is run-to-run variance**, and that second row is a direct
+measurement of it: on a single repetition, two identical configurations differ
+by 2–5 points per metric on this benchmark. Any single-run agent-benchmark
+result reporting a delta of that size — ours included — is reporting noise.
+
+What survives the split is narrower and more interesting: on the four tasks
+where the gate actually repaired a plan, tool selection improved by **+0.19
+TAO**, four times the noise level. n=4 is not a result, it is a lead — and it
+comes with a mechanism. The *kind* of defect differed by model: Haiku invented
+tool names that do not exist (`UNKNOWN_TOOL`), while Sonnet only ever mistyped
+arguments of real tools. Validation against a live registry catches invented
+names cold, which is exactly why it should matter more as models get smaller.
+
+## What we conclude
+
+1. **Advisory validation upstream of an improvising solver does approximately
+   nothing at aggregate level** — on a frontier model *and* on a small one.
+   The ReAct solver re-decides its calls as it goes: on tasks where both arms
+   produced the same defective plan and only one repaired it, the final
+   trajectories scored identically (Sonnet tasks 6, 33, 42 — same values to
+   three decimals).
+2. **The failure mass is at execution time**: PEA is 0.43 (Sonnet) and 0.37
+   (Haiku) — wrong parameters and missing outputs, the class of failure that
+   plan-time advice cannot reach.
+3. **Measure your noise floor before believing your effect.** Running the
+   experiment where the gate is inert on 90% of tasks is what turned a
+   publishable "+8% on a small model" into an honest null.
 
 ## What this says about MapSmith's design
 
 MapSmith does not use its plan validation as advice to an improvising agent
-— that is the configuration this experiment measured, and it measured it
-doing approximately nothing on a frontier model. In MapSmith,
+— that is the configuration this experiment measured, and it measured it doing
+approximately nothing, on both models. In MapSmith,
 `validate_plan`'s contract is enforced at the **execution boundary**:
 `execute_plan` runs the validated plan exactly as written (re-validating
 first, resolving `$step` references, recording provenance per step), so a
@@ -93,9 +134,17 @@ repaired plan *is* what executes. The gap this experiment exposes — solvers
 that improvise past their plans and fail on parameters at execution time —
 is the gap that design closes.
 
-Open question worth money: does the gate lift *smaller* models, whose plans
-are dirtier? The harness is ready; a Haiku-class run costs a fraction of
-this one.
+It also redirected the roadmap: the next piece of work is not more plan-time
+validation but runtime verification — preconditions that refuse an analysis
+whose inputs cannot produce a meaningful answer, and results that come back
+with named warnings instead of a silent "success" (shipped, see the README's
+verification section).
+
+Open leads, in order of value: repeat with 3+ repetitions on the ~10% of tasks
+where plans are actually defective (where the +0.19 TAO signal lives, and
+where repetitions are affordable); and test whether an *enforced* plan — the
+`execute_plan` contract, no improvisation between validation and execution —
+moves what advisory validation could not.
 
 ## Reproduce it
 

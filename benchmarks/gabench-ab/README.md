@@ -48,9 +48,16 @@ Inspect a finished run:
 
 ```bash
 python gate_stats.py results/<key>/arm_b/rep1.jsonl        # what the gate caught
+python split_analysis.py <key>                             # effect vs run-to-run noise
 python cost_check.py <usage.jsonl> <in-price> <out-price>  # token spend
 python test_gate.py                                        # closed-form gate test, no API calls
 ```
+
+`split_analysis.py` is the one that decides interpretation: it splits per-task
+deltas into the tasks the gate actually repaired and the ones it never touched.
+On the untouched tasks the two arms are the same system, so whatever they
+differ by *is* the run-to-run noise floor — compare your aggregate delta
+against that before believing it.
 
 ## Notes on method
 

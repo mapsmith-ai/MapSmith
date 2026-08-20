@@ -5,7 +5,12 @@ stale validate_plan result would be a TOCTOU hole). Steps run in list order;
 the first failure stops the run, but everything already produced — outputs and
 their per-step provenance manifests — stays on disk, and the plan manifest is
 written even for partial runs: the audit trail survives the error, same
-invariant as every MapSmith writer. Bounded repair is issue #3, not here.
+invariant as every MapSmith writer.
+
+Deterministic repair happens inside the writers (verify.repair_and_reverify),
+which is the only place that knows how to fix an output mechanically; what
+reaches here are the results, including non-critical warnings the plan echoes
+back per step so a completed run that produced nothing cannot look like a win.
 """
 
 from __future__ import annotations
@@ -21,7 +26,10 @@ from .registry import BINDINGS
 from .validator import validate
 
 # step-result keys worth echoing back to the agent (full details live in provenance)
-_ECHO_KEYS = ("output", "provenance", "feature_count", "crs", "engine_used", "verified")
+_ECHO_KEYS = (
+    "output", "provenance", "feature_count", "crs", "engine_used", "verified",
+    "warnings",  # non-critical verification failures (empty results, disjoint inputs)
+)
 
 
 def execute(plan: Plan) -> dict[str, Any]:
@@ -80,6 +88,12 @@ def execute(plan: Plan) -> dict[str, Any]:
         )
     if report.warnings:
         response["validation_warnings"] = [w.model_dump() for w in report.warnings]
+    # a plan can run to completion with every step producing nothing: surface it
+    flagged = [
+        {"step_id": s["id"], "warnings": s["warnings"]} for s in steps if s.get("warnings")
+    ]
+    if flagged:
+        response["step_warnings"] = flagged
     return response
 
 

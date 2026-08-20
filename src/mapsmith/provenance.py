@@ -2,7 +2,7 @@
 
 Every operation that writes a dataset also writes ``<output>.provenance.json``
 next to it. The manifest is the product's core promise: any result can be
-audited and re-run bit-identical without an LLM in the loop.
+audited and re-run the analysis without an LLM in the loop.
 """
 
 from __future__ import annotations
@@ -48,6 +48,8 @@ class ProvenanceRecord:
     crs_decisions: dict[str, str] = field(default_factory=dict)
     engine: dict[str, str] = field(default_factory=dict)
     verification: list[dict[str, Any]] = field(default_factory=list)
+    # deterministic repair attempts (issue #3): empty unless something was fixed
+    repairs: list[dict[str, Any]] = field(default_factory=list)
     mapsmith_version: str = __version__
     started_at: str = field(default_factory=_utcnow)
     finished_at: str | None = None
@@ -55,6 +57,11 @@ class ProvenanceRecord:
     def add_verification(self, checks: list[Any]) -> ProvenanceRecord:
         """Attach deterministic check results (objects with .as_dict())."""
         self.verification.extend(c.as_dict() for c in checks)
+        return self
+
+    def add_repairs(self, attempts: list[dict[str, Any]]) -> ProvenanceRecord:
+        """Attach deterministic repair attempts (see verify.repair_and_reverify)."""
+        self.repairs.extend(attempts)
         return self
 
     def finish(self) -> ProvenanceRecord:
