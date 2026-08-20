@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mapsmith"
-version = "0.2.0"
+version = "0.2.1"
 description = "Professional-grade geoprocessing for AI agents via MCP, with verifiable provenance"
 readme = "README.md"
 requires-python = ">=3.10"

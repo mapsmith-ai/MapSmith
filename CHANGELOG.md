@@ -4,6 +4,58 @@ All notable changes to MapSmith are documented here, in the format of
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows
 [semantic versioning](https://semver.org/).
 
+## [0.2.1] — 2026-08-20
+
+Three fixes you would rather not find yourself. All came from reviewing 0.2.0
+*after* it shipped, and all were reproduced through the real MCP tools instead
+of read off a diff.
+
+### Fixed
+
+- **An empty spatial join no longer crashes before writing its manifest.**
+  DuckDB writes no GeoParquet `geo` metadata for a zero-row result, so reading
+  the output back raised — on the default engine path, for exactly the case the
+  verification checks exist to explain, while the tool description promised a
+  warning. A zero-row result is now written as a valid empty GeoParquet with the
+  analysis CRS and the joined schema, and the join goes through the same audited
+  writer as everything else, so the manifest exists even when a check fails.
+- **A GeoParquet declaring `crs: null` is no longer read as CRS84.** MapSmith
+  invented a coordinate system and recorded it in the manifest as fact, with
+  `verified: true` — the worst class of bug a provenance tool can have. The
+  GeoParquet spec distinguishes an *absent* `crs` field, which does mean CRS84,
+  from an explicit null, which means unknown; so does MapSmith now, and an
+  unknown CRS is refused by the preconditions like any other missing CRS.
+- **The DuckDB sandbox locks its configuration in every mode.** The lock used to
+  apply only under `MAPSMITH_WORKSPACE`, so a multi-statement call could switch
+  extension autoloading back on, and an explicit `LOAD httpfs` was never blocked
+  at all. Locking is now unconditional and the HTTP and S3 filesystems are
+  disabled, which closes result exfiltration through a URL while local reads keep
+  working. `SECURITY.md` describes precisely what this stops and what it does
+  not.
+- **The multi-layer guard fails closed.** A container whose layer list could not
+  be read looked like a single-layer file, and mechanical geometry repair would
+  then have destroyed the other layers while recording success.
+- **`execute_plan` reports `repairs` per step.** Geometry MapSmith rewrote was
+  visible in a single-operation result and invisible at plan level.
+- **Manifests record `EPSG:32632`, not 2.5 KB of PROJJSON**, when a GeoParquet
+  input carries its CRS as an embedded projection object.
+- **The example `docker-compose.yml` binds MinIO to loopback.** It published
+  ports 9000/9001 on every interface with the documented development
+  credentials.
+
+### Changed
+
+- **The provenance badge has three states instead of two.** "All critical checks
+  passed" is vacuously true when no critical check ran — a `run_sql` manifest,
+  for one — so an output whose only check had *failed* rendered with the same
+  green tick as a verified buffer. `provenance_summary` now reports `verified`,
+  `failed` or `unchecked`, with the reason, and the map panel renders all three.
+  The `verified` boolean stays in the payload, computed correctly, so a client
+  reading it gets a fix rather than a breaking change.
+- **The README says when *not* to use MapSmith**, and the
+  [benchmark results](docs/benchmarks.md) are linked from it — they were public
+  for a day with nothing pointing at them.
+
 ## [0.2.0] — 2026-08-20
 
 The first release you can point an agent at and trust the answer: results are
