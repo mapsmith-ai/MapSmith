@@ -70,6 +70,10 @@ def _needs_plain_copy(path: str) -> str | None:
 
     PREDICTOR=2 is the standard recommendation for integer rasters, so this
     is a normal encoding rather than an exotic one.
+
+    Reported upstream: https://github.com/jblindsay/whitebox_next_gen/issues/32
+    Drop this workaround once a release fixes it — the read-level test in
+    tests/test_whitebox_encoding.py fails when that happens, on purpose.
     """
     try:
         import rasterio
