@@ -160,6 +160,14 @@ python <path>/benchmarks/gabench-ab/run_ab.py --arm b --model <key> --all --rep 
 python <path>/benchmarks/gabench-ab/assemble_eval.py <key> a b
 ```
 
+Run the scripts from the GABench root. PEA validates path arguments by asking
+whether the file exists, and its fallback is a relative probe against the
+current directory — where the `dataset/` inputs live — so the same logs score
+0.320 there and 0.192 elsewhere, with every other metric unchanged. The harness
+scripts now move into that directory themselves, which is worth knowing about
+any benchmark you reproduce: a deterministic evaluator can still have a silently
+wrong answer.
+
 Fine print: task 55 of arm A was re-run once after a local network drop cut
 the API connection mid-task (infrastructure error, not an agent failure);
 the raw logs keep both timestamps.

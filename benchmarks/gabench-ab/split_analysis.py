@@ -10,9 +10,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _paths import gabench_root, results_root  # noqa: E402
+from _paths import resolve_result_file, use_gabench_cwd  # noqa: E402
 
-GAB = gabench_root()
+# PEA is working-directory dependent (see _paths.use_gabench_cwd): this must
+# happen before any evaluation, or the PEA column is quietly wrong.
+GAB = use_gabench_cwd()
 sys.path.insert(0, str(GAB))
 from evaluation.step_by_step import evaluate_single_entry, process_raw_results  # noqa: E402
 
@@ -23,7 +25,7 @@ model = sys.argv[1]
 
 def touched(arm: str) -> set[str]:
     ids = set()
-    path = results_root() / model / f"arm_{arm}" / "rep1.jsonl"
+    path = resolve_result_file(model, arm, 1)
     for line in path.read_text(encoding="utf-8").splitlines():
         r = json.loads(line)
         rounds = (r.get("gate_audit") or {}).get("rounds", [])
@@ -34,7 +36,7 @@ def touched(arm: str) -> set[str]:
 
 def per_task(arm: str) -> dict:
     entries = process_raw_results(
-        str(results_root() / model / f"arm_{arm}" / "rep1.jsonl"),
+        str(resolve_result_file(model, arm, 1)),
         str(GAB / "benchmark" / "benchmark.csv"),
     )
     out = {}

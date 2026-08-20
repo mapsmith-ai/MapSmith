@@ -1,18 +1,24 @@
 """Assemble per-task artifacts into the layout GABench's evaluator expects,
 then run its deterministic step-by-step evaluation.
 
-The evaluator infers the physical-output directory from the result path:
-.../results/{model}/{agent}/file.jsonl -> .../output_results/{model}/{agent}/output
-Our per-task archives (repN_artifacts/task_*/**) are merged back into that one
-directory, preserving each task's relative layout — they are snapshots of
-GABench's output/ dir, so merging reconstructs it faithfully, and PEA's
+The evaluator infers the physical-output directory from the result path
+(process_raw_results): the component named `results` becomes `output_results`
+and the file name becomes `output`. That inference is reproduced by
+`_paths.inferred_output_dir`, and it must be the only source of truth here —
+assembling artifacts anywhere else leaves PEA looking at an empty directory,
+which scores as an agent that wrote no files instead of a harness that put them
+in the wrong place.
+
+Our per-task archives (artifacts/task_*/**) are snapshots of GABench's output/
+directory, so merging them back preserves each task's relative layout and PEA's
 file-existence checks see what each run actually produced.
 
-Usage: python assemble_eval.py <model-key> [a] [b]
+Usage: python assemble_eval.py <model-key> [a b c] [--rep N]
 """
 
 from __future__ import annotations
 
+import argparse
 import shutil
 import subprocess
 import sys
@@ -20,15 +26,25 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _paths import HARNESS_DIR, gabench_root, results_root  # noqa: E402
+from _paths import gabench_root, inferred_output_dir, resolve_result_file  # noqa: E402
 
 GABENCH = gabench_root()
 PYTHON = sys.executable
 
 
-def assemble(model: str, arm: str, rep: int = 1) -> None:
-    src_dir = results_root() / model / f"arm_{arm}" / f"rep{rep}_artifacts"
-    out = HARNESS_DIR / "output_results" / model / f"arm_{arm}" / "output"
+def artifacts_dir(results: Path, rep: int) -> Path:
+    """`artifacts/` next to the log; the pre-rep-dimension runs used repN_artifacts."""
+    current = results.parent / "artifacts"
+    legacy = results.parent / f"rep{rep}_artifacts"
+    return current if current.exists() or not legacy.exists() else legacy
+
+
+def assemble(model: str, arm: str, rep: int) -> Path:
+    results = resolve_result_file(model, arm, rep)
+    if not results.exists():
+        raise SystemExit(f"no results to evaluate: {results}")
+    src_dir = artifacts_dir(results, rep)
+    out = inferred_output_dir(results)
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
@@ -40,25 +56,30 @@ def assemble(model: str, arm: str, rep: int = 1) -> None:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(f, dest)
                 n += 1
-    print(f"{model} arm {arm}: {n} artifact files -> {out}", flush=True)
+    print(f"{model} arm {arm} rep {rep}: {n} artifact files -> {out}", flush=True)
+    if n == 0:
+        print(f"  WARNING: no artifacts found under {src_dir} — every PEA "
+              "file-existence check will fail", flush=True)
+    return results
 
 
-def evaluate(model: str, arm: str, rep: int = 1) -> None:
-    result = results_root() / model / f"arm_{arm}" / f"rep{rep}.jsonl"
-    print(f"\n=== EVALUATION {model} arm {arm.upper()} ({result.name}) ===", flush=True)
+def evaluate(results: Path, model: str, arm: str, rep: int) -> None:
+    print(f"\n=== EVALUATION {model} arm {arm.upper()} rep {rep} ({results.name}) ===",
+          flush=True)
     subprocess.run(
         [PYTHON, str(GABENCH / "evaluation" / "step_by_step.py"),
          "--benchmark", str(GABENCH / "benchmark" / "benchmark.csv"),
-         "--result", str(result)],
+         "--result", str(results)],
         cwd=str(GABENCH),
         check=False,
     )
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        raise SystemExit("usage: python assemble_eval.py <model-key> [a] [b]")
-    model_key = sys.argv[1]
-    for arm_key in sys.argv[2:] or ["a", "b"]:
-        assemble(model_key, arm_key)
-        evaluate(model_key, arm_key)
+    parser = argparse.ArgumentParser(description="assemble artifacts and score a run")
+    parser.add_argument("model", help="model key from config.yaml")
+    parser.add_argument("arms", nargs="*", default=None, help="arms to score (default: a b)")
+    parser.add_argument("--rep", type=int, default=1, help="repetition index")
+    args = parser.parse_args()
+    for arm_key in args.arms or ["a", "b"]:
+        evaluate(assemble(args.model, arm_key, args.rep), args.model, arm_key, args.rep)

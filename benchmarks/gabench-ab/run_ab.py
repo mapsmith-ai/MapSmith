@@ -1,13 +1,15 @@
-"""A/B runner: GABench Plan-and-React with typed plans, gate on/off.
+"""A/B/C runner: GABench Plan-and-React with typed plans, gate, enforced plans.
 
 Usage (run with GABench's venv, from its repo root so config.yaml/.env
 resolve; GABENCH_ROOT may point the harness at the checkout):
     python run_ab.py --arm a --model claude --ids 1,2,3 --rep 1
     python run_ab.py --arm b --model claude --all --rep 1
+    python run_ab.py --arm c --model haiku --group defective+control --rep 1
 
-Output: results/{model}/arm_{arm}/rep{rep}.jsonl in the upstream history
-format (GABench's evaluation/step_by_step.py runs on it unchanged) plus a
-`gate_audit` field recording validation rounds.
+Output: results/{model}/arm_{arm}_rep{rep}/rep{rep}.jsonl in the upstream
+history format (GABench's evaluation/step_by_step.py runs on it unchanged) plus
+a `gate_audit` field recording validation rounds and, for arm C, an
+`exec_audit` field recording what the enforced plan actually did.
 """
 
 from __future__ import annotations
@@ -23,16 +25,20 @@ from pathlib import Path
 AB_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(AB_DIR))
 
-from _paths import gabench_root, results_root  # noqa: E402
+from _paths import gabench_root, result_file, run_dir  # noqa: E402
+from task_groups import task_ids  # noqa: E402
 
 GABENCH_ROOT = gabench_root()
 sys.path.insert(0, str(GABENCH_ROOT))
 
 from core.mcp_client import get_mcp_clients  # noqa: E402
 from agents.plan_and_react import SolveReactAgent  # noqa: E402
+from agents.react import ReactAgent  # noqa: E402
 from runners.run_benchmark import load_tasks_from_csv, get_completed_tasks  # noqa: E402
 
 from ab_extension import (  # noqa: E402
+    EnforcedExecutor,
+    ToolCaller,
     TypedPlanAgent,
     make_compact_solver,
     plan_with_optional_gate,
@@ -60,10 +66,11 @@ def archive_tool_output(dest: Path) -> None:
         shutil.move(str(TOOL_OUTPUT_DIR), str(dest))
 
 
-async def run_task(task: dict, model: str, gate: bool) -> dict:
+async def run_task(task: dict, model: str, arm: str) -> dict:
     mcp_clients = get_mcp_clients()
     start = datetime.now()
-    status, error, history, audit = "success", None, [], None
+    status, error, history, audit, exec_audit = "success", None, [], None, None
+    gate = arm in ("b", "c")
     try:
         print("\n--- Planning Phase (typed) ---")
         planner = TypedPlanAgent(mcp_clients=mcp_clients, init_model_name=model)
@@ -71,59 +78,96 @@ async def run_task(task: dict, model: str, gate: bool) -> dict:
             audit = await plan_with_optional_gate(planner, task["query"], gate=gate)
         history.extend(planner.history)
 
-        print("\n--- Solving Phase ---")
-        solver = CompactSolver(mcp_clients=mcp_clients, init_model_name=model)
-        solver.set_subtasks(planner.subtasks)
-        async with solver:
-            async for chunk in solver.run(task["query"]):
-                print(chunk, end="", flush=True)
-        history.extend(solver.history)
+        if arm == "c":
+            # Arm C: the validated plan is the trajectory. ReactAgent is used
+            # for its tool routing only — the class arms A/B executed through —
+            # and its LLM is never called.
+            print("\n--- Execution Phase (enforced plan, no LLM) ---")
+            runner = ReactAgent(mcp_clients=mcp_clients, init_model_name=model)
+            async with runner:
+                await runner.load_tools()
+                executor = EnforcedExecutor(ToolCaller(runner))
+                exec_audit = await executor.run(planner.parsed_steps(), task["query"])
+            history.extend(executor.history)
+            print(f"\n[exec] {exec_audit['steps_executed']}/{exec_audit['steps_planned']} "
+                  f"steps, stop: {exec_audit['stop_reason'] or 'none'}")
+        else:
+            print("\n--- Solving Phase ---")
+            solver = CompactSolver(mcp_clients=mcp_clients, init_model_name=model)
+            solver.set_subtasks(planner.subtasks)
+            async with solver:
+                async for chunk in solver.run(task["query"]):
+                    print(chunk, end="", flush=True)
+            history.extend(solver.history)
     except Exception as exc:  # noqa: BLE001 — the record must survive any failure
         status, error = "error", f"{type(exc).__name__}: {exc}"
         print(f"\n!!! {error}")
-    return {
+    record = {
         "task_id": str(task["id"]),
         "agent": "plan_and_react_typed",
         "model": model,
-        "arm": "B" if gate else "A",
+        "arm": arm.upper(),
         "gate_audit": audit,
+        "exec_audit": exec_audit,
+        # `status` says whether the HARNESS completed the task, because that is
+        # what upstream's resume logic (get_completed_tasks skips only
+        # status=success) and its evaluator dedup key on. A plan that stopped on
+        # a tool error is a result of arm C, not a harness failure, so it lands
+        # in `plan_status` / `failed_step` instead: marking it status=error
+        # would make every resume re-run and re-plan those tasks.
         "status": status,
         "error": error,
+        "plan_status": None if exec_audit is None else (
+            "stopped" if exec_audit["stop_reason"] else "completed"
+        ),
+        "failed_step": None if exec_audit is None else exec_audit["stopped_at"],
         "duration_seconds": (datetime.now() - start).total_seconds(),
         "start_time": start.isoformat(),
         "end_time": datetime.now().isoformat(),
         "query": task["query"],
         "history": history,
     }
+    return record
 
 
 async def main() -> None:
-    parser = argparse.ArgumentParser(description="MapSmith x GABench A/B runner")
-    parser.add_argument("--arm", choices=["a", "b"], required=True,
-                        help="a = typed plan only, b = typed plan + validation gate")
+    parser = argparse.ArgumentParser(description="MapSmith x GABench A/B/C runner")
+    parser.add_argument("--arm", choices=["a", "b", "c"], required=True,
+                        help="a = typed plan only, b = plan + validation gate, "
+                             "c = plan + gate, executed as written (no LLM)")
     parser.add_argument("--model", required=True, help="model key from config.yaml")
-    parser.add_argument("--ids", help="comma-separated task IDs (default: all)")
+    parser.add_argument("--ids", help="comma-separated task IDs")
+    parser.add_argument("--group", help="frozen task group from task_groups.py: "
+                                        "defective, control, or defective+control")
     parser.add_argument("--all", action="store_true", help="run every task in the CSV")
-    parser.add_argument("--rep", type=int, default=1, help="repetition index (1..3)")
+    parser.add_argument("--rep", type=int, default=1, help="repetition index")
     args = parser.parse_args()
 
     tasks = load_tasks_from_csv(CSV_PATH)
     if args.ids:
         wanted = {t.strip() for t in args.ids.split(",")}
+    elif args.group:
+        wanted = set(task_ids(args.group))
+    elif args.all:
+        wanted = None
+    else:
+        parser.error("pass --ids, --group or --all")
+    if wanted is not None:
         tasks = [t for t in tasks if str(t["id"]) in wanted]
-    elif not getattr(args, "all"):
-        parser.error("pass --ids or --all")
+        missing = wanted - {str(t["id"]) for t in tasks}
+        if missing:
+            parser.error(f"no such task IDs in the benchmark: {sorted(missing)}")
     if not tasks:
         print("no matching tasks")
         return
 
-    out = results_root() / args.model / f"arm_{args.arm}"
+    out = run_dir(args.model, args.arm, args.rep)
     out.mkdir(parents=True, exist_ok=True)
-    result_file = out / f"rep{args.rep}.jsonl"
-    done = get_completed_tasks(result_file)
+    results = result_file(args.model, args.arm, args.rep)
+    done = get_completed_tasks(results)
     print(f"=== arm {args.arm.upper()} | model {args.model} | rep {args.rep} "
           f"| tasks {len(tasks)} | already done {len(done)} ===")
-    print(f"=== results -> {result_file} ===")
+    print(f"=== results -> {results} ===")
 
     for i, task in enumerate(tasks, 1):
         if str(task["id"]) in done:
@@ -131,9 +175,9 @@ async def main() -> None:
             continue
         print(f"\n[{i}/{len(tasks)}] task {task['id']}")
         reset_tool_output()
-        record = await run_task(task, args.model, gate=(args.arm == "b"))
-        archive_tool_output(out / f"rep{args.rep}_artifacts" / f"task_{task['id']}")
-        with open(result_file, "a", encoding="utf-8") as f:
+        record = await run_task(task, args.model, arm=args.arm)
+        archive_tool_output(out / "artifacts" / f"task_{task['id']}")
+        with open(results, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
             f.flush()
         print(f"\n[saved] task {task['id']}: {record['status']} "
