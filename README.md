@@ -234,11 +234,19 @@ Set `MAPSMITH_WORKSPACE=/data` to confine the server to one directory:
 
 Without a workspace, *file* access is deliberately unconfined — fine for a local stdio
 server on your own files — and plan validation flags `run_sql` steps with a
-`SQL_NOT_SANDBOXED` warning. Escalation from there is still closed: extension autoloading
-and community extensions are off (`shellfs` turns a filename into a shell command), the
-HTTP and S3 filesystems are disabled, and the configuration is locked, so untrusted SQL
-cannot turn file access into code execution or data egress. The full threat model — and
-what is explicitly *not* covered — is in [SECURITY.md](SECURITY.md).
+`SQL_NOT_SANDBOXED` warning. Code execution is still closed: extension autoloading and
+community extensions are off (`shellfs` turns a filename into a shell command), unsigned
+extensions are refused, DuckDB's HTTP and S3 filesystems are disabled, and the
+configuration is locked, so untrusted SQL cannot turn file access into code execution.
+
+**The network is not closed in that mode, by the same decision that keeps cloud-native
+data working**: GDAL carries its own HTTP client, so `ST_Read('/vsicurl/https://…')` in raw
+SQL reads whatever the host can reach — internal services and link-local metadata
+endpoints included — and the URL is chosen by whoever wrote the SQL, so it can also carry a
+string out. Setting `MAPSMITH_WORKSPACE` closes all of it, GDAL included, and the test
+suite asserts both halves (`tests/test_duckdb_sandbox.py`). If your `run_sql` input is not
+trusted and your host sits somewhere interesting, set a workspace. The full threat model —
+and what is explicitly *not* covered — is in [SECURITY.md](SECURITY.md).
 
 Fine print, because it changes how you deploy this: the path jail assumes a single trusted
 writer of the workspace filesystem (paths are resolved at check time, so a symlink swap by

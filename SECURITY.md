@@ -12,8 +12,10 @@ vulnerability:
 - **Provenance integrity**: a `<output>.provenance.json` manifest must
   faithfully record what produced the dataset. A way to make MapSmith write
   a misleading manifest is a vulnerability.
-- **No network egress in sandbox mode** beyond the documented one-time
-  extension install.
+- **No network egress in sandbox mode** — with `MAPSMITH_WORKSPACE` set —
+  beyond the documented one-time extension install. Any way to make SQL,
+  GDAL or a tool argument reach the network from a workspace-confined server
+  is a vulnerability.
 
 **The HTTP transport has no authentication in this release.** Anyone who can
 reach the endpoint can run every tool against everything the process can see,
@@ -30,15 +32,34 @@ Also worth knowing rather than reporting: with `MAPSMITH_WORKSPACE` unset,
 documented in the README. Escalation from there is closed on the paths that
 matter: extension autoinstall and autoloading are off, community extensions are
 refused (`shellfs` turns a filename ending in `|` into a shell command),
-unsigned extensions cannot be enabled, the HTTP and S3 filesystems are disabled
-so even an explicitly loaded `httpfs` can neither read nor write over the
-network, and the configuration is locked so SQL cannot undo any of it. What
-remains reachable in that mode — and only in that mode — is `INSTALL <name>` of
-a *signed* extension: DuckDB fetches it, from a repository URL the statement is
-allowed to name, before refusing anything unsigned. So unconfined mode does let
-SQL trigger one outbound request; it does not let it load unsigned code or move
-data over the network. With `MAPSMITH_WORKSPACE` set, both `INSTALL` and `LOAD`
-are refused outright.
+unsigned extensions cannot be enabled, DuckDB's HTTP and S3 filesystems are
+disabled so even an explicitly loaded `httpfs` can neither read nor write over
+the network, and the configuration is locked so SQL cannot undo any of it. So
+unconfined mode does not let SQL load unsigned code or run a shell command.
+
+**It does let SQL reach the network, and that is worth understanding before you
+deploy it.** Two paths remain open in that mode, both verified by test:
+
+- `ST_Read('/vsicurl/https://…')`, and GDAL's other virtual filesystems. Remote
+  reads are deliberately available while the server is unconfined, because
+  cloud-native data (COGs over https) is a feature — but GDAL carries its own
+  HTTP client, so DuckDB's filesystem block does not apply to it. Consequences
+  worth stating plainly: raw SQL can read any HTTP endpoint the host can reach,
+  including internal services and cloud metadata endpoints, and can put
+  arbitrary text in the URL, which makes it a low-bandwidth way out for data as
+  well as in.
+- `INSTALL <name> FROM '<url>'` of a *signed* extension: DuckDB fetches it from
+  a repository URL the statement is allowed to name before refusing anything
+  unsigned. Nothing comes back into the query, but the request goes out with a
+  path the statement chose.
+
+With `MAPSMITH_WORKSPACE` set, all of it is refused — `INSTALL`, `LOAD`, DuckDB
+filesystems and GDAL's virtual filesystems alike — and the refusal happens
+before any request leaves, which `tests/test_duckdb_sandbox.py` asserts by
+counting requests at a loopback server rather than by matching an error message.
+Reports about unconfined mode are welcome as hardening ideas (an explicit
+"local files, no network" mode is on the roadmap); reports about a
+workspace-confined server reaching the network are vulnerabilities.
 
 Out of scope: issues requiring a hostile local process on the same machine
 (the jail assumes a single trusted writer of the workspace filesystem —

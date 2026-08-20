@@ -28,10 +28,20 @@ of read off a diff.
 - **The DuckDB sandbox locks its configuration in every mode.** The lock used to
   apply only under `MAPSMITH_WORKSPACE`, so a multi-statement call could switch
   extension autoloading back on, and an explicit `LOAD httpfs` was never blocked
-  at all. Locking is now unconditional and the HTTP and S3 filesystems are
-  disabled, which closes result exfiltration through a URL while local reads keep
-  working. `SECURITY.md` describes precisely what this stops and what it does
-  not.
+  at all. Locking is now unconditional and DuckDB's HTTP and S3 filesystems are
+  disabled, while local reads keep working.
+- **The security documentation no longer claims that unconfined mode blocks
+  network egress.** It does not, and it never did: GDAL carries its own HTTP
+  client, so `ST_Read('/vsicurl/https://…')` in raw SQL reads whatever the host
+  can reach — internal services and metadata endpoints included — and the URL it
+  names can carry data out. Remote reads are deliberately available while the
+  server is unconfined, because cloud-native data is a feature; the claim that
+  the network was closed anyway was the bug. README and SECURITY.md now state
+  the price of that choice, and two tests pin both halves of it: without a
+  workspace the read succeeds, and with one it is refused *before any request
+  leaves*, asserted by counting requests at a loopback server instead of
+  matching an error message. If you do not trust your `run_sql` input, set a
+  workspace.
 - **The multi-layer guard fails closed.** A container whose layer list could not
   be read looked like a single-layer file, and mechanical geometry repair would
   then have destroyed the other layers while recording success.

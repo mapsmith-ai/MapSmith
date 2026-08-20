@@ -148,9 +148,15 @@ def test_run_sql_end_to_end_inside_workspace(ws):
 
 def test_community_extensions_and_autoload_are_off_without_a_workspace(monkeypatch):
     """Unconfined file access without a workspace is deliberate; escalation to
-    shell commands and network egress is not. `shellfs` runs a shell command
-    for a filename ending in '|', and autoload pulls httpfs on demand — both
-    reachable from one LLM-written statement under DuckDB's defaults."""
+    shell commands and to DuckDB's own network filesystems is not. `shellfs`
+    runs a shell command for a filename ending in '|', and autoload pulls
+    httpfs on demand — both reachable from one LLM-written statement under
+    DuckDB's defaults.
+
+    This says nothing about GDAL, which brings its own HTTP client and stays
+    reachable in this mode on purpose — see
+    test_gdal_network_reads_are_available_without_a_workspace, which is where
+    that price is pinned down."""
     monkeypatch.delenv("MAPSMITH_WORKSPACE", raising=False)
     con = duckdb_engine._connect()
 
@@ -199,6 +205,93 @@ def test_community_extensions_and_autoload_are_off_without_a_workspace(monkeypat
     if loaded:
         # httpfs is present, so the refusal must come from the filesystem block
         assert "disabled" in str(failure.value).lower(), str(failure.value)
+
+
+def _geojson_server():
+    """A loopback HTTP server serving one GeoJSON, recording every request.
+
+    Loopback only: these tests must never depend on the internet, and the
+    recorded requests are the point — a refusal that still fired the request
+    would be a beacon, which is not a refusal.
+    """
+    import http.server
+    import json
+    import threading
+
+    payload = json.dumps({
+        "type": "FeatureCollection",
+        "features": [{"type": "Feature", "properties": {"secret": "internal"},
+                      "geometry": {"type": "Point", "coordinates": [9.19, 45.46]}}],
+    }).encode()
+    hits: list[str] = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def _reply(self, body):
+            hits.append(f"{self.command} {self.path}")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/geo+json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Accept-Ranges", "bytes")
+            self.end_headers()
+            if body:
+                self.wfile.write(payload)
+
+        def do_GET(self):
+            self._reply(True)
+
+        def do_HEAD(self):
+            self._reply(False)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_address[1]}/remote.geojson"
+    return server, url, hits
+
+
+def test_gdal_network_reads_are_available_without_a_workspace():
+    """Unconfined mode reaches the network THROUGH GDAL, by design.
+
+    Cloud-native data is a feature (`/vsicurl` COGs), and this is the test that
+    keeps the documentation honest about its price: in this mode SQL written by
+    an agent can read any HTTP endpoint the host can reach — including
+    link-local and internal ones — and can carry a string out inside a URL it
+    chooses. DuckDB's own `disabled_filesystems` does not cover it, because
+    GDAL brings its own HTTP client. If someone ever closes this path, this test
+    fails and the README and SECURITY.md have to be updated in the same commit.
+    """
+    import os
+
+    server, url, hits = _geojson_server()
+    previous = os.environ.pop("MAPSMITH_WORKSPACE", None)
+    try:
+        con = duckdb_engine._connect()
+        rows = con.sql(f"SELECT secret FROM ST_Read('/vsicurl/{url}')").fetchall()
+        assert rows == [("internal",)], rows
+        assert hits, "no request reached the loopback server"
+    finally:
+        if previous is not None:
+            os.environ["MAPSMITH_WORKSPACE"] = previous
+        server.shutdown()
+
+
+def test_a_workspace_stops_gdal_from_reaching_the_network(ws):
+    """The same statement under a workspace: refused, and silent.
+
+    Zero requests is the assertion that matters. A refusal that had already
+    fired the HTTP request would still leak whatever the agent put in the URL,
+    and would still let it probe the host's network position.
+    """
+    server, url, hits = _geojson_server()
+    try:
+        con = duckdb_engine._connect()
+        with pytest.raises(duckdb.Error):
+            con.sql(f"SELECT * FROM ST_Read('/vsicurl/{url}')").fetchall()
+        assert hits == [], f"the refusal still reached the network: {hits}"
+    finally:
+        server.shutdown()
 
 
 def test_spatial_still_works_without_a_workspace(tmp_path, monkeypatch):
