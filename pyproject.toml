@@ -54,3 +54,10 @@ extend-exclude = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.hatch.build.targets.sdist]
+# Ship what a source build needs plus a gallery that actually runs (the
+# notebooks keep their data fixture); leave out docs screenshots and repo
+# plumbing. The screenshot alone was 1.2 MB of a 1.9 MB sdist, and an sdist on
+# PyPI is immutable forever.
+exclude = ["docs/images", "benchmarks", "deploy", ".github"]
