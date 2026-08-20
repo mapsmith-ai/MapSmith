@@ -173,17 +173,32 @@ def test_community_extensions_and_autoload_are_off_without_a_workspace(monkeypat
     with pytest.raises(duckdb.Error):
         con.execute("INSTALL shellfs FROM community")
 
-    # loading a *signed core* extension explicitly is still allowed (only
-    # enable_external_access would stop it, and that would take local files
-    # with it), so the egress it would open is closed at the filesystem level
-    with pytest.raises(duckdb.Error, match="(?i)disabled|permission"):
+    # Loading a *signed core* extension explicitly is still allowed (only
+    # enable_external_access would stop it, and that would take local file
+    # access with it), so the egress it would open is closed one level down,
+    # with disabled_filesystems.
+    #
+    # DuckDB does not report that setting back (it reads as an empty string),
+    # and whether `LOAD httpfs` fails with "not found" or the read fails with
+    # "disabled" depends on the machine's extension cache. So: assert the
+    # property the user cares about — SQL cannot read a URL — and make the
+    # stronger claim only where the cache allows it, instead of writing a test
+    # whose verdict depends on which machine runs it.
+    with pytest.raises(duckdb.Error):
+        con.execute("SET disabled_filesystems = ''")  # the block cannot be lifted
+
+    url = "https://raw.githubusercontent.com/duckdb/duckdb/main/README.md"
+    try:
         con.execute("LOAD httpfs")
-        con.sql(
-            "SELECT count(*) FROM "
-            "read_csv('https://raw.githubusercontent.com/duckdb/duckdb/main/README.md')"
-        ).fetchall()
-    with pytest.raises(duckdb.Error):  # and the block cannot be lifted
-        con.execute("SET disabled_filesystems = ''")
+    except duckdb.Error:
+        loaded = False  # not in this machine's cache: nothing to load it with
+    else:
+        loaded = True
+    with pytest.raises(duckdb.Error) as failure:
+        con.sql(f"SELECT count(*) FROM read_csv('{url}')").fetchall()
+    if loaded:
+        # httpfs is present, so the refusal must come from the filesystem block
+        assert "disabled" in str(failure.value).lower(), str(failure.value)
 
 
 def test_spatial_still_works_without_a_workspace(tmp_path, monkeypatch):
