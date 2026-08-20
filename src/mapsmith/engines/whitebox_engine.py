@@ -52,21 +52,24 @@ def _engine_info() -> dict[str, str]:
 def _needs_plain_copy(path: str) -> str | None:
     """Why this GeoTIFF must be rewritten before whitebox may read it, or None.
 
-    whitebox_workflows 2.x decompresses DEFLATE/LZW rasters without undoing
-    the TIFF *predictor* (tag 317), so every value it computes from such a file
-    is garbage. Measured against a NumPy Horn hillshade on a 300x300 synthetic
-    DEM (whitebox-workflows 2.0.6, rasterio 1.5.1) — correlation with the
-    reference:
+    whitebox_workflows 2.x never undoes the TIFF predictor (tag 317), so
+    ``read_raster`` hands back the *undifferenced* values and everything
+    computed from them is wrong. The mechanism is unambiguous — for
+    predictor=2 the rows come back as the horizontal differences themselves:
 
-        no predictor, or predictor=1   int16 +0.99   float32 +0.99   correct
-        predictor=2 (horizontal diff)  int16 +0.03   float32 +0.59   WRONG
-        predictor=3 (floating point)   -             float32 +0.01   WRONG
+        row as whitebox returns it : [100,   7,   7,   7,   7,   7]
+        row as GDAL decodes it     : [100, 107, 114, 121, 128, 135]
+        cumsum(whitebox row) == GDAL row  ->  exactly True
 
-    Compression on its own is fine, and so is tiling at any block size: the
-    predictor alone decides. It is not an exotic setting — PREDICTOR=2 is the
-    standard recommendation for integer rasters and ships on plenty of
-    published DEMs — and the damage is invisible, because the output has the
-    right CRS, shape and value range and still looks like terrain.
+    predictor=3 (the floating-point predictor) yields garbage and NaNs the
+    same way. Compression is NOT the trigger: DEFLATE, LZW and PACKBITS all
+    read correctly without a predictor, and tiling is irrelevant at any block
+    size. The damage is silent — CRS, shape and value range all stay
+    plausible, and a hillshade still looks like terrain while differing from
+    the truth on 99% of pixels — so no postcondition can catch it.
+
+    PREDICTOR=2 is the standard recommendation for integer rasters, so this
+    is a normal encoding rather than an exotic one.
     """
     try:
         import rasterio

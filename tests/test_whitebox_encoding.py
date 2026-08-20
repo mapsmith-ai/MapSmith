@@ -139,3 +139,30 @@ def test_no_temporary_copies_are_left_behind(tmp_path):
     _write(src, data, "int16", "deflate", 2, True)
     whitebox_engine.hillshade(str(src), str(tmp_path / "hs.tif"))
     assert [p.name for p in tmp_path.rglob("*no-predictor*")] == []
+
+
+def test_the_engine_reads_predictor_files_wrongly_and_our_copy_fixes_it(tmp_path):
+    """The defect at its root, with no terrain tool in the way: whitebox hands
+    back the undifferenced values, and cumsum reconstructs the truth. This is
+    what the conversion exists for, and it is far cheaper to check here than
+    through a hillshade."""
+    data = _dem()
+    src = tmp_path / "pred2.tif"
+    _write(src, data, "int16", "deflate", 2, False)
+
+    assert whitebox_engine._needs_plain_copy(str(src)) == "stored with TIFF predictor 2"
+
+    wbe = wb.WbEnvironment()
+    wbe.verbose = False
+    with rasterio.open(src) as ds:
+        truth = ds.read(1)
+
+    as_read = wbe.read_raster(str(src)).to_numpy()
+    assert not np.array_equal(as_read, truth), "if this passes, upstream fixed the bug"
+    assert np.array_equal(np.cumsum(as_read, axis=1).astype("int16"), truth), (
+        "the returned values are the horizontal differences, unsummed"
+    )
+
+    converted = whitebox_engine._plain_copy(str(src), tmp_path)
+    assert whitebox_engine._needs_plain_copy(converted) is None
+    assert np.array_equal(wbe.read_raster(converted).to_numpy(), truth)
