@@ -268,6 +268,36 @@ def test_repair_preserves_the_geopackage_layer_name(tmp_path):
     assert [str(row[0]) for row in list_layers(out)] == ["zones"]
 
 
+def test_repair_refuses_a_container_whose_layers_cannot_be_listed(tmp_path, monkeypatch):
+    """Fail closed on "I do not know what is in this file".
+
+    The multi-layer refusal only protects the case where listing *works*. When
+    the probe fails, an unlistable container used to look like a single-layer
+    one and the repair rewrote it — destroying layers this operation never read
+    while recording success. The guard for that existed but was unreachable,
+    because the probe reported failure as an empty list; this test is what makes
+    the distinction between "no layers" and "unknown layers" load-bearing.
+    """
+    out = tmp_path / "data.gpkg"
+    _gdf([_bowtie()]).to_file(out, layer="zones", driver="GPKG")
+    before = verify.verify_vector_output(str(out))
+    assert not next(c for c in before if c.name == "geometry_valid").passed
+
+    import pyogrio
+
+    def refuse(*args, **kwargs):
+        raise RuntimeError("driver unavailable")
+
+    monkeypatch.setattr(pyogrio, "list_layers", refuse)
+    assert verify._gpkg_layers(str(out)) is None
+
+    with pytest.raises(ValueError, match="could not be listed"):
+        verify._repair_invalid_geometry(str(out))
+
+    # and the file is untouched: no temp file left behind, geometry still invalid
+    assert [p.name for p in tmp_path.iterdir()] == ["data.gpkg"]
+
+
 def test_enforce_names_the_repair_when_one_was_attempted():
     failed = [verify.Check("geometry_types", False, "got GeometryCollection")]
     repairs = [{"check": "geometry_valid", "action": "make_valid()", "resolved": True}]

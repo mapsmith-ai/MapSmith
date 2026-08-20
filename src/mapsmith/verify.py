@@ -128,12 +128,21 @@ class Check:
 MAX_REPAIR_ROUNDS = 2
 
 
-def _gpkg_layers(path: str) -> list[str]:
+def _gpkg_layers(path: str) -> list[str] | None:
+    """The layer names of a container, or None when they cannot be listed.
+
+    None and [] must stay distinct: an empty list means "listed, nothing in
+    there", while None means "we do not know what is in there" — and the only
+    safe thing to do with a container of unknown contents is refuse to rewrite
+    it. Collapsing the failure into [] made the caller's fail-closed branch
+    unreachable, so an unlistable GeoPackage looked exactly like a
+    single-layer one and the repair went ahead.
+    """
     with suppress(Exception):
         from pyogrio import list_layers
 
         return [str(row[0]) for row in list_layers(path)]
-    return []
+    return None
 
 
 def _read_vector(path: str):
