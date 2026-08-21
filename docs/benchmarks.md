@@ -21,6 +21,18 @@ measures that idea on a third-party benchmark, with a deterministic evaluator
   system prompt embeds compact tool signatures instead of raw tool objects
   (~26k chars instead of ~148k; declared methodology change, applied to both
   arms).
+
+  **What that compression costs, found later and worth knowing before reading
+  any number on this page**: the compact signature keeps a tool's name, typed
+  arguments and the first line of its description, which drops the `Args:`
+  section — and that is where the per-argument rules live, such as
+  `output_name: Output filename (must end with .tif)`. So neither planner nor
+  solver was ever told those rules. It applies identically to every arm, so the
+  comparisons hold; but part of the absolute failure rate below is ours, and
+  more importantly it is *one concrete piece* of the information an improvising
+  solver recovers from error messages and an enforced plan cannot. Separating
+  "the model cannot plan this" from "we never told it the rules" needs a run
+  with the full argument documentation, which has not happened yet.
 - **Models**: `claude-sonnet-5` and `claude-haiku-4-5` — planner and solver
   are the same model within a run. The second model tests the obvious
   hypothesis: a smaller model writes dirtier plans, so validation should

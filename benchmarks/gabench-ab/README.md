@@ -86,7 +86,12 @@ your aggregate delta against that before believing it. With several repetitions,
   arguments, one-line description) instead of raw tool objects — ~26k
   characters instead of ~148k. This is a declared change from upstream,
   applied identically to every arm; without it the input cost per task is
-  roughly four times higher for no measured benefit.
+  roughly four times higher for no measured benefit. It has a price that took
+  a while to notice: keeping only the first line of a description drops the
+  `Args:` block, where rules like `output_name: Output filename (must end with
+  .tif)` live. An improvising solver still learns them — from the error the
+  tool returns — while an enforced plan never does, which flatters the
+  improvising arms in a way that has nothing to do with improvisation.
 - **Each task starts from a clean output directory** and its artifacts are
   archived afterwards. Without this, a task can "succeed" by reusing a
   previous run's files — observed on our first smoke test.
