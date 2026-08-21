@@ -284,8 +284,17 @@ in every arm, i.e. wrong parameters and missing outputs at *execution* time,
 which is why MapSmith enforces its plans at the execution boundary and verifies
 inputs and outputs at runtime rather than advising an agent that improvises.
 
+Three further arms then measured the configuration MapSmith actually ships —
+the plan *enforced*, no improvisation between validation and execution — over
+375 runs, and the result cuts both ways: enforcing reproduces its own score
+3–18× more tightly than an improvising solver, and it does **not** beat it on
+accuracy (parity on tool selection, measurably worse on ordering). One of those
+arms also refuted a conclusion this page had published two arms earlier; the
+correction is kept in place rather than edited away.
+
 The harness is in [`benchmarks/gabench-ab/`](benchmarks/gabench-ab/), including
-the `split_analysis.py` that took our own win apart.
+the `split_analysis.py` that took our own win apart and the
+`rep_analysis.py` that bars every delta against a measured noise floor.
 
 ## Notebook gallery
 
