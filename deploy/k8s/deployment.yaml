@@ -18,10 +18,25 @@ spec:
         app: mapsmith
     spec:
       automountServiceAccountToken: false
+      # The image is unprivileged by default; this states it at the pod level so
+      # the cluster enforces it instead of trusting the image, and fsGroup is
+      # what makes the PVC writable by that non-root user.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: server
           image: ghcr.io/mapsmith-ai/mapsmith:main
           imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
           env:
             - name: MAPSMITH_TRANSPORT
               value: "http"
@@ -61,10 +76,23 @@ spec:
           volumeMounts:
             - name: workspace
               mountPath: /data
+            # readOnlyRootFilesystem means every writable path must be declared:
+            # /tmp is used by Python and by DuckDB's spill, and the home holds
+            # the matplotlib config directory.
+            - name: tmp
+              mountPath: /tmp
+            - name: home
+              mountPath: /home/mapsmith
       volumes:
         - name: workspace
           persistentVolumeClaim:
             claimName: mapsmith-workspace
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi
+        - name: home
+          emptyDir:
+            sizeLimit: 64Mi
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
