@@ -284,14 +284,14 @@ def main() -> int:
     print("? marks a delta with no noise estimate at all (a single repetition): "
           "unreadable, whatever its size.")
 
-    # --- what the enforced arm actually did --------------------------------
-    if "c" in args.arms and reps_of["c"]:
-        print("\narm C: what the enforced plans did")
+    # --- what the enforced arms actually did -------------------------------
+    for enforced_arm in [a for a in ("c", "d", "e") if a in args.arms and reps_of[a]]:
+        print(f"\narm {enforced_arm.upper()}: what the enforced plans did")
         stops: Counter[str] = Counter()
         steps_done, steps_planned, task_runs = 0, 0, 0
         by_task: dict[str, Counter] = {}
-        for rep in reps_of["c"]:
-            for record in audits(args.model, "c", rep):
+        for rep in reps_of[enforced_arm]:
+            for record in audits(args.model, enforced_arm, rep):
                 audit = record.get("exec_audit") or {}
                 reason = audit.get("stop_reason") or "completed"
                 stops[reason] += 1

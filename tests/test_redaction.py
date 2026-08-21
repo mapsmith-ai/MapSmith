@@ -22,8 +22,8 @@ from mapsmith.provenance import REDACTED, ProvenanceRecord, redact_secrets
     ("sql", "secret", "keep"),
     [
         (
-            "CREATE SECRET s3 (TYPE S3, KEY_ID 'AKIAIOSFODNN7EXAMPLE', "
-            "SECRET 'wJalrXUtnFEMI/K7MDENG')",
+            ("CREATE SECRET s3 (TYPE S3, KEY_ID 'AKIAIOSFODNN7EXAMPLE', "
+             "SECRET 'wJalrXUtnFEMI/K7MDENG')"),
             "AKIAIOSFODNN7EXAMPLE",
             "CREATE SECRET s3",  # the secret's NAME is not a credential
         ),

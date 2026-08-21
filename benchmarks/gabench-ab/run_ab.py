@@ -71,15 +71,21 @@ async def run_task(task: dict, model: str, arm: str) -> dict:
     mcp_clients = get_mcp_clients()
     start = datetime.now()
     status, error, history, audit, exec_audit = "success", None, [], None, None
-    gate = arm in ("b", "c", "d")
+    gate = arm in ("b", "c", "d", "e")
     # arm D adds the data-flow stage to the same gate: an input must exist or be
     # written by an earlier step. That is the one check whose absence stopped 74
     # of 75 enforced runs, so D differs from C by exactly this and nothing else.
-    flow = arm == "d"
-    enforced = arm in ("c", "d")
+    flow = arm in ("d", "e")
+    enforced = arm in ("c", "d", "e")
+    # arm E = arm D with the tools' full argument documentation in the planner
+    # prompt. It answers one question the D run raised: does an enforced plan
+    # fail because planning is hard, or because our own prompt compression
+    # never told the planner the rules (output_name must end with .tif)?
+    full_docs = arm == "e"
     try:
         print("\n--- Planning Phase (typed) ---")
-        planner = TypedPlanAgent(mcp_clients=mcp_clients, init_model_name=model)
+        planner = TypedPlanAgent(mcp_clients=mcp_clients, init_model_name=model,
+                                 full_docs=full_docs)
         async with planner:
             audit = await plan_with_optional_gate(
                 planner, task["query"], gate=gate, flow=flow
@@ -140,10 +146,11 @@ async def run_task(task: dict, model: str, arm: str) -> dict:
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description="MapSmith x GABench A/B/C runner")
-    parser.add_argument("--arm", choices=["a", "b", "c", "d"], required=True,
+    parser.add_argument("--arm", choices=["a", "b", "c", "d", "e"], required=True,
                         help="a = typed plan only, b = plan + validation gate, "
                              "c = plan + gate, executed as written (no LLM), "
-                             "d = plan + gate + data-flow check, executed as written")
+                             "d = plan + gate + data-flow check, executed as written, "
+                             "e = d with the tools' full argument docs in the plan prompt")
     parser.add_argument("--model", required=True, help="model key from config.yaml")
     parser.add_argument("--ids", help="comma-separated task IDs")
     parser.add_argument("--group", help="frozen task group from task_groups.py: "

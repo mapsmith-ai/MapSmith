@@ -81,8 +81,23 @@ Validation errors:
 """
 
 
-def tool_signature_lines(tools: list[Any]) -> str:
-    """Compact per-tool signature lines from the MCP inputSchema."""
+FULL_DOC_CHARS = 700
+
+
+def tool_signature_lines(tools: list[Any], full_docs: bool = False) -> str:
+    """Compact per-tool signature lines from the MCP inputSchema.
+
+    The compact form keeps the name, the typed arguments and the FIRST LINE of
+    the description. That drops the `Args:` block, which is where the
+    per-argument rules live — `output_name: Output filename (must end with
+    .tif)` among them — so neither planner nor solver is ever told them. It is
+    applied identically to every arm, so comparisons hold, but it is also one
+    concrete piece of what an improvising solver recovers from an error message
+    and an enforced plan cannot.
+
+    `full_docs=True` keeps the whole description instead (capped), which is what
+    the arm measuring "was the planner underinformed?" needs.
+    """
     lines = []
     for tool in tools:
         name = getattr(tool, "name", None) or tool.get("name")
@@ -95,7 +110,10 @@ def tool_signature_lines(tools: list[Any]) -> str:
             mark = "" if arg in required else "?"
             args.append(f"{arg}{mark}: {kind}")
         desc = (getattr(tool, "description", None) or tool.get("description", "") or "")
-        desc = desc.split("Args:")[0].split("Returns:")[0].strip().split("\n")[0][:110]
+        if full_docs:
+            desc = " ".join(desc.split())[:FULL_DOC_CHARS]
+        else:
+            desc = desc.split("Args:")[0].split("Returns:")[0].strip().split("\n")[0][:110]
         lines.append(f"- {name}({', '.join(args)}) — {desc}")
     return "\n".join(lines)
 
@@ -331,18 +349,26 @@ def make_compact_solver(solve_cls):
 
 
 class TypedPlanAgent(PlanAgent):
-    """PlanAgent that emits typed steps (tool + arguments) instead of prose."""
+    """PlanAgent that emits typed steps (tool + arguments) instead of prose.
 
-    def __init__(self, mcp_clients=None, init_model_name: str = "gpt-4o"):
+    `full_docs=True` gives the planner the tools' complete descriptions instead
+    of one truncated line. It is a separate arm, not a default: changing it
+    would change every arm at once and break comparability with the runs
+    already paid for.
+    """
+
+    def __init__(self, mcp_clients=None, init_model_name: str = "gpt-4o",
+                 full_docs: bool = False):
         super().__init__(mcp_clients, init_model_name, sys_prompt=TYPED_PLANNER_PROMPT)
         self.tool_index: dict[str, dict[str, Any]] = {}
+        self.full_docs = full_docs
 
     async def run(self, input: str) -> AsyncGenerator[str, None]:
         if not self.history:
             await self.load_tools()
             self.tool_index = build_tool_index(self.tools)
             self.sys_prompt = self.sys_prompt.format(
-                tools=tool_signature_lines(self.tools)
+                tools=tool_signature_lines(self.tools, full_docs=self.full_docs)
             )
             self.history.append(
                 {"role": "system", "content": [{"type": "text", "text": self.sys_prompt}]}
