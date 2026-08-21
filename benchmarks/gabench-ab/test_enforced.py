@@ -1,4 +1,5 @@
-"""Closed-form test of arm C's enforced executor. No API calls, no GABench.
+"""Closed-form tests of the enforced executor (arm C) and the data-flow gate
+(arm D). No API calls, no GABench.
 
 Two things are checked, and the second is the one that matters. It is easy to
 build an executor that runs the right tools and logs them in a format the
@@ -35,6 +36,7 @@ from ab_extension import (  # noqa: E402
     ToolCaller,
     format_action,
     tool_reply_failed,
+    validate_plan_flow,
 )
 
 # verbatim from evaluation/step_by_step.py, mode "react"
@@ -183,6 +185,79 @@ if real is not None:
 line = format_action("t", {"a": 1}, thought="multi\nline\tthought")
 assert line.count("\n") == 1 and line.splitlines()[1].startswith("Action: {"), line
 assert json.loads(line.splitlines()[1][len("Action: "):]) == {"name": "t", "arguments": {"a": 1}}
+
+
+# ------------------------------------------------- arm D: the data-flow gate
+# The check whose absence stopped 74 of 75 enforced runs. Every case below is a
+# shape observed in real plans or in GABench's own reference toolchains, so this
+# is a regression test for the experiment, not a unit test of a regex.
+REAL_FILES = {"dataset/dem.tif", "dataset/roads.shp"}
+
+
+def on_disk(path):
+    return path.replace("\\", "/").lstrip("./") in REAL_FILES
+
+
+def codes(plan):
+    return [i["code"] for i in validate_plan_flow(plan, exists=on_disk)]
+
+
+def step(sid, args):
+    return {"step_id": sid, "tool": "t", "arguments": args}
+
+
+# the actual failure: step 1 writes output/x.tif, step 2 reads x.tif
+chained = [
+    step(1, {"raster_path": "dataset/dem.tif", "output_name": "burn.tif"}),
+    step(2, {"raster_path": "burn.tif", "output_name": "norm.tif"}),
+]
+assert codes(chained) == ["PREFER_OUTPUT_PATH"], codes(chained)
+assert "use 'output/burn.tif'" in validate_plan_flow(chained, exists=on_disk)[0]["message"]
+
+# the same plan with the path the tool actually writes to: clean
+fixed = [chained[0], step(2, {"raster_path": "output/burn.tif", "output_name": "norm.tif"})]
+assert codes(fixed) == [], codes(fixed)
+
+# GABench's own reference toolchains write it as './output\\name' — also clean
+assert codes([chained[0], step(2, {"raster_path": r"./output\burn.tif"})]) == []
+
+# an input that neither exists nor is produced anywhere
+assert codes([step(1, {"vector_path": "dataset/ghost.shp"})]) == ["INPUT_NOT_FOUND"]
+# ...while a real one passes, so the check is not just refusing everything
+assert codes([step(1, {"vector_path": "dataset/roads.shp"})]) == []
+
+# lists of paths and the map tools' layers[].data are inputs too
+assert codes([step(1, {"raster_paths": ["dataset/dem.tif", "dataset/ghost.tif"]})]) == [
+    "INPUT_NOT_FOUND"
+]
+assert codes([step(1, {"layers": [{"data": "output/never_written.tif", "type": "raster"}]})]) == [
+    "INPUT_NOT_FOUND"
+]
+# the source key inside a layer is not fixed: the reference toolchains say
+# "data", the planner we run says "path". Guessing one name made the check blind
+# to every map step, which is how the first arm-D run was stopped and fixed.
+assert codes([step(1, {"layers": [{"path": "output/never_written.tif", "name": "Burn"}]})]) == [
+    "INPUT_NOT_FOUND"
+], codes([step(1, {"layers": [{"path": "output/never_written.tif", "name": "Burn"}]})])
+# ...and a label that happens to sit beside it is not a path
+assert codes([step(1, {"layers": [{"path": "dataset/dem.tif", "label": "Burn Severity",
+                                   "cmap": "Reds"}]})]) == []
+# the chained case through a layer: step 1 writes it, step 2 maps it by bare name
+layered = [
+    step(1, {"raster_path": "dataset/dem.tif", "output_name": "dnbr.tif"}),
+    step(2, {"layers": [{"path": "dnbr.tif", "type": "raster"}], "output_name": "map.png"}),
+]
+assert codes(layered) == ["PREFER_OUTPUT_PATH"], codes(layered)
+
+# output_name is not an input: naming a file you are about to create is fine
+assert codes([step(1, {"raster_path": "dataset/dem.tif", "output_name": "new.tif"})]) == []
+
+# outputs register only after their own step is checked, so a forward reference
+# is an error rather than something that happens to resolve
+forward = [step(1, {"vector_path": "$2"}), step(2, {"output_name": "later.shp"})]
+assert codes(forward) == ["UNKNOWN_REFERENCE"], codes(forward)
+# and a backward reference resolves
+assert codes([step(1, {"output_name": "a.shp"}), step(2, {"vector_path": "$1"})]) == []
 
 
 # ------------------------------------------- a failed tool that did not raise

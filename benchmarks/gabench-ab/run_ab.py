@@ -1,15 +1,16 @@
-"""A/B/C runner: GABench Plan-and-React with typed plans, gate, enforced plans.
+"""A/B/C/D runner: GABench Plan-and-React with typed plans, gate, enforced plans.
 
 Usage (run with GABench's venv, from its repo root so config.yaml/.env
 resolve; GABENCH_ROOT may point the harness at the checkout):
     python run_ab.py --arm a --model claude --ids 1,2,3 --rep 1
     python run_ab.py --arm b --model claude --all --rep 1
     python run_ab.py --arm c --model haiku --group defective+control --rep 1
+    python run_ab.py --arm d --model haiku --group defective+control --rep 1
 
 Output: results/{model}/arm_{arm}_rep{rep}/rep{rep}.jsonl in the upstream
 history format (GABench's evaluation/step_by_step.py runs on it unchanged) plus
-a `gate_audit` field recording validation rounds and, for arm C, an
-`exec_audit` field recording what the enforced plan actually did.
+a `gate_audit` field recording validation rounds and, for the enforced arms, an
+`exec_audit` field recording what the plan actually did.
 """
 
 from __future__ import annotations
@@ -70,18 +71,25 @@ async def run_task(task: dict, model: str, arm: str) -> dict:
     mcp_clients = get_mcp_clients()
     start = datetime.now()
     status, error, history, audit, exec_audit = "success", None, [], None, None
-    gate = arm in ("b", "c")
+    gate = arm in ("b", "c", "d")
+    # arm D adds the data-flow stage to the same gate: an input must exist or be
+    # written by an earlier step. That is the one check whose absence stopped 74
+    # of 75 enforced runs, so D differs from C by exactly this and nothing else.
+    flow = arm == "d"
+    enforced = arm in ("c", "d")
     try:
         print("\n--- Planning Phase (typed) ---")
         planner = TypedPlanAgent(mcp_clients=mcp_clients, init_model_name=model)
         async with planner:
-            audit = await plan_with_optional_gate(planner, task["query"], gate=gate)
+            audit = await plan_with_optional_gate(
+                planner, task["query"], gate=gate, flow=flow
+            )
         history.extend(planner.history)
 
-        if arm == "c":
-            # Arm C: the validated plan is the trajectory. ReactAgent is used
-            # for its tool routing only — the class arms A/B executed through —
-            # and its LLM is never called.
+        if enforced:
+            # Arms C and D: the validated plan is the trajectory. ReactAgent is
+            # used for its tool routing only — the class arms A/B executed
+            # through — and its LLM is never called.
             print("\n--- Execution Phase (enforced plan, no LLM) ---")
             runner = ReactAgent(mcp_clients=mcp_clients, init_model_name=model)
             async with runner:
@@ -132,9 +140,10 @@ async def run_task(task: dict, model: str, arm: str) -> dict:
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description="MapSmith x GABench A/B/C runner")
-    parser.add_argument("--arm", choices=["a", "b", "c"], required=True,
+    parser.add_argument("--arm", choices=["a", "b", "c", "d"], required=True,
                         help="a = typed plan only, b = plan + validation gate, "
-                             "c = plan + gate, executed as written (no LLM)")
+                             "c = plan + gate, executed as written (no LLM), "
+                             "d = plan + gate + data-flow check, executed as written")
     parser.add_argument("--model", required=True, help="model key from config.yaml")
     parser.add_argument("--ids", help="comma-separated task IDs")
     parser.add_argument("--group", help="frozen task group from task_groups.py: "

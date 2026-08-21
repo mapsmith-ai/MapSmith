@@ -181,6 +181,128 @@ def validate_plan_steps(
     return issues
 
 
+_PATH_SUFFIXES = (
+    ".tif", ".tiff", ".geojson", ".json", ".shp", ".gpkg", ".parquet", ".csv",
+    ".graphml", ".pkl", ".nc", ".png", ".jpg", ".jpeg", ".kml", ".gpx", ".zip",
+    ".las", ".laz", ".txt", ".xlsx",
+)
+
+
+def _looks_like_path(value: Any) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    v = value.replace("\\", "/").lower()
+    return "/" in v or v.endswith(_PATH_SUFFIXES) or bool(STEP_REFERENCE.match(value))
+
+
+def _input_path_strings(key: str, value: Any):
+    """The values of one argument that name an input dataset.
+
+    Convention read off the benchmark's own reference toolchains: 458 arguments
+    across 83 names end in `_path`/`_paths`, and the map-composition tools take
+    `layers`, a list of objects carrying the layer's source. Output naming goes
+    through `output_name` and is deliberately never treated as an input.
+
+    Inside a layer object the source key is NOT fixed: the reference toolchains
+    write `data`, and the planner we run writes `path`. Guessing the key name
+    would have made the flow check silently blind to every map step — caught on
+    the first live task of the first arm-D run — so anything path-shaped inside
+    a layer counts, whatever it is called.
+    """
+    if key == "layers" and isinstance(value, list):
+        for entry in value:
+            if isinstance(entry, str):
+                if _looks_like_path(entry):
+                    yield entry
+            elif isinstance(entry, dict):
+                for nested in entry.values():
+                    if _looks_like_path(nested):
+                        yield nested
+        return
+    if not key.endswith(("_path", "_paths", "_file", "_files")):
+        return
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, list):
+        for entry in value:
+            if isinstance(entry, str):
+                yield entry
+
+
+def _normalize(path: str) -> str:
+    return path.replace("\\", "/").lstrip("./").lower()
+
+
+def _basename(path: str) -> str:
+    return _normalize(path).rsplit("/", 1)[-1]
+
+
+def validate_plan_flow(
+    steps: list[dict[str, Any]],
+    exists: Callable[[str], bool] | None = None,
+    output_dir: str = "output",
+) -> list[dict[str, str]]:
+    """Does every step read something that exists, or that an earlier step wrote?
+
+    This is the check the name-and-type gate does not do, and the one whose
+    absence made the enforced arm stop on 74 of 75 runs: a step declares
+    `output_name: "x.tif"`, the next reads `raster_path: "x.tif"`, and the file
+    is at `output/x.tif`. An improvising solver recovers by reading the tool's
+    reply; an enforced plan cannot. MapSmith's own validator refuses the same
+    shapes (UNKNOWN_REFERENCE, FORWARD_REFERENCE, PREFER_REFERENCE, input-file
+    existence), so this is that contract transplanted onto GABench.
+
+    Outputs are registered AFTER a step's inputs are checked, which is what
+    makes a forward reference an error rather than an accident.
+    """
+    if exists is None:
+        exists = lambda p: Path(p).exists()  # noqa: E731 — injected in tests
+    issues: list[dict[str, str]] = []
+    produced: dict[str, str] = {}  # basename -> step_id that writes it
+    seen_ids: list[str] = []
+
+    for position, raw in enumerate(steps, 1):
+        if not isinstance(raw, dict):
+            continue
+        sid = str(raw.get("step_id", position))
+        arguments = raw.get("arguments")
+        if isinstance(arguments, dict):
+            for key, value in arguments.items():
+                for path in _input_path_strings(key, value):
+                    match = STEP_REFERENCE.match(path)
+                    if match:
+                        if match.group(1) not in seen_ids:
+                            issues.append({
+                                "code": "UNKNOWN_REFERENCE", "step_id": sid,
+                                "message": f"'{key}' points at {path}, which is not "
+                                           "an earlier step",
+                            })
+                        continue
+                    base = _basename(path)
+                    if base in produced:
+                        expected = f"{output_dir}/{base}"
+                        if _normalize(path) != _normalize(expected):
+                            issues.append({
+                                "code": "PREFER_OUTPUT_PATH", "step_id": sid,
+                                "message": f"'{key}' is '{path}', but step "
+                                           f"{produced[base]} writes that file into the "
+                                           f"output directory: use '{expected}'",
+                            })
+                        continue
+                    if not exists(path):
+                        issues.append({
+                            "code": "INPUT_NOT_FOUND", "step_id": sid,
+                            "message": f"'{key}' is '{path}', which does not exist and "
+                                       "is not produced by any earlier step",
+                        })
+        seen_ids.append(sid)
+        if isinstance(arguments, dict):
+            name = arguments.get("output_name")
+            if isinstance(name, str) and name:
+                produced[_basename(name)] = sid
+    return issues
+
+
 def make_compact_solver(solve_cls):
     """Factory: a solver whose system prompt embeds compact tool signatures
     instead of the raw tool objects (148k chars -> ~26k, the observed cost
@@ -249,13 +371,19 @@ class TypedPlanAgent(PlanAgent):
 
 
 async def plan_with_optional_gate(
-    planner: TypedPlanAgent, query: str, gate: bool, max_repairs: int = 2
+    planner: TypedPlanAgent, query: str, gate: bool, max_repairs: int = 2,
+    flow: bool = False
 ) -> dict[str, Any]:
     """Run the planner; with gate=True, validate and feed errors back.
 
+    `flow=True` adds the data-flow check (arm D): on top of names and types, an
+    input must exist or be written by an earlier step. It is a second gate
+    stage, not a different one, so arm D differs from arm C by exactly this
+    check and nothing else.
+
     Returns audit info: rounds, issues per round, and the final plan string.
     """
-    audit: dict[str, Any] = {"gate": gate, "rounds": []}
+    audit: dict[str, Any] = {"gate": gate, "flow": flow, "rounds": []}
     async for chunk in planner.run(query):
         print(chunk, end="", flush=True)
     for round_no in range(max_repairs + 1):
@@ -265,6 +393,10 @@ async def plan_with_optional_gate(
                        "message": "the plan is not a valid JSON list"}]
         else:
             issues = validate_plan_steps(steps, planner.tool_index)
+            if flow and not issues:
+                # only once names and types hold: a flow complaint about a step
+                # whose tool does not exist would be noise
+                issues = validate_plan_flow(steps)
         audit["rounds"].append({"round": round_no, "issues": issues})
         if not gate or not issues or round_no == max_repairs:
             break
