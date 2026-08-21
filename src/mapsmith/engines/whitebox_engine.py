@@ -59,14 +59,27 @@ def _needs_plain_copy(path: str) -> str | None:
 
         row as whitebox returns it : [100,   7,   7,   7,   7,   7]
         row as GDAL decodes it     : [100, 107, 114, 121, 128, 135]
-        cumsum(whitebox row) == GDAL row  ->  exactly True
+        cumsum(whitebox row) == GDAL row  ->  exactly True, on a STRIPED file
 
-    predictor=3 (the floating-point predictor) yields garbage and NaNs the
-    same way. Compression is NOT the trigger: DEFLATE, LZW and PACKBITS all
-    read correctly without a predictor, and tiling is irrelevant at any block
-    size. The damage is silent — CRS, shape and value range all stay
-    plausible, and a hillshade still looks like terrain while differing from
-    the truth on 99% of pixels — so no postcondition can catch it.
+    The condition on that last line matters, and leaving it implicit misleads
+    the next reader: the horizontal predictor differences within each strip or
+    *tile*, so on a tiled GeoTIFF the series restarts at every tile boundary
+    and a cumulative sum across the full row stops agreeing after the first
+    tile column. Measured on ``examples/fixtures/mount_st_helens_dem.tif``
+    (tiled 256, DEFLATE, predictor=2): columns 0-255 match, column 256 is the
+    first mismatch, 50.8% of pixels differ — while the same cumulative sum
+    *reset at each tile boundary* reproduces the truth exactly. Anyone checking
+    with a COG, which is tiled by definition, would otherwise see the identity
+    fail and conclude the bug is not there.
+
+    The bug itself does not care about tiling: it happens at any block size,
+    and on this tiled fixture whitebox reads elevations of -63..2531 m where
+    the truth is 652..2534 m. predictor=3 (the floating-point predictor) yields
+    garbage and NaNs the same way. Compression is NOT the trigger: DEFLATE, LZW
+    and PACKBITS all read correctly without a predictor. The damage is silent —
+    CRS, shape and value range all stay plausible, and a hillshade still looks
+    like terrain while differing from the truth on 99% of pixels — so no
+    postcondition can catch it.
 
     PREDICTOR=2 is the standard recommendation for integer rasters, so this
     is a normal encoding rather than an exotic one.
