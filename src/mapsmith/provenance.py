@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,70 @@ def sha256_of(path: str | Path, chunk_size: int = 1 << 20) -> str:
         while chunk := f.read(chunk_size):
             h.update(chunk)
     return h.hexdigest()
+
+
+REDACTED = "<redacted>"
+
+# Names that carry a credential in the SQL dialects and URIs MapSmith touches:
+# DuckDB secrets (CREATE SECRET ... KEY_ID '...', SECRET '...'), httpfs/S3
+# settings, ATTACH ... (PASSWORD '...'), and generic API tokens.
+_SECRET_NAMES = (
+    "secret", "secret_access_key", "session_token", "password", "passwd", "pwd",
+    "key_id", "access_key_id", "token", "api_key", "apikey", "auth", "bearer",
+    "client_secret", "private_key", "connection_string", "conninfo",
+)
+# `NAME 'value'`, `NAME='value'`, `NAME = "value"` — the value goes, the name stays,
+# so the manifest still shows WHICH statement ran. The name may be the suffix of a
+# longer identifier (`s3_secret_access_key`), which a plain word boundary misses
+# because an underscore is a word character.
+_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)([A-Za-z0-9_.]*(?:" + "|".join(_SECRET_NAMES) + r"))\b"
+    r"(\s*(?::=|=)\s*|\s+)"
+    r"('[^']*'|\"[^\"]*\"|[^\s,;)]+)"
+)
+
+
+def _mask_assignment(match: re.Match) -> str:
+    """Redact a credential value, but only where it really is one.
+
+    Requires the value to be quoted or introduced by `=`: that covers every
+    syntax MapSmith can meet (`SECRET 'x'`, `PASSWORD 'x'`, `token=x`) while
+    leaving `CREATE SECRET my_bucket (...)` readable — the secret's *name* is
+    not a credential, and hiding it would cost the reader the one detail that
+    says which statement ran.
+    """
+    name, separator, value = match.group(1), match.group(2), match.group(3)
+    if value[:1] in "'\"" or "=" in separator:
+        return f"{name}{separator}{REDACTED}"
+    return match.group(0)
+# userinfo in a URI: scheme://user:password@host
+_URI_PASSWORD = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://[^\s:/@]+):([^\s@/]+)@")
+
+
+def redact_secrets(value: Any) -> Any:
+    """Mask credential values inside anything recorded as a parameter.
+
+    A provenance manifest is meant to be shared — attached to a review, a bug
+    report, a paper — which is exactly why a credential must never reach one.
+    `run_sql` takes arbitrary SQL from an agent, so `CREATE SECRET (... SECRET
+    'AKIA...')` in the same session would otherwise be written verbatim into an
+    artifact this project actively encourages people to publish (issue #18).
+
+    The name is kept and only the value is masked, so the record still shows
+    which statement ran; `parameters_redacted` on the record says it happened,
+    because a manifest that quietly differs from what executed would be a worse
+    bug than the leak. Applied to every ProvenanceRecord and every job-ledger
+    row rather than at the call sites: a redaction a future engine can forget is
+    not a redaction.
+    """
+    if isinstance(value, str):
+        masked = _URI_PASSWORD.sub(rf"\1:{REDACTED}@", value)
+        return _SECRET_ASSIGNMENT.sub(_mask_assignment, masked)
+    if isinstance(value, dict):
+        return {k: redact_secrets(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return type(value)(redact_secrets(v) for v in value)
+    return value
 
 
 @dataclass
@@ -55,6 +120,15 @@ class ProvenanceRecord:
     mapsmith_version: str = __version__
     started_at: str = field(default_factory=_utcnow)
     finished_at: str | None = None
+    # set when redaction actually changed something: a manifest that silently
+    # differs from what ran would be worse than the leak it prevents
+    parameters_redacted: bool = False
+
+    def __post_init__(self) -> None:
+        safe = redact_secrets(self.parameters)
+        if safe != self.parameters:
+            self.parameters = safe
+            self.parameters_redacted = True
 
     def add_verification(self, checks: list[Any]) -> ProvenanceRecord:
         """Attach deterministic check results (objects with .as_dict())."""

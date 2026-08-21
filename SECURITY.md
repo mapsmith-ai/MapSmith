@@ -12,6 +12,18 @@ vulnerability:
 - **Provenance integrity**: a `<output>.provenance.json` manifest must
   faithfully record what produced the dataset. A way to make MapSmith write
   a misleading manifest is a vulnerability.
+- **No credentials in a manifest.** Manifests are meant to be shared — attached
+  to a review, a bug report, a paper — so recorded parameters are redacted
+  before they are written: the value after a credential-bearing name
+  (`SECRET`, `PASSWORD`, `KEY_ID`, `*_access_key`, `api_key`, a URI's
+  `user:password@`) becomes `<redacted>`, while the name and the rest of the
+  statement stay readable. The same redaction is applied to the job-ledger rows,
+  which outlive the session that wrote them. `parameters_redacted: true` on the
+  manifest says it happened, because a manifest that quietly differs from what
+  ran would be worse than the leak. A credential that survives into a manifest
+  or a ledger row is a vulnerability; note the converse limitation, which is not
+  one: redaction is name-based, so a secret passed as a bare positional value
+  with no recognisable name is not detected.
 - **No network egress in sandbox mode** — with `MAPSMITH_WORKSPACE` set —
   beyond the documented one-time extension install. Any way to make SQL,
   GDAL or a tool argument reach the network from a workspace-confined server

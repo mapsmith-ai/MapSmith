@@ -17,6 +17,8 @@ import uuid
 from contextlib import contextmanager
 from typing import Any
 
+from .provenance import redact_secrets
+
 _DDL = """
 CREATE TABLE IF NOT EXISTS mapsmith_jobs (
     id UUID PRIMARY KEY,
@@ -64,7 +66,10 @@ def job(operation: str, params: dict[str, Any]):
         _ensure_schema(conn)
         conn.execute(
             "INSERT INTO mapsmith_jobs (id, operation, params) VALUES (%s, %s, %s)",
-            (job_id, operation, json.dumps(params, default=str)),
+            # same redaction as the manifests: `run_sql` params carry arbitrary
+            # agent-written SQL, and a ledger outlives the session it recorded —
+            # a credential in here is a credential in a backup (issue #18)
+            (job_id, operation, json.dumps(redact_secrets(params), default=str)),
         )
     try:
         result: dict[str, Any] = {}
