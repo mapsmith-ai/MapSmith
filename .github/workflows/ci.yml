@@ -3,7 +3,21 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
+
+# Read-only by default. The publish job asks for `packages: write` on its own,
+# so nothing else in this file can push a package even if it wanted to. Without
+# this block every job inherits whatever the repository's default token
+# permission happens to be, which is not something a workflow should depend on.
+permissions:
+  contents: read
+
+# The image publish used to live in its own workflow triggered by the same push,
+# so it raced the tests instead of waiting for them: a commit that broke the
+# sandbox became `:latest` before the test that would have caught it finished,
+# and `deploy/k8s/deployment.yaml` pulls `:main` with `imagePullPolicy: Always`.
+# One workflow with `needs:` is what makes the gate real (#20).
 
 jobs:
   test:
@@ -12,8 +26,8 @@ jobs:
       matrix:
         python-version: ["3.10", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install
@@ -23,9 +37,92 @@ jobs:
       - name: Test
         run: pytest -q
 
-  docker:
+  # The container is the supported install path, so its defaults are part of the
+  # product and belong under test. Docker is not available on the machine this is
+  # developed on, which is exactly why these assertions have to run here.
+  image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build image
         run: docker build -t mapsmith:ci .
+
+      - name: It must run unprivileged, confined, and able to write its workspace
+        run: |
+          # world-writable on purpose: uid 1000 in the container is not the
+          # runner's uid, and the documented path is a bind mount of a directory
+          # owned by a human user
+          mkdir -p smoke && chmod 777 smoke
+          docker run --rm -v "$PWD/smoke:/data" --entrypoint sh mapsmith:ci -euc '
+            test "$(id -u)" -ne 0 || { echo "the image runs as root"; exit 1; }
+            test "$(id -un)" = mapsmith || { echo "unexpected user: $(id -un)"; exit 1; }
+            # default-expanded because `sh -u` would abort on the unset case
+            # with its own message instead of this one — and the unset case is
+            # exactly the regression this step exists to describe
+            test "${MAPSMITH_WORKSPACE:-unset}" = /data || {
+              echo "no workspace by default: ${MAPSMITH_WORKSPACE:-unset}"; exit 1; }
+            id -u > /data/uid
+          '
+          test "$(cat smoke/uid)" = 1000 || {
+            echo "the mounted workspace was not writable by the image user"; exit 1; }
+
+      - name: The GDAL policy must hold inside the image, not only in the tests
+        # A container inherits its parent's environment, and this security
+        # default lives in environment variables — so "the tests pass" and "the
+        # shipped image is confined" are two different claims.
+        run: |
+          docker run --rm --entrypoint python mapsmith:ci -c "import os, mapsmith; skip = os.environ.get('GDAL_SKIP', ''); assert 'VRT' in skip, f'GDAL_SKIP={skip!r}'; print('GDAL policy installed:', skip)"
+
+      - name: The server must answer an MCP handshake as that user
+        # Proves the wheels resolved and the server starts in the image, which a
+        # successful `docker build` does not: every dependency is imported lazily.
+        run: |
+          # `|| true` on the pipeline so a hang killed by `timeout` still lets
+          # the reply be printed: the failure message is the useful artifact here
+          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            | timeout 180 docker run -i --rm -v "$PWD/smoke:/data" mapsmith:ci > handshake.json || true
+          cat handshake.json
+          grep -q '"serverInfo"' handshake.json
+
+      - name: The registry ownership label must match server.json
+        # The MCP Registry proves ownership by comparing this label to the
+        # server name; a mismatch fails the publish after the release is
+        # already tagged, which is the worst moment to find out.
+        run: |
+          label=$(docker inspect --format '{{ index .Config.Labels "io.modelcontextprotocol.server.name" }}' mapsmith:ci)
+          name=$(python3 -c "import json; print(json.load(open('server.json'))['name'])")
+          test "$label" = "$name" || { echo "image label '$label' != server.json '$name'"; exit 1; }
+
+  publish:
+    needs: [test, image]
+    # Never from a pull request: the tests would gate it, but publishing an
+    # unmerged branch as `:latest` is not something a gate can make correct.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # Pinned by commit SHA rather than by moving major tag: this job holds
+      # `packages: write`, and a tag can be repointed at any commit by whoever
+      # controls the action's repository (#20).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
