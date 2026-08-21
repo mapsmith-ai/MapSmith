@@ -26,8 +26,10 @@ measures that idea on a third-party benchmark, with a deterministic evaluator
   any number on this page**: the compact signature keeps a tool's name, typed
   arguments and the first line of its description, which drops the `Args:`
   section — and that is where the per-argument rules live, such as
-  `output_name: Output filename (must end with .tif)`. So neither planner nor
-  solver was ever told those rules. It applies identically to every arm, so the
+  `output_name: Output filename (must end with .tif)`. Measured on the live
+  registry: **86 of the 133 tools state an extension rule that the compact form
+  throws away** (25,441 characters against 77,937 for the full descriptions).
+  So neither planner nor solver was ever told those rules. It applies identically to every arm, so the
   comparisons hold; but part of the absolute failure rate below is ours, and
   more importantly it is *one concrete piece* of the information an improvising
   solver recovers from error messages and an enforced plan cannot. Separating
