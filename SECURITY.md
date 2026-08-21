@@ -76,6 +76,26 @@ is refused too; and it sits at the tool boundary, so a future engine that runs
 agent-written SQL without calling `workspace.refuse_remote_in_sql` reopens the
 path.
 
+**A text check cannot see inside a file GDAL resolves itself, so there is a
+second layer.** A GDAL indirection file — a `.vrt` and its relatives — is a
+plain local path: no scheme, no `/vsi` prefix, nothing for the path guard, the
+SQL scan or DuckDB's `allowed_directories` to catch, while GDAL fetches whatever
+its `<SrcDataSource>` names, in-process. Measured in 0.2.1 (the audit that found
+it is why this paragraph exists): reading such a file **from inside a
+workspace** sent HEAD and GET to an attacker-named host through the
+GeoPandas/pyogrio path, which contradicted the promise above. DuckDB's spatial
+reader was already safe there, since it routes GDAL I/O through DuckDB's own
+filesystem with external access off.
+
+The fix is at GDAL's level rather than the string's: when remote reads are off,
+MapSmith deregisters GDAL's indirection and network drivers (`VRT`, `OGR_VRT`,
+`WMS`, `WFS`, `OAPIF`, `STACIT` and the rest) via `GDAL_SKIP`/`OGR_SKIP` before
+the geospatial stack initialises — see `mapsmith/gdal_policy.py`, asserted by
+subprocess tests that count requests at a loopback server. With
+`MAPSMITH_ALLOW_REMOTE=1` the drivers come back, including when a parent process
+had installed the policy. If you are on 0.2.1 or earlier and rely on the
+workspace as a security boundary, this is the fix to take.
+
 With `MAPSMITH_WORKSPACE` set, all of it is refused — `INSTALL`, `LOAD`, DuckDB
 filesystems and GDAL's virtual filesystems alike — and the refusal happens
 before any request leaves, which `tests/test_duckdb_sandbox.py` asserts by

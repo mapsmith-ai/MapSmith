@@ -24,6 +24,19 @@ All notable changes to MapSmith are documented here, in the format of
 
 ### Fixed
 
+- **A local GDAL indirection file could reach the network from inside a
+  workspace.** A `.vrt` is a plain local path, so the path guard, the SQL scan
+  and DuckDB's `allowed_directories` all saw a local file while GDAL fetched
+  whatever its `<SrcDataSource>` named — measured on 0.2.1 as HEAD and GET
+  leaving the process with `MAPSMITH_ALLOW_REMOTE` unset **and**
+  `MAPSMITH_WORKSPACE` set, through the GeoPandas/pyogrio path. That
+  contradicted the one promise SECURITY.md states as testable, so the fix is at
+  GDAL's level: with remote reads off, the indirection and network drivers are
+  deregistered before the geospatial stack initialises. The opt-in restores
+  them, including when a parent process installed the policy — containers pass
+  their whole environment down, and a switch that cannot lift an inherited
+  policy is a switch that does nothing. Found by an adversarial audit of the
+  commit that introduced the opt-in, i.e. of the fix itself.
 - **Credentials no longer reach provenance manifests or the job ledger.**
   `run_sql` records the query, and manifests are made to be shared, so an agent
   emitting `CREATE SECRET (... SECRET 'AKIA…')` in the same session used to write
