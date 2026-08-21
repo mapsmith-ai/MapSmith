@@ -69,6 +69,70 @@ def crs_label(crs: Any) -> str:
     return f"EPSG:{epsg}" if epsg else (getattr(crs, "name", None) or str(crs))
 
 
+NATIVE_GEO_TYPES = ("Geometry", "Geography")
+
+
+def native_geometry_column(path: str) -> tuple[str, str] | None:
+    """Column name and CRS declaration of a Parquet file that stores geometry in
+    Parquet's own ``GEOMETRY``/``GEOGRAPHY`` logical types, or None.
+
+    That storage is what GeoParquet 2.0 requires, and such a file may carry no
+    ``geo`` metadata key at all — the key is optional in 2.0. Files like this are
+    already produced by DuckDB (``geoparquet_version 'NONE'`` or ``'BOTH'``), so
+    "a Parquet file with geometry in it" no longer implies a ``geo`` key, and
+    reading one as CRS-less would refuse valid work for a wrong reason (#23).
+    """
+    import json
+
+    import pyarrow.parquet as pq
+
+    try:
+        schema = pq.ParquetFile(path).schema
+    except Exception:  # noqa: BLE001 — probing must never break the caller
+        return None
+    for index in range(len(schema)):
+        column = schema.column(index)
+        try:
+            described = json.loads(column.logical_type.to_json())
+        except Exception:  # noqa: BLE001, S112 — a type with no JSON form is not geometry
+            continue
+        if described.get("Type") in NATIVE_GEO_TYPES:
+            return column.name, described.get("crs") or ""
+    return None
+
+
+def native_crs_declaration(path: str, declaration: str) -> str:
+    """Resolve a native Parquet CRS declaration to a label, or ``unknown``.
+
+    The Parquet geospatial spec allows several forms, and MapSmith has met four
+    of them in the wild: absent (the spec's default, ``OGC:CRS84``), an authority
+    string (``EPSG:3857``), ``projjson:<key>`` pointing into the file's key-value
+    metadata, and — what DuckDB writes — a whole PROJJSON document inline.
+
+    ``srid:<n>`` is deliberately NOT resolved. The spec defines it as a numeric
+    spatial reference identifier and names no authority (its own example is
+    ``srid:0``), so reading it as EPSG:<n> would be MapSmith inventing a
+    coordinate system and recording it as fact — the exact bug fixed in 0.2.1
+    when ``crs: null`` was being read as CRS84. Refusing with the declaration
+    quoted is the honest answer.
+    """
+    from pyproj import CRS
+
+    if not declaration:
+        return crs_label(CRS.from_user_input("OGC:CRS84"))
+    if declaration.lstrip().startswith("{"):
+        return crs_label(CRS.from_json(declaration))
+    if declaration.lower().startswith("projjson:"):
+        import pyarrow.parquet as pq
+
+        key = declaration.split(":", 1)[1].encode()
+        document = (pq.ParquetFile(path).metadata.metadata or {}).get(key)
+        return crs_label(CRS.from_json(document.decode())) if document else UNKNOWN_CRS
+    if declaration.lower().startswith("srid:"):
+        return UNKNOWN_CRS
+    return crs_label(CRS.from_user_input(declaration))
+
+
 def _probe_geoparquet_crs(path: str) -> str:
     import json
 
@@ -77,7 +141,10 @@ def _probe_geoparquet_crs(path: str) -> str:
     metadata = pq.read_schema(path).metadata or {}
     geo = metadata.get(b"geo")
     if not geo:
-        return UNKNOWN_CRS
+        # No `geo` key does not mean no geometry: GeoParquet 2.0 stores it in
+        # Parquet's own logical types and makes the key optional.
+        native = native_geometry_column(path)
+        return native_crs_declaration(path, native[1]) if native else UNKNOWN_CRS
     geo_meta = json.loads(geo)
     column = geo_meta.get("primary_column", "geometry")
     spec = geo_meta.get("columns", {}).get(column, {})

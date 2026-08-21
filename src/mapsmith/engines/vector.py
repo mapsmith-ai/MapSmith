@@ -24,8 +24,43 @@ def _read(path: str) -> gpd.GeoDataFrame:
     """Read GeoParquet natively, everything else via GDAL (GDAL's Parquet driver
     is not bundled in the wheels, so routing .parquet through read_file breaks)."""
     if str(path).lower().endswith(".parquet"):
-        return gpd.read_parquet(path)
+        try:
+            return gpd.read_parquet(path)
+        except ValueError as exc:
+            if "geo metadata" not in str(exc).lower():
+                raise
+            return _read_native_geoparquet(path, exc)
     return gpd.read_file(path)
+
+
+def _read_native_geoparquet(path: str, original: Exception) -> gpd.GeoDataFrame:
+    """Read a Parquet file that stores geometry in Parquet's own logical types.
+
+    GeoParquet 2.0 moved geometry into the ``GEOMETRY``/``GEOGRAPHY`` logical
+    types and made the ``geo`` metadata key optional, so files with no ``geo``
+    key are valid and DuckDB already writes them. GeoPandas 1.1 raises
+    ``Missing geo metadata`` on them, which reached the agent as the tool's error
+    — not our message, no hint, and misleading, since the file does carry
+    geospatial metadata (#23). The geometry itself is WKB either way, so reading
+    it is a matter of looking in the other place.
+    """
+    import pyarrow.parquet as pq
+
+    native = verify.native_geometry_column(path)
+    if native is None:
+        raise original  # genuinely no geometry anywhere: keep the original error
+    column, declaration = native
+    frame = pq.read_table(path).to_pandas()
+    crs = verify.native_crs_declaration(path, declaration)
+    geometry = gpd.GeoSeries.from_wkb(frame[column])
+    return gpd.GeoDataFrame(
+        frame.drop(columns=[column]),
+        geometry=geometry,
+        # An unresolvable declaration stays None rather than becoming a guess:
+        # the CRS precondition then refuses with MapSmith's own message, which is
+        # the right outcome for `srid:<n>` (see native_crs_declaration).
+        crs=None if crs == verify.UNKNOWN_CRS else crs,
+    )
 
 
 def _write(gdf: gpd.GeoDataFrame, output_path: str) -> None:

@@ -63,6 +63,26 @@ All notable changes to MapSmith are documented here, in the format of
   Remaining limits, documented rather than implied: detection is name-based, so
   a bare positional secret is not caught, and neither is a URI that
   percent-encodes the colon of its own userinfo.
+- **GeoParquet 2.0 files are read instead of refused.** 2.0 (`v2.0.0-rc.1`)
+  moves geometry into Parquet's own `GEOMETRY`/`GEOGRAPHY` logical types and
+  makes the `geo` metadata key optional, and DuckDB already writes such files.
+  MapSmith read them inconsistently: `run_sql` worked, `describe_dataset` failed
+  with a raw GeoPandas `Missing geo metadata` error, and the CRS probe reported
+  `unknown` **even for a file that states its CRS** — which made the CRS
+  precondition refuse valid work for a wrong reason. The CRS now comes from the
+  logical type when there is no `geo` key, in all the forms met in practice: the
+  spec default (`OGC:CRS84`), an authority string, `projjson:<key>`, and the
+  whole PROJJSON document inline, which is what DuckDB writes.
+
+  One form is deliberately not resolved: `srid:<n>`. The spec defines it as a
+  numeric identifier and names no authority (its own example is `srid:0`), so
+  reading it as `EPSG:<n>` would be MapSmith inventing a coordinate system and
+  recording it as fact. Such a file is refused with the declaration quoted.
+
+  Writing is unchanged for now: MapSmith still emits GeoParquet 1.0 (WKB plus
+  `geo` metadata), which every 2.0 reader accepts. DuckDB *can* emit both layers
+  at once (`geoparquet_version 'BOTH'`, CRS included), and switching is a
+  decision for when 2.0.0 is final rather than a release candidate.
 - **Persistent DuckDB secrets can no longer be created from a tool call.** They
   are written to `~/.duckdb/stored_secrets` — outside any workspace and beyond
   the session. A workspace already refused that write; the connection now sets
