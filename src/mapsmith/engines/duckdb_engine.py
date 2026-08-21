@@ -104,6 +104,18 @@ def _connect() -> duckdb.DuckDBPyConnection:
     return con
 
 
+# `geoparquet_version 'BOTH'` writes Parquet's native GEOMETRY/GEOGRAPHY logical
+# types (what GeoParquet 2.0 requires, CRS included as PROJJSON) *and* the 1.x
+# `geo` metadata key, so one file satisfies both readers — verified by reading it
+# back with GeoPandas, which only understands the 1.x layer.
+#
+# Stated explicitly rather than left to the engine, because the default moved:
+# DuckDB 1.4 wrote the native types by default and 1.5 went back to 1.x, which
+# meant the installed engine version, not MapSmith, was choosing the canonical
+# output format of a provenance product.
+_COPY_OPTIONS = "FORMAT parquet, geoparquet_version 'BOTH'"
+
+
 def _quote(path: str) -> str:
     return str(path).replace("'", "''")
 
@@ -133,7 +145,7 @@ def run_sql(query: str, output_path: str | None = None) -> dict[str, Any]:
         engine=_engine_info(),
     )
     if output_path:
-        con.sql(f"COPY ({query}) TO '{_quote(output_path)}' (FORMAT parquet)")
+        con.sql(f"COPY ({query}) TO '{_quote(output_path)}' ({_COPY_OPTIONS})")
         count = con.sql(
             f"SELECT count(*) FROM read_parquet('{_quote(output_path)}')"
         ).fetchone()[0]
@@ -207,7 +219,7 @@ def spatial_join(
           ON {fn}(l.geometry, r.geometry)
     """
     with verify.audit_on_failure(record, output_path, []):
-        con.sql(f"COPY ({query}) TO '{_quote(output_path)}' (FORMAT parquet)")
+        con.sql(f"COPY ({query}) TO '{_quote(output_path)}' ({_COPY_OPTIONS})")
         count = con.sql(
             f"SELECT count(*) FROM read_parquet('{_quote(output_path)}')"
         ).fetchone()[0]

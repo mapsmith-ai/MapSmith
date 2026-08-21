@@ -132,6 +132,38 @@ def test_an_inline_projjson_declaration_resolves(tmp_path):
     assert verify.native_crs_declaration(str(target), declaration) == "EPSG:32632"
 
 
+def test_our_own_output_carries_both_layers(tmp_path):
+    """What MapSmith writes through DuckDB must satisfy a 2.0 reader and a 1.x
+    one at once, and the CRS must survive in both places. The flavour is stated
+    in the COPY rather than inherited: DuckDB 1.4 wrote native types by default
+    and 1.5 went back to 1.x, so the installed engine was choosing the canonical
+    output format of a provenance product."""
+    import json
+
+    import pyarrow.parquet as pq
+
+    from mapsmith.engines import duckdb_engine
+
+    source = tmp_path / "utm.parquet"
+    gpd.GeoDataFrame(
+        {"a": [1]}, geometry=gpd.GeoSeries.from_wkt(["POINT (500000 5000000)"]), crs="EPSG:32632"
+    ).to_parquet(source)
+    target = tmp_path / "out.parquet"
+    duckdb_engine.run_sql(
+        f"SELECT * FROM read_parquet('{str(source).replace(chr(92), '/')}')", str(target)
+    )
+
+    # the 2.0 layer
+    native = verify.native_geometry_column(str(target))
+    assert native is not None, "no native geometry logical type in our own output"
+    assert verify.native_crs_declaration(str(target), native[1]) == "EPSG:32632"
+    # the 1.x layer
+    geo = json.loads((pq.read_schema(target).metadata or {})[b"geo"])
+    assert geo["columns"][geo["primary_column"]]["crs"] is not None
+    # and a 1.x-only reader still opens it
+    assert gpd.read_parquet(target).crs.to_epsg() == 32632
+
+
 def test_a_plain_parquet_without_geometry_keeps_its_original_error(tmp_path):
     """The fallback must not turn "this file has no geometry" into a confusing
     success or a different exception."""

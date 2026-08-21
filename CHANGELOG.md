@@ -79,10 +79,23 @@ All notable changes to MapSmith are documented here, in the format of
   reading it as `EPSG:<n>` would be MapSmith inventing a coordinate system and
   recording it as fact. Such a file is refused with the declaration quoted.
 
-  Writing is unchanged for now: MapSmith still emits GeoParquet 1.0 (WKB plus
-  `geo` metadata), which every 2.0 reader accepts. DuckDB *can* emit both layers
-  at once (`geoparquet_version 'BOTH'`, CRS included), and switching is a
-  decision for when 2.0.0 is final rather than a release candidate.
+  **Writing now states its flavour instead of inheriting one.** `run_sql`
+  materialises with `geoparquet_version 'BOTH'`, so one output file carries
+  Parquet's native geometry types (CRS included as PROJJSON) *and* the 1.x `geo`
+  metadata — a 2.0-native reader and GeoPandas 1.x both open it, which is
+  asserted by a test that reads it back both ways. This was not a free choice:
+  DuckDB 1.4 wrote the native types by default and 1.5 changed the default back
+  to 1.x, so the installed engine version was silently deciding the canonical
+  output format of a provenance product. The GeoPandas writer path stays 1.x,
+  because GeoPandas 1.1 caps `schema_version` there.
+- **Dependency floors raised for a correctness reason, not a housekeeping one.**
+  `pyarrow>=21`: measured on a file DuckDB itself produced, pyarrow 18 and 19
+  **raise** on Parquet's geospatial logical types ("Thrift LogicalType that is
+  not recognized"), 20 opens the file but reports the type as `Undefined`, and 21
+  reports `Geometry` with its CRS. Below 21, MapSmith could not read back its own
+  `run_sql` output — the CRS probe returned `unknown`, which made the CRS
+  precondition refuse a file MapSmith had just written. `duckdb>=1.5` is the
+  floor for the `geoparquet_version` option above.
 - **Persistent DuckDB secrets can no longer be created from a tool call.** They
   are written to `~/.duckdb/stored_secrets` — outside any workspace and beyond
   the session. A workspace already refused that write; the connection now sets

@@ -137,6 +137,28 @@ had to repair. `get_provenance` returns it for any output.
 | `list_operations` | BM25-ranked catalog search; `detail=true` returns parameters and worked examples |
 | `server_info` | Version, license, available engines |
 
+### Formats
+
+| Format | Read | Write |
+|---|---|---|
+| GeoParquet 1.0 / 1.1 — WKB plus `geo` metadata | yes | yes, every path |
+| **GeoParquet 2.0** — Parquet-native `GEOMETRY`/`GEOGRAPHY` logical types | yes, including files that carry no `geo` key at all | yes on the SQL path: `run_sql` writes **both** layers into one file |
+| GeoPackage, Shapefile, FlatGeobuf, GeoJSON, … | anything pyogrio/GDAL opens | via GDAL |
+| GeoTIFF / COG | yes | outputs of the `[raster]` and `[whitebox]` engines |
+
+GeoParquet [2.0](https://github.com/opengeospatial/geoparquet/releases) moves geometry
+into Parquet's own logical types and makes the `geo` key optional, so "a Parquet file with
+geometry in it" no longer implies that key. MapSmith reads the CRS from the logical type
+when it is the only place it exists — the spec default, an authority string,
+`projjson:<key>`, or the whole PROJJSON document inline, which is what DuckDB writes.
+`run_sql` emits both layers (`geoparquet_version 'BOTH'`), so one output file satisfies a
+2.0-native reader and a GeoPandas 1.x one; the GeoPandas writer path stays 1.x because
+GeoPandas 1.1 caps `schema_version` there.
+
+One declaration is deliberately refused rather than guessed: `srid:<n>`. The spec defines
+it as a numeric identifier and names no authority — its own example is `srid:0` — so
+reading it as `EPSG:<n>` would be inventing a coordinate system and recording it as fact.
+
 ## Verification, in and out
 
 Every tool that writes a dataset also writes `<output>.provenance.json` beside it and
@@ -360,6 +382,8 @@ detects it, converts the input first, and discloses the workaround in the manife
 - [x] Typed analysis plans: static validation against the operation registry + simulated CRS flow before execution
 - [x] Runtime verification: input preconditions, warnings with hints in the tool result, bounded deterministic repair recorded in the manifest
 - [x] MCP Apps in-chat map panel with provenance cards (self-contained, works under the default host sandbox)
+- [x] GeoParquet 2.0: read Parquet-native geometry types (including files with no `geo` key), write both layers from the SQL path
+- [ ] Satellite embeddings as a first-class input: per-zone embedding vectors (multiband zonal statistics) and similarity rasters against a reference location, over the open [AlphaEarth annual dataset](https://developers.google.com/earth-engine/guides/aef_on_gcs_readme) (CC-BY 4.0 COGs). Deterministic arithmetic on a raster — no model inference in MapSmith — with the tile, year and reference vector recorded in the manifest
 - [ ] Agent-loop repair: hand verification failures back to the agent for a bounded number of retries
 - [ ] More terrain & hydrology: slope/aspect, stream network extraction
 - [ ] QGIS Processing sidecar (subprocess-isolated): ~900 algorithms

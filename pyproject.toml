@@ -23,8 +23,18 @@ dependencies = [
   "shapely>=2.0",
   "pyproj>=3.6",
   "pyogrio>=0.9",
-  "pyarrow>=17",
-  "duckdb>=1.4",  # security floor: CVE-2024-41672 bypassed enable_external_access
+  # 21 is the floor for Parquet's geospatial logical types, which DuckDB writes:
+  # measured on a file DuckDB produced, pyarrow 18 and 19 RAISE on it ("Thrift
+  # LogicalType that is not recognized"), 20 opens it but reports the type as
+  # `Undefined`, and 21 reports `Geometry` with its CRS. Below 21 MapSmith could
+  # not read back its own run_sql output.
+  "pyarrow>=21",
+  # security floor: CVE-2024-41672 bypassed enable_external_access (1.4).
+  # 1.5 is the floor for the `geoparquet_version` COPY option, which is how the
+  # output flavour becomes OUR decision: 1.4 wrote Parquet's native geometry
+  # types by default and 1.5 changed the default back to GeoParquet 1.x, so the
+  # installed engine version was silently choosing our canonical format.
+  "duckdb>=1.5",
 ]
 
 [project.optional-dependencies]
