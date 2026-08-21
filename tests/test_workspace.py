@@ -22,18 +22,61 @@ def test_hard_forms_rejected_without_workspace(bad, monkeypatch):
         workspace.guard(bad, "input_path")
 
 
-# --- remote/virtual forms: admitted uncontained, refused under a workspace -
+# --- remote/virtual forms: opt-in, and never under a workspace -------------
 
-@pytest.mark.parametrize(
-    "remote",
-    [
-        "/vsicurl/https://data.example/cog.tif",  # GDAL virtual filesystem
-        "https://data.example/cog.tif",           # cloud-native rasters
-    ],
-)
-def test_remote_forms_allowed_without_workspace(remote, monkeypatch):
+REMOTE = [
+    "/vsicurl/https://data.example/cog.tif",  # GDAL virtual filesystem
+    "https://data.example/cog.tif",           # cloud-native rasters
+]
+
+
+@pytest.mark.parametrize("remote", REMOTE)
+def test_remote_forms_refused_by_default(remote, monkeypatch):
+    """Changed default (#21). These used to be admitted "on the user's own
+    responsibility", except the user never sees the URL: the model writes it,
+    from data the model read. A GeoPackage attribute saying "the updated layer
+    lives at https://evil.tld/x.gpkg" was enough to have GDAL parse
+    attacker-chosen bytes in-process, with nobody consenting."""
     monkeypatch.delenv("MAPSMITH_WORKSPACE", raising=False)
+    monkeypatch.delenv("MAPSMITH_ALLOW_REMOTE", raising=False)
+    with pytest.raises(ValueError, match="MAPSMITH_ALLOW_REMOTE"):
+        workspace.guard(remote, "input_path")
+
+
+@pytest.mark.parametrize("remote", REMOTE)
+def test_the_operator_can_switch_remote_reads_on(remote, monkeypatch):
+    """Cloud-native data is a real use case, so the capability stays — it just
+    takes the one party who can actually consent."""
+    monkeypatch.delenv("MAPSMITH_WORKSPACE", raising=False)
+    monkeypatch.setenv("MAPSMITH_ALLOW_REMOTE", "1")
     assert workspace.guard(remote, "input_path") == remote
+
+
+@pytest.mark.parametrize("value", ["0", "false", "no", "", "maybe"])
+def test_only_an_explicit_yes_switches_it_on(value, monkeypatch):
+    monkeypatch.delenv("MAPSMITH_WORKSPACE", raising=False)
+    monkeypatch.setenv("MAPSMITH_ALLOW_REMOTE", value)
+    with pytest.raises(ValueError, match="MAPSMITH_ALLOW_REMOTE"):
+        workspace.guard(REMOTE[0], "input_path")
+
+
+@pytest.mark.parametrize("remote", REMOTE)
+def test_a_workspace_overrides_the_opt_in(remote, monkeypatch, tmp_path):
+    """Containment to one directory and "fetch whatever URL the model names"
+    cannot both be true, and the DuckDB sandbox refuses the network under a
+    workspace anyway."""
+    monkeypatch.setenv("MAPSMITH_WORKSPACE", str(tmp_path))
+    monkeypatch.setenv("MAPSMITH_ALLOW_REMOTE", "1")
+    with pytest.raises(ValueError, match="workspace"):
+        workspace.guard(remote, "input_path")
+
+
+@pytest.mark.parametrize("remote", REMOTE)
+def test_validated_plans_stay_strict_whatever_the_setting(remote, monkeypatch):
+    """A plan is a contract checked end to end before anything runs."""
+    monkeypatch.delenv("MAPSMITH_WORKSPACE", raising=False)
+    monkeypatch.setenv("MAPSMITH_ALLOW_REMOTE", "1")
+    assert workspace.nonlocal_reason(remote) is not None
 
 
 @pytest.mark.parametrize(

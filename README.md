@@ -239,13 +239,15 @@ community extensions are off (`shellfs` turns a filename into a shell command), 
 extensions are refused, DuckDB's HTTP and S3 filesystems are disabled, and the
 configuration is locked, so untrusted SQL cannot turn file access into code execution.
 
-**The network is not closed in that mode, by the same decision that keeps cloud-native
-data working**: GDAL carries its own HTTP client, so `ST_Read('/vsicurl/https://…')` in raw
-SQL reads whatever the host can reach — internal services and link-local metadata
-endpoints included — and the URL is chosen by whoever wrote the SQL, so it can also carry a
-string out. Setting `MAPSMITH_WORKSPACE` closes all of it, GDAL included, and the test
-suite asserts both halves (`tests/test_duckdb_sandbox.py`). If your `run_sql` input is not
-trusted and your host sits somewhere interesting, set a workspace. The full threat model —
+**The network is closed too, unless you open it.** Remote and virtual forms — GDAL
+`/vsi*`, `https://` COGs — are refused by default in path arguments *and* inside `run_sql`
+text, because the path is written by the model rather than by you: a third-party dataset
+carrying "the updated layer lives at https://evil.tld/x.gpkg" was otherwise enough to have
+GDAL parse attacker-chosen bytes in-process. Set **`MAPSMITH_ALLOW_REMOTE=1`** to allow them
+— cloud-native data is a real use case and the capability is gated, not removed. A workspace
+refuses them regardless, since containment and "fetch whatever URL the model names" cannot
+both be true. The test suite asserts every branch by counting requests at a loopback server
+(`tests/test_duckdb_sandbox.py`). The full threat model —
 and what is explicitly *not* covered — is in [SECURITY.md](SECURITY.md).
 
 Fine print, because it changes how you deploy this: the path jail assumes a single trusted

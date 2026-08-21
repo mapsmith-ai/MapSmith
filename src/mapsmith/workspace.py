@@ -7,10 +7,19 @@ context window — treat every path as untrusted input. Two tiers:
   workspace or not: on Windows even a ``Path.exists()`` on a UNC path opens
   an SMB/WebDAV connection to an attacker-chosen host (NTLM hash leak), with
   no legitimate agent-side use (mount the share as a drive instead).
-- Remote/virtual forms (GDAL /vsi*, URI schemes) and containment are enforced
-  only when ``MAPSMITH_WORKSPACE`` is set: uncontained mode deliberately
-  admits cloud-native data (COGs over https, /vsicurl) on the user's own
-  responsibility, while a workspace means "this directory and nothing else".
+- Remote/virtual forms (GDAL /vsi*, URI schemes) are refused unless
+  ``MAPSMITH_ALLOW_REMOTE`` is set, and always refused under a workspace, which
+  means "this directory and nothing else".
+
+  That default changed in 0.2.2, because the old rationale did not survive
+  reading: it said remote data was admitted "on the user's own responsibility",
+  and the user is not the one deciding. The path is written by the *model*, from
+  whatever it read — a third-party GeoPackage carrying an attribute like "the
+  updated layer lives at https://evil.tld/roads.gpkg" is enough to make GDAL
+  parse attacker-chosen bytes in-process, and every memory-safety CVE in a GDAL
+  driver becomes reachable without anyone choosing it. Cloud-native data is a
+  real use case, so the capability stays — it just has to be switched on by the
+  operator, who is the only party in the loop who can actually consent.
 
 Known tradeoff of the ADS check: a colon anywhere past the drive letter is
 refused, so POSIX filenames like 'data:v2.parquet' are rejected too — and a
@@ -36,10 +45,25 @@ from pathlib import Path
 _URI_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 
 
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
 def root() -> Path | None:
     """The workspace root, or None when unset (uncontained mode)."""
     ws = os.environ.get("MAPSMITH_WORKSPACE", "").strip()
     return Path(ws).resolve() if ws else None
+
+
+def remote_allowed() -> bool:
+    """Whether the operator has switched remote/virtual paths on.
+
+    Off by default. A workspace overrides it: containment to one directory and
+    "fetch whatever URL the model names" cannot both be true, and the DuckDB
+    sandbox refuses network access under a workspace anyway — a tool boundary
+    that admitted what the engine then refuses would only produce confusing
+    errors.
+    """
+    return os.environ.get("MAPSMITH_ALLOW_REMOTE", "").strip().lower() in _TRUTHY
 
 
 def hard_refusal_reason(path: str) -> str | None:
@@ -57,19 +81,80 @@ def hard_refusal_reason(path: str) -> str | None:
     return None
 
 
-def remote_reason(path: str) -> str | None:
-    """Why a path is refused under a workspace (remote/virtual form), or None."""
+def remote_form(path: str) -> str | None:
+    """The kind of remote/virtual path this is, or None if it is plain local."""
     p = path.strip()
     if p.lower().startswith("/vsi"):
-        return "GDAL /vsi* virtual paths are not allowed inside a workspace"
+        return "GDAL /vsi* virtual path"
     if _URI_SCHEME.match(p):
-        return "URI schemes are not allowed inside a workspace"
+        return "URI scheme"
     return None
 
 
+def remote_reason(path: str) -> str | None:
+    """Why a remote/virtual form is refused in the CURRENT configuration.
+
+    Kept as a single sentence the agent can act on: under a workspace there is
+    nothing to switch, without one there is.
+    """
+    form = remote_form(path)
+    if form is None:
+        return None
+    if root() is not None:
+        return f"{form}s are not allowed inside a workspace"
+    if remote_allowed():
+        return None
+    return (
+        f"{form}s are refused by default because the path comes from the model, "
+        "not from you: set MAPSMITH_ALLOW_REMOTE=1 to allow remote reads"
+    )
+
+
 def nonlocal_reason(path: str) -> str | None:
-    """Any non-plain-local form (the strict rule used by plan validation)."""
-    return hard_refusal_reason(path) or remote_reason(path)
+    """Any non-plain-local form (the strict rule used by plan validation).
+
+    Independent of MAPSMITH_ALLOW_REMOTE on purpose: a validated plan is a
+    contract checked end to end before anything runs, and it stays strict.
+    """
+    if reason := hard_refusal_reason(path):
+        return reason
+    form = remote_form(path)
+    return f"{form}s are not allowed in a validated plan" if form else None
+
+
+_REMOTE_IN_TEXT = re.compile(r"(?i)(/vsi[a-z0-9_]*/|\b[a-z][a-z0-9+.-]*://)")
+
+
+def refuse_remote_in_sql(query: str) -> None:
+    """Refuse SQL that names a remote path, unless remote reads are switched on.
+
+    Without this the opt-in would be decorative: the path guard cannot see
+    inside SQL text, and GDAL carries its own HTTP client, so
+    ``ST_Read('/vsicurl/http://host/x.geojson')`` reads the endpoint and returns
+    its content in the tool result — an SSRF with the host's own network
+    position, reachable from one statement an agent wrote. DuckDB's own
+    ``disabled_filesystems`` does not cover it, and the setting that would
+    (``enable_external_access=false``) takes local file access with it, which is
+    why this check lives here instead of in the connection.
+
+    Under a workspace the engine already refuses it, so there is nothing to add.
+
+    Known tradeoff, same shape as the ADS check above: this is a text scan, not
+    a SQL parse, so a query that merely mentions a URL inside a string literal
+    is refused too. Refusing a legitimate INSERT of a URL is a worse error
+    message; letting one statement read a cloud metadata endpoint is a worse
+    day.
+    """
+    if root() is not None or remote_allowed():
+        return
+    match = _REMOTE_IN_TEXT.search(query)
+    if match:
+        raise ValueError(
+            f"this SQL names a remote path ({match.group(0)!r}), which is refused "
+            "by default: the statement comes from the model, and GDAL would fetch "
+            "it in-process. Set MAPSMITH_ALLOW_REMOTE=1 to allow remote reads, or "
+            "set MAPSMITH_WORKSPACE to confine the server to local files."
+        )
 
 
 def is_outside(path: str, workspace: Path) -> bool:
@@ -92,15 +177,14 @@ def guard(path: str, arg: str) -> str:
     reason = hard_refusal_reason(path)
     if reason:
         raise ValueError(f"'{arg}': {reason}: {path}")
+    reason = remote_reason(path)
+    if reason:
+        raise ValueError(f"'{arg}': {reason}: {path}")
     ws = root()
-    if ws is not None:
-        reason = remote_reason(path)
-        if reason:
-            raise ValueError(f"'{arg}': {reason}: {path}")
-        if is_outside(path, ws):
-            raise ValueError(
-                f"'{arg}' resolves outside MAPSMITH_WORKSPACE ({ws}): {path}. "
-                "Use a path inside the workspace (relative paths resolve against "
-                "the server's working directory, so prefer absolute ones)."
-            )
+    if ws is not None and is_outside(path, ws):
+        raise ValueError(
+            f"'{arg}' resolves outside MAPSMITH_WORKSPACE ({ws}): {path}. "
+            "Use a path inside the workspace (relative paths resolve against "
+            "the server's working directory, so prefer absolute ones)."
+        )
     return path

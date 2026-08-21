@@ -49,29 +49,42 @@ disabled so even an explicitly loaded `httpfs` can neither read nor write over
 the network, and the configuration is locked so SQL cannot undo any of it. So
 unconfined mode does not let SQL load unsigned code or run a shell command.
 
-**It does let SQL reach the network, and that is worth understanding before you
-deploy it.** Two paths remain open in that mode, both verified by test:
+**Since 0.2.2 it does not reach the network either, unless you say so.** Both
+paths that used to be open are refused by default, and each one is verified by a
+test that counts requests at a loopback server rather than matching an error
+message:
 
-- `ST_Read('/vsicurl/https://…')`, and GDAL's other virtual filesystems. Remote
-  reads are deliberately available while the server is unconfined, because
-  cloud-native data (COGs over https) is a feature — but GDAL carries its own
-  HTTP client, so DuckDB's filesystem block does not apply to it. Consequences
-  worth stating plainly: raw SQL can read any HTTP endpoint the host can reach,
-  including internal services and cloud metadata endpoints, and can put
-  arbitrary text in the URL, which makes it a low-bandwidth way out for data as
-  well as in.
-- `INSTALL <name> FROM '<url>'` of a *signed* extension: DuckDB fetches it from
-  a repository URL the statement is allowed to name before refusing anything
-  unsigned. Nothing comes back into the query, but the request goes out with a
-  path the statement chose.
+- `ST_Read('/vsicurl/https://…')` and GDAL's other virtual filesystems. GDAL
+  carries its own HTTP client, so DuckDB's filesystem block never applied to it:
+  raw SQL could read any endpoint the host can reach — internal services, cloud
+  metadata — and hand the content back in the tool result, while the URL it
+  chose carried data out. `enable_external_access=false` is the only
+  DuckDB-level switch that stops it and it takes local file access with it, so
+  the refusal is at the tool boundary instead.
+- `INSTALL <name> FROM '<url>'`, which fetched from a URL the statement named.
+
+Set `MAPSMITH_ALLOW_REMOTE=1` to get remote reads back — cloud-native data is a
+real use case, and the capability is gated rather than removed. The reason it is
+off by default is who chooses: the path is written by the model, from whatever it
+read, so a third-party dataset carrying "the updated layer lives at
+https://evil.tld/x.gpkg" was enough to have GDAL parse attacker-chosen bytes
+in-process with nobody consenting.
+
+Two limits of that refusal, stated rather than implied: it is a text scan of the
+SQL, not a parse, so a statement that merely mentions a URL in a string literal
+is refused too; and it sits at the tool boundary, so a future engine that runs
+agent-written SQL without calling `workspace.refuse_remote_in_sql` reopens the
+path.
 
 With `MAPSMITH_WORKSPACE` set, all of it is refused — `INSTALL`, `LOAD`, DuckDB
 filesystems and GDAL's virtual filesystems alike — and the refusal happens
 before any request leaves, which `tests/test_duckdb_sandbox.py` asserts by
 counting requests at a loopback server rather than by matching an error message.
-Reports about unconfined mode are welcome as hardening ideas (an explicit
-"local files, no network" mode is on the roadmap); reports about a
-workspace-confined server reaching the network are vulnerabilities.
+The "local files, no network" mode that used to be on the roadmap here is now
+simply the default, so what is left of unconfined mode is unconfined *file*
+access and nothing else. Reports about that are welcome as hardening ideas;
+reports about a server reaching the network without `MAPSMITH_ALLOW_REMOTE`, in
+either mode, are vulnerabilities.
 
 Out of scope: issues requiring a hostile local process on the same machine
 (the jail assumes a single trusted writer of the workspace filesystem —

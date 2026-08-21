@@ -251,29 +251,58 @@ def _geojson_server():
     return server, url, hits
 
 
-def test_gdal_network_reads_are_available_without_a_workspace():
-    """Unconfined mode reaches the network THROUGH GDAL, by design.
+def test_the_tool_refuses_remote_sql_by_default(monkeypatch):
+    """The default posture after #21: no network from agent-written SQL.
 
-    Cloud-native data is a feature (`/vsicurl` COGs), and this is the test that
-    keeps the documentation honest about its price: in this mode SQL written by
-    an agent can read any HTTP endpoint the host can reach — including
-    link-local and internal ones — and can carry a string out inside a URL it
-    chooses. DuckDB's own `disabled_filesystems` does not cover it, because
-    GDAL brings its own HTTP client. If someone ever closes this path, this test
-    fails and the README and SECURITY.md have to be updated in the same commit.
+    GDAL brings its own HTTP client, so `/vsicurl` reaches an endpoint and hands
+    its content back in the tool result — SSRF with the host's network position,
+    from one statement. DuckDB's `disabled_filesystems` does not cover it and
+    `enable_external_access=false` would take local files with it, so the
+    refusal lives at the tool boundary. Zero requests is the assertion that
+    matters: a refusal that had already fired the request would still leak.
     """
-    import os
-
     server, url, hits = _geojson_server()
-    previous = os.environ.pop("MAPSMITH_WORKSPACE", None)
+    monkeypatch.delenv("MAPSMITH_WORKSPACE", raising=False)
+    monkeypatch.delenv("MAPSMITH_ALLOW_REMOTE", raising=False)
+    try:
+        with pytest.raises(ValueError, match="MAPSMITH_ALLOW_REMOTE"):
+            duckdb_engine.run_sql(f"SELECT secret FROM ST_Read('/vsicurl/{url}')")
+        assert hits == [], f"the refusal still reached the network: {hits}"
+    finally:
+        server.shutdown()
+
+
+def test_the_operator_can_switch_remote_sql_on(monkeypatch):
+    """Cloud-native data stays possible: the capability is gated, not removed."""
+    server, url, hits = _geojson_server()
+    monkeypatch.delenv("MAPSMITH_WORKSPACE", raising=False)
+    monkeypatch.setenv("MAPSMITH_ALLOW_REMOTE", "1")
+    try:
+        out = duckdb_engine.run_sql(f"SELECT secret FROM ST_Read('/vsicurl/{url}')")
+        assert out["rows"] == [["internal"]], out
+        assert hits, "no request reached the loopback server"
+    finally:
+        server.shutdown()
+
+
+def test_the_boundary_is_run_sql_not_the_connection(monkeypatch):
+    """Worth knowing for anyone auditing this: the raw connection is still
+    capable of a GDAL network read without a workspace, and that is deliberate —
+    `enable_external_access=false` is the only DuckDB-level switch that would
+    stop it and it would take local file access with it. The refusal is
+    therefore at the tool boundary, which is the only place agent-written SQL
+    enters. A future engine that runs agent SQL without going through
+    `workspace.refuse_remote_in_sql` reopens the hole, and this test is here to
+    say so out loud rather than leave it implied."""
+    server, url, hits = _geojson_server()
+    monkeypatch.delenv("MAPSMITH_WORKSPACE", raising=False)
+    monkeypatch.delenv("MAPSMITH_ALLOW_REMOTE", raising=False)
     try:
         con = duckdb_engine._connect()
         rows = con.sql(f"SELECT secret FROM ST_Read('/vsicurl/{url}')").fetchall()
         assert rows == [("internal",)], rows
         assert hits, "no request reached the loopback server"
     finally:
-        if previous is not None:
-            os.environ["MAPSMITH_WORKSPACE"] = previous
         server.shutdown()
 
 

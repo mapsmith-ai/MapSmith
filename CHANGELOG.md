@@ -4,6 +4,36 @@ All notable changes to MapSmith are documented here, in the format of
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows
 [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- **Remote and virtual paths are refused by default** (`MAPSMITH_ALLOW_REMOTE=1`
+  to allow them). GDAL `/vsi*` and `https://` forms used to be accepted whenever
+  no workspace was set, justified as being the user's own responsibility — and
+  the user is not who decides: the path is written by the model, from whatever it
+  read, so a third-party dataset carrying "the updated layer lives at
+  https://evil.tld/x.gpkg" was enough to have GDAL parse attacker-chosen bytes
+  in-process. The refusal now covers both path arguments and `run_sql` text,
+  which closes the SSRF that came with it (raw SQL could read any endpoint the
+  host can reach — internal services, cloud metadata — and return the content in
+  the tool result) as well as the `INSTALL ... FROM '<url>'` fetch. Cloud-native
+  data stays a supported use case: the capability is gated, not removed. A
+  workspace refuses remote forms regardless, and validated plans stay strict
+  whatever the setting.
+
+### Fixed
+
+- **Credentials no longer reach provenance manifests or the job ledger.**
+  `run_sql` records the query, and manifests are made to be shared, so an agent
+  emitting `CREATE SECRET (... SECRET 'AKIA…')` in the same session used to write
+  that key into a file destined for a bug report. Values after a
+  credential-bearing name are masked while the name and the rest of the statement
+  stay readable — `CREATE SECRET s3 (...)` keeps `s3`, a URI keeps its user and
+  loses its password — and `parameters_redacted: true` records that it happened.
+  Detection is name-based, so a secret passed as a bare positional value is not
+  caught; that limitation is documented rather than implied.
+
 ## [0.2.1] — 2026-08-20
 
 Three fixes you would rather not find yourself. All came from reviewing 0.2.0

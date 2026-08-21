@@ -108,6 +108,10 @@ def _rel(path: str) -> str:
 
 def run_sql(query: str, output_path: str | None = None) -> dict[str, Any]:
     """Run spatial SQL. With output_path, materialize the result as GeoParquet."""
+    # SQL text is out of reach of the path guard at the tool boundary, and GDAL
+    # brings its own HTTP client: without this the remote opt-in (#21) would be
+    # decorative for exactly the statement that can reach the network.
+    workspace.refuse_remote_in_sql(query)
     con = _connect()
     record = ProvenanceRecord(
         operation="run_sql",
