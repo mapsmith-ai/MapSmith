@@ -79,7 +79,10 @@ def job(operation: str, params: dict[str, Any]):
             conn.execute(
                 "UPDATE mapsmith_jobs SET status='failed', error=%s, finished_at=now() "
                 "WHERE id=%s",
-                (str(exc)[:2000], job_id),
+                # the message too, not just the params: a DuckDB error quotes
+                # the statement that failed, so an unredacted `error` column
+                # would carry exactly what the `params` column was cleaned of
+                (redact_secrets(str(exc))[:2000], job_id),
             )
             conn.close()
         raise

@@ -13,17 +13,48 @@ vulnerability:
   faithfully record what produced the dataset. A way to make MapSmith write
   a misleading manifest is a vulnerability.
 - **No credentials in a manifest.** Manifests are meant to be shared — attached
-  to a review, a bug report, a paper — so recorded parameters are redacted
-  before they are written: the value after a credential-bearing name
-  (`SECRET`, `PASSWORD`, `KEY_ID`, `*_access_key`, `api_key`, a URI's
-  `user:password@`) becomes `<redacted>`, while the name and the rest of the
-  statement stay readable. The same redaction is applied to the job-ledger rows,
-  which outlive the session that wrote them. `parameters_redacted: true` on the
-  manifest says it happened, because a manifest that quietly differs from what
-  ran would be worse than the leak. A credential that survives into a manifest
-  or a ledger row is a vulnerability; note the converse limitation, which is not
-  one: redaction is name-based, so a secret passed as a bare positional value
-  with no recognisable name is not detected.
+  to a review, a bug report, a paper — so a credential must never reach one.
+  Since 0.2.2 that is enforced in two layers, in this order:
+
+  1. **SQL that configures a credential is refused before it runs.**
+     `CREATE SECRET` in any of its spellings, `SET`/`PRAGMA` of a
+     credential-bearing setting, and `ATTACH` carrying a password or URI
+     userinfo are rejected with a message pointing at where credentials belong:
+     the environment of the process that starts the server, out of reach of a
+     tool call. Comments are stripped first, so `CREATE /*x*/ SECRET` does not
+     slip past. Honest work is untouched — a column named `secret_count`, a
+     literal mentioning a password, `SET memory_limit`, and
+     `CALL load_aws_credentials()` (which names no secret) all still run.
+  2. **Whatever is recorded is still redacted**, for the credentials that reach
+     a manifest without being SQL: a signed URL as an input path, a connection
+     string as a tool argument. The value after a credential-bearing name
+     becomes `<redacted>` — quoted, so the recorded statement still parses —
+     while the name and the rest of the statement stay readable. It covers
+     `parameters`, `crs_decisions`, `notes` and input paths, and the same
+     redaction is applied to job-ledger rows including the `error` column, since
+     an engine error quotes the statement that failed. `parameters_redacted:
+     true` says it happened, because a manifest that quietly differs from what
+     ran would be worse than the leak.
+
+  Why refusal came first: redaction alone was shipped in 0.2.1 and an
+  adversarial audit escaped it in minutes with `MAP{'Authorization': 'Bearer …'}`,
+  an `E'…'` literal, dollar quoting, and a comment between the name and the
+  value — and the `E'…'` case desynchronised the quote pairing, so the matcher
+  masked a *different* argument and kept the secret. A text scan without a SQL
+  parser will keep losing that race; refusing the statement removes the class.
+  Each of those four is now a regression test.
+
+  A credential that survives into a manifest or a ledger row is a
+  vulnerability. Two limits are known and are not: detection is name-based, so
+  a secret passed as a bare positional value with no recognisable name is not
+  detected, and neither is a URI that percent-encodes the colon of its own
+  userinfo (`user%3Apass@host`).
+
+  Related, same leak by another route: persistent DuckDB secrets are written to
+  `~/.duckdb/stored_secrets`, outside any workspace and beyond the session.
+  Under a workspace the sandbox already refused that write; the connection now
+  sets `allow_persistent_secrets = false` in both modes, before locking the
+  configuration.
 - **No network egress in sandbox mode** — with `MAPSMITH_WORKSPACE` set —
   beyond the documented one-time extension install. Any way to make SQL,
   GDAL or a tool argument reach the network from a workspace-confined server

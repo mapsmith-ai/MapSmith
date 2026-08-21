@@ -47,6 +47,27 @@ from mapsmith.provenance import REDACTED, ProvenanceRecord, redact_secrets
             "mario",  # the user survives, the password does not
         ),
         ("SELECT * FROM t WHERE api_key = 'live_abc'", "live_abc", "api_key"),
+        # --- the four syntaxes an adversarial audit used to walk past the first
+        # version of this matcher. Each one leaked in 0.2.1.
+        (
+            "CREATE SECRET t (TYPE http, EXTRA_HTTP_HEADERS MAP{'Authorization': 'Bearer TOK'})",
+            "TOK",
+            "EXTRA_HTTP_HEADERS",  # the credential is a quoted KEY, not an identifier
+        ),
+        # E'...' desynchronised the quote pairing, so the old matcher redacted a
+        # DIFFERENT argument and kept the secret: wrong *and* leaky
+        (r"CREATE SECRET s (TYPE S3, KEY_ID 'AKIA1', SECRET E'shh\'x')", "shh", "KEY_ID"),
+        ("CREATE SECRET s (TYPE S3, SECRET $$dollar$$)", "dollar", "TYPE S3"),
+        ("CREATE SECRET s (TYPE S3, SECRET $tag$tagged$tag$)", "tagged", "TYPE S3"),
+        ("CREATE SECRET s (TYPE S3, SECRET /* c */ 'hidden')", "hidden", "TYPE S3"),
+        ("CREATE SECRET s (TYPE S3, SECRET -- c\n 'commented')", "commented", "TYPE S3"),
+        # a signed URL carries its credential in the query string, and reaches a
+        # manifest as an input path rather than as SQL
+        (
+            "https://b.s3.amazonaws.com/x.parquet?X-Amz-Signature=deadbeef&partition=7",
+            "deadbeef",
+            "partition=7",  # the rest of the URL must survive the redaction
+        ),
     ],
 )
 def test_credentials_are_masked_and_the_statement_stays_readable(sql, secret, keep):
@@ -54,6 +75,25 @@ def test_credentials_are_masked_and_the_statement_stays_readable(sql, secret, ke
     assert secret not in out, out
     assert keep in out, out
     assert REDACTED in out
+
+
+def test_a_redacted_statement_still_parses():
+    """A manifest people are told to attach to a bug report should survive being
+    pasted back into a client. Replacing a string literal with a bare
+    `<redacted>` left SQL that no longer parses."""
+    duckdb = pytest.importorskip("duckdb")
+    con = duckdb.connect()
+    con.execute("CREATE TABLE t (api_key VARCHAR)")
+    redacted = redact_secrets("SELECT * FROM t WHERE api_key = 'live_abc'")
+    con.execute("EXPLAIN " + redacted)  # raises on a syntax error, which is the point
+
+
+def test_no_space_assignment_still_matches():
+    """`token='x'` with no whitespace. Appending `?` to a `+`-quantified group
+    makes it lazy rather than optional, which silently turned this form off."""
+    assert redact_secrets("SET s3_secret_access_key='abc123'") != "SET s3_secret_access_key='abc123'"
+    assert "abc123" not in redact_secrets("token='abc123'")
+    assert "abc123" not in redact_secrets("token=abc123")
 
 
 @pytest.mark.parametrize(
@@ -100,6 +140,39 @@ def test_redaction_reaches_nested_parameters():
     )
     assert "abc123" not in json.dumps(record.parameters)
     assert record.parameters_redacted is True
+
+
+def test_redaction_covers_the_other_manifest_fields(tmp_path):
+    """Parameters were never the only field that can carry a credential: an
+    input path can be a signed URL, and a note or a CRS decision quotes the
+    argument it was made about. Redacting one field and publishing the rest
+    would be a redaction in name only."""
+    from mapsmith.provenance import InputRecord
+
+    target = tmp_path / "out.parquet"
+    target.write_bytes(b"")
+    source = tmp_path / "in.parquet"
+    source.write_bytes(b"")
+    record = ProvenanceRecord(
+        operation="run_sql",
+        parameters={},
+        inputs=[InputRecord.from_path(source)],
+        crs_decisions={"input": "read from https://u:hunter2@host/x.parquet"},
+        notes=["retried with token='live_abc'"],
+    )
+    record.inputs[0].path = "https://b.s3.amazonaws.com/x.parquet?X-Amz-Signature=deadbeef"
+    # re-run the redaction the way a record built with that path would
+    record = ProvenanceRecord(
+        operation="run_sql",
+        parameters={},
+        inputs=record.inputs,
+        crs_decisions=record.crs_decisions,
+        notes=record.notes,
+    )
+    text = record.finish().write_for(target).read_text(encoding="utf-8")
+    for secret in ("hunter2", "live_abc", "deadbeef"):
+        assert secret not in text, secret
+    assert json.loads(text)["parameters_redacted"] is True
 
 
 def test_written_manifest_carries_no_secret(tmp_path):

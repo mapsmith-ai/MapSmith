@@ -40,12 +40,34 @@ All notable changes to MapSmith are documented here, in the format of
 - **Credentials no longer reach provenance manifests or the job ledger.**
   `run_sql` records the query, and manifests are made to be shared, so an agent
   emitting `CREATE SECRET (... SECRET 'AKIA…')` in the same session used to write
-  that key into a file destined for a bug report. Values after a
-  credential-bearing name are masked while the name and the rest of the statement
-  stay readable — `CREATE SECRET s3 (...)` keeps `s3`, a URI keeps its user and
-  loses its password — and `parameters_redacted: true` records that it happened.
-  Detection is name-based, so a secret passed as a bare positional value is not
-  caught; that limitation is documented rather than implied.
+  that key into a file destined for a bug report. **SQL that configures a
+  credential is now refused before it runs** — `CREATE SECRET` in any spelling,
+  `SET`/`PRAGMA` of a credential-bearing setting, `ATTACH` carrying a password or
+  URI userinfo — with a message pointing at where credentials belong: the
+  environment of the process that starts the server, out of reach of a tool call.
+  Nothing documented used that path, and in MapSmith's sandbox only one secret
+  type was even constructible.
+
+  Redaction stays as the second layer for credentials that reach a manifest
+  without being SQL (a signed URL as an input path, a connection string as an
+  argument), now covering `crs_decisions`, `notes`, input paths and the ledger's
+  `error` column — an engine error quotes the statement that failed. Masked
+  values are quoted, so a redacted statement still parses when pasted back into
+  a client.
+
+  Refusal came first because redaction alone did not hold: an adversarial audit
+  of the shipped version escaped it with `MAP{'Authorization': 'Bearer …'}`, an
+  `E'…'` literal, dollar quoting and a comment between name and value — and the
+  `E'…'` case masked the *wrong* argument while keeping the secret, producing a
+  manifest both misleading and leaky. All four are regression tests now.
+  Remaining limits, documented rather than implied: detection is name-based, so
+  a bare positional secret is not caught, and neither is a URI that
+  percent-encodes the colon of its own userinfo.
+- **Persistent DuckDB secrets can no longer be created from a tool call.** They
+  are written to `~/.duckdb/stored_secrets` — outside any workspace and beyond
+  the session. A workspace already refused that write; the connection now sets
+  `allow_persistent_secrets = false` in both modes, before locking the
+  configuration.
 
 ## [0.2.1] — 2026-08-20
 

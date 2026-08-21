@@ -14,7 +14,7 @@ from typing import Any
 
 import duckdb
 
-from .. import verify, workspace
+from .. import sql_policy, verify, workspace
 from ..provenance import InputRecord, ProvenanceRecord
 
 _PREVIEW_ROWS = 50
@@ -87,6 +87,15 @@ def _connect() -> duckdb.DuckDBPyConnection:
         # limit a spill fills the volume.
         con.execute(f"SET temp_directory = '{_sql_dir(Path(tempfile.gettempdir()))}mapsmith'")
     con.execute(f"SET max_temp_directory_size = '{tmp_limit}'")
+    # Secrets: persistent ones are written to ~/.duckdb/stored_secrets, i.e.
+    # OUTSIDE any workspace and beyond the life of the session. Under a
+    # workspace `enable_external_access = false` already refuses that write
+    # (verified), but unconfined mode would allow it, and a credential
+    # surviving on disk is not something a tool call should be able to decide.
+    # allow_unredacted_secrets is already false by default; stating it makes it
+    # policy once the configuration is locked below.
+    con.execute("SET allow_persistent_secrets = false")
+    con.execute("SET allow_unredacted_secrets = false")
     # Locking is what makes the extension settings above a policy rather than a
     # default: without it, one multi-statement call re-enables autoload and
     # then INSTALL/LOAD of a signed extension (httpfs) opens a network egress
@@ -112,6 +121,10 @@ def run_sql(query: str, output_path: str | None = None) -> dict[str, Any]:
     # brings its own HTTP client: without this the remote opt-in (#21) would be
     # decorative for exactly the statement that can reach the network.
     workspace.refuse_remote_in_sql(query)
+    # A credential in agent-written SQL would be recorded verbatim in a manifest
+    # meant to be shared; refusing the statement beats redacting its text, which
+    # an audit escaped four ways in minutes (#18, see sql_policy).
+    sql_policy.refuse_credentials_in_sql(query)
     con = _connect()
     record = ProvenanceRecord(
         operation="run_sql",
