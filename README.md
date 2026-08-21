@@ -382,14 +382,19 @@ detects it, converts the input first, and discloses the workaround in the manife
 - [x] Typed analysis plans: static validation against the operation registry + simulated CRS flow before execution
 - [x] Runtime verification: input preconditions, warnings with hints in the tool result, bounded deterministic repair recorded in the manifest
 - [x] MCP Apps in-chat map panel with provenance cards (self-contained, works under the default host sandbox)
-- [x] GeoParquet 2.0: read Parquet-native geometry types (including files with no `geo` key), write both layers from the SQL path
-- [ ] Satellite embeddings as a first-class input: per-zone embedding vectors (multiband zonal statistics) and similarity rasters against a reference location, over the open [AlphaEarth annual dataset](https://developers.google.com/earth-engine/guides/aef_on_gcs_readme) (CC-BY 4.0 COGs). Deterministic arithmetic on a raster — no model inference in MapSmith — with the tile, year and reference vector recorded in the manifest
-- [ ] Agent-loop repair: hand verification failures back to the agent for a bounded number of retries
+- [x] GeoParquet 2.0: read Parquet-native geometry types (including files with no `geo` key), write both layers from the SQL path — the GeoPandas writer path follows when GeoPandas lifts its `schema_version` cap and 2.0.0 stops being a release candidate
+
+Next, in the order we intend to do it. The linked items carry a written spec — a roadmap line without one is a wish, so the rest get theirs before work starts on them:
+
+- [ ] [**Silent-corruption suite**](https://github.com/mapsmith-ai/MapSmith/issues/25): an eval for the failure every existing benchmark misses — a result that is wrong and reported as successful. Closed-form truth, no LLM in the evaluator, and it runs against MapSmith with verification *disabled* so it can fail us in public
+- [ ] [Agent-loop repair](https://github.com/mapsmith-ai/MapSmith/issues/26): hand verification failures back to the agent as structured, actionable errors, with a bounded retry budget recorded in the manifest. Our [own measurements](docs/benchmarks.md) say the runtime error message is the information channel that works
+- [ ] [Tool contracts that carry their own rules](https://github.com/mapsmith-ai/MapSmith/issues/27): argument constraints enforced *and* stated, and errors that name the rule rather than only the violation. The one intervention in our benchmark work that moved a metric past its noise floor
+- [ ] [Satellite embeddings as a first-class input](https://github.com/mapsmith-ai/MapSmith/issues/24): per-zone embedding vectors (multiband zonal statistics) and similarity rasters against a reference location, over the open [AlphaEarth annual dataset](https://developers.google.com/earth-engine/guides/aef_on_gcs_readme) (CC-BY 4.0 COGs). Deterministic arithmetic on a raster — no model inference in MapSmith — with the tile, year and reference vector recorded in the manifest
+- [ ] Authenticated remote mode (OAuth on the existing Streamable HTTP transport) and [long-job progress via MCP Tasks](https://github.com/mapsmith-ai/MapSmith/issues/8). This is the item that closes the one limitation [SECURITY.md](SECURITY.md) declares outright: the HTTP transport has no authentication today
 - [ ] More terrain & hydrology: slope/aspect, stream network extraction
-- [ ] QGIS Processing sidecar (subprocess-isolated): ~900 algorithms
-- [ ] Sandboxed code-execution tool for the long tail
-- [ ] Map panel: MapLibre vector rendering and shareable viewer URLs (raster OSM tiles already ship)
-- [ ] Authenticated remote mode (OAuth on the existing Streamable HTTP transport) and long-job progress via MCP Tasks
+- [ ] Map panel: MapLibre vector rendering, and an export of the panel as a self-contained HTML file you host yourself (raster OSM tiles already ship). No hosted viewer — MapSmith runs on your machine and we would rather not own your maps
+- [ ] [Sandboxed code-execution tool](https://github.com/mapsmith-ai/MapSmith/issues/7) for the long tail
+- [ ] QGIS Processing sidecar (subprocess-isolated): ~900 algorithms. By far the largest item on this list — parameter mapping and error handling for an external process, not an afternoon
 
 ## License and project
 
