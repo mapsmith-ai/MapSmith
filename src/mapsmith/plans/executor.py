@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ..provenance import redact_secrets
 from .models import REFERENCE, Plan
 from .registry import BINDINGS
 from .validator import validate
@@ -152,7 +153,17 @@ def _write_plan_manifest(
             "notes": [n.model_dump() for n in report.notes],
         },
     }
+    # Redacted whole, at the single exit point, rather than field by field.
+    # This manifest never passes through ProvenanceRecord — it is a dict built
+    # here — so the redaction applied to every record did not cover it, and
+    # three of its fields carry model- or user-written text: `goal`, each step's
+    # `comment`, and the `error` of a failed one. That last one was the sharp
+    # case: the message refusing a credential quoted the credential. Redacting
+    # here rather than on the three fields is deliberate — a field added later
+    # is covered without anyone having to remember. `<output>.plan.json` is a
+    # manifest like the others, and manifests are meant to be shared.
     Path(manifest_path).write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
+        json.dumps(redact_secrets(manifest), indent=2, ensure_ascii=False),
+        encoding="utf-8",
     )
     return manifest_path

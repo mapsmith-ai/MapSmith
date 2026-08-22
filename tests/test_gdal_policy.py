@@ -80,7 +80,7 @@ def gdal_policy_names():
     return ("GDAL_SKIP", "OGR_SKIP")
 
 
-def _read_vrt_in_subprocess(vrt_path, allow_remote):
+def _read_vrt_in_subprocess(vrt_path, allow_remote, workspace=None):
     """Import mapsmith (which installs the policy), then read the VRT."""
     code = textwrap.dedent(
         """
@@ -99,10 +99,17 @@ def _read_vrt_in_subprocess(vrt_path, allow_remote):
     # the test process has imported mapsmith, so its own environment already
     # carries the policy; the child must start from a clean slate or it would be
     # testing what it inherited instead of what it decides
-    for name in (*gdal_policy_names(), "MAPSMITH_ALLOW_REMOTE", "MAPSMITH_GDAL_POLICY"):
+    for name in (
+        *gdal_policy_names(),
+        "MAPSMITH_ALLOW_REMOTE",
+        "MAPSMITH_GDAL_POLICY",
+        "MAPSMITH_WORKSPACE",
+    ):
         env.pop(name, None)
     if allow_remote:
         env["MAPSMITH_ALLOW_REMOTE"] = "1"
+    if workspace is not None:
+        env["MAPSMITH_WORKSPACE"] = str(workspace)
     src = str(pytest.importorskip("mapsmith").__path__[0] + "/..")
     # check=False: a refusal is a legitimate outcome here, and the assertion is
     # what reached the listener rather than the child's exit code
@@ -140,6 +147,28 @@ def test_the_opt_in_restores_indirection(tmp_path):
         vrt = _write_vrt(tmp_path, f"/vsicurl/http://127.0.0.1:{server.port}/x.geojson")
         _read_vrt_in_subprocess(vrt, allow_remote=True)
         assert server.hits, "the opt-in did not restore remote indirection"
+    finally:
+        server.stop()
+
+
+def test_a_workspace_beats_the_opt_in(tmp_path):
+    """The two layers used to disagree, and the weaker one won.
+
+    `workspace.remote_reason` refuses remote forms under a workspace whatever
+    MAPSMITH_ALLOW_REMOTE says, but `gdal_policy.apply` read the variable alone
+    — so with both set, GDAL's indirection drivers came back and a .vrt *inside*
+    the workspace fetched a URL, past every guard, in the configuration
+    SECURITY.md calls the safest. Every other test here removes
+    MAPSMITH_WORKSPACE from the child's environment, which is exactly why the
+    combination went unnoticed.
+    """
+    server = _Server()
+    try:
+        vrt = _write_vrt(tmp_path, f"http://127.0.0.1:{server.port}/x.geojson")
+        _read_vrt_in_subprocess(vrt, allow_remote=True, workspace=tmp_path)
+        assert server.hits == [], (
+            f"the opt-in lifted the policy under a workspace: {server.hits}"
+        )
     finally:
         server.stop()
 
@@ -200,3 +229,85 @@ def test_without_the_sentinel_nothing_is_touched(monkeypatch):
     monkeypatch.delenv(gdal_policy.SENTINEL, raising=False)
     gdal_policy.apply()
     assert os.environ["GDAL_SKIP"] == "VRT"
+
+# Every driver still visible once the policy is installed, reviewed by hand on
+# 2026-08-22 (pyogrio 0.13 / GDAL 3.12.4). This list is not decoration: it is
+# the only mechanism that catches a NEW driver. GDALG arrived in GDAL 3.11 —
+# after the deny-list was written — and reopened the entire class 0.2.2 claims
+# to close, readable from a plain local file inside the workspace, under any
+# extension at all.
+_REVIEWED = {
+    "AIVector", "AVCBin", "AVCE00", "CSV", "DGN", "DXF", "EDIGEO", "EEDA",
+    "ESRI Shapefile", "ESRIJSON", "FlatGeobuf", "GML", "GPKG", "GPSBabel", "GPX", "GTFS",
+    "GeoJSON", "GeoJSONSeq", "GeoRSS", "Idrisi", "JML", "JSONFG", "KML", "LIBKML", "LVBAG",
+    "MBTiles", "MEM", "MVT", "MapInfo File", "MapML", "MiraMonVector", "ODS", "OGR_GMT",
+    "OGR_PDS", "OSM", "OpenFileGDB", "PDS4", "PGDUMP", "PMTiles", "S57", "SQLite", "SXF",
+    "Selafin", "TopoJSON", "VDV", "VFK", "VICAR", "WAsP", "XLSX"
+}
+
+
+def test_no_new_driver_escapes_the_policy():
+    """Fail when GDAL registers something nobody has reviewed yet.
+
+    A deny-list over an evolving set is a list that is wrong between one
+    upstream release and the next. This test does not stop a new driver from
+    existing; it stops one from arriving UNLOOKED AT. When it fails there is a
+    single question to answer — can this driver open another dataset, by
+    network or by path? If it can, it belongs in the skip list; if it cannot,
+    add it here with the date it was reviewed.
+    """
+    # In a clean subprocess, like the other tests here: GDAL reads GDAL_SKIP
+    # when it registers drivers, and in the pytest process the geospatial stack
+    # is already initialised by another test module before the policy applies.
+    # An in-process check would measure import order, not the policy.
+    pytest.importorskip("pyogrio")
+    env = dict(os.environ)
+    for name in (
+        *gdal_policy_names(),
+        "MAPSMITH_ALLOW_REMOTE",
+        "MAPSMITH_GDAL_POLICY",
+        "MAPSMITH_WORKSPACE",
+    ):
+        env.pop(name, None)
+    visible = json.loads(
+        subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import mapsmith, pyogrio, json; print(json.dumps(sorted(pyogrio.list_drivers())))",
+            ],
+            capture_output=True, text=True, env=env, timeout=120, check=True,
+        ).stdout
+    )
+    unreviewed = set(visible) - _REVIEWED
+    assert not unreviewed, (
+        f"GDAL registers drivers nobody has reviewed: {sorted(unreviewed)}. Any of them "
+        "can be another indirection like GDALG: decide whether to skip it, or add "
+        "it to _REVIEWED with the date."
+    )
+
+
+def test_a_gdalg_file_cannot_reach_the_network(tmp_path):
+    """GDALG is the .vrt under another name, only worse: it is recognised by
+    CONTENT, so the filename says nothing, and its command line can name a local
+    path as readily as a URL. Measured before the fix: a file called
+    `roads.geojson` inside the workspace issued HEAD and GET, and another read a
+    dataset from OUTSIDE the workspace and handed back its rows.
+    """
+    server = _Server()
+    try:
+        bait = tmp_path / "recognised_by_content.geojson"
+        bait.write_text(
+            json.dumps({
+                "type": "gdal_streamed_alg",
+                "command_line": (
+                    f"gdal vector convert http://127.0.0.1:{server.port}/x.geojson "
+                    "--output-format=stream streamed_dataset"
+                ),
+            }),
+            encoding="utf-8",
+        )
+        _read_vrt_in_subprocess(bait, allow_remote=False, workspace=tmp_path)
+        assert server.hits == [], f"GDALG reached the network: {server.hits}"
+    finally:
+        server.stop()

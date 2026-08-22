@@ -56,7 +56,13 @@ _RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?i)\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:PERSISTENT\s+|TEMPORARY\s+|TEMP\s+)?SECRET\b"),
      "a DuckDB secret"),
     # SET / PRAGMA of a credential-bearing setting, in any of DuckDB's spellings
-    (re.compile(rf"(?i)\b(?:SET|PRAGMA)\s+(?:GLOBAL\s+|SESSION\s+|LOCAL\s+)?[A-Za-z0-9_.]*(?:{_WORDS})\b"),
+    # The optional quoting character before the name is load-bearing: DuckDB
+    # accepts a quoted identifier, and without it the opening quote broke the
+    # contiguity with the credential word, so `SET "s3_secret_access_key" = '…'`
+    # passed BOTH layers — neither refused nor redacted. Fifth escape found by
+    # an audit, and it fell under neither documented limit: the name was
+    # perfectly recognisable, the statement did configure a credential.
+    (re.compile(rf"""(?i)\b(?:SET|PRAGMA)\s+(?:GLOBAL\s+|SESSION\s+|LOCAL\s+)?(?:VARIABLE\s+)?["`\[]?[A-Za-z0-9_.]*(?:{_WORDS})\b"""),
      "a credential setting"),
     # ATTACH with credentials, either as an option or as URI userinfo
     (re.compile(rf"(?i)\bATTACH\b[^;]*?(?:\b(?:{_WORDS})\b\s*(?::=|=)|://[^\s:/@]+:[^\s@/]+@)"),
@@ -77,12 +83,21 @@ def refuse_credentials_in_sql(query: str) -> None:
     that happens to look innocuous is still refused. Value-shaped detection is
     what made the redaction matcher lose.
     """
+    # imported here, not at module level: provenance imports the package root,
+    # and this module is pulled in early by the engines
+    from .provenance import redact_secrets
+
     text = strip_comments(query)
     for pattern, what in _RULES:
         match = pattern.search(text)
         if match:
+            # The ATTACH rule matches through the URI userinfo, so the quoted
+            # fragment carried the password into the error message — and from
+            # there onto disk, since a plan manifest records step errors. The
+            # message that refuses a credential must not be how it escapes.
+            quoted = redact_secrets(match.group(0).strip())
             raise ValueError(
-                f"this SQL configures {what} ({match.group(0).strip()!r}), which MapSmith "
+                f"this SQL configures {what} ({quoted!r}), which MapSmith "
                 "refuses: the statement is written by the model and recorded verbatim in "
                 "the provenance manifest, which is meant to be shared. Configure "
                 "credentials outside the agent's reach — in the environment of the process "

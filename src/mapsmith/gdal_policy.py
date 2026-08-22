@@ -28,16 +28,49 @@ from __future__ import annotations
 
 import os
 
-# Raster side: VRT is the indirection format; the rest speak HTTP by design.
+# Raster side: the indirection formats first, then the drivers that speak HTTP
+# by design. GDALG and MRF were added after the first version of this list, and
+# both reopened the whole class — see the note under _INDIRECTION.
 _RASTER_SKIP = (
-    "VRT", "GTI", "WMS", "WMTS", "WCS", "TMS", "OGCAPI", "STACIT", "STACTA",
+    "VRT", "GDALG", "GTI", "MRF", "RPFTOC", "KMLSUPEROVERLAY", "RasterLite",
+    "PCIDSK", "PDF", "RS2",
+    "WMS", "WMTS", "WCS", "TMS", "OGCAPI", "STACIT", "STACTA",
     "HTTP", "DAAS", "EEDAI", "PLMOSAIC", "Zarr",
 )
-# Vector side: OGR_VRT plus the network drivers.
+# Vector side: the indirection formats plus the network drivers.
 _VECTOR_SKIP = (
-    "OGR_VRT", "VRT", "WFS", "OAPIF", "CSW", "GMLAS", "AmigoCloud", "Carto",
-    "Elasticsearch", "PLSCENES", "NGW", "ADBC",
+    "OGR_VRT", "VRT", "GDALG", "WFS", "OAPIF", "CSW", "GMLAS", "AmigoCloud",
+    "Carto", "Elasticsearch", "PLSCENES", "NGW", "ADBC",
 )
+
+# Why this list keeps growing, and why a test guards it instead of a comment.
+#
+# The list was correct when it was written and became incomplete because GDAL
+# shipped a new driver. GDALG (*GDAL Streamed Algorithm*, GDAL 3.11) reads a
+# JSON document holding a `gdal` command line and runs it when the dataset is
+# opened — a .vrt by another name, with two aggravating differences: it is
+# recognised by CONTENT rather than by extension, so any filename works, and the
+# command line can name a local path as easily as a URL. Measured on 0.2.2 with
+# remote reads off AND a workspace set: a file called `roads.geojson` inside the
+# workspace fetched a URL, and another read a dataset from OUTSIDE the workspace
+# and handed back its rows. That is containment broken, not only egress.
+#
+# MRF is narrower (extension-gated) but the same shape: its <CachedSource> is
+# fetched on the first pixel read. The rest of the additions are the drivers
+# GDAL's own security page names as opening other datasets internally.
+#
+# MBTiles is on that page too and is deliberately NOT here: it is a
+# mainstream tile container someone may legitimately want to read, and
+# skipping it costs real functionality for a risk nobody has demonstrated
+# against MapSmith. Written down rather than left as an omission — the next
+# reader would otherwise wonder whether it was forgotten.
+#
+# The lesson is about the method, not the names: a deny-list of an evolving set
+# is a list that is wrong between one upstream release and the next.
+# `test_no_new_driver_escapes_the_policy` fails when GDAL registers something we
+# have never reviewed, which is the only version of this check that keeps
+# working.
+_INDIRECTION = ("VRT", "OGR_VRT", "GDALG", "GTI", "MRF")
 
 APPLIED_ENV = ("GDAL_SKIP", "OGR_SKIP")
 

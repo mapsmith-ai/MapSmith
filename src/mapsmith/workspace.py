@@ -62,7 +62,18 @@ def remote_allowed() -> bool:
     sandbox refuses network access under a workspace anyway — a tool boundary
     that admitted what the engine then refuses would only produce confusing
     errors.
+
+    The workspace is part of the answer here, not left to each caller. It used
+    to be: this function reported only the environment variable while the two
+    callers inside this module compensated, and the one outside it did not —
+    so with a workspace *and* the opt-in, ``gdal_policy`` re-registered GDAL's
+    indirection drivers and a ``.vrt`` sitting inside the workspace fetched a
+    URL, past every guard, in the configuration SECURITY.md calls the safest.
+    A predicate whose callers must each remember to add a condition is a
+    predicate that will be wrong somewhere.
     """
+    if root() is not None:
+        return False
     return os.environ.get("MAPSMITH_ALLOW_REMOTE", "").strip().lower() in _TRUTHY
 
 
