@@ -8,9 +8,9 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [0.2.2] — 2026-08-22
 
-A security release. The fixes below close holes present in 0.2.1, which is
-published: **if you run MapSmith on data or paths an agent can influence,
-upgrade.** The headline is that a plain local file could make GDAL fetch a URL
+A security release, published as [GHSA-3rcc-xpw3-r4xh](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-3rcc-xpw3-r4xh). The fixes below close
+holes present in 0.2.1, which is on PyPI and GHCR: **if you run MapSmith on data
+or paths an agent can influence, upgrade.** The headline is that a plain local file could make GDAL fetch a URL
 or read a dataset from outside the workspace, and that credentials could reach
 a manifest.
 

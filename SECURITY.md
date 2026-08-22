@@ -1,5 +1,7 @@
 # Security policy
 
+> Published advisories: [GHSA-3rcc-xpw3-r4xh](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-3rcc-xpw3-r4xh) — affects <= 0.2.1, fixed in 0.2.2.
+
 MapSmith executes tool calls written by LLM agents against local data. Its
 security promises are precise, and we treat any break of them as a
 vulnerability:
