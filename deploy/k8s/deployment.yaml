@@ -92,7 +92,13 @@ spec:
             sizeLimit: 2Gi
         - name: home
           emptyDir:
-            sizeLimit: 64Mi
+            # DuckDB installs its spatial extension into $HOME/.duckdb on first
+            # use, and that extension is 53-70 MB depending on the DuckDB
+            # version. With 64Mi the pod was evicted on the first run_sql — and
+            # an emptyDir overrun is an eviction, not a readable error. The old
+            # manifest ran as root and wrote to the ephemeral layer instead, so
+            # this became reachable only when the container was confined.
+            sizeLimit: 256Mi
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
