@@ -6,6 +6,21 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-08-22
+
+A security release. Two of the fixes below close holes that are present in
+0.2.1, which is published: if you run MapSmith on data or paths an agent can
+influence, upgrade. One of them was found by auditing the *fix* for the other —
+the remote opt-in shipped in this cycle left a local file able to reach the
+network, because a `.vrt` is a local path as far as every guard could see.
+
+### Added
+
+- **`funding.json`** at the repository root ([FLOSS/fund
+  manifest](https://fundingjson.org/)), stating what the project would use
+  funding for: the correctness suite and the provenance specification. No
+  payment provider is published — arrangements are made in writing.
+
 ### Changed
 
 - **Remote and virtual paths are refused by default** (`MAPSMITH_ALLOW_REMOTE=1`
@@ -101,6 +116,12 @@ All notable changes to MapSmith are documented here, in the format of
   the session. A workspace already refused that write; the connection now sets
   `allow_persistent_secrets = false` in both modes, before locking the
   configuration.
+- **`duckdb` is now capped below 2.0.** The floor was raised to 1.5 for a
+  correctness reason (above); the cap is for a different one. DuckDB 2.0 is on
+  the autumn-2026 calendar with breaking changes, and an unbounded requirement
+  means the first install after that release can fail with nothing on our side
+  having changed. A pin you have to lift deliberately beats an install that
+  breaks on someone else's schedule.
 
 ## [0.2.1] — 2026-08-20
 

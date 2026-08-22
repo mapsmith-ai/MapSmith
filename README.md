@@ -6,7 +6,7 @@
 [![MCP](https://img.shields.io/badge/Model_Context_Protocol-server-654FF0)](https://modelcontextprotocol.io)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 
-**Professional-grade geoprocessing for AI agents — with provenance you can verify.**
+**Professional-grade GIS geoprocessing for AI agents — with provenance you can verify.**
 
 MapSmith is an open-source [MCP](https://modelcontextprotocol.io) server that gives an AI
 agent real GIS analysis — buffers, overlays, reprojections, zonal statistics, terrain and
@@ -83,7 +83,7 @@ for it:
 
 ```json
 {
-  "mapsmith_version": "0.2.1",
+  "mapsmith_version": "0.2.2",
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{"path": "rivers.gpkg", "sha256": "9f2c…", "crs": "EPSG:4326"}],

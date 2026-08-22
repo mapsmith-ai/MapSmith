@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mapsmith"
-version = "0.2.1"
-description = "Professional-grade geoprocessing for AI agents via MCP, with verifiable provenance"
+version = "0.2.2"
+description = "Professional-grade GIS geoprocessing for AI agents via MCP, with verifiable provenance"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "AGPL-3.0-or-later"
@@ -34,7 +34,10 @@ dependencies = [
   # output flavour becomes OUR decision: 1.4 wrote Parquet's native geometry
   # types by default and 1.5 changed the default back to GeoParquet 1.x, so the
   # installed engine version was silently choosing our canonical format.
-  "duckdb>=1.5",
+  # Upper bound because DuckDB 2.0 is on the autumn-2026 calendar with breaking
+  # changes: without it, the first install after that release can break on its
+  # own, with nothing on our side having changed.
+  "duckdb>=1.5,<2",
 ]
 
 [project.optional-dependencies]

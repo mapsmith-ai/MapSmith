@@ -1,6 +1,6 @@
 """MapSmith — professional-grade geoprocessing for AI agents via MCP, with verifiable provenance."""
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 # Must run before anything imports pyogrio, rasterio or duckdb's spatial
 # extension: GDAL reads GDAL_SKIP/OGR_SKIP once, when it registers its drivers.
