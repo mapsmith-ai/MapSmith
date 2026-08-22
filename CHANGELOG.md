@@ -8,13 +8,19 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [0.2.2] — 2026-08-22
 
-A security release. Two of the fixes below — **a `.vrt` reaching the network
-from inside a workspace**, and **credentials landing in provenance manifests** —
-close holes that are present in 0.2.1, which is published: if you run MapSmith
-on data or paths an agent can influence, upgrade. One of them was found by
-auditing the *fix* for the other — the remote opt-in shipped in this cycle left
-a local file able to reach the network, because a `.vrt` is a local path as far
-as every guard could see.
+A security release. The fixes below close holes present in 0.2.1, which is
+published: **if you run MapSmith on data or paths an agent can influence,
+upgrade.** The headline is that a plain local file could make GDAL fetch a URL
+or read a dataset from outside the workspace, and that credentials could reach
+a manifest.
+
+Worth saying plainly, because it shaped the release: each fix here was found by
+auditing the previous one. The remote opt-in left `.vrt` able to reach the
+network; closing `.vrt` left `GDALG` and `MRF` doing the same thing; refusing
+credential SQL wrote the credential into the refusal message. The pattern is
+not bad luck — it is what happens when a guard is written against an instance
+instead of a class, and the response in each case was to move the check one
+level down rather than add another name to a list.
 
 ### Added
 
@@ -51,6 +57,55 @@ as every guard could see.
 
 ### Fixed
 
+- **GDAL indirection was closed as an instance, not as a class.** Deregistering
+  the drivers behind `.vrt` left `GDALG` and `MRF` doing the same job. GDALG
+  (*GDAL Streamed Algorithm*, GDAL 3.11) reads a JSON document holding a `gdal`
+  command line and runs it when the dataset is opened, and it is recognised by
+  **content, not by extension** — so the filename tells you nothing, and the
+  command line can name a local path as readily as a URL. Measured with remote
+  reads off **and** a workspace set: a file called `roads.geojson` inside the
+  workspace issued a GET, and another read a dataset from *outside* the
+  workspace and handed back its rows. That is containment broken, not only
+  egress. MRF is narrower — extension-gated, fetched on the first pixel read.
+  Both are now skipped, along with the remaining drivers GDAL's own security
+  page names as opening other datasets internally.
+
+  The list is not the fix. It was correct when written and became incomplete
+  because GDAL shipped a new driver, which will happen again. A test now
+  enumerates the drivers registered in a clean subprocess and fails on any name
+  nobody has reviewed — the only version of this check that keeps working
+  across upstream releases.
+- **A workspace no longer loses to the opt-in.** `MAPSMITH_ALLOW_REMOTE=1`
+  together with `MAPSMITH_WORKSPACE` re-registered the indirection drivers,
+  because the predicate answering "is remote allowed" read only the environment
+  variable while its own documentation said a workspace overrides it. Two
+  callers compensated for that and one did not. The predicate answers the whole
+  question now: a check each caller has to remember to add is a check that will
+  be missing somewhere.
+- **Plan manifests are redacted, and the credential refusal no longer quotes the
+  credential.** `<output>.plan.json` is written as a plain dict, so the redaction
+  applied to every provenance record never reached it — while `goal`, each
+  step's `comment` and a failed step's `error` all carry text written by the
+  model or the user. The sharp case: refusing `ATTACH 'postgres://user:pw@…'`
+  produced a message quoting the fragment, password included, and that message
+  is what the manifest recorded. The mechanism that exists to keep credentials
+  out of manifests was putting one in. Redaction now runs on the whole manifest
+  at the point it becomes a file.
+- **A credential written with a quoted identifier is refused.**
+  `SET "s3_secret_access_key" = '…'` and `PRAGMA "…"='…'` defeated *both* layers:
+  the refusal pattern required the credential word to follow `SET` contiguously,
+  and the redaction pattern allowed only whitespace between the name and the
+  `=`, so the closing quote broke each of them. This was not one of the two
+  documented limits — the name was perfectly recognisable.
+- **`crs_decisions` and `notes` are redacted on the paths that actually run.**
+  Redaction happened at construction, and no engine passes those fields to the
+  constructor — every one assigns afterwards. So two of the four fields
+  SECURITY.md lists as covered were never redacted in practice, and
+  `parameters_redacted` stayed false. Redaction now also runs in `write_for`,
+  the single point where a manifest becomes a file, and covers `verification`
+  and `repairs` as well. The test that claimed to cover this passed both fields
+  as constructor arguments — a shape no caller uses — so it was green and
+  proved nothing; it now uses the real one.
 - **A local GDAL indirection file could reach the network from inside a
   workspace.** A `.vrt` is a plain local path, so the path guard, the SQL scan
   and DuckDB's `allowed_directories` all saw a local file while GDAL fetched
@@ -104,7 +159,10 @@ as every guard could see.
   One form is deliberately not resolved: `srid:<n>`. The spec defines it as a
   numeric identifier and names no authority (its own example is `srid:0`), so
   reading it as `EPSG:<n>` would be MapSmith inventing a coordinate system and
-  recording it as fact. Such a file is refused with the declaration quoted.
+  recording it as fact. Such a file is treated as having no CRS, so the CRS
+  precondition refuses it like any other input without one. The message does
+  not yet quote the `srid:` declaration that caused it, which would tell the
+  agent what to fix — tracked separately rather than claimed here.
 
   **Writing now states its flavour instead of inheriting one.** `run_sql`
   materialises with `geoparquet_version 'BOTH'`, so one output file carries
@@ -128,6 +186,12 @@ as every guard could see.
   the session. A workspace already refused that write; the connection now sets
   `allow_persistent_secrets = false` in both modes, before locking the
   configuration.
+- **The `mcp` floor is 1.28.1.** The SDK range MapSmith allowed admitted three
+  High-severity advisories (CVE-2026-59950, CVE-2026-52869, CVE-2026-52870).
+  None is exploitable here — MapSmith uses stdio and stateless Streamable HTTP
+  with no authentication, never the websocket transport, never task handlers —
+  but a fresh install could resolve to a version carrying them, and a scanner
+  cannot know the difference.
 - **`duckdb` is now capped below 2.0.** The floor was raised to 1.5 for a
   correctness reason (above); the cap is for a different one. DuckDB 2.0 is on
   the autumn-2026 calendar with breaking changes, and an unbounded requirement

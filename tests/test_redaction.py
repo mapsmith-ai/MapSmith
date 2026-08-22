@@ -161,14 +161,6 @@ def test_redaction_covers_the_other_manifest_fields(tmp_path):
         notes=["retried with token='live_abc'"],
     )
     record.inputs[0].path = "https://b.s3.amazonaws.com/x.parquet?X-Amz-Signature=deadbeef"
-    # re-run the redaction the way a record built with that path would
-    record = ProvenanceRecord(
-        operation="run_sql",
-        parameters={},
-        inputs=record.inputs,
-        crs_decisions=record.crs_decisions,
-        notes=record.notes,
-    )
     text = record.finish().write_for(target).read_text(encoding="utf-8")
     for secret in ("hunter2", "live_abc", "deadbeef"):
         assert secret not in text, secret
@@ -188,4 +180,28 @@ def test_written_manifest_carries_no_secret(tmp_path):
     text = manifest.read_text(encoding="utf-8")
     assert "hunter2" not in text
     assert "AS pg" in text
+    assert json.loads(text)["parameters_redacted"] is True
+
+
+def test_fields_assigned_after_construction_are_redacted_too(tmp_path):
+    """The shape every engine actually uses, which nothing covered.
+
+    Redaction used to run only in `__post_init__`, and no engine passes
+    `crs_decisions` or `notes` to the constructor — all of them assign after.
+    So the two fields SECURITY.md lists as covered were never redacted on any
+    shipped path, and `parameters_redacted` stayed false. The test that claimed
+    to cover them passed both as constructor arguments: green, and proving
+    nothing about the code that runs.
+    """
+    target = tmp_path / "out.parquet"
+    target.write_bytes(b"x")
+    record = ProvenanceRecord(operation="buffer_layer", parameters={}, inputs=[])
+    record.crs_decisions = {"reason": "reprojected using password='hunter2'"}
+    record.notes.append("retried with token='live_abc'")
+    record.repairs.append({"error": "engine said secret='deadbeef'"})
+
+    text = record.finish().write_for(target).read_text(encoding="utf-8")
+
+    for secret in ("hunter2", "live_abc", "deadbeef"):
+        assert secret not in text, secret
     assert json.loads(text)["parameters_redacted"] is True

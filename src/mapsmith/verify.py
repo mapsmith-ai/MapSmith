@@ -113,8 +113,13 @@ def native_crs_declaration(path: str, declaration: str) -> str:
     spatial reference identifier and names no authority (its own example is
     ``srid:0``), so reading it as EPSG:<n> would be MapSmith inventing a
     coordinate system and recording it as fact — the exact bug fixed in 0.2.1
-    when ``crs: null`` was being read as CRS84. Refusing with the declaration
-    quoted is the honest answer.
+    when ``crs: null`` was being read as CRS84. The file is therefore reported
+    as having no CRS and refused by the CRS precondition.
+
+    What is missing, and is not claimed anywhere: the refusal does not carry
+    the ``srid:`` declaration back to the caller, so the agent is told the file
+    has no CRS while the file visibly has a ``crs`` field. Surfacing the reason
+    is the honest finish to this.
     """
     from pyproj import CRS
 

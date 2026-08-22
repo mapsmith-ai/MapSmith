@@ -197,23 +197,47 @@ class ProvenanceRecord:
     parameters_redacted: bool = False
 
     def __post_init__(self) -> None:
-        # Not only `parameters`: a signed URL reaches a manifest as an input
-        # path, and a CRS decision or a note quotes the argument it was made
-        # about. Redacting one field and publishing the others would be a
-        # redaction in name only.
+        self._redact()
+
+    def _redact(self) -> None:
+        """Mask credentials in every field that can carry one. Idempotent.
+
+        Not only `parameters`: a signed URL reaches a manifest as an input
+        path, and a CRS decision or a note quotes the argument it was made
+        about. Redacting one field and publishing the others would be a
+        redaction in name only.
+
+        Run at construction AND again in `write_for`, which is the single point
+        where a manifest becomes a file. Construction alone was not enough and
+        the gap was invisible: no engine passes `crs_decisions` or `notes` to
+        the constructor — every one of them assigns after — so those two fields
+        were never actually redacted on any shipped path, while SECURITY.md
+        said they were. The test that covered them passed both as constructor
+        arguments, a shape no caller uses: green, and proving nothing.
+
+        Redacting twice costs nothing because masking an already-masked value
+        is a no-op, and it means a field added later is covered without anyone
+        having to remember this method exists.
+        """
         safe_params = redact_secrets(self.parameters)
         safe_decisions = redact_secrets(self.crs_decisions)
         safe_notes = redact_secrets(self.notes)
         safe_paths = [redact_secrets(i.path) for i in self.inputs]
+        safe_verification = redact_secrets(self.verification)
+        safe_repairs = redact_secrets(self.repairs)
         changed = (
             safe_params != self.parameters
             or safe_decisions != self.crs_decisions
             or safe_notes != self.notes
             or safe_paths != [i.path for i in self.inputs]
+            or safe_verification != self.verification
+            or safe_repairs != self.repairs
         )
         self.parameters = safe_params
         self.crs_decisions = safe_decisions
         self.notes = safe_notes
+        self.verification = safe_verification
+        self.repairs = safe_repairs
         for record, path in zip(self.inputs, safe_paths):
             record.path = path
         if changed:
@@ -235,6 +259,7 @@ class ProvenanceRecord:
 
     def write_for(self, output_path: str | Path) -> Path:
         """Write the manifest next to the output it describes."""
+        self._redact()
         manifest_path = Path(f"{output_path}.provenance.json")
         manifest_path.write_text(
             json.dumps(asdict(self), indent=2, ensure_ascii=False), encoding="utf-8"

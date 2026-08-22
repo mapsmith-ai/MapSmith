@@ -18,7 +18,15 @@ classifiers = [
   "Programming Language :: Python :: 3",
 ]
 dependencies = [
-  "mcp>=1.26,<2",
+  # 1.26 is the floor for resource `meta` (the MCP Apps map panel needs it);
+  # 1.28.1 is the floor for three High advisories in the SDK, none of them
+  # exploitable here — MapSmith uses stdio and stateless Streamable HTTP with
+  # no authentication, never the websocket transport, never task handlers.
+  # Raised anyway: a fresh install could resolve to 1.26 and every dependency
+  # scanner would flag the package, which is a bad look for a project that
+  # sells the discipline. v2 renamed FastMCP->MCPServer; migration is planned
+  # with MCP Tasks.
+  "mcp>=1.28.1,<2",
   "geopandas>=1.1.2",  # security floor: CVE-2025-69662 (to_postgis)
   "shapely>=2.0",
   "pyproj>=3.6",
