@@ -30,7 +30,7 @@ ruff check .
 
 ## Contributor License Agreement
 
-To keep dual-licensing possible (AGPL + commercial), we ask contributors to sign a lightweight CLA on their first PR (automated via bot). Your code always remains available under AGPL-3.0.
+To keep dual-licensing possible (AGPL + commercial), we ask contributors to sign a lightweight CLA on their first PR. There is no bot yet: if you open the first outside PR, we will agree the wording with you in the thread rather than block the merge on tooling that does not exist. Your code always remains available under AGPL-3.0.
 
 ## Code style
 

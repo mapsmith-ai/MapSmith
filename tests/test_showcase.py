@@ -186,6 +186,81 @@ def test_the_changelog_covers_the_released_version():
     )
 
 
+def test_server_json_declares_the_version_being_released():
+    """The registry entry carries the version in three places — the server, the
+    PyPI package and the OCI tag — and a release bumps them by hand. One left
+    behind publishes a listing that points at the previous image."""
+    import json
+
+    from mapsmith import __version__
+
+    data = json.loads((ROOT / "server.json").read_text(encoding="utf-8"))
+    assert data["version"] == __version__, (
+        f"server.json says {data['version']}, the package says {__version__}"
+    )
+    for package in data["packages"]:
+        if package["registryType"] == "pypi":
+            assert package["version"] == __version__, (
+                f"server.json pypi package pinned at {package['version']}"
+            )
+        if package["registryType"] == "oci":
+            assert package["identifier"].endswith(f":{__version__}"), (
+                f"server.json OCI tag is {package['identifier']}, not :{__version__}"
+            )
+
+
+def test_the_registry_ownership_proof_is_in_every_place_it_is_read_from():
+    """The MCP Registry proves ownership by matching one string in three
+    artifacts: the README marker it reads from the repository, the Dockerfile
+    label it reads from the image, and server.json itself. Any of them missing
+    or drifting fails publication — at release time, which is the most
+    expensive moment to find out."""
+    import json
+
+    name = json.loads((ROOT / "server.json").read_text(encoding="utf-8"))["name"]
+    readme = README.read_text(encoding="utf-8")
+    assert f"<!-- mcp-name: {name} -->" in readme, (
+        f"the README has no '<!-- mcp-name: {name} -->' marker"
+    )
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert f'LABEL io.modelcontextprotocol.server.name="{name}"' in dockerfile, (
+        f"the Dockerfile does not label the image with {name}"
+    )
+
+
+def test_the_funding_manifest_is_valid_and_findable_by_a_human():
+    """funding.json is a content category of its own, and the failure mode is
+    the familiar one: a crawler finds it at the root, a visitor never does. It
+    is also a page of claims — keep it parseable and keep it linked."""
+    import json
+
+    manifest = ROOT / "funding.json"
+    assert manifest.exists(), "funding.json is gone"
+    data = json.loads(manifest.read_text(encoding="utf-8"))  # invalid JSON = invisible
+    assert data.get("projects"), "funding.json declares no project"
+    assert "funding.json" in README.read_text(encoding="utf-8"), (
+        "funding.json is mentioned nowhere a visitor reads: link it from the README"
+    )
+
+
+def test_the_word_gis_survives_where_a_search_can_see_it():
+    """MapSmith was absent from every curated list of GIS MCP servers while its
+    package description, its registry entry and its first line all said
+    "geoprocessing" and never "GIS" — which is the word people search for. A
+    rewrite that drops it again should fail here, not in six months of silence."""
+    import json
+
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    description = re.search(r'^description\s*=\s*"([^"]+)"', pyproject, re.MULTILINE)
+    assert description and "GIS" in description.group(1), (
+        "the PyPI description does not contain the word GIS"
+    )
+    registry = json.loads((ROOT / "server.json").read_text(encoding="utf-8"))["description"]
+    assert "GIS" in registry, "the MCP Registry description does not contain the word GIS"
+    first_screen = README.read_text(encoding="utf-8").split("## Quickstart")[0]
+    assert "GIS" in first_screen, "the README says what it is without ever saying GIS"
+
+
 # Words that promise instead of stating. Each one has a concrete replacement:
 # a number, a mechanism, or a link to a measurement.
 _MARKETING = (

@@ -75,6 +75,11 @@ with working wheels — is the only supported installation path**: geospatial na
 dependencies across three OSes are a support black hole, and issues about broken local
 environments will be redirected here.
 
+Two things about the image, because they change what happens on your machine: it sets
+`MAPSMITH_WORKSPACE=/data` itself (the `-e` above is explicit, not required) and runs as
+uid 1000, so pass `--user $(id -u):$(id -g)` if the directory you mount belongs to another
+user; and it is built for amd64 only, so on Apple Silicon it runs under emulation.
+
 ## What you get back
 
 Every dataset comes with the file below, written next to it as
@@ -101,7 +106,7 @@ had to repair. `get_provenance` returns it for any output.
 
 - **Real geoprocessing, not map CRUD.** Built on the proven open geospatial stack: GDAL,
   GeoPandas, Shapely, DuckDB Spatial, Whitebox Workflows and exactextract ship today
-  (more to come: PDAL, QGIS Processing via sidecar).
+  (more to come: QGIS Processing via sidecar).
 - **Provenance by design.** Every layer MapSmith produces ships with a machine-readable
   lineage manifest — source datasets with checksums, tools executed, exact parameters, CRS
   decisions, software versions, timestamps. Everything needed to re-run the analysis
@@ -239,9 +244,9 @@ that produced the result.
 UNC hosts and NTFS alternate data streams are refused in every path *argument* of every
 tool call, before anything touches the filesystem (on Windows even an existence check on a
 UNC path talks to an attacker-chosen host). Remote and virtual forms — GDAL `/vsi*`,
-`https://` COGs — stay available while the server is unconfined, because cloud-native data
-is a feature, and are refused once a workspace is set. Validated plans are stricter by
-design and reject every non-local form.
+`https://` COGs — are refused by default since 0.2.2 and need `MAPSMITH_ALLOW_REMOTE=1`;
+a workspace refuses them whatever that setting says (details below). Validated plans are
+stricter by design and reject every non-local form, opt-in or not.
 
 Set `MAPSMITH_WORKSPACE=/data` to confine the server to one directory:
 
@@ -364,13 +369,19 @@ detects it, converts the input first, and discloses the workaround in the manife
 - **Your data lives in a database.** MapSmith reads and writes files (GeoParquet,
   GeoPackage, anything GDAL opens). There is no PostGIS engine and no database catalog —
   the `[postgres]` extra is for the optional job ledger, not for data.
+- **Your data lives in object storage.** Since 0.2.2 remote and virtual paths are refused
+  unless you set `MAPSMITH_ALLOW_REMOTE=1`, and refused whatever that setting says under a
+  workspace — which is what the container runs with by default. DuckDB's own HTTP and S3
+  filesystems stay off in every mode, so `read_parquet('s3://…')` does not work even with
+  the opt-in: fetch the data down first, or run unconfined with remote reads on.
 - **You want the full breadth of a desktop GIS.** 16 tools plus a catalog that tells the
   agent what does *not* exist yet. The ~900 QGIS Processing algorithms are on the roadmap,
   not in the box.
 - **You expect plan validation to make a weak model strong.** Our own A/B says advisory
   validation upstream of an improvising solver does approximately nothing at aggregate
-  level; MapSmith's answer is enforcement at the execution boundary, and that hypothesis
-  is not measured yet.
+  level — and the enforced configuration MapSmith ships, measured afterwards, did not beat
+  it on accuracy either. What enforcement buys is reproducibility
+  ([the numbers](docs/benchmarks.md)).
 - **You want us to debug your local geospatial toolchain.** Docker, or `uvx` where the
   wheels work, are the only supported paths; a hand-built native GDAL stack is not, on
   purpose.
@@ -404,6 +415,11 @@ Next, in the order we intend to do it. The linked items carry a written spec —
 You can self-host MapSmith freely, forever. If you modify it and offer it as a service, the
 AGPL asks you to share your changes — or [talk to us](mailto:mapsmith@proton.me) about a
 commercial license.
+
+Nothing here has been funded so far. [`funding.json`](funding.json) states, in the
+[FLOSS/fund](https://fundingjson.org/) format, the two pieces of work that money would go
+to: a public suite of geospatial traps with hand-computable answers, and the provenance
+manifest as a specification other tools can implement.
 
 Release notes are in [CHANGELOG.md](CHANGELOG.md), how to contribute in
 [CONTRIBUTING.md](CONTRIBUTING.md), how to report a vulnerability in

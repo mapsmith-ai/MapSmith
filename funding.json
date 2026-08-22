@@ -20,8 +20,7 @@
         "url": "https://github.com/mapsmith-ai/MapSmith"
       },
       "repositoryUrl": {
-        "url": "https://github.com/mapsmith-ai/MapSmith",
-        "wellKnown": "https://github.com/mapsmith-ai/MapSmith/blob/main/funding.json"
+        "url": "https://github.com/mapsmith-ai/MapSmith"
       },
       "licenses": ["spdx:AGPL-3.0-or-later"],
       "tags": ["gis", "geospatial", "mcp", "ai-agents", "provenance", "geoprocessing", "reproducibility"]

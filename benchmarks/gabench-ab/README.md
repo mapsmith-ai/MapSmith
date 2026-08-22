@@ -1,4 +1,4 @@
-# GABench A/B/C: does plan validation help a GIS agent — and does enforcing it?
+# GABench A–E: does plan validation help a GIS agent — and does enforcing it?
 
 This harness measures two ideas in isolation: **validating a typed plan against
 the live tool registry before execution**, and then **executing that plan as
@@ -7,10 +7,10 @@ written instead of letting the agent improvise past it**. It runs
 agents rather than editing them — so its deterministic evaluator scores our
 logs without changes.
 
-Results and interpretation: [`docs/benchmarks.md`](../../docs/benchmarks.md).
-Arm C's numbers are not published yet; the two-arm result is.
+Results and interpretation, for every arm below:
+[`docs/benchmarks.md`](../../docs/benchmarks.md).
 
-## The three arms
+## The five arms
 
 All arms share everything: model, prompts, tools, data, and a typed planner that
 emits `[{"step_id": 1, "tool": ..., "arguments": {...}}, ...]`.
@@ -20,10 +20,14 @@ emits `[{"step_id": 1, "tool": ..., "arguments": {...}}, ...]`.
 | **Arm A** | no | ReAct solver (improvises) |
 | **Arm B** | yes — unknown tool (with did-you-mean), missing/unknown/mistyped arguments, malformed steps; machine-readable errors go back to the planner, ≤2 repair rounds | ReAct solver (improvises) |
 | **Arm C** | yes, identical to B | the plan itself: steps in order, `$stepN` references resolved from real outputs, stop at the first failure, **no model in the loop** |
+| **Arm D** | yes, plus the data flow: every input path must exist on disk or be an earlier step's declared output, rewritten to `output/<name>` or to a `$stepN` reference where possible — a replica of what MapSmith's `validate_plan` refuses | as C |
+| **Arm E** | as D | as C, with one prompt change: the planner is given the full argument documentation instead of the compacted signatures |
 
-A→B isolates the gate. B→C isolates who executes. Arm A records the same
-validation audit *without acting on it*, so you can see whether two arms
-produced defective plans on the same tasks.
+A→B isolates the gate. B→C isolates who executes. C→D isolates a gate that
+understands references from one that only checks names and types. D→E isolates
+telling the planner the argument rules, changing no validation logic at all.
+Arm A records the same validation audit *without acting on it*, so you can see
+whether two arms produced defective plans on the same tasks.
 
 Arm C is the configuration MapSmith ships (`execute_plan`), and enforcing a plan
 cuts both ways by design: a plan the gate could not fix executes zero steps and
@@ -44,11 +48,17 @@ export GABENCH_ROOT=/path/to/GABench
 # 3. run the arms, from the GABench root so its config.yaml/.env resolve
 python /path/to/gabench-ab/run_ab.py --arm a --model <key> --all --rep 1
 python /path/to/gabench-ab/run_ab.py --arm b --model <key> --all --rep 1
+# arms c, d and e run on the frozen groups; d and e are planner-only (no solver calls)
 python /path/to/gabench-ab/run_ab.py --arm c --model <key> --group defective+control --rep 1
 
 # 4. assemble artifacts and score a run
 python /path/to/gabench-ab/assemble_eval.py <key> a b c --rep 1
 ```
+
+The five-arm, five-repetition recipe published in
+[`docs/benchmarks.md`](../../docs/benchmarks.md) loops the same two commands over
+`a b c d e` with the repetition as the outer loop, so an interrupted run still
+leaves a balanced design.
 
 `--model <key>` is a key from GABench's `config.yaml`. `--group` uses the frozen
 task groups in `task_groups.py`; `--ids 1,2,3` and `--all` also work. Runs
@@ -66,7 +76,7 @@ Inspect a finished run:
 ```bash
 python gate_stats.py <results>/rep1.jsonl   # what the gate caught
 python split_analysis.py <key>              # effect vs run-to-run noise (one rep per arm)
-python rep_analysis.py <key>                # arms x repetitions, every delta next to its noise
+python rep_analysis.py <key> --arms a b c d e   # arms x repetitions, every delta next to its noise
 python derive_groups.py                     # re-derive the frozen task groups from the A/B logs
 python cost_check.py <usage.jsonl> <in-price> <out-price>   # token spend
 python test_gate.py                         # closed-form gate test, no API calls

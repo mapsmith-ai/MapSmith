@@ -8,11 +8,13 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [0.2.2] — 2026-08-22
 
-A security release. Two of the fixes below close holes that are present in
-0.2.1, which is published: if you run MapSmith on data or paths an agent can
-influence, upgrade. One of them was found by auditing the *fix* for the other —
-the remote opt-in shipped in this cycle left a local file able to reach the
-network, because a `.vrt` is a local path as far as every guard could see.
+A security release. Two of the fixes below — **a `.vrt` reaching the network
+from inside a workspace**, and **credentials landing in provenance manifests** —
+close holes that are present in 0.2.1, which is published: if you run MapSmith
+on data or paths an agent can influence, upgrade. One of them was found by
+auditing the *fix* for the other — the remote opt-in shipped in this cycle left
+a local file able to reach the network, because a `.vrt` is a local path as far
+as every guard could see.
 
 ### Added
 
@@ -36,6 +38,16 @@ network, because a `.vrt` is a local path as far as every guard could see.
   data stays a supported use case: the capability is gated, not removed. A
   workspace refuses remote forms regardless, and validated plans stay strict
   whatever the setting.
+- **The container is unprivileged and confined by default.** The published image
+  runs as uid 1000 instead of root and sets `MAPSMITH_WORKSPACE=/data` itself, so
+  `docker run -v your/data:/data ghcr.io/mapsmith-ai/mapsmith` gets the path jail
+  and the sandboxed SQL engine without the operator having to remember `-e` — the
+  wrong way round for a default. Two consequences before you upgrade: a bind
+  mount owned by another user is no longer writable (pass
+  `--user $(id -u):$(id -g)`), and everything outside `/data` is refused,
+  including remote paths, which a workspace refuses whatever
+  `MAPSMITH_ALLOW_REMOTE` says. The Kubernetes example states the same posture at
+  pod level (`runAsNonRoot`, `readOnlyRootFilesystem`, dropped capabilities).
 
 ### Fixed
 
