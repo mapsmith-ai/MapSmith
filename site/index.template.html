@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MapSmith — geoprocessing for AI agents, with provenance you can check</title>
+<meta name="description" content="An open-source MCP server that gives AI agents real GIS analysis. Every dataset it writes lands next to a lineage manifest: inputs with checksums, exact parameters, motivated CRS decisions, engine versions, and the deterministic checks that ran.">
+<link rel="canonical" href="https://mapsmith.dev/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="MapSmith — geoprocessing for AI agents, with provenance you can check">
+<meta property="og:description" content="Ask for the result. The agent picks the tools. You can check the work afterwards.">
+<meta property="og:image" content="https://mapsmith.dev/terrain.png">
+<meta property="og:url" content="https://mapsmith.dev/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231d1c1a'/><path d='M4 24 L11 11 L16 19 L21 8 L28 24 Z' fill='none' stroke='%23e67e22' stroke-width='2.2' stroke-linejoin='round'/></svg>">
+<style>
+:root {
+  --ink: #1d1c1a;
+  --ink-soft: #56514b;
+  --ink-faint: #8a837b;
+  --paper: #faf8f5;
+  --paper-raised: #ffffff;
+  --rule: #e3ddd4;
+  --accent: #b4530f;
+  --ok: #1f7a4d;
+  --code-bg: #f3efe9;
+  --basin-1: #e67e22; --basin-2: #27ae60; --basin-3: #2980b9;
+  --basin-4: #8e44ad; --basin-5: #c0392b; --basin-6: #d4a017;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, ui-serif, serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --measure: 34rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #ece7e0; --ink-soft: #b3aca3; --ink-faint: #7d766e;
+    --paper: #161514; --paper-raised: #1e1d1b; --rule: #322f2b;
+    --accent: #e8944a; --ok: #4cc38a; --code-bg: #201f1d;
+  }
+}
+:root[data-theme="dark"] {
+  --ink: #ece7e0; --ink-soft: #b3aca3; --ink-faint: #7d766e;
+  --paper: #161514; --paper-raised: #1e1d1b; --rule: #322f2b;
+  --accent: #e8944a; --ok: #4cc38a; --code-bg: #201f1d;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 18px;
+  line-height: 1.62;
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
+}
+.wrap { max-width: 68rem; margin: 0 auto; padding: 0 1.75rem; }
+a { color: inherit; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--accent); }
+code, pre, .mono { font-family: var(--mono); font-size: 0.82em; font-variant-ligatures: none; }
+
+/* ---------- masthead ---------- */
+header.masthead {
+  border-bottom: 1px solid var(--rule);
+  padding: 1.1rem 0;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+}
+.masthead .wrap { display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; }
+.wordmark { font-family: var(--serif); font-size: 1.15rem; letter-spacing: -0.01em; font-weight: 600; }
+.masthead nav { margin-left: auto; display: flex; gap: 1.1rem; flex-wrap: wrap; }
+.masthead nav a { color: var(--ink-soft); text-decoration: none; }
+.masthead nav a:hover { color: var(--accent); }
+
+/* ---------- hero ---------- */
+.hero { padding: 4rem 0 3rem; }
+.hero .wrap { display: grid; gap: 3rem; grid-template-columns: minmax(0, 520px) minmax(0, 1fr); align-items: start; }
+@media (max-width: 62rem) { .hero .wrap { grid-template-columns: 1fr; } .hero { padding-top: 2.5rem; } }
+
+figure.plate { margin: 0; }
+figure.plate img {
+  display: block; width: 100%; height: auto;
+  border: 1px solid var(--rule);
+  background: var(--code-bg);
+}
+figure.plate figcaption {
+  margin-top: 0.7rem;
+  font-family: var(--mono); font-size: 0.7rem; line-height: 1.6;
+  color: var(--ink-faint); letter-spacing: 0.02em;
+}
+.swatches { display: flex; gap: 3px; margin: 0.55rem 0 0; }
+.swatches span { height: 3px; flex: 1; }
+
+h1 {
+  font-size: clamp(2rem, 4.4vw, 2.9rem);
+  line-height: 1.14; letter-spacing: -0.02em;
+  margin: -0.35rem 0 1.1rem; font-weight: 600;
+}
+.lede { font-size: 1.12rem; color: var(--ink-soft); max-width: var(--measure); margin: 0 0 1.5rem; }
+.pull {
+  border-left: 2px solid var(--accent);
+  padding-left: 1.1rem; margin: 1.75rem 0;
+  font-size: 1.05rem; max-width: var(--measure);
+}
+.pull em { font-style: italic; }
+
+.cta { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-top: 1.9rem; }
+.cta a {
+  font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.03em;
+  padding: 0.6rem 1.05rem; border: 1px solid var(--ink); text-decoration: none;
+  transition: background .12s, color .12s;
+}
+.cta a:first-child { background: var(--ink); color: var(--paper); }
+.cta a:first-child:hover { background: var(--accent); border-color: var(--accent); }
+.cta a:not(:first-child) { border-color: var(--rule); color: var(--ink-soft); }
+.cta a:not(:first-child):hover { border-color: var(--ink); color: var(--ink); }
+
+/* ---------- sections ---------- */
+section { padding: 3.5rem 0; border-top: 1px solid var(--rule); }
+.kicker {
+  font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--ink-faint); margin: 0 0 0.85rem;
+}
+h2 { font-size: 1.6rem; line-height: 1.24; letter-spacing: -0.015em; margin: 0 0 1rem; font-weight: 600; }
+h3 { font-size: 1.05rem; margin: 0 0 0.4rem; font-weight: 600; }
+p { max-width: var(--measure); }
+section > .wrap > p:first-of-type { margin-top: 0; }
+
+.two { display: grid; gap: 2.75rem; grid-template-columns: minmax(0, 22rem) minmax(0, 1fr); align-items: start; }
+@media (max-width: 58rem) { .two { grid-template-columns: 1fr; gap: 1.75rem; } }
+
+/* ---------- the manifest ---------- */
+.manifest {
+  background: var(--code-bg); border: 1px solid var(--rule);
+  padding: 1.35rem 1.5rem; overflow-x: auto;
+  font-family: var(--mono); font-size: 0.74rem; line-height: 1.72;
+  white-space: pre; tab-size: 2;
+}
+.manifest .k { color: var(--ink-soft); }
+.manifest .s { color: var(--accent); }
+.manifest .n { color: var(--basin-3); }
+.manifest .b { color: var(--ok); font-weight: 600; }
+.manifest .hash { color: var(--ink-faint); }
+.manifest mark { background: transparent; color: inherit; box-shadow: inset 0 -0.55em 0 rgba(180, 83, 15, .13); }
+
+.notes { list-style: none; padding: 0; margin: 0; }
+.notes li { padding: 0.85rem 0; border-bottom: 1px solid var(--rule); }
+.notes li:first-child { padding-top: 0; }
+.notes li:last-child { border-bottom: 0; }
+.notes .field { font-family: var(--mono); font-size: 0.74rem; color: var(--accent); }
+.notes p { margin: 0.2rem 0 0; font-size: 0.94rem; color: var(--ink-soft); max-width: none; }
+
+/* ---------- generic bits ---------- */
+pre.block {
+  background: var(--code-bg); border: 1px solid var(--rule);
+  padding: 1.1rem 1.25rem; overflow-x: auto; margin: 0;
+  font-size: 0.78rem; line-height: 1.65;
+}
+.grid3 { display: grid; gap: 1.5rem 2.25rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+.grid3 p { font-size: 0.94rem; color: var(--ink-soft); margin: 0; max-width: none; }
+.stat { font-family: var(--mono); }
+.stat b { display: block; font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; }
+.stat span { font-size: 0.72rem; color: var(--ink-faint); letter-spacing: 0.04em; }
+
+table.tools { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+table.tools td { padding: 0.5rem 0.9rem 0.5rem 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+table.tools td:first-child { font-family: var(--mono); font-size: 0.76rem; white-space: nowrap; color: var(--accent); }
+table.tools td:last-child { color: var(--ink-soft); }
+
+footer { border-top: 1px solid var(--rule); padding: 2.5rem 0 3.5rem; font-size: 0.84rem; color: var(--ink-faint); }
+footer .wrap { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: baseline; }
+footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--mono); font-size: 0.74rem; }
+</style>
+</head>
+<body>
+
+<header class="masthead"><div class="wrap">
+  <span class="wordmark">MapSmith</span>
+  <nav>
+    <a href="https://github.com/mapsmith-ai/MapSmith">Source</a>
+    <a href="https://pypi.org/project/mapsmith/">PyPI</a>
+    <a href="https://github.com/mapsmith-ai/MapSmith/blob/main/docs/benchmarks.md">Benchmarks</a>
+    <a href="#install">Install</a>
+  </nav>
+</div></header>
+
+<div class="hero"><div class="wrap">
+  <figure class="plate">
+    <img src="terrain.png" width="520" height="520" alt="Shaded relief of Mount St. Helens with six drainage basins tinted over it, radiating from the crater.">
+    <div class="swatches" aria-hidden="true">
+      <span style="background:var(--basin-1)"></span><span style="background:var(--basin-2)"></span>
+      <span style="background:var(--basin-3)"></span><span style="background:var(--basin-4)"></span>
+      <span style="background:var(--basin-5)"></span><span style="background:var(--basin-6)"></span>
+    </div>
+    <figcaption>
+      Mount St. Helens, USGS 3DEP · EPSG:32610 · flow accumulation, then watersheds
+      from its six principal outlets. Rendered from the GeoTIFFs MapSmith wrote, by
+      the build that published this page. Not an illustration.
+    </figcaption>
+  </figure>
+
+  <div>
+    <h1>Geoprocessing for AI agents, with provenance you can check.</h1>
+    <p class="lede">
+      MapSmith is an open-source <a href="https://modelcontextprotocol.io">MCP</a> server that gives
+      an agent real GIS analysis — buffers, overlays, reprojection, zonal statistics, terrain,
+      hydrology — run by GeoPandas, DuckDB Spatial, exactextract and Whitebox. Never written by the
+      model.
+    </p>
+    <div class="pull">
+      Ask for the result. The agent picks the tools.<br><em>You can check the work afterwards.</em>
+    </div>
+    <p class="lede">
+      Every dataset it writes lands on disk beside a lineage manifest — the one below came with the
+      image on the left. It is the whole argument, so it is the first thing on this page.
+    </p>
+    <div class="cta">
+      <a href="#install">Install</a>
+      <a href="https://github.com/mapsmith-ai/MapSmith">Read the source</a>
+      <a href="manifest.json">Download this manifest</a>
+    </div>
+  </div>
+</div></div>
+
+<section id="manifest"><div class="wrap">
+  <p class="kicker">basins.tif.provenance.json</p>
+  <h2>What came with the picture</h2>
+  <p>
+    Not a log. A record complete enough that someone who was not there can re-run the analysis and
+    disagree with it — which is a different and much higher bar than being able to read what
+    happened.
+  </p>
+  <div class="two" style="margin-top:2rem">
+    <ul class="notes">
+      <li><span class="field">inputs[].sha256</span>
+        <p>The bytes, not the filename. A manifest whose input has been edited since stops matching, and says so.</p></li>
+      <li><span class="field">crs_decisions.reason</span>
+        <p>Why this coordinate system, in words. Silent reprojection is the most expensive habit in the field.</p></li>
+      <li><span class="field">engine.version</span>
+        <p>Which build produced the numbers. Terrain algorithms change between releases, and so do their outputs.</p></li>
+      <li><span class="field">verification[]</span>
+        <p>Deterministic checks, recorded whether they passed or failed. Written <em>before</em> a critical failure raises, so the audit trail survives the error.</p></li>
+      <li><span class="field">started_at / finished_at</span>
+        <p>UTC, from the process that ran it — not from whoever is reading it later.</p></li>
+    </ul>
+    <div class="manifest">{{MANIFEST}}</div>
+  </div>
+</div></section>
+
+<section id="install"><div class="wrap">
+  <div class="two">
+    <div>
+      <p class="kicker">Install</p>
+      <h2>One entry in your MCP client</h2>
+      <p style="font-size:0.94rem;color:var(--ink-soft)">
+        Works with Claude Desktop, Claude Code, Cursor and VS Code over stdio. Docker is the other
+        supported path; both are documented in the README.
+      </p>
+    </div>
+    <div>
+      <pre class="block">{
+  "mcpServers": {
+    "mapsmith": {
+      "command": "uvx",
+      "args": ["mapsmith"]
+    }
+  }
+}</pre>
+      <p style="font-size:0.82rem;color:var(--ink-faint);margin-top:0.85rem">
+        Point <code>MAPSMITH_WORKSPACE</code> at a directory and every path argument is confined to
+        it. Paths come from a language model; they are treated as untrusted input.
+      </p>
+    </div>
+  </div>
+</div></section>
+
+<section id="does"><div class="wrap">
+  <p class="kicker">Operations</p>
+  <h2>{{TOOL_COUNT}} tools, not a catalogue</h2>
+  <p>
+    Tool-selection accuracy degrades past a few dozen exposed tools, so capability lives behind a
+    searchable catalogue rather than in the tool list. What is exposed is what an agent has to
+    choose between.
+  </p>
+  <table class="tools" style="margin-top:1.75rem">
+    <tr><td>buffer_layer · clip_layer · overlay_layers</td><td>Vector geometry, with the metric-on-geographic trap handled explicitly rather than silently</td></tr>
+    <tr><td>reproject_layer</td><td>Coordinate systems, with the decision and its reason recorded</td></tr>
+    <tr><td>zonal_statistics</td><td>Raster statistics per polygon, via exactextract — partial pixels weighted, not counted or dropped</td></tr>
+    <tr><td>hillshade · slope · flow_accumulation · watershed</td><td>Terrain and hydrology on Whitebox Workflows</td></tr>
+    <tr><td>run_sql</td><td>Spatial SQL on DuckDB, sandboxed to the workspace with external access off</td></tr>
+    <tr><td>validate_plan · run_plan</td><td>A typed DAG checked before anything executes: stable error codes, simulated CRS flow</td></tr>
+    <tr><td>preview_map</td><td>An in-chat map panel that shows the verification status of every layer it draws</td></tr>
+  </table>
+</div></section>
+
+<section id="evidence"><div class="wrap">
+  <p class="kicker">Evidence</p>
+  <h2>The headline of our own benchmark is a null result</h2>
+  <div class="two" style="margin-top:1.5rem">
+    <div>
+      <div class="grid3">
+        <div class="stat"><b>375</b><span>TASK-RUNS, 5 ARMS</span></div>
+        <div class="stat"><b>{{TEST_COUNT}}</b><span>TESTS, CLOSED-FORM</span></div>
+      </div>
+      <p style="font-size:0.94rem;color:var(--ink-soft);margin-top:1.5rem">
+        Published with the analysis that took our own positive number apart, and with a conclusion
+        we had already published and had to correct rather than delete.
+      </p>
+    </div>
+    <div>
+      <p>
+        Enforcing a validated plan buys <strong>reproducibility, not accuracy</strong>. The flow-aware
+        gate we expected to help moved nothing measurable. The one effect outside the noise came from
+        telling the planner the argument rules up front.
+      </p>
+      <p>
+        Saying so is the point. A geospatial agent can pick the right tools in the right order,
+        write a file, and hand you a number that is wrong — and every trajectory benchmark in
+        circulation scores that run full marks.
+      </p>
+      <p style="font-size:0.94rem;color:var(--ink-soft)">
+        <a href="https://github.com/mapsmith-ai/MapSmith/blob/main/docs/benchmarks.md">Read the benchmark →</a>
+      </p>
+    </div>
+  </div>
+</div></section>
+
+<section id="refuses"><div class="wrap">
+  <p class="kicker">Invariants</p>
+  <h2>What it will not do</h2>
+  <div class="grid3" style="margin-top:1.75rem">
+    <div><h3>Invent a number</h3><p>Geometry and statistics come from engine executions. If a model produced it, it is not an output.</p></div>
+    <div><h3>Guess a coordinate system</h3><p>An input without a CRS is refused with a message that says what to fix. A declaration MapSmith will not resolve is quoted back, not swallowed.</p></div>
+    <div><h3>Write without a manifest</h3><p>Every writer emits one. A dataset with no lineage beside it did not come from here.</p></div>
+    <div><h3>Hide a failed check</h3><p>Verification is recorded before a critical failure raises, so the diagnosis outlives the error.</p></div>
+    <div><h3>Reach the network quietly</h3><p>Remote paths are opt-in, enforced at the GDAL driver level — a local file that makes GDAL fetch a URL is the same hole with a different name.</p></div>
+    <div><h3>Keep a credential</h3><p>SQL that configures one is refused rather than redacted, because redaction is a text scan and an audit walked past it four ways.</p></div>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <span>AGPL-3.0 · <span class="mono">mapsmith {{VERSION}}</span></span>
+  <span class="mono" style="font-size:0.72rem">Built {{BUILT}} from {{COMMIT}}</span>
+  <nav>
+    <a href="https://github.com/mapsmith-ai/MapSmith">GitHub</a>
+    <a href="https://pypi.org/project/mapsmith/">PyPI</a>
+    <a href="https://github.com/mapsmith-ai/MapSmith/security">Security</a>
+  </nav>
+</div></footer>
+
+</body>
+</html>

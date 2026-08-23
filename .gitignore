@@ -42,3 +42,6 @@ examples/data/
 !examples/fixtures/
 !examples/fixtures/*.tif
 uv.lock
+
+# The site is generated: `python site/build.py dist` rebuilds it from a real run.
+site/generated/
