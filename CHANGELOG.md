@@ -6,6 +6,53 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+### Fixed
+
+- **GeoParquet 2.0 files now open on every read path, not two of six** ([#28]).
+  0.2.2 taught `describe_layer` and the CRS probe to read geometry from
+  Parquet's own `GEOMETRY`/`GEOGRAPHY` logical types; `preview_map`,
+  `zonal_statistics` (`zones_path`), `watershed` (`pour_points_path`) and the
+  verification reader kept raising `Missing geo metadata` on the same file. The
+  verification reader was the dangerous one: it did not fail, it read the file
+  as geometry-less, which reports every row as an invalid geometry, which is a
+  critical check, which calls the mechanical repair that rewrites the file.
+  All vector reads now go through one function, and a test fails if a seventh
+  copy appears.
+- **A declared CRS is no longer dropped when it has no EPSG code** ([#28]). The
+  resolver was fed its own display label. pyproj names an authority-less
+  PROJJSON document `unknown`, which is the literal sentinel for "no CRS", so a
+  DuckDB LAEA layer that states its coordinate system read as having none.
+  Resolution (`readers.native_crs`, returns coordinate systems) and
+  presentation (`verify.crs_label`, returns strings) are now separate, and a
+  malformed declaration produces MapSmith's message rather than a raw
+  `pyproj.CRSError`.
+- **A refused CRS says which one it refused** ([#28]). `srid:<n>` is still not
+  resolved — the Parquet spec names no authority for it, so `EPSG:<n>` would be
+  an invented coordinate system recorded as fact — but the declaration now
+  reaches the caller instead of a bare "no CRS" about a file that visibly has a
+  `crs` field.
+- **Two different coordinate systems can no longer share one label**. Labels are
+  compared, not just printed, so a collision decided whether two layers were
+  aligned. Custom projections routinely share a name (`Custom LAEA`), and
+  `crs_label` answered with the name. It now appends a digest whenever no
+  authority vouches for the name.
+- **`crs_matches` compares coordinate systems, not their spellings**. It was
+  handed a display label, and `CRS.equals` returns `False` for anything it
+  cannot parse — so a correct output in a CRS without an EPSG code failed a
+  critical check and the error message was the 2.5 KB PROJJSON blob that
+  `crs_label` exists to avoid.
+- **`watershed` no longer records a reprojection that did not happen**. It
+  compared `str(crs)`, which is PROJJSON for any GeoParquet input and therefore
+  never equal to the DEM's label, so `crs_decisions` claimed the pour points had
+  been reprojected onto the DEM grid when they were already on it.
+- **A geometry column keeps its name through a native read**. `from_wkb` drops
+  the name, so a column called `geom` came back as `geometry` — and the
+  mechanical repair, which takes explicit care never to assume that name, then
+  rewrote the user's file under it. Secondary native geometry columns are read
+  as geometry too, rather than surviving as opaque bytes.
+
+[#28]: https://github.com/mapsmith-ai/MapSmith/issues/28
+
 ## [0.2.2] — 2026-08-22
 
 A security release, published as [GHSA-3rcc-xpw3-r4xh](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-3rcc-xpw3-r4xh). The fixes below close

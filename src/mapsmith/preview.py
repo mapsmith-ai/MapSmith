@@ -19,43 +19,18 @@ import zlib
 from pathlib import Path
 from typing import Any
 
+from . import readers, verify
+
 MAX_FEATURES = 2000
 MAX_RASTER_PX = 512
 _GEOGRAPHIC_PREVIEW_CRS = "EPSG:4326"  # what web maps speak
 
 
-def _crs_label(crs: Any) -> str:
-    """Human label for a CRS: EPSG code when known (str(crs) may be PROJJSON)."""
-    epsg = crs.to_epsg()
-    return f"EPSG:{epsg}" if epsg else getattr(crs, "name", str(crs))
-
-
-def _read_vector_capped(path: str, cap: int):
-    """(subset of at most cap rows, total feature count, native full bounds).
-
-    OGR formats read only `cap` features and take count/bounds from the layer
-    metadata (no full scan). GeoParquet currently reads fully and subsets in
-    memory — a pushdown read is a known follow-up.
-    """
-    import geopandas as gpd
-
-    if str(path).lower().endswith(".parquet"):
-        gdf = gpd.read_parquet(path)
-        total = len(gdf)
-        bounds = [float(v) for v in gdf.total_bounds] if total else None
-        return gdf.head(cap), total, bounds
-    import pyogrio
-
-    info = pyogrio.read_info(path)
-    total = int(info.get("features") or -1)
-    meta_bounds = info.get("total_bounds")
-    if total < 0 or meta_bounds is None:  # driver without cheap metadata
-        gdf = gpd.read_file(path)
-        total = len(gdf)
-        bounds = [float(v) for v in gdf.total_bounds] if total else None
-        return gdf.head(cap), total, bounds
-    gdf = gpd.read_file(path, max_features=cap)
-    return gdf, total, [float(v) for v in meta_bounds]
+# One label function and one reader for the whole package: a preview that
+# disagreed with the manifest about the same file would be worse than no
+# preview, and #28 was exactly the read path here drifting from the others.
+_crs_label = verify.crs_label
+_read_vector_capped = readers.read_vector_capped
 
 
 def provenance_summary(path: str) -> dict[str, Any] | None:
@@ -108,9 +83,9 @@ def vector_preview(path: str, max_features: int = MAX_FEATURES) -> dict[str, Any
     """
     gdf, total, native_bounds = _read_vector_capped(path, max_features)
     if gdf.crs is None:
-        raise ValueError(
-            f"{path} has no CRS — cannot place it on a map. Assign a CRS first."
-        )
+        raise ValueError(readers.no_crs_message(
+            gdf, f"{path} has no CRS — cannot place it on a map. Assign a CRS first."
+        ))
     if total == 0 or native_bounds is None:
         raise ValueError(f"{path} has no features — nothing to preview.")
     truncated = total > max_features

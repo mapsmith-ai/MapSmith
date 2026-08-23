@@ -26,7 +26,7 @@ from typing import Any
 import numpy as np
 from pyproj import CRS
 
-from .. import verify, workspace
+from .. import readers, verify, workspace
 from ..provenance import InputRecord, ProvenanceRecord
 
 HILLSHADE_MAX = 32767  # upstream scales hillshade to 0-32767 (basic_terrain_tools.rs)
@@ -372,17 +372,11 @@ def watershed(
 ) -> dict[str, Any]:
     """Watershed of each pour point (1-based IDs in feature order; nodata elsewhere)."""
     wb = _require()
-    import geopandas as gpd
-
-    points = (
-        gpd.read_parquet(pour_points_path)
-        if str(pour_points_path).endswith(".parquet")
-        else gpd.read_file(pour_points_path)
-    )
+    points = readers.read_vector(pour_points_path)
     if points.crs is None:
-        raise ValueError(
-            f"{pour_points_path} has no CRS — cannot place pour points on the DEM."
-        )
+        raise ValueError(readers.no_crs_message(
+            points, f"{pour_points_path} has no CRS — cannot place pour points on the DEM."
+        ))
     geom_types = set(points.geom_type.dropna().unique())
     if not geom_types.issubset({"Point"}):
         raise ValueError(f"pour points must be Point geometries, got {sorted(geom_types)}")
@@ -395,11 +389,15 @@ def watershed(
             parameters={"method": "d8", "preprocessing": "fill_depressions", "n_pour_points": len(points)},
             inputs=[
                 InputRecord.from_path(dem_path, crs=crs),
-                InputRecord.from_path(pour_points_path, crs=str(points.crs)),
+                InputRecord.from_path(pour_points_path, crs=verify.crs_label(points.crs)),
             ],
             engine=_engine_info(),
         )
-        if str(points.crs) != crs:
+        # Compare the coordinate systems, not their spellings: `str(crs)` is
+        # PROJJSON for any GeoParquet input, so this was true even when the
+        # points were already on the DEM's grid — and the manifest then recorded
+        # a reprojection that never happened.
+        if not verify.same_crs(points.crs, crs):
             points = points.to_crs(crs)
             record.crs_decisions = {
                 "analysis_crs": crs,

@@ -16,7 +16,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-import geopandas as gpd
+from . import readers
 
 
 class VerificationError(RuntimeError):
@@ -52,6 +52,39 @@ def probe_crs(path: str) -> str:
         return UNKNOWN_CRS
 
 
+def as_crs(value: Any) -> Any | None:
+    """A pyproj CRS for whatever we were handed, or None when it is not one.
+
+    Callers pass pyproj CRSs, rasterio CRSs, authority strings and — the bug
+    this exists to stop — MapSmith's own display labels. Normalising once means
+    a comparison never silently degrades to string equality between two things
+    that were never the same kind.
+    """
+    if value is None:
+        return None
+    from pyproj import CRS
+
+    if isinstance(value, CRS):
+        return value
+    with suppress(Exception):
+        return CRS.from_user_input(value)
+    return None
+
+
+def same_crs(left: Any, right: Any) -> bool:
+    """Do these two describe the same coordinate system?
+
+    Compares the coordinate systems, not their labels. Comparing labels was how
+    a display string ended up on the expected side of ``crs_matches``, where
+    ``CRS.equals`` quietly returns False for anything it cannot parse — so a
+    correct output in a CRS with no EPSG code failed a CRITICAL check.
+    """
+    a, b = as_crs(left), as_crs(right)
+    if a is not None and b is not None:
+        return bool(a.equals(b))
+    return crs_label(left) == crs_label(right)
+
+
 def crs_label(crs: Any) -> str:
     """Short, stable label for a CRS: 'EPSG:32632' rather than 2.5 KB of PROJJSON.
 
@@ -59,83 +92,57 @@ def crs_label(crs: Any) -> str:
     full PROJJSON document for one read from GeoParquet — the canonical format
     — so manifests and check details grew a JSON blob per field depending on
     the input format alone.
+
+    Presentation only, with one hard rule: **a label never collapses two
+    different coordinate systems into one string, and never borrows the
+    sentinel for a CRS that does not exist.** Both happen without trying.
+    pyproj names an authority-less PROJJSON document ``unknown``, which is the
+    literal value of :data:`UNKNOWN_CRS`; and two unrelated custom projections
+    routinely share a name (``Custom LAEA``, ``WGS_1984_Albers``). Labels are
+    compared as well as printed — ``dispatch`` decides on them whether two
+    layers need aligning — so a collision is a wrong number, not an ugly
+    manifest. Hence the digest, appended whenever no authority can vouch for
+    the name.
+
+    The digest identifies a CRS *within one PROJ build*: it is taken over
+    WKT2:2019, whose text PROJ can change between releases as ``proj.db``
+    grows. It is a tie-breaker, not an identifier to compare across machines —
+    for that, compare the CRSs themselves with :func:`same_crs`.
     """
     if crs is None:
         return UNKNOWN_CRS
-    try:
-        epsg = crs.to_epsg()
-    except AttributeError:
+    parsed = as_crs(crs)
+    if parsed is None:
         return str(crs)
-    return f"EPSG:{epsg}" if epsg else (getattr(crs, "name", None) or str(crs))
+    epsg = parsed.to_epsg()
+    if epsg:
+        return f"EPSG:{epsg}"
+    authority = parsed.to_authority()
+    if authority:
+        return ":".join(authority)
+    import hashlib
+
+    digest = hashlib.sha256(parsed.to_wkt(version="WKT2_2019").encode()).hexdigest()[:12]
+    name = (parsed.name or "").strip()
+    if name and name.lower() != UNKNOWN_CRS:
+        return f"{name} (sha256:{digest})"
+    return f"unnamed CRS (sha256:{digest})"
 
 
-NATIVE_GEO_TYPES = ("Geometry", "Geography")
-
-
-def native_geometry_column(path: str) -> tuple[str, str] | None:
-    """Column name and CRS declaration of a Parquet file that stores geometry in
-    Parquet's own ``GEOMETRY``/``GEOGRAPHY`` logical types, or None.
-
-    That storage is what GeoParquet 2.0 requires, and such a file may carry no
-    ``geo`` metadata key at all — the key is optional in 2.0. Files like this are
-    already produced by DuckDB (``geoparquet_version 'NONE'`` or ``'BOTH'``), so
-    "a Parquet file with geometry in it" no longer implies a ``geo`` key, and
-    reading one as CRS-less would refuse valid work for a wrong reason (#23).
-    """
-    import json
-
-    import pyarrow.parquet as pq
-
-    try:
-        schema = pq.ParquetFile(path).schema
-    except Exception:  # noqa: BLE001 — probing must never break the caller
-        return None
-    for index in range(len(schema)):
-        column = schema.column(index)
-        try:
-            described = json.loads(column.logical_type.to_json())
-        except Exception:  # noqa: BLE001, S112 — a type with no JSON form is not geometry
-            continue
-        if described.get("Type") in NATIVE_GEO_TYPES:
-            return column.name, described.get("crs") or ""
-    return None
+NATIVE_GEO_TYPES = readers.NATIVE_GEO_TYPES
+native_geometry_column = readers.native_geometry_column
 
 
 def native_crs_declaration(path: str, declaration: str) -> str:
-    """Resolve a native Parquet CRS declaration to a label, or ``unknown``.
+    """Label form of :func:`mapsmith.readers.native_crs` — for manifests only.
 
-    The Parquet geospatial spec allows several forms, and MapSmith has met four
-    of them in the wild: absent (the spec's default, ``OGC:CRS84``), an authority
-    string (``EPSG:3857``), ``projjson:<key>`` pointing into the file's key-value
-    metadata, and — what DuckDB writes — a whole PROJJSON document inline.
-
-    ``srid:<n>`` is deliberately NOT resolved. The spec defines it as a numeric
-    spatial reference identifier and names no authority (its own example is
-    ``srid:0``), so reading it as EPSG:<n> would be MapSmith inventing a
-    coordinate system and recording it as fact — the exact bug fixed in 0.2.1
-    when ``crs: null`` was being read as CRS84. The file is therefore reported
-    as having no CRS and refused by the CRS precondition.
-
-    What is missing, and is not claimed anywhere: the refusal does not carry
-    the ``srid:`` declaration back to the caller, so the agent is told the file
-    has no CRS while the file visibly has a ``crs`` field. Surfacing the reason
-    is the honest finish to this.
+    Resolution and presentation are two different questions (#28): use
+    ``readers.native_crs`` when you need the CRS to read a file with, and this
+    when you need a string to record. Feeding this value back in as if it were
+    a CRS is what dropped a declared CRS whose name happened to be ``unknown``.
     """
-    from pyproj import CRS
-
-    if not declaration:
-        return crs_label(CRS.from_user_input("OGC:CRS84"))
-    if declaration.lstrip().startswith("{"):
-        return crs_label(CRS.from_json(declaration))
-    if declaration.lower().startswith("projjson:"):
-        import pyarrow.parquet as pq
-
-        key = declaration.split(":", 1)[1].encode()
-        document = (pq.ParquetFile(path).metadata.metadata or {}).get(key)
-        return crs_label(CRS.from_json(document.decode())) if document else UNKNOWN_CRS
-    if declaration.lower().startswith("srid:"):
-        return UNKNOWN_CRS
-    return crs_label(CRS.from_user_input(declaration))
+    crs, _reason = readers.native_crs(path, declaration)
+    return crs_label(crs) if crs is not None else UNKNOWN_CRS
 
 
 def _probe_geoparquet_crs(path: str) -> str:
@@ -167,10 +174,13 @@ def _probe_geoparquet_crs(path: str) -> str:
     else:
         crs = spec["crs"]
     from pyproj import CRS
+    from pyproj.exceptions import CRSError
 
-    parsed = CRS.from_user_input(crs)
-    epsg = parsed.to_epsg()
-    return f"EPSG:{epsg}" if epsg else parsed.name
+    try:
+        return crs_label(CRS.from_user_input(crs))
+    except (CRSError, ValueError):
+        # A `geo` key stating a CRS PROJ cannot read is not a CRS we know.
+        return UNKNOWN_CRS
 
 
 @dataclass
@@ -200,53 +210,8 @@ class Check:
 MAX_REPAIR_ROUNDS = 2
 
 
-def _gpkg_layers(path: str) -> list[str] | None:
-    """The layer names of a container, or None when they cannot be listed.
-
-    None and [] must stay distinct: an empty list means "listed, nothing in
-    there", while None means "we do not know what is in there" — and the only
-    safe thing to do with a container of unknown contents is refuse to rewrite
-    it. Collapsing the failure into [] made the caller's fail-closed branch
-    unreachable, so an unlistable GeoPackage looked exactly like a
-    single-layer one and the repair went ahead.
-    """
-    with suppress(Exception):
-        from pyogrio import list_layers
-
-        return [str(row[0]) for row in list_layers(path)]
-    return None
-
-
-def _read_vector(path: str):
-    """Read a dataset for verification.
-
-    GeoPackages can hold many layers, and GDAL hands back the *first* one by
-    default — which would verify a layer the operation never wrote and mark an
-    unchecked output as verified. MapSmith's writers name the layer after the
-    file stem, so prefer that one when it is there.
-
-    A Parquet file with no ``geo`` metadata is read as a plain table rather
-    than refused: DuckDB writes exactly that for a zero-row result, and
-    raising here would kill the writer *before* it could record why the output
-    is empty — losing the manifest for the very case the checks exist to
-    explain.
-    """
-    lower = str(path).lower()
-    if lower.endswith(".parquet"):
-        try:
-            return gpd.read_parquet(path)
-        except ValueError as exc:
-            if "geo metadata" not in str(exc).lower():
-                raise
-            import pandas as pd
-
-            table = pd.read_parquet(path)
-            return gpd.GeoDataFrame(table, geometry=gpd.GeoSeries([], dtype="geometry"))
-    if lower.endswith(".gpkg"):
-        stem = Path(path).stem
-        if stem in (_gpkg_layers(path) or []):
-            return gpd.read_file(path, layer=stem)
-    return gpd.read_file(path)
+_gpkg_layers = readers.gpkg_layers
+_read_vector = readers.read_vector_or_table
 
 
 def verify_loaded_inputs(operation: str, **frames: Any) -> list[Check]:
@@ -264,16 +229,23 @@ def verify_loaded_inputs(operation: str, **frames: Any) -> list[Check]:
         if gdf is None:
             continue
         has_crs = gdf.crs is not None
+        # When the reader knows *why* there is no CRS, say so: "no CRS" about a
+        # file whose schema visibly carries a `crs` field is true of the frame
+        # and false of the file, and the agent cannot act on the difference
+        # without being told which one it is looking at (#28).
+        reason = None if has_crs else readers.crs_reason(gdf)
         checks.append(
             Check(
                 "input_crs_present",
                 has_crs,
-                f"'{arg}': {gdf.crs if has_crs else 'no CRS'}",
+                f"'{arg}': {crs_label(gdf.crs) if has_crs else reason or 'no CRS'}",
                 argument=arg,
                 hint=None if has_crs else
-                f"'{arg}' has no coordinate reference system, so {operation} cannot "
-                "know what its numbers mean. Assign the correct CRS to the source "
-                "dataset (reproject_layer cannot invent one).",
+                f"'{arg}' has no coordinate reference system MapSmith can use, so "
+                f"{operation} cannot know what its numbers mean. "
+                + (f"{reason[0].upper() + reason[1:]} " if reason else "")
+                + "Assign the correct CRS to the source dataset (reproject_layer "
+                "cannot invent one).",
             )
         )
         empty = len(gdf) == 0
@@ -314,7 +286,8 @@ def verify_input_pairs(operation: str, **frames: Any) -> list[Check]:
                 Check(
                     "inputs_comparable",
                     False,
-                    f"'{a_arg}' is {a_gdf.crs} and '{b_arg}' is {b_gdf.crs}",
+                    f"'{a_arg}' is {crs_label(a_gdf.crs)} and "
+                    f"'{b_arg}' is {crs_label(b_gdf.crs)}",
                     critical=False,
                     argument=pair,
                     hint=f"'{a_arg}' and '{b_arg}' are in different coordinate "
@@ -384,15 +357,16 @@ def verify_vector_output(
         Check(
             "crs_present",
             gdf.crs is not None,
-            str(gdf.crs) if gdf.crs else "output has no CRS",
+            crs_label(gdf.crs) if gdf.crs else "output has no CRS",
         )
     )
     if expect_crs is not None and gdf.crs is not None:
-        same = gdf.crs.equals(expect_crs) if hasattr(gdf.crs, "equals") else str(
-            gdf.crs
-        ) == str(expect_crs)
         checks.append(
-            Check("crs_matches", bool(same), f"expected {expect_crs}, got {gdf.crs}")
+            Check(
+                "crs_matches",
+                same_crs(gdf.crs, expect_crs),
+                f"expected {crs_label(expect_crs)}, got {crs_label(gdf.crs)}",
+            )
         )
 
     if len(gdf) > 0:

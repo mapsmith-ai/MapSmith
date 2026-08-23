@@ -17,7 +17,7 @@ from typing import Any
 import geopandas as gpd
 import pandas as pd
 
-from .. import verify
+from .. import readers, verify
 from ..provenance import InputRecord, ProvenanceRecord
 
 VALID_STATS = {
@@ -68,11 +68,11 @@ def zonal_statistics(
             "(note: 'stdev', not 'std')"
         )
 
-    zones = gpd.read_file(zones_path) if not str(zones_path).endswith(".parquet") else (
-        gpd.read_parquet(zones_path)
-    )
+    zones = readers.read_vector(zones_path)
     if zones.crs is None:
-        raise ValueError(f"{zones_path} has no CRS — cannot align zones to the raster.")
+        raise ValueError(readers.no_crs_message(
+            zones, f"{zones_path} has no CRS — cannot align zones to the raster."
+        ))
 
     with rasterio.open(raster_path) as ds:
         raster_crs = ds.crs
@@ -80,15 +80,15 @@ def zonal_statistics(
             operation="zonal_statistics",
             parameters={"stats": ops, "bands": ds.count},
             inputs=[
-                InputRecord.from_path(raster_path, crs=str(raster_crs)),
+                InputRecord.from_path(raster_path, crs=verify.crs_label(raster_crs)),
                 InputRecord.from_path(zones_path, crs=verify.crs_label(zones.crs)),
             ],
             engine=_engine_info(),
         )
-        if raster_crs is not None and zones.crs != raster_crs:
+        if raster_crs is not None and not verify.same_crs(zones.crs, raster_crs):
             zones = zones.to_crs(raster_crs)
             record.crs_decisions = {
-                "analysis_crs": str(raster_crs),
+                "analysis_crs": verify.crs_label(raster_crs),
                 "reason": "zones reprojected to the raster CRS for exact pixel "
                 "alignment; output kept in the raster CRS",
             }
@@ -120,7 +120,7 @@ def zonal_statistics(
         preconditions=verify.verify_loaded_inputs("zonal_statistics", zones_path=zones),
         checks_fn=lambda: verify.verify_vector_output(
             output_path,
-            expect_crs=verify.crs_label(zones.crs),
+            expect_crs=zones.crs,
             expect_count=len(zones),
         ),
     )

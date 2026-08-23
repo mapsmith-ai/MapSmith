@@ -12,7 +12,7 @@ from typing import Any
 
 import geopandas as gpd
 
-from .. import verify
+from .. import readers, verify
 from ..provenance import InputRecord, ProvenanceRecord
 
 
@@ -20,47 +20,7 @@ def _engine_info() -> dict[str, str]:
     return {"name": "geopandas", "version": gpd.__version__}
 
 
-def _read(path: str) -> gpd.GeoDataFrame:
-    """Read GeoParquet natively, everything else via GDAL (GDAL's Parquet driver
-    is not bundled in the wheels, so routing .parquet through read_file breaks)."""
-    if str(path).lower().endswith(".parquet"):
-        try:
-            return gpd.read_parquet(path)
-        except ValueError as exc:
-            if "geo metadata" not in str(exc).lower():
-                raise
-            return _read_native_geoparquet(path, exc)
-    return gpd.read_file(path)
-
-
-def _read_native_geoparquet(path: str, original: Exception) -> gpd.GeoDataFrame:
-    """Read a Parquet file that stores geometry in Parquet's own logical types.
-
-    GeoParquet 2.0 moved geometry into the ``GEOMETRY``/``GEOGRAPHY`` logical
-    types and made the ``geo`` metadata key optional, so files with no ``geo``
-    key are valid and DuckDB already writes them. GeoPandas 1.1 raises
-    ``Missing geo metadata`` on them, which reached the agent as the tool's error
-    — not our message, no hint, and misleading, since the file does carry
-    geospatial metadata (#23). The geometry itself is WKB either way, so reading
-    it is a matter of looking in the other place.
-    """
-    import pyarrow.parquet as pq
-
-    native = verify.native_geometry_column(path)
-    if native is None:
-        raise original  # genuinely no geometry anywhere: keep the original error
-    column, declaration = native
-    frame = pq.read_table(path).to_pandas()
-    crs = verify.native_crs_declaration(path, declaration)
-    geometry = gpd.GeoSeries.from_wkb(frame[column])
-    return gpd.GeoDataFrame(
-        frame.drop(columns=[column]),
-        geometry=geometry,
-        # An unresolvable declaration stays None rather than becoming a guess:
-        # the CRS precondition then refuses with MapSmith's own message, which is
-        # the right outcome for `srid:<n>` (see native_crs_declaration).
-        crs=None if crs == verify.UNKNOWN_CRS else crs,
-    )
+_read = readers.read_vector
 
 
 def _write(gdf: gpd.GeoDataFrame, output_path: str) -> None:
@@ -92,10 +52,11 @@ def describe(path: str) -> dict[str, Any]:
 def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[str, Any]:
     gdf = _read(input_path)
     if gdf.crs is None:
-        raise ValueError(
+        raise ValueError(readers.no_crs_message(
+            gdf,
             f"{input_path} has no CRS. Refusing to buffer without knowing the units — "
-            "assign a CRS first (see reproject_layer)."
-        )
+            "assign a CRS first (see reproject_layer).",
+        ))
     record = ProvenanceRecord(
         operation="buffer_layer",
         parameters={"distance_meters": distance_meters},
@@ -128,7 +89,7 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
         preconditions=pre,
         checks_fn=lambda: verify.verify_vector_output(
             output_path,
-            expect_crs=verify.crs_label(original_crs),
+            expect_crs=original_crs,
             expect_count=len(gdf),
             expect_geometry={"Polygon", "MultiPolygon"},
             # a buffer of a non-empty layer cannot be empty: that is a bug
@@ -181,7 +142,7 @@ def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
         preconditions=pre,
         checks_fn=lambda: verify.verify_vector_output(
             output_path,
-            expect_crs=verify.crs_label(gdf.crs),
+            expect_crs=gdf.crs,
             max_count=len(gdf),
             within_bounds=mask_bounds,
             bounds_margin=1e-6,
@@ -279,7 +240,7 @@ def spatial_join(
         preconditions=pre,
         checks_fn=lambda: verify.verify_vector_output(
             output_path,
-            expect_crs=verify.crs_label(left.crs),
+            expect_crs=left.crs,
             on_empty="warn" if len(left) and len(right) else "ignore",
         ),
     )
