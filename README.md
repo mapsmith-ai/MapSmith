@@ -8,6 +8,10 @@
 
 **Professional-grade GIS geoprocessing for AI agents — with provenance you can verify.**
 
+**[mapsmith.dev](https://mapsmith.dev)** — a real terrain analysis and the manifest that came
+with it. Both are build products: the figure is rendered from GeoTIFFs MapSmith writes, so the
+page cannot drift from what the software does.
+
 MapSmith is an open-source [MCP](https://modelcontextprotocol.io) server that gives an AI
 agent real GIS analysis — buffers, overlays, reprojections, zonal statistics, terrain and
 hydrology — executed by GeoPandas, DuckDB Spatial, exactextract and Whitebox Workflows,
@@ -269,7 +273,7 @@ configuration is locked, so untrusted SQL cannot turn file access into code exec
 **The network is closed too, unless you open it.** Remote and virtual forms — GDAL
 `/vsi*`, `https://` COGs — are refused by default in path arguments *and* inside `run_sql`
 text, because the path is written by the model rather than by you: a third-party dataset
-carrying "the updated layer lives at https://evil.tld/x.gpkg" was otherwise enough to have
+carrying "the updated layer lives at `https://evil.tld/x.gpkg`" was otherwise enough to have
 GDAL parse attacker-chosen bytes in-process. Set **`MAPSMITH_ALLOW_REMOTE=1`** to allow them
 — cloud-native data is a real use case and the capability is gated, not removed. A workspace
 refuses them regardless, since containment and "fetch whatever URL the model names" cannot

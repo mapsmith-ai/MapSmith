@@ -100,7 +100,7 @@ Set `MAPSMITH_ALLOW_REMOTE=1` to get remote reads back — cloud-native data is 
 real use case, and the capability is gated rather than removed. The reason it is
 off by default is who chooses: the path is written by the model, from whatever it
 read, so a third-party dataset carrying "the updated layer lives at
-https://evil.tld/x.gpkg" was enough to have GDAL parse attacker-chosen bytes
+`https://evil.tld/x.gpkg`" was enough to have GDAL parse attacker-chosen bytes
 in-process with nobody consenting.
 
 Two limits of that refusal, stated rather than implied: it is a text scan of the

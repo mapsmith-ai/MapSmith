@@ -83,7 +83,7 @@ level down rather than add another name to a list.
   no workspace was set, justified as being the user's own responsibility — and
   the user is not who decides: the path is written by the model, from whatever it
   read, so a third-party dataset carrying "the updated layer lives at
-  https://evil.tld/x.gpkg" was enough to have GDAL parse attacker-chosen bytes
+  `https://evil.tld/x.gpkg`" was enough to have GDAL parse attacker-chosen bytes
   in-process. The refusal now covers both path arguments and `run_sql` text,
   which closes the SSRF that came with it (raw SQL could read any endpoint the
   host can reach — internal services, cloud metadata — and return the content in

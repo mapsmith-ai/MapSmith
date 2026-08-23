@@ -376,3 +376,29 @@ def test_declared_dependencies_are_not_advertised_as_future_work():
         return
     wrong = [name for name, pkg in shipped.items() if pkg in all_deps and name in coming.group(1)]
     assert not wrong, f"listed as future work but already a dependency: {wrong}"
+
+
+# A URL written bare in markdown is rendered as a clickable link by GitHub. For
+# an illustrative address that is not meant to resolve, that produces a link a
+# reader follows and finds nothing — which reads as a broken page rather than as
+# an example. Fenced or inline code is not linked, so that is where they belong.
+BARE_URL = re.compile(r"(?<![(`\[<])https?://[^\s)\]`<>\"]+")
+ILLUSTRATIVE_HOSTS = ("evil.tld", "example.com", "example.org", "attacker", "internal.")
+
+
+@pytest.mark.parametrize("page", _showcase_pages(), ids=lambda p: p.name)
+def test_an_illustrative_url_is_never_rendered_as_a_link(page: Path):
+    """`https://evil.tld/x.gpkg` explains an attack; it is not somewhere to go."""
+    testo = page.read_text(encoding="utf-8")
+    # Code fences are already safe, and stripping them keeps the check honest
+    # rather than making authors escape things twice.
+    fuori_dal_codice = re.sub(r"```.*?```", "", testo, flags=re.DOTALL)
+    colpevoli = [
+        m.group(0)
+        for m in BARE_URL.finditer(fuori_dal_codice)
+        if any(host in m.group(0) for host in ILLUSTRATIVE_HOSTS)
+    ]
+    assert not colpevoli, (
+        f"{page.name}: illustrative URLs rendered as clickable links — wrap them in "
+        f"backticks so a reader does not follow one and find nothing: {colpevoli}"
+    )
