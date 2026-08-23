@@ -183,9 +183,15 @@ def posix_path(path: str | Path) -> str:
     differed in a field that describes nothing about the computation, and any
     consumer keying on the path had two entries for one file (#30).
 
-    Only the separator is normalised. The path is otherwise recorded as it was
-    given — rewriting an absolute path to a relative one, or the reverse, would
-    misstate what actually ran.
+    Only the separator is normalised, and only on a host that has one:
+    ``PurePath`` is ``PureWindowsPath`` on Windows and ``PurePosixPath``
+    elsewhere, so a backslash arriving on Linux is left alone — there it is a
+    legal character in a filename, and rewriting it would corrupt a real path.
+    That is the right shape anyway: the normalisation happens on the only host
+    that can produce the problem.
+
+    The path is otherwise recorded as it was given. Rewriting an absolute path
+    to a relative one, or the reverse, would misstate what actually ran.
     """
     return PurePath(str(path)).as_posix()
 
