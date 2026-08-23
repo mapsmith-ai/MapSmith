@@ -67,3 +67,30 @@ def test_reproject_verifies_target_crs(points_gpkg, tmp_path):
     manifest = json.loads((tmp_path / "utm.gpkg.provenance.json").read_text())
     crs_checks = [c for c in manifest["verification"] if c["name"] == "crs_matches"]
     assert crs_checks and crs_checks[0]["passed"]
+
+
+def test_a_manifest_path_does_not_depend_on_the_host(tmp_path):
+    """Two correct manifests for the same run must differ in no field but time.
+
+    `str(path)` recorded the host's separator, so the same operation on the same
+    bytes produced a backslash path on Windows and a forward-slash one elsewhere
+    — a difference that describes nothing about the computation, and one that
+    gives any consumer keying on the path two entries for one file (#30). The
+    manifest is meant to be held next to someone else's; this is the field that
+    stopped that working.
+    """
+    from pathlib import PureWindowsPath
+
+    from mapsmith.provenance import InputRecord, posix_path
+
+    assert posix_path(PureWindowsPath(r"data\wells.gpkg")) == "data/wells.gpkg"
+    assert posix_path(PureWindowsPath(r"C:\work\dem.tif")) == "C:/work/dem.tif"
+    # Only the separator is normalised: rewriting an absolute path to a relative
+    # one would misstate what actually ran.
+    assert posix_path("/srv/data/dem.tif") == "/srv/data/dem.tif"
+    assert posix_path("data/wells.gpkg") == "data/wells.gpkg"
+
+    sorgente = tmp_path / "wells.gpkg"
+    sorgente.write_bytes(b"not really a geopackage")
+    registrato = InputRecord.from_path(sorgente)
+    assert "\\" not in registrato.path

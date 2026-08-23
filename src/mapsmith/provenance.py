@@ -12,7 +12,7 @@ import json
 import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 from . import __version__
@@ -171,7 +171,23 @@ class InputRecord:
 
     @classmethod
     def from_path(cls, path: str | Path, crs: str | None = None) -> InputRecord:
-        return cls(path=str(path), sha256=sha256_of(path), crs=crs)
+        return cls(path=posix_path(path), sha256=sha256_of(path), crs=crs)
+
+
+def posix_path(path: str | Path) -> str:
+    """The path as the manifest records it: `/` as separator, on every host.
+
+    A lineage record exists to be held next to someone else's. Storing
+    ``str(path)`` gave a backslash path on Windows and a forward-slash one
+    elsewhere, for the same run on the same bytes, so two correct manifests
+    differed in a field that describes nothing about the computation, and any
+    consumer keying on the path had two entries for one file (#30).
+
+    Only the separator is normalised. The path is otherwise recorded as it was
+    given — rewriting an absolute path to a relative one, or the reverse, would
+    misstate what actually ran.
+    """
+    return PurePath(str(path)).as_posix()
 
 
 @dataclass
