@@ -401,7 +401,20 @@ detects it, converts the input first, and discloses the workaround in the manife
 
 Next, in the order we intend to do it. The linked items carry a written spec — a roadmap line without one is a wish, so the rest get theirs before work starts on them:
 
-- [ ] [**Silent-corruption suite**](https://github.com/mapsmith-ai/MapSmith/issues/25): an eval for the failure every existing benchmark misses — a result that is wrong and reported as successful. Closed-form truth, no LLM in the evaluator, and it runs against MapSmith with verification *disabled* so it can fail us in public
+- [x] **A suite for the failure every existing benchmark misses** — a result that is wrong and
+  reported as successful. It exists, it is not here, and it is not ours to grade:
+  [**Argleton**](https://argleton.org) lives in [its own organisation](https://github.com/argleton/argleton)
+  under Apache-2.0, because an evaluation that lives inside the thing it evaluates is easy to
+  dismiss in one line. Closed-form truth, no model in the evaluator, fixtures rebuilt rather than
+  vendored.
+
+  Its [first published result](https://argleton.org/#results) measures MapSmith, and says something
+  about us worth repeating here: **MapSmith scores 0 on those traps and its verification had nothing
+  to do with it.** Seven checks passed on that run and not one looks at whether the number is right
+  — the answer was correct because the underlying reader was. A provenance manifest records what was
+  done; it does not certify that it was right, and this README used to imply otherwise by promising
+  a run "with verification *disabled*". There is no such switch, we are not adding one, and on those
+  families it would change nothing. #25 is closed against Argleton rather than left open here.
 - [ ] [Agent-loop repair](https://github.com/mapsmith-ai/MapSmith/issues/26): hand verification failures back to the agent as structured, actionable errors, with a bounded retry budget recorded in the manifest. Our [own measurements](docs/benchmarks.md) say the runtime error message is the information channel that works
 - [ ] [Tool contracts that carry their own rules](https://github.com/mapsmith-ai/MapSmith/issues/27): argument constraints enforced *and* stated, and errors that name the rule rather than only the violation. The one intervention in our benchmark work that moved a metric past its noise floor
 - [ ] [Satellite embeddings as a first-class input](https://github.com/mapsmith-ai/MapSmith/issues/24): per-zone embedding vectors (multiband zonal statistics) and similarity rasters against a reference location, over the open [AlphaEarth annual dataset](https://developers.google.com/earth-engine/guides/aef_on_gcs_readme) (CC-BY 4.0 COGs). Deterministic arithmetic on a raster — no model inference in MapSmith — with the tile, year and reference vector recorded in the manifest
