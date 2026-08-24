@@ -21,6 +21,12 @@ venv/
 *.parquet
 *.provenance.json
 data/
+# ...except the vendored spec validator: a test dependency, not a dataset. It
+# was silently ignored once, and the conformance test passed locally while CI
+# could not even import it.
+!tests/data/
+tests/data/*
+!tests/data/manifest_spec_validator.py
 
 # Scratch databases: probing the DuckDB sandbox (ATTACH, COPY) drops these in
 # the repo root, and one of them reached a public commit before we noticed.
