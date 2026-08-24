@@ -48,22 +48,22 @@ jobs:
           python - <<'PY'
           import json, pathlib, sys
           schema = json.loads(pathlib.Path("dist/spec/manifest-v1.schema.json").read_text(encoding="utf-8"))
-          atteso = "https://mapsmith.dev/spec/manifest-v1.schema.json"
-          if schema.get("$id") != atteso:
-              sys.exit(f"schema $id is {schema.get('$id')!r}, the site serves it at {atteso!r}")
+          expected = "https://mapsmith.dev/spec/manifest-v1.schema.json"
+          if schema.get("$id") != expected:
+              sys.exit(f"schema $id is {schema.get('$id')!r}, the site serves it at {expected!r}")
           print("schema ok:", schema["$id"])
           PY
       - name: the page must carry no unreplaced placeholder
         run: |
           python - <<'PY'
           import pathlib, sys
-          pagina = pathlib.Path("dist/index.html").read_text(encoding="utf-8")
-          if "{{" in pagina:
-              sys.exit(f"unreplaced placeholder: {pagina[pagina.index('{{'):][:60]}")
-          for atteso in ("terrain.png", "provenance", "EPSG:32610"):
-              if atteso not in pagina:
-                  sys.exit(f"the page lost {atteso!r} — the template and the build disagree")
-          print(f"{len(pagina)} bytes, placeholders resolved")
+          page = pathlib.Path("dist/index.html").read_text(encoding="utf-8")
+          if "{{" in page:
+              sys.exit(f"unreplaced placeholder: {page[page.index('{{'):][:60]}")
+          for expected in ("terrain.png", "provenance", "EPSG:32610"):
+              if expected not in page:
+                  sys.exit(f"the page lost {expected!r} — the template and the build disagree")
+          print(f"{len(page)} bytes, placeholders resolved")
           PY
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa  # v3.0.1
         with:
