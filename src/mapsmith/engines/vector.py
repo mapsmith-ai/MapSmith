@@ -36,6 +36,7 @@ def describe(path: str) -> dict[str, Any]:
     bounds = gdf.total_bounds
     return {
         "path": str(path),
+        "kind": "vector",
         "crs": verify.crs_label(gdf.crs) if gdf.crs else None,
         "feature_count": len(gdf),
         "geometry_types": sorted(gdf.geom_type.dropna().unique().tolist()),

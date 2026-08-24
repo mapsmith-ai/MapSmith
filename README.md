@@ -122,7 +122,7 @@ had to repair. `get_provenance` returns it for any output.
   without the LLM is in there. No AI slop.
 - **The engines compute, the model orchestrates.** Geometry and numbers only ever come
   from deterministic tool executions — never from model output.
-- **Semantic tools, not a tool dump.** 16 goal-level tools plus a searchable operation
+- **Semantic tools, not a tool dump.** 18 goal-level tools plus a searchable operation
   catalog (progressive discovery), because agent accuracy collapses when you expose
   hundreds of raw tools.
 - **Model-agnostic infrastructure.** Claude, GPT, Qwen, Kimi, GLM — anything that speaks
@@ -134,7 +134,7 @@ had to repair. `get_provenance` returns it for any output.
 
 | Tool | What it does |
 |---|---|
-| `describe_dataset` | CRS, geometry types, schema, extent, feature count of any vector dataset |
+| `describe_dataset` | CRS, schema/bands, extent, nodata and statistics of any vector or raster dataset |
 | `buffer_layer` | Metric buffer with automatic UTM estimation for geographic CRS |
 | `clip_layer` | Clip a layer with a mask layer |
 | `reproject_layer` | Reproject to any CRS (EPSG code or WKT) |
@@ -142,6 +142,8 @@ had to repair. `get_provenance` returns it for any output.
 | `run_sql` | Spatial SQL (DuckDB dialect) over GeoParquet and GDAL formats |
 | `zonal_statistics` | Raster statistics per vector zone with exact fractional pixel coverage (`[raster]` extra) |
 | `hillshade` | Shaded relief from a DEM, in-memory Whitebox engine (`[whitebox]` extra) |
+| `slope` | Slope gradient from a DEM in degrees, percent or radians; geographic-CRS DEMs refused (`[whitebox]` extra) |
+| `aspect` | Downslope azimuth from a DEM, 0 = north; flat cells are −1, not nodata (`[whitebox]` extra) |
 | `flow_accumulation` | D8 flow accumulation with automatic depression filling (`[whitebox]` extra) |
 | `watershed` | Watershed delineation from a DEM and pour points (`[whitebox]` extra) |
 | `preview_map` | Interactive in-chat map (MCP Apps) of any datasets, with a provenance card and verification status per layer |
@@ -383,7 +385,7 @@ detects it, converts the input first, and discloses the workaround in the manife
   workspace — which is what the container runs with by default. DuckDB's own HTTP and S3
   filesystems stay off in every mode, so `read_parquet('s3://…')` does not work even with
   the opt-in: fetch the data down first, or run unconfined with remote reads on.
-- **You want the full breadth of a desktop GIS.** 16 tools plus a catalog that tells the
+- **You want the full breadth of a desktop GIS.** 18 tools plus a catalog that tells the
   agent what does *not* exist yet. The ~900 QGIS Processing algorithms are on the roadmap,
   not in the box.
 - **You expect plan validation to make a weak model strong.** Our own A/B says advisory
@@ -424,7 +426,8 @@ Next, in the order we intend to do it. The linked items carry a written spec —
 - [ ] [Tool contracts that carry their own rules](https://github.com/mapsmith-ai/MapSmith/issues/27): argument constraints enforced *and* stated, and errors that name the rule rather than only the violation. The one intervention in our benchmark work that moved a metric past its noise floor
 - [ ] [Satellite embeddings as a first-class input](https://github.com/mapsmith-ai/MapSmith/issues/24): per-zone embedding vectors (multiband zonal statistics) and similarity rasters against a reference location, over the open [AlphaEarth annual dataset](https://developers.google.com/earth-engine/guides/aef_on_gcs_readme) (CC-BY 4.0 COGs). Deterministic arithmetic on a raster — no model inference in MapSmith — with the tile, year and reference vector recorded in the manifest
 - [ ] Authenticated remote mode (OAuth on the existing Streamable HTTP transport) and [long-job progress via MCP Tasks](https://github.com/mapsmith-ai/MapSmith/issues/8). This is the item that closes the one limitation [SECURITY.md](SECURITY.md) declares outright: the HTTP transport has no authentication today
-- [ ] More terrain & hydrology: slope/aspect, stream network extraction
+- [x] Slope and aspect (Whitebox, closed-form tested; geographic-CRS DEMs refused)
+- [ ] More terrain & hydrology: stream network extraction, curvature
 - [ ] Map panel: MapLibre vector rendering, and an export of the panel as a self-contained HTML file you host yourself (raster OSM tiles already ship). No hosted viewer — MapSmith runs on your machine and we would rather not own your maps
 - [ ] [Sandboxed code-execution tool](https://github.com/mapsmith-ai/MapSmith/issues/7) for the long tail
 - [ ] QGIS Processing sidecar (subprocess-isolated): ~900 algorithms. By far the largest item on this list — parameter mapping and error handling for an external process, not an afternoon

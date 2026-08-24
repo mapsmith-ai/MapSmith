@@ -30,9 +30,9 @@ class Binding:
 
 
 def _describe() -> Callable[..., dict[str, Any]]:
-    from ..engines import vector
+    from ..engines import dispatch
 
-    return vector.describe
+    return dispatch.describe_routed
 
 
 def _buffer() -> Callable[..., dict[str, Any]]:
@@ -75,6 +75,18 @@ def _hillshade() -> Callable[..., dict[str, Any]]:
     from ..engines import whitebox_engine
 
     return whitebox_engine.hillshade
+
+
+def _slope() -> Callable[..., dict[str, Any]]:
+    from ..engines import whitebox_engine
+
+    return whitebox_engine.slope
+
+
+def _aspect() -> Callable[..., dict[str, Any]]:
+    from ..engines import whitebox_engine
+
+    return whitebox_engine.aspect
 
 
 def _flow_accumulation() -> Callable[..., dict[str, Any]]:
@@ -131,6 +143,12 @@ BINDINGS: dict[str, Binding] = {
     ),
     "hillshade": Binding(
         _hillshade, ("dem_path",), "output_path", "whitebox", ("same_as", "dem_path"), "raster"
+    ),
+    "slope": Binding(
+        _slope, ("dem_path",), "output_path", "whitebox", ("same_as", "dem_path"), "raster"
+    ),
+    "aspect": Binding(
+        _aspect, ("dem_path",), "output_path", "whitebox", ("same_as", "dem_path"), "raster"
     ),
     "flow_accumulation": Binding(
         _flow_accumulation,

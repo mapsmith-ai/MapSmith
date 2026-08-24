@@ -289,6 +289,123 @@ def hillshade(
         }
 
 
+SLOPE_UNITS = {"degrees", "percent", "radians"}
+
+
+def slope(
+    dem_path: str,
+    output_path: str,
+    units: str = "degrees",
+    z_factor: float = 1.0,
+) -> dict[str, Any]:
+    """Slope gradient from a DEM (Zevenbergen-Thorne; degrees, percent or radians).
+
+    Geographic-CRS DEMs are refused: with degree cells and meter elevations the
+    gradient is wrong everywhere while looking plausible — the caller must
+    reproject first. Edge behaviour, measured on 2.0.6: the outermost TWO cell
+    rings are approximated (clamped windows), values from the third ring inward
+    are exact on an ideal plane.
+    """
+    if units not in SLOPE_UNITS:
+        raise ValueError(f"units must be one of {sorted(SLOPE_UNITS)}, got '{units}'")
+    bounds = {
+        "degrees": (0.0, 90.0),
+        "radians": (0.0, math.pi / 2),
+        "percent": None,  # tan of the angle: unbounded near vertical
+    }[units]
+    return _derivative(
+        "slope",
+        dem_path,
+        output_path,
+        parameters={"units": units, "z_factor": z_factor},
+        call=lambda wbe, dem: wbe.terrain.derivatives.slope(
+            input=dem, units=units, z_factor=z_factor
+        ),
+        value_range=bounds,
+    )
+
+
+def aspect(
+    dem_path: str,
+    output_path: str,
+    z_factor: float = 1.0,
+) -> dict[str, Any]:
+    """Aspect from a DEM: azimuth of the downslope direction, degrees, 0 = north.
+
+    Convention pinned by measurement on 2.0.6: a plane rising eastward yields
+    270 (the downslope faces west). Flat cells are encoded as -1, NOT as
+    nodata — a consumer averaging aspect over an area that contains flats gets
+    a plausible wrong number unless it masks the -1 first, which is why the
+    value is stated here and in the tool docs. Geographic-CRS DEMs are refused
+    (see slope).
+    """
+    return _derivative(
+        "aspect",
+        dem_path,
+        output_path,
+        parameters={"z_factor": z_factor},
+        call=lambda wbe, dem: wbe.terrain.derivatives.aspect(input=dem, z_factor=z_factor),
+        value_range=(-1.0, 360.0),  # -1 is the flat-cell marker, by upstream design
+    )
+
+
+def _derivative(
+    operation: str,
+    dem_path: str,
+    output_path: str,
+    *,
+    parameters: dict[str, Any],
+    call: Any,
+    value_range: tuple[float, float] | None,
+) -> dict[str, Any]:
+    """Shared body of the local terrain derivatives (slope, aspect)."""
+    wb = _require()
+    wbe = wb.WbEnvironment()
+    wbe.verbose = False
+    with _read_dem(wbe, dem_path) as (dem, crs, geographic, input_note):
+        if geographic:
+            raise ValueError(
+                f"{operation} on a geographic CRS mixes degree cells with meter "
+                "elevations and returns plausible but wrong values everywhere. "
+                "Reproject the DEM to a projected CRS first (e.g. its UTM zone)."
+            )
+        record = ProvenanceRecord(
+            operation=operation,
+            parameters=parameters,
+            inputs=[InputRecord.from_path(dem_path, crs=crs)],
+            engine=_engine_info(),
+        )
+        record.crs_decisions = {
+            "analysis_crs": crs,
+            "reason": (
+                f"{operation} computed in the DEM's native projected CRS; geographic-CRS "
+                "DEMs are refused because horizontal units (degrees) would not match "
+                "vertical units (meters)"
+            ),
+        }
+        result = call(wbe, dem)
+        wbe.write_raster(result, str(output_path))
+
+        meta = dem.metadata()
+        checks = _raster_checks(
+            wbe,
+            output_path,
+            expect_epsg=dem.crs_epsg(),
+            expect_shape=(meta.rows, meta.columns),
+            value_range=value_range,
+        )
+        if input_note:
+            record.notes.append(input_note)
+        manifest = record.add_verification(checks).finish().write_for(output_path)
+        verify.enforce(checks, operation)
+        return {
+            "output": str(output_path),
+            **parameters,
+            "provenance": str(manifest),
+            "verified": True,
+        }
+
+
 def flow_accumulation(
     dem_path: str,
     output_path: str,

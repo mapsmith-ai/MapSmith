@@ -24,19 +24,24 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "describe_dataset",
         "status": "available",
         "category": "inspection",
-        "summary": "CRS, geometry types, schema, extent and feature count of a vector dataset",
+        "summary": "Inspect a vector or raster dataset: CRS, schema/bands, extent, "
+        "nodata, statistics",
         "description": (
-            "Inspect a vector dataset before analysing it: coordinate reference system, "
-            "geometry types, attribute schema, bounding extent and feature count. "
-            "Call it first on any dataset you have not seen yet — most silent GIS errors "
-            "start with wrong assumptions about CRS or schema."
+            "Inspect a dataset before analysing it. Vector: coordinate reference system, "
+            "geometry types, attribute schema, bounding extent and feature count. Raster "
+            "(.tif): CRS, grid size, resolution, bands with dtype, nodata value and "
+            "masked statistics — nodata cells are excluded from min/max/mean and counted "
+            "separately. Call it first on any dataset you have not seen yet: most silent "
+            "GIS errors start with wrong assumptions about CRS, units or nodata. Raster "
+            "inspection requires the [raster] extra."
         ),
         "parameters": [
             {
                 "name": "path",
                 "type": "str",
                 "required": True,
-                "description": "Vector dataset path (GeoParquet, GeoPackage, any GDAL format)",
+                "description": "Dataset path (GeoParquet, GeoPackage, any GDAL vector "
+                "format, or a GeoTIFF)",
             },
         ],
         "examples": [
@@ -45,8 +50,9 @@ OPERATIONS: list[dict[str, Any]] = [
                 "call": {"tool": "describe_dataset", "arguments": {"path": "parcels.gpkg"}},
             },
             {
-                "goal": "Count features and read the extent of a GeoParquet file",
-                "call": {"tool": "describe_dataset", "arguments": {"path": "roads.parquet"}},
+                "goal": "Read nodata, resolution and band statistics of a DEM before "
+                "terrain analysis",
+                "call": {"tool": "describe_dataset", "arguments": {"path": "dem.tif"}},
             },
         ],
     },
@@ -534,6 +540,117 @@ OPERATIONS: list[dict[str, Any]] = [
                         "azimuth": 90,
                         "altitude": 15,
                     },
+                },
+            },
+        ],
+    },
+    {
+        "name": "slope",
+        "status": "available",
+        "category": "terrain",
+        "summary": "Slope gradient from a DEM in degrees, percent or radians "
+        "(Whitebox engine); requires the [whitebox] extra",
+        "description": (
+            "Compute the slope gradient of a digital elevation model "
+            "(Zevenbergen-Thorne). Units: degrees (default), percent or radians. "
+            "DEMs in a geographic CRS are refused — degree cells with meter "
+            "elevations give plausible but wrong values everywhere; reproject to a "
+            "projected CRS first. The CRS decision is recorded in the provenance "
+            "manifest. Requires: pip install mapsmith[whitebox]."
+        ),
+        "parameters": [
+            {
+                "name": "dem_path",
+                "type": "str",
+                "required": True,
+                "description": "Digital elevation model (GeoTIFF, projected CRS required)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output GeoTIFF path",
+            },
+            {
+                "name": "units",
+                "type": "str",
+                "required": False,
+                "description": "degrees (default), percent or radians",
+            },
+            {
+                "name": "z_factor",
+                "type": "float",
+                "required": False,
+                "description": "Vertical unit conversion factor (default 1.0)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Slope in degrees for a landslide-susceptibility analysis",
+                "call": {
+                    "tool": "slope",
+                    "arguments": {"dem_path": "dem_utm.tif", "output_path": "slope.tif"},
+                },
+            },
+            {
+                "goal": "Slope in percent for road-grade screening",
+                "call": {
+                    "tool": "slope",
+                    "arguments": {
+                        "dem_path": "dem_utm.tif",
+                        "output_path": "slope_pct.tif",
+                        "units": "percent",
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "aspect",
+        "status": "available",
+        "category": "terrain",
+        "summary": "Aspect from a DEM: downslope azimuth in degrees, 0 = north, "
+        "flat cells = -1 (Whitebox engine); requires the [whitebox] extra",
+        "description": (
+            "Compute the aspect of a digital elevation model: the azimuth of the "
+            "downslope direction in degrees, 0 = north, 90 = east. FLAT CELLS ARE "
+            "ENCODED AS -1, not as nodata — mask them before averaging aspect over "
+            "an area, or the average is plausibly wrong. DEMs in a geographic CRS "
+            "are refused (see slope). Requires: pip install mapsmith[whitebox]."
+        ),
+        "parameters": [
+            {
+                "name": "dem_path",
+                "type": "str",
+                "required": True,
+                "description": "Digital elevation model (GeoTIFF, projected CRS required)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output GeoTIFF path",
+            },
+            {
+                "name": "z_factor",
+                "type": "float",
+                "required": False,
+                "description": "Vertical unit conversion factor (default 1.0)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "South-facing slopes for a solar-potential study",
+                "call": {
+                    "tool": "aspect",
+                    "arguments": {"dem_path": "dem_utm.tif", "output_path": "aspect.tif"},
+                },
+            },
+            {
+                "goal": "Exposure classes for a vegetation model",
+                "call": {
+                    "tool": "aspect",
+                    "arguments": {"dem_path": "dem_utm.tif", "output_path": "exposure.tif"},
                 },
             },
         ],

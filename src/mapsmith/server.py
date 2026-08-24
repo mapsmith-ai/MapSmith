@@ -101,12 +101,18 @@ def _run(operation: str, params: dict[str, Any], fn, *args) -> dict[str, Any]:
 
 @mcp.tool(annotations=_READONLY)
 def describe_dataset(path: str) -> dict[str, Any]:
-    """Inspect a vector dataset: CRS, geometry types, schema, extent, feature count.
+    """Inspect a dataset, vector or raster, before analysing it.
 
-    Call this before any analysis on a dataset you have not inspected yet.
+    Vector: CRS, geometry types, schema, extent, feature count. Raster (.tif):
+    CRS, grid size, resolution, bands with dtype, nodata and masked statistics
+    (nodata cells counted separately). Call this first on any dataset you have
+    not inspected yet — most silent GIS errors start with wrong assumptions
+    about CRS, units or nodata. Raster inspection requires the [raster] extra.
     """
     _guard(path=path)
-    return vector.describe(path)
+    from .engines import dispatch
+
+    return dispatch.describe_routed(path)
 
 
 @mcp.tool(annotations=_WRITER)
@@ -270,6 +276,60 @@ def hillshade(
         output_path,
         azimuth,
         altitude,
+        z_factor,
+    )
+
+
+@mcp.tool(annotations=_WRITER)
+def slope(
+    dem_path: str,
+    output_path: str,
+    units: str = "degrees",
+    z_factor: float = 1.0,
+) -> dict[str, Any]:
+    """Slope gradient from a DEM: GeoTIFF in, GeoTIFF out.
+
+    units: degrees (default), percent or radians. DEMs in a geographic CRS are
+    refused — degree cells with meter elevations give plausible but wrong values
+    everywhere; reproject to a projected CRS first. The CRS decision is recorded
+    in the provenance manifest. Requires the [whitebox] extra.
+    """
+    _guard(dem_path=dem_path, output_path=output_path)
+    from .engines import whitebox_engine
+
+    return _run(
+        "slope",
+        {"dem": dem_path, "output": output_path, "units": units},
+        whitebox_engine.slope,
+        dem_path,
+        output_path,
+        units,
+        z_factor,
+    )
+
+
+@mcp.tool(annotations=_WRITER)
+def aspect(
+    dem_path: str,
+    output_path: str,
+    z_factor: float = 1.0,
+) -> dict[str, Any]:
+    """Aspect from a DEM: downslope azimuth in degrees, 0 = north. GeoTIFF in/out.
+
+    FLAT CELLS ARE -1, not nodata — mask them before averaging aspect over an
+    area, or the average is plausibly wrong. DEMs in a geographic CRS are
+    refused (see slope): reproject to a projected CRS first.
+    Requires the [whitebox] extra.
+    """
+    _guard(dem_path=dem_path, output_path=output_path)
+    from .engines import whitebox_engine
+
+    return _run(
+        "aspect",
+        {"dem": dem_path, "output": output_path},
+        whitebox_engine.aspect,
+        dem_path,
+        output_path,
         z_factor,
     )
 

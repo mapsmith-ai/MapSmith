@@ -52,6 +52,59 @@ def _engine_info() -> dict[str, str]:
     return {"name": "exactextract", "version": version("exactextract")}
 
 
+def _require_rasterio():
+    try:
+        import rasterio
+    except ImportError as exc:
+        raise ImportError(
+            "raster inspection requires the raster extra: pip install mapsmith[raster]"
+        ) from exc
+    return rasterio
+
+
+def describe(path: str) -> dict[str, Any]:
+    """CRS, grid, bands, nodata and per-band statistics of a raster (read-only).
+
+    Statistics are computed on the masked read, so nodata cells are excluded
+    from min/max/mean and counted separately — most silent raster errors start
+    with metadata nobody looked at, and nodata treated as elevation is the
+    canonical one.
+    """
+    rasterio = _require_rasterio()
+    with rasterio.open(path) as ds:
+        bands = []
+        for index in range(1, ds.count + 1):
+            data = ds.read(index, masked=True)
+            valid = int(data.count())
+            bands.append({
+                "band": index,
+                "dtype": ds.dtypes[index - 1],
+                "nodata": ds.nodatavals[index - 1],
+                "valid_cells": valid,
+                "nodata_cells": int(data.size - valid),
+                "min": float(data.min()) if valid else None,
+                "max": float(data.max()) if valid else None,
+                "mean": float(data.mean()) if valid else None,
+            })
+        left, bottom, right, top = ds.bounds
+        return {
+            "path": str(path),
+            "kind": "raster",
+            "crs": str(ds.crs) if ds.crs else None,
+            "width": ds.width,
+            "height": ds.height,
+            "band_count": ds.count,
+            "resolution": {"x": abs(float(ds.res[0])), "y": abs(float(ds.res[1]))},
+            "extent": {
+                "minx": float(left),
+                "miny": float(bottom),
+                "maxx": float(right),
+                "maxy": float(top),
+            },
+            "bands": bands,
+        }
+
+
 def zonal_statistics(
     raster_path: str,
     zones_path: str,

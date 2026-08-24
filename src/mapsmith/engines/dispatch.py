@@ -78,6 +78,40 @@ def pick(workload: Workload, requested: str = "auto") -> str:
     raise RuntimeError(f"No engine available for workload {workload}")
 
 
+# Extensions that are rasters and nothing else. Formats that can hold either
+# kind (GeoPackage can, in principle) go down the vector path first and fall
+# through on failure.
+_RASTER_SUFFIXES = {".tif", ".tiff"}
+
+
+def describe_routed(path: str) -> dict:
+    """Describe a dataset, vector or raster, from one entry point.
+
+    Used by both the MCP tool and the plan executor. Known raster extensions
+    go straight to the raster reader; everything else tries the vector reader
+    first and falls back to rasterio, re-raising the ORIGINAL vector error if
+    both fail — an error about the format the caller most likely meant.
+    """
+    from pathlib import Path
+
+    if Path(path).suffix.lower() in _RASTER_SUFFIXES:
+        from . import raster
+
+        return raster.describe(path)
+    try:
+        from . import vector
+
+        return vector.describe(path)
+    except Exception as vector_error:  # noqa: BLE001 — any reader failure means: try the other family
+        try:
+            from . import raster
+
+            result = raster.describe(path)
+        except Exception:  # noqa: BLE001 — not a raster either: the vector error is the real one
+            raise vector_error from None
+        return result
+
+
 def spatial_join_routed(
     left_path: str,
     right_path: str,
