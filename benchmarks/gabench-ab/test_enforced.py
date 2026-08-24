@@ -365,5 +365,5 @@ if real is not None:
     end_to_end(Path(root) if root else Path(__file__).resolve().parent.parent / "GABench")
 
 print()
-print("ENFORCED OK: plan eseguito come scritto, riferimenti risolti dagli output reali,")
-print("stop al primo errore, e l'evaluator ripesca esattamente le chiamate fatte.")
+print("ENFORCED OK: plan executed as written, references resolved from real outputs,")
+print("stop at the first error, and the evaluator recovers exactly the calls made.")

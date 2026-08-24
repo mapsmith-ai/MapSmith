@@ -56,20 +56,20 @@ def run_pipeline(workdir: Path) -> dict[str, Path]:
     # figure is the product doing a two-step analysis rather than a picture.
     flowacc = workdir / "flowacc.tif"
     whitebox_engine.flow_accumulation(str(dem), str(flowacc))
-    punti = workdir / "outlets.gpkg"
+    outlets_path = workdir / "outlets.gpkg"
     with rasterio.open(flowacc) as ds:
-        crs, trasformazione = ds.crs, ds.transform
-        sbocchi = _principal_outlets(ds.read(1, masked=True), trasformazione, count=6)
+        crs, transform = ds.crs, ds.transform
+        outlets = _principal_outlets(ds.read(1, masked=True), transform, count=6)
     gpd.GeoDataFrame(
-        {"id": range(1, len(sbocchi) + 1)},
-        geometry=[Point(x, y) for x, y in sbocchi],
+        {"id": range(1, len(outlets) + 1)},
+        geometry=[Point(x, y) for x, y in outlets],
         crs=crs,
-    ).to_file(punti, layer="outlets", driver="GPKG")
+    ).to_file(outlets_path, layer="outlets", driver="GPKG")
 
     hillshade = workdir / "hillshade.tif"
     basins = workdir / "basins.tif"
     whitebox_engine.hillshade(str(dem), str(hillshade))
-    whitebox_engine.watershed(str(dem), str(punti), str(basins))
+    whitebox_engine.watershed(str(dem), str(outlets_path), str(basins))
     return {"hillshade": hillshade, "basins": basins, "dem": dem}
 
 
@@ -83,18 +83,18 @@ def _principal_outlets(accumulation, transform, count: int, separation: int = 60
     """
     import numpy as np
 
-    valori = np.ma.filled(accumulation.astype("float64"), -1.0)
-    ordinati = np.argsort(valori, axis=None)[::-1]
-    scelti: list[tuple[int, int]] = []
-    for piatto in ordinati:
-        riga, colonna = divmod(int(piatto), valori.shape[1])
-        if valori[riga, colonna] <= 0:
+    values = np.ma.filled(accumulation.astype("float64"), -1.0)
+    ranked = np.argsort(values, axis=None)[::-1]
+    chosen: list[tuple[int, int]] = []
+    for flat in ranked:
+        row, col = divmod(int(flat), values.shape[1])
+        if values[row, col] <= 0:
             break
-        if all(max(abs(riga - r), abs(colonna - c)) >= separation for r, c in scelti):
-            scelti.append((riga, colonna))
-            if len(scelti) == count:
+        if all(max(abs(row - r), abs(col - c)) >= separation for r, c in chosen):
+            chosen.append((row, col))
+            if len(chosen) == count:
                 break
-    return [transform * (colonna + 0.5, riga + 0.5) for riga, colonna in scelti]
+    return [transform * (col + 0.5, row + 0.5) for row, col in chosen]
 
 
 def png_rgb(pixels: bytes, width: int, height: int) -> bytes:
@@ -112,12 +112,12 @@ def png_rgb(pixels: bytes, width: int, height: int) -> bytes:
         return (struct.pack(">I", len(payload)) + tag + payload
                 + struct.pack(">I", zlib.crc32(tag + payload) & 0xFFFFFFFF))
 
-    intestazione = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
-    righe = b"".join(
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    rows = b"".join(
         b"\x00" + pixels[y * width * 3:(y + 1) * width * 3] for y in range(height)
     )
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", intestazione)
-            + chunk(b"IDAT", zlib.compress(righe, 9)) + chunk(b"IEND", b""))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+            + chunk(b"IDAT", zlib.compress(rows, 9)) + chunk(b"IEND", b""))
 
 
 def render(hillshade: Path, basins: Path, destination: Path) -> tuple[int, int]:
@@ -133,30 +133,30 @@ def render(hillshade: Path, basins: Path, destination: Path) -> tuple[int, int]:
     import rasterio
 
     with rasterio.open(hillshade) as ds:
-        ombra = ds.read(1, masked=True).astype("float32")
+        shade = ds.read(1, masked=True).astype("float32")
     with rasterio.open(basins) as ds:
-        bacini = ds.read(1, masked=True)
+        basin_data = ds.read(1, masked=True)
 
-    minimo, massimo = float(ombra.min()), float(ombra.max())
-    grigio = (ombra - minimo) / (massimo - minimo) if massimo > minimo else ombra * 0
-    grigio = np.ma.filled(grigio, 0.0)
+    low, high = float(shade.min()), float(shade.max())
+    grey = (shade - low) / (high - low) if high > low else shade * 0
+    grey = np.ma.filled(grey, 0.0)
     # Lift the black end: pure black hides the terrain in the shadows, which is
     # exactly where the watershed boundaries are most worth seeing.
-    tela = np.stack([0.09 + 0.88 * grigio] * 3, axis=-1)
+    canvas = np.stack([0.09 + 0.88 * grey] * 3, axis=-1)
 
-    for indice, colore in enumerate(BASIN_COLOURS, start=1):
-        maschera = np.ma.filled(bacini == indice, False)
-        if not maschera.any():
+    for index, colour in enumerate(BASIN_COLOURS, start=1):
+        mask = np.ma.filled(basin_data == index, False)
+        if not mask.any():
             continue
-        tinta = np.array(colore, dtype="float32") / 255.0
+        tint = np.array(colour, dtype="float32") / 255.0
         # Multiply rather than paint over: an overlay that hid the shading would
         # be decoration, and the relief is the evidence.
-        tela[maschera] = tela[maschera] * 0.42 + tinta * 0.58
+        canvas[mask] = canvas[mask] * 0.42 + tint * 0.58
 
-    altezza, larghezza = tela.shape[:2]
-    byte = (np.clip(tela, 0, 1) * 255).astype("uint8").tobytes()
-    destination.write_bytes(png_rgb(byte, larghezza, altezza))
-    return larghezza, altezza
+    height, width = canvas.shape[:2]
+    raw = (np.clip(canvas, 0, 1) * 255).astype("uint8").tobytes()
+    destination.write_bytes(png_rgb(raw, width, height))
+    return width, height
 
 
 def highlight(value, indent: int = 0) -> str:
@@ -176,60 +176,60 @@ def highlight(value, indent: int = 0) -> str:
     import html
     import re
 
-    spazio, dentro = "  " * indent, "  " * (indent + 1)
+    pad, inner = "  " * indent, "  " * (indent + 1)
     if isinstance(value, dict):
         if not value:
             return "{}"
-        righe = [
-            f'{dentro}"<span class="k">{html.escape(str(k))}</span>": '
+        rows = [
+            f'{inner}"<span class="k">{html.escape(str(k))}</span>": '
             f"{highlight(v, indent + 1)}"
             for k, v in value.items()
         ]
-        return "{\n" + ",\n".join(righe) + f"\n{spazio}}}"
+        return "{\n" + ",\n".join(rows) + f"\n{pad}}}"
     if isinstance(value, list):
         if not value:
             return "[]"
-        righe = [f"{dentro}{highlight(v, indent + 1)}" for v in value]
-        return "[\n" + ",\n".join(righe) + f"\n{spazio}]"
+        rows = [f"{inner}{highlight(v, indent + 1)}" for v in value]
+        return "[\n" + ",\n".join(rows) + f"\n{pad}]"
     if value is None:
         return '<span class="hash">null</span>'
     if isinstance(value, bool):
         return f'<span class="b">{"true" if value else "false"}</span>'
     if isinstance(value, (int, float)):
         return f'<span class="n">{value}</span>'
-    testo = html.escape(str(value))
+    text = html.escape(str(value))
     # A checksum gets its own class so it can recede without being hidden: it is
     # the point of the record, but it is not what the eye should land on first.
-    classe = "hash" if re.fullmatch(r"[0-9a-f]{64}", str(value)) else "s"
-    return f'"<span class="{classe}">{testo}</span>"'
+    cls = "hash" if re.fullmatch(r"[0-9a-f]{64}", str(value)) else "s"
+    return f'"<span class="{cls}">{text}</span>"'
 
 
-def _git(*argomenti: str) -> str:
+def _git(*args: str) -> str:
     import subprocess
 
     return subprocess.run(
-        ["git", "-C", str(ROOT), *argomenti],
+        ["git", "-C", str(ROOT), *args],
         capture_output=True, text=True, check=False,
     ).stdout.strip()
 
 
 def main(destination: Path) -> int:
     destination.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="mapsmith-site-") as temporanea:
-        workdir = Path(temporanea)
-        uscite = run_pipeline(workdir)
-        misure = render(uscite["hillshade"], uscite["basins"], destination / "terrain.png")
-        manifesto = json.loads(
-            Path(str(uscite["basins"]) + ".provenance.json").read_text(encoding="utf-8")
+    with tempfile.TemporaryDirectory(prefix="mapsmith-site-") as tmp:
+        workdir = Path(tmp)
+        outputs = run_pipeline(workdir)
+        dims = render(outputs["hillshade"], outputs["basins"], destination / "terrain.png")
+        manifest = json.loads(
+            Path(str(outputs["basins"]) + ".provenance.json").read_text(encoding="utf-8")
         )
 
     # Published as it was written, with only the temporary directory stripped
     # from the input paths. The reader is meant to check this file, not admire
     # it, so nothing else about it is touched.
-    for ingresso in manifesto.get("inputs", []):
-        ingresso["path"] = Path(ingresso["path"]).name
+    for entry in manifest.get("inputs", []):
+        entry["path"] = Path(entry["path"]).name
     (destination / "manifest.json").write_text(
-        json.dumps(manifesto, indent=2) + "\n", encoding="utf-8"
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
     )
 
     sys.path.insert(0, str(ROOT / "src"))
@@ -240,39 +240,39 @@ def main(destination: Path) -> int:
     # hits, and a claim on a front page has to be produced the same way a result
     # is. Exposed MCP tools, not catalogue entries: the sentence next to it is
     # about what an agent has to choose between.
-    strumenti = (ROOT / "src" / "mapsmith" / "server.py").read_text(
+    tool_count = (ROOT / "src" / "mapsmith" / "server.py").read_text(
         encoding="utf-8"
     ).count("@mcp.tool(")
-    prove = sum(
-        int(riga.rsplit(":", 1)[1])
-        for riga in _git("grep", "-c", "^def test_", "--", "tests/").splitlines()
+    test_count = sum(
+        int(row.rsplit(":", 1)[1])
+        for row in _git("grep", "-c", "^def test_", "--", "tests/").splitlines()
     )
 
-    pagina = (Path(__file__).parent / "index.template.html").read_text(encoding="utf-8")
-    for segnaposto, valore in {
-        "{{MANIFEST}}": highlight(manifesto),
+    page = (Path(__file__).parent / "index.template.html").read_text(encoding="utf-8")
+    for placeholder, value in {
+        "{{MANIFEST}}": highlight(manifest),
         "{{VERSION}}": __version__,
-        "{{TOOL_COUNT}}": str(strumenti),
-        "{{TEST_COUNT}}": str(prove),
+        "{{TOOL_COUNT}}": str(tool_count),
+        "{{TEST_COUNT}}": str(test_count),
         "{{COMMIT}}": _git("rev-parse", "--short", "HEAD") or "unknown",
-        "{{BUILT}}": manifesto["finished_at"][:10],
+        "{{BUILT}}": manifest["finished_at"][:10],
     }.items():
-        pagina = pagina.replace(segnaposto, valore)
-    rimasti = [s for s in ("{{",) if s in pagina]
-    if rimasti:
-        raise RuntimeError(f"unreplaced placeholder in the template: {pagina[pagina.index('{{'):][:40]}")
-    (destination / "index.html").write_text(pagina, encoding="utf-8")
+        page = page.replace(placeholder, value)
+    leftovers = [s for s in ("{{",) if s in page]
+    if leftovers:
+        raise RuntimeError(f"unreplaced placeholder in the template: {page[page.index('{{'):][:40]}")
+    (destination / "index.html").write_text(page, encoding="utf-8")
     (destination / ".nojekyll").write_text("", encoding="utf-8")
     (destination / "CNAME").write_text("mapsmith.dev\n", encoding="utf-8")
 
-    peso = (destination / "terrain.png").stat().st_size
-    controlli = manifesto["verification"]
+    weight = (destination / "terrain.png").stat().st_size
+    checks = manifest["verification"]
     print(
-        f"terrain.png {misure[0]}x{misure[1]} {peso // 1024} KB | "
-        f"manifest.json {len(controlli)} checks, "
-        f"{sum(c['passed'] for c in controlli)} passed | "
-        f"engine {manifesto['engine']['name']} {manifesto['engine']['version']} | "
-        f"{strumenti} tools, {prove} tests | index.html "
+        f"terrain.png {dims[0]}x{dims[1]} {weight // 1024} KB | "
+        f"manifest.json {len(checks)} checks, "
+        f"{sum(c['passed'] for c in checks)} passed | "
+        f"engine {manifest['engine']['name']} {manifest['engine']['version']} | "
+        f"{tool_count} tools, {test_count} tests | index.html "
         f"{(destination / 'index.html').stat().st_size // 1024} KB"
     )
     return 0

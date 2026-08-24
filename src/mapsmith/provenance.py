@@ -307,9 +307,9 @@ class ProvenanceRecord:
                 {"path": posix_path(output_path), "sha256": sha256_of(output_path)}
             )
             record = {}
-            for chiave, valore in asdict(self).items():
-                record[chiave] = valore
-                if chiave == "inputs":
+            for key, value in asdict(self).items():
+                record[key] = value
+                if key == "inputs":
                     record["output"] = entry
         manifest_path = Path(f"{output_path}.provenance.json")
         manifest_path.write_text(

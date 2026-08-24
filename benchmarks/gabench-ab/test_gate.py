@@ -55,4 +55,4 @@ good = [
 assert validate_plan_steps(good, INDEX) == []
 assert validate_plan_steps([], INDEX)[0]["code"] == "EMPTY_PLAN"
 print()
-print("GATE OK: codici corretti sui piani rotti, zero falsi positivi sul piano buono")
+print("GATE OK: correct codes on the broken plans, zero false positives on the good plan")

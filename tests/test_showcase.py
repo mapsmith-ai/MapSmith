@@ -389,16 +389,16 @@ ILLUSTRATIVE_HOSTS = ("evil.tld", "example.com", "example.org", "attacker", "int
 @pytest.mark.parametrize("page", _showcase_pages(), ids=lambda p: p.name)
 def test_an_illustrative_url_is_never_rendered_as_a_link(page: Path):
     """`https://evil.tld/x.gpkg` explains an attack; it is not somewhere to go."""
-    testo = page.read_text(encoding="utf-8")
+    text = page.read_text(encoding="utf-8")
     # Code fences are already safe, and stripping them keeps the check honest
     # rather than making authors escape things twice.
-    fuori_dal_codice = re.sub(r"```.*?```", "", testo, flags=re.DOTALL)
-    colpevoli = [
+    outside_code = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+    offenders = [
         m.group(0)
-        for m in BARE_URL.finditer(fuori_dal_codice)
+        for m in BARE_URL.finditer(outside_code)
         if any(host in m.group(0) for host in ILLUSTRATIVE_HOSTS)
     ]
-    assert not colpevoli, (
+    assert not offenders, (
         f"{page.name}: illustrative URLs rendered as clickable links — wrap them in "
-        f"backticks so a reader does not follow one and find nothing: {colpevoli}"
+        f"backticks so a reader does not follow one and find nothing: {offenders}"
     )

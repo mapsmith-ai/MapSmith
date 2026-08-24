@@ -97,10 +97,10 @@ def test_a_manifest_path_does_not_depend_on_the_host(tmp_path):
     # reverse, would misstate what actually ran.
     assert posix_path("data/wells.gpkg") == "data/wells.gpkg"
 
-    sorgente = tmp_path / "wells.gpkg"
-    sorgente.write_bytes(b"not really a geopackage")
-    registrato = InputRecord.from_path(sorgente)
-    assert registrato.path == PurePath(sorgente).as_posix()
+    source = tmp_path / "wells.gpkg"
+    source.write_bytes(b"not really a geopackage")
+    recorded = InputRecord.from_path(source)
+    assert recorded.path == PurePath(source).as_posix()
 
 
 def test_every_manifest_mapsmith_writes_conforms_to_the_spec(tmp_path):
