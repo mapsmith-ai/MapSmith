@@ -424,8 +424,55 @@ scores trajectories, and the failure MapSmith exists to prevent is a result that
 is confidently wrong — the Whitebox predictor bug we
 [found and reported upstream](https://github.com/jblindsay/whitebox_next_gen/issues/32)
 produced plausible terrain from silently corrupted elevations, and it would have
-scored full marks on all four metrics on this page. Measuring *that* needs a
-different instrument, and building it is the next piece of work.
+scored full marks on all four metrics on this page. Measuring *that* needed a
+different instrument. It exists now, and it is the section below.
+
+## The different instrument: Argleton
+
+Everything above this line measures *behaviour*: did the agent pick the right
+tools, in the right order, with the right parameters. That is worth measuring
+and this page keeps its results — dated, with their noise floors — but none of
+those four metrics ever looks at the number that comes out. The predictor bug
+is the proof by example: a system reading silently corrupted elevations would
+have scored full marks on all of them.
+
+So the successor is not a sixth arm. It is
+[**Argleton**](https://github.com/argleton/argleton) — a correctness suite
+where every probe's right answer is derived on paper before any system runs,
+every trap's *wrong* answer is one that looks fine, and every published number
+carries the `spec_commit` it ran against. It lives in its own repository and
+organisation on purpose: an evaluation that lives inside the thing it
+evaluates is dismissed in one line, and it would deserve it. Current results:
+[argleton.org](https://argleton.org), rendered by CI from real runs.
+
+What it says about MapSmith so far (five-family run, engine tier):
+
+| | silent error rate | completion rate | traps run |
+|---|---|---|---|
+| MapSmith | **0.00** | 1.00 | 3 |
+| naive composition (read file, take statistic) | 0.80 | 1.00 | 5 |
+
+Two findings from those runs are worth more than the score, and both are ours
+to state:
+
+1. **The first 0.00 was inherited, not earned.** On the predictor trap MapSmith
+   wrote a manifest with seven passing checks, and not one of them looks at
+   whether the number is right — the answer was correct because rasterio undoes
+   the predictor. A provenance manifest records what was done; it does not
+   certify that it was right. MapSmith only claims the first, and Argleton
+   exists to measure the second.
+2. **The mismatched-CRS pass is earned.** No library aligns two coordinate
+   frames on your behalf: the naive composition answers "0 points in the zone"
+   — a finding-shaped wrong answer, no exception, no warning — while MapSmith
+   answers correctly because its join reprojects and records the decision in
+   `crs_decisions`. The first family where the discipline, not the dependency,
+   produces the number.
+
+That pair is the honest shape of the transition: trajectory benchmarks could
+not see either finding, and a suite four days old already produced both. New
+families are added with a clean twin and a closed-form truth each
+([how](https://github.com/argleton/argleton/blob/main/docs/ADDING-A-TRAP.md)),
+and results are rerun on every commit.
 
 ## Reproduce it
 
