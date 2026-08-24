@@ -21,6 +21,11 @@ versions, and the deterministic checks that ran on the result.
 
 > Ask for the result. The agent picks the tools. You can check the work afterwards.
 
+The manifest is a [specified format](https://github.com/mapsmith-ai/manifest-spec), not
+MapSmith's private output: JSON Schema, a toolchain-free validator, a conformance suite, and a
+hundred-line emitter that never imports MapSmith. Records carry `spec_version`, and CI validates
+real MapSmith output against the spec's own validator.
+
 Evidence before promises: an [A/B on GABench](docs/benchmarks.md) whose headline is a null
 result — with the analysis that took our own positive number apart — [notebooks](examples/)
 on a real USGS DEM of Mount St. Helens, and an

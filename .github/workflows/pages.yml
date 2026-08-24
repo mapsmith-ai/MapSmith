@@ -37,6 +37,22 @@ jobs:
           python-version: "3.12"
       - run: pip install -e .[raster,whitebox]
       - run: python site/build.py dist
+      # The schema's $id promises https://mapsmith.dev/spec/manifest-v1.schema.json
+      # resolves. Fetched from its source of truth at deploy time rather than
+      # vendored: a copy would drift, and a drifted schema at the canonical URL
+      # is worse than a 404.
+      - name: serve the manifest schema at its canonical URL
+        run: |
+          mkdir -p dist/spec
+          curl -sSf -o dist/spec/manifest-v1.schema.json             https://raw.githubusercontent.com/mapsmith-ai/manifest-spec/main/schema/manifest-v1.schema.json
+          python - <<'PY'
+          import json, pathlib, sys
+          schema = json.loads(pathlib.Path("dist/spec/manifest-v1.schema.json").read_text(encoding="utf-8"))
+          atteso = "https://mapsmith.dev/spec/manifest-v1.schema.json"
+          if schema.get("$id") != atteso:
+              sys.exit(f"schema $id is {schema.get('$id')!r}, the site serves it at {atteso!r}")
+          print("schema ok:", schema["$id"])
+          PY
       - name: the page must carry no unreplaced placeholder
         run: |
           python - <<'PY'
