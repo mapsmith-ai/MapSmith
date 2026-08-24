@@ -101,3 +101,41 @@ def test_a_manifest_path_does_not_depend_on_the_host(tmp_path):
     sorgente.write_bytes(b"not really a geopackage")
     registrato = InputRecord.from_path(sorgente)
     assert registrato.path == PurePath(sorgente).as_posix()
+
+
+def test_every_manifest_mapsmith_writes_conforms_to_the_spec(tmp_path):
+    """MapSmith is an implementation of the manifest spec, not its definition.
+
+    The day our manifest stops passing our own published validator, CI says so
+    here — instead of a reader finding out. The validator is a vendored copy of
+    the spec repository's stdlib-only implementation; the record under test is
+    a REAL one, written by a real writer on a real file, because a hand-built
+    record would validate the test's idea of a manifest rather than MapSmith's.
+    """
+    import json
+    import sys
+    from pathlib import Path
+
+    import geopandas as gpd
+
+    sys.path.insert(0, str(Path(__file__).parent / "data"))
+    from manifest_spec_validator import problems
+
+    from mapsmith.engines import vector
+
+    source = tmp_path / "wells.parquet"
+    gpd.GeoDataFrame(
+        {"id": [1, 2]},
+        geometry=gpd.GeoSeries.from_wkt(["POINT (500000 5000000)", "POINT (500100 5000100)"]),
+        crs="EPSG:32632",
+    ).to_parquet(source)
+    out = tmp_path / "wells_100m.parquet"
+    vector.buffer(str(source), 100.0, str(out))
+
+    record = json.loads((tmp_path / "wells_100m.parquet.provenance.json")
+                        .read_text(encoding="utf-8"))
+    assert problems(record) == [], "a MapSmith manifest no longer conforms to the spec"
+    assert record["spec_version"].startswith("1.")
+    # And the field sits where a reader meets it: before the operation detail
+    # means anything, the format version has to.
+    assert list(record)[3] == "spec_version"

@@ -17,6 +17,12 @@ from typing import Any
 
 from . import __version__
 
+# The manifest specification this record targets. MapSmith is one
+# implementation of that format, not its definition: the spec, its schema, a
+# toolchain-free validator and the conformance suite live in their own
+# repository, and a CI test validates real MapSmith output against them.
+SPEC_VERSION = "1.0.0-draft.1"
+
 
 def _utcnow() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -201,6 +207,9 @@ class ProvenanceRecord:
     operation: str
     parameters: dict[str, Any]
     inputs: list[InputRecord]
+    # First among the defaulted fields on purpose: a reader meeting the record
+    # needs the format version before anything else means anything.
+    spec_version: str = SPEC_VERSION
     crs_decisions: dict[str, str] = field(default_factory=dict)
     engine: dict[str, str] = field(default_factory=dict)
     verification: list[dict[str, Any]] = field(default_factory=list)

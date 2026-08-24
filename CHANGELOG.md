@@ -6,6 +6,15 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+### Added
+
+- **Manifests now carry `spec_version`** (`1.0.0-draft.1`). The manifest format
+  is becoming a specification of its own — schema, toolchain-free validator,
+  conformance suite and a minimal emitter that does not import MapSmith — and
+  MapSmith is one implementation of it rather than its definition. A CI test
+  validates a real writer's output against the spec's own validator, so the day
+  our manifest stops conforming to our published format, the build says so.
+
 ### Fixed
 
 - **GeoParquet 2.0 files now open on every read path, not two of six** ([#28]).
