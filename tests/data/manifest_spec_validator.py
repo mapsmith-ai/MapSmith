@@ -1,9 +1,8 @@
 """VENDORED copy of the manifest-spec standalone validator - do not edit here.
 
-Source: the manifest-spec repository, validator/validate.py, spec 1.0.0-draft.1.
-Vendored because this repository's CI must not depend on cloning another one;
-when the spec repository is public, this copy becomes a pinned dependency and a
-sync test. Any change belongs upstream first.
+Source: github.com/mapsmith-ai/manifest-spec, validator/validate.py, spec
+1.0.0-draft.2. Vendored because this repository's CI must not depend on cloning
+another one; any change belongs upstream first.
 
 Standalone validator for provenance manifests (spec v1). Stdlib only.
 
@@ -95,6 +94,22 @@ def problems(record: object) -> list[str]:
                 out.append(f"`{label}.name` must not be empty")
             need("passed", bool, check, label)
             need("detail", str, check, label)
+
+    if "output" in record:
+        out_field = record["output"]
+        if not isinstance(out_field, dict):
+            out.append("`output` must be an object")
+        else:
+            if need("path", str, out_field, "output"):
+                if not out_field["path"]:
+                    out.append("`output.path` must not be empty")
+                if "\\" in out_field["path"]:
+                    out.append("`output.path` carries a backslash: paths use `/` as the "
+                               "only separator on every platform")
+            if need("sha256", str, out_field, "output") and not SHA256.fullmatch(
+                out_field["sha256"]
+            ):
+                out.append("`output.sha256` must be 64 lowercase hex characters")
 
     stamps = {}
     for field in ("started_at", "finished_at"):

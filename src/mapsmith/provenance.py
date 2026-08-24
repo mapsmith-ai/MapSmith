@@ -21,7 +21,7 @@ from . import __version__
 # implementation of that format, not its definition: the spec, its schema, a
 # toolchain-free validator and the conformance suite live in their own
 # repository, and a CI test validates real MapSmith output against them.
-SPEC_VERSION = "1.0.0-draft.1"
+SPEC_VERSION = "1.0.0-draft.2"
 
 
 def _utcnow() -> str:
@@ -289,11 +289,31 @@ class ProvenanceRecord:
         return self
 
     def write_for(self, output_path: str | Path) -> Path:
-        """Write the manifest next to the output it describes."""
+        """Write the manifest next to the output it describes.
+
+        The record carries the OUTPUT's digest too, computed here — the one
+        moment the final bytes certainly exist (verification and any repair
+        have already run). Without it a consumer cannot check that the sidecar
+        describes the bytes next to it, and the record could not become the
+        predicate of an in-toto attestation, whose subject requires a digest.
+        """
         self._redact()
+        record = asdict(self)
+        if Path(output_path).exists():
+            # After `inputs`, where a reader expects it; through the same
+            # redaction as everything else, because an output path can carry a
+            # signed URL exactly like an input path can.
+            entry = redact_secrets(
+                {"path": posix_path(output_path), "sha256": sha256_of(output_path)}
+            )
+            record = {}
+            for chiave, valore in asdict(self).items():
+                record[chiave] = valore
+                if chiave == "inputs":
+                    record["output"] = entry
         manifest_path = Path(f"{output_path}.provenance.json")
         manifest_path.write_text(
-            json.dumps(asdict(self), indent=2, ensure_ascii=False), encoding="utf-8"
+            json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8"
         )
         return manifest_path
 

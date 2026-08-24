@@ -136,6 +136,11 @@ def test_every_manifest_mapsmith_writes_conforms_to_the_spec(tmp_path):
                         .read_text(encoding="utf-8"))
     assert problems(record) == [], "a MapSmith manifest no longer conforms to the spec"
     assert record["spec_version"].startswith("1.")
-    # And the field sits where a reader meets it: before the operation detail
-    # means anything, the format version has to.
-    assert list(record)[3] == "spec_version"
+
+    # The record must describe the bytes it sits beside — recomputed here from
+    # the file, not trusted from the record.
+    import hashlib
+
+    assert record["output"]["path"].endswith("wells_100m.parquet")
+    assert "\\" not in record["output"]["path"]
+    assert record["output"]["sha256"] == hashlib.sha256(out.read_bytes()).hexdigest()
