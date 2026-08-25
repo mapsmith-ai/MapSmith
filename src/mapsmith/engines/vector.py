@@ -904,16 +904,26 @@ def measure_area(
     # number. Every repair is recorded, because a silent repair trades one
     # silence for another.
     invalid = int((~gdf.geometry.is_valid).sum())
+    input_repairs: list[dict[str, Any]] = []
     if invalid:
         from shapely.validation import make_valid
 
         gdf = gdf.copy()
         gdf[gdf.geometry.name] = gdf.geometry.apply(make_valid)
-        record.notes.append(
-            f"{invalid} invalid geometries repaired with make_valid BEFORE measuring: "
-            "the planar area of a self-intersecting ring is the signed shoelace, "
-            "which matches no region and is returned without complaint"
-        )
+        # Recorded as a repair, not as a note: `repairs` is where the rest of
+        # the system — and anyone reading the manifest — looks to find out
+        # whether MapSmith rewrote the caller's geometry.
+        input_repairs = [{
+            "round": 1,
+            "check": "input_geometry_valid",
+            "operation": "measure_area",
+            "action": f"make_valid applied to {invalid} input geometries BEFORE "
+            "measuring: the planar area of a self-intersecting ring is the signed "
+            "shoelace, which matches no region and is returned without complaint",
+            "error": None,
+            "resolved": True,
+        }]
+        record.add_repairs(input_repairs)
 
     geodesic = _geodesic_areas(gdf)
     if method == "planar":
@@ -1001,7 +1011,7 @@ def measure_area(
         # again would change what the recorded numbers describe
         repair=False,
     )
-    return {
+    result = {
         "output": str(output_path),
         "method": method,
         "area_column": area_column,
@@ -1012,6 +1022,14 @@ def measure_area(
         "verified": True,
         **extras,
     }
+    if input_repairs:
+        # audited() reports only the repairs it performed itself (none here:
+        # repair=False), so the pre-measurement one is added in the same shape.
+        result["repairs"] = [
+            {k: entry[k] for k in ("check", "action", "resolved")}
+            for entry in input_repairs
+        ]
+    return result
 
 
 def spatial_join(

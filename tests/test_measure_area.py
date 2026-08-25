@@ -99,8 +99,17 @@ def test_invalid_geometry_is_repaired_before_measuring_and_recorded(tmp_path):
     result = vector.measure_area(source, str(out), method="planar")
     # The repaired area is the two triangles: 2 x (100 x 30 / 2) = 3000.
     assert result["total_area_m2"] == 3000.0
+    # The repair must be where the rest of the system looks for repairs, in
+    # the manifest AND in the tool result — not buried in a free-text note.
+    assert result["repairs"] == [{
+        "check": "input_geometry_valid",
+        "action": result["repairs"][0]["action"],
+        "resolved": True,
+    }]
+    assert "BEFORE measuring" in result["repairs"][0]["action"]
     manifest = _manifest(out)
-    assert any("BEFORE measuring" in note for note in manifest["notes"])
+    assert manifest["repairs"][0]["check"] == "input_geometry_valid"
+    assert manifest["repairs"][0]["resolved"] is True
 
 
 def test_points_measure_zero_and_say_so(tmp_path):
