@@ -47,6 +47,18 @@ def _clip() -> Callable[..., dict[str, Any]]:
     return vector.clip
 
 
+def _overlay() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.overlay
+
+
+def _dissolve() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.dissolve
+
+
 def _reproject() -> Callable[..., dict[str, Any]]:
     from ..engines import vector
 
@@ -119,6 +131,17 @@ BINDINGS: dict[str, Binding] = {
         None,
         ("same_as", "input_path"),
         "vector",
+    ),
+    "overlay_layers": Binding(
+        _overlay,
+        ("input_path", "overlay_path"),
+        "output_path",
+        None,
+        ("same_as", "input_path"),
+        "vector",
+    ),
+    "dissolve_layer": Binding(
+        _dissolve, ("input_path",), "output_path", None, ("same_as", "input_path"), "vector"
     ),
     "reproject_layer": Binding(
         _reproject, ("input_path",), "output_path", None, ("target", "target_crs"), "vector"

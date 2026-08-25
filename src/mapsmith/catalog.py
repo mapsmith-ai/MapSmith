@@ -175,6 +175,141 @@ OPERATIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        "name": "overlay_layers",
+        "status": "available",
+        "category": "vector",
+        "summary": "Set-theoretic overlay of two layers: intersection, union, identity, "
+        "symmetric_difference, difference (CRS-aligned automatically)",
+        "description": (
+            "Combine two layers set-theoretically. how: intersection (default), union, "
+            "identity, symmetric_difference or difference. The overlay layer is "
+            "reprojected to the input CRS when they differ, with the decision recorded "
+            "in the provenance manifest. Overlay pieces of lower dimension than the "
+            "inputs (shared edges, corner contacts) are dropped and the manifest says "
+            "so. Inputs without a CRS are refused; an empty result carries a 'warnings' "
+            "entry instead of passing as a silent success."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "First layer (its CRS wins)",
+            },
+            {
+                "name": "overlay_path",
+                "type": "str",
+                "required": True,
+                "description": "Second layer, reprojected to the input CRS if needed",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output path (.parquet or .gpkg)",
+            },
+            {
+                "name": "how",
+                "type": "str",
+                "required": False,
+                "description": "intersection (default), union, identity, "
+                "symmetric_difference, difference",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Cropland that falls inside a flood-risk zone",
+                "call": {
+                    "tool": "overlay_layers",
+                    "arguments": {
+                        "input_path": "cropland.parquet",
+                        "overlay_path": "flood_zone.parquet",
+                        "output_path": "cropland_at_risk.parquet",
+                    },
+                },
+            },
+            {
+                "goal": "Municipal area NOT covered by any protected area",
+                "call": {
+                    "tool": "overlay_layers",
+                    "arguments": {
+                        "input_path": "municipality.gpkg",
+                        "overlay_path": "protected_areas.parquet",
+                        "output_path": "unprotected.parquet",
+                        "how": "difference",
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "dissolve_layer",
+        "status": "available",
+        "category": "vector",
+        "summary": "Merge features into one geometry per key, with the aggregation "
+        "recorded in the manifest and the group count verified",
+        "description": (
+            "Dissolve a layer: one output feature per distinct value of `by` (or one "
+            "feature in all, with no key). aggfunc — first (default), last, sum, mean, "
+            "median, min, max, count — is applied to the other columns and RECORDED in "
+            "the provenance manifest, because a sum reported where a mean was meant is "
+            "a plausible wrong number nobody can see. Features with a null key are "
+            "dropped by the grouping and counted in the manifest. The output feature "
+            "count is verified against the number of distinct keys."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Layer to dissolve (must have a CRS)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output path (.parquet or .gpkg)",
+            },
+            {
+                "name": "by",
+                "type": "str",
+                "required": False,
+                "description": "Column to group by; omit to merge everything into one "
+                "feature",
+            },
+            {
+                "name": "aggfunc",
+                "type": "str",
+                "required": False,
+                "description": "first (default), last, sum, mean, median, min, max, count",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Merge census tracts into districts, summing population",
+                "call": {
+                    "tool": "dissolve_layer",
+                    "arguments": {
+                        "input_path": "tracts.parquet",
+                        "output_path": "districts.parquet",
+                        "by": "district",
+                        "aggfunc": "sum",
+                    },
+                },
+            },
+            {
+                "goal": "One national boundary from all municipal polygons",
+                "call": {
+                    "tool": "dissolve_layer",
+                    "arguments": {
+                        "input_path": "municipalities.gpkg",
+                        "output_path": "country.parquet",
+                    },
+                },
+            },
+        ],
+    },
+    {
         "name": "reproject_layer",
         "status": "available",
         "category": "vector",

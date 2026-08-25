@@ -160,6 +160,56 @@ def clip_layer(input_path: str, mask_path: str, output_path: str) -> dict[str, A
 
 
 @mcp.tool(annotations=_WRITER)
+def overlay_layers(
+    input_path: str, overlay_path: str, output_path: str, how: str = "intersection"
+) -> dict[str, Any]:
+    """Set-theoretic overlay of two layers: intersection (default), union,
+    identity, symmetric_difference or difference.
+
+    The overlay layer is reprojected to the input CRS when they differ; the
+    decision is recorded in the provenance manifest. Overlay pieces of lower
+    dimension than the inputs (shared edges, corner contacts) are dropped, and
+    the manifest says so. Inputs without a CRS are refused; an empty result
+    comes back with a `warnings` entry, never as a silent success.
+    """
+    _guard(input_path=input_path, overlay_path=overlay_path, output_path=output_path)
+    return _run(
+        "overlay_layers",
+        {"input": input_path, "overlay": overlay_path, "output": output_path, "how": how},
+        vector.overlay,
+        input_path,
+        overlay_path,
+        output_path,
+        how,
+    )
+
+
+@mcp.tool(annotations=_WRITER)
+def dissolve_layer(
+    input_path: str, output_path: str, by: str | None = None, aggfunc: str = "first"
+) -> dict[str, Any]:
+    """Merge features into one geometry per value of `by` (or one feature in all).
+
+    aggfunc — first (default), last, sum, mean, median, min, max or count — is
+    applied to the other columns and RECORDED in the manifest: a sum reported
+    where a mean was meant is a plausible wrong number nobody can see. Features
+    with a null `by` key are dropped by the grouping and the manifest counts
+    them. The output feature count is verified against the number of distinct
+    keys, so a wrong grouping fails loudly instead of shipping.
+    """
+    _guard(input_path=input_path, output_path=output_path)
+    return _run(
+        "dissolve_layer",
+        {"input": input_path, "output": output_path, "by": by, "aggfunc": aggfunc},
+        vector.dissolve,
+        input_path,
+        output_path,
+        by,
+        aggfunc,
+    )
+
+
+@mcp.tool(annotations=_WRITER)
 def reproject_layer(input_path: str, target_crs: str, output_path: str) -> dict[str, Any]:
     """Reproject a layer to a target CRS, e.g. 'EPSG:32632' or a WKT string.
 

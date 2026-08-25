@@ -230,6 +230,145 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
     }
 
 
+OVERLAY_HOWS = {"intersection", "union", "identity", "symmetric_difference", "difference"}
+DISSOLVE_AGGFUNCS = {"first", "last", "sum", "mean", "median", "min", "max", "count"}
+
+
+def overlay(
+    input_path: str, overlay_path: str, output_path: str, how: str = "intersection"
+) -> dict[str, Any]:
+    if how not in OVERLAY_HOWS:
+        raise ValueError(f"how must be one of {sorted(OVERLAY_HOWS)}, got {how!r}")
+    left = _read(input_path)
+    right = _read(overlay_path)
+    record = ProvenanceRecord(
+        operation="overlay_layers",
+        parameters={"how": how, "keep_geom_type": True},
+        inputs=[
+            InputRecord.from_path(input_path, crs=verify.crs_label(left.crs)),
+            InputRecord.from_path(overlay_path, crs=verify.crs_label(right.crs)),
+        ],
+        engine=_engine_info(),
+    )
+    pre = verify.verify_loaded_inputs("overlay_layers", input_path=left, overlay_path=right)
+    if verify.has_critical_failure(pre):
+        record.add_verification(pre).finish().write_for(output_path)
+        verify.enforce(pre, "overlay_layers")
+    if left.crs != right.crs:
+        right = right.to_crs(left.crs)
+        record.crs_decisions = {
+            "analysis_crs": verify.crs_label(left.crs),
+            "reason": "overlay layer reprojected to the input CRS before overlaying",
+        }
+    else:
+        record.crs_decisions = {
+            "analysis_crs": verify.crs_label(left.crs),
+            "reason": "both layers share the same CRS; no reprojection needed",
+        }
+    # Two polygons that merely TOUCH intersect in a line, and a corner contact
+    # in a point. keep_geom_type=True drops those lower-dimension pieces — a
+    # semantic choice a reader of the result cannot see, so it is stated here
+    # and in the manifest rather than made silently.
+    record.notes.append(
+        "keep_geom_type=true: overlay pieces of lower dimension than the inputs "
+        "(shared edges, corner contacts) are dropped from the result"
+    )
+    pre += verify.verify_input_pairs("overlay_layers", input_path=left, overlay_path=right)
+    with verify.audit_on_failure(record, output_path, pre):
+        combined = gpd.overlay(left, right, how=how, keep_geom_type=True)
+        _write(combined, output_path)
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="overlay_layers",
+        preconditions=pre,
+        checks_fn=lambda: verify.verify_vector_output(
+            output_path,
+            expect_crs=left.crs,
+            # An empty intersection or difference is legitimate but suspicious,
+            # exactly like an empty clip: it comes back flagged, never silent.
+            on_empty="warn" if len(left) and len(right) else "ignore",
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "how": how,
+        "feature_count": len(combined),
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
+def dissolve(
+    input_path: str, output_path: str, by: str | None = None, aggfunc: str = "first"
+) -> dict[str, Any]:
+    if aggfunc not in DISSOLVE_AGGFUNCS:
+        raise ValueError(
+            f"aggfunc must be one of {sorted(DISSOLVE_AGGFUNCS)}, got {aggfunc!r}. "
+            "The aggregation is recorded in the provenance manifest: a sum reported "
+            "where a mean was meant is a plausible wrong number nobody can see."
+        )
+    gdf = _read(input_path)
+    if by is not None and by not in gdf.columns:
+        columns = [c for c in gdf.columns if c != gdf.geometry.name]
+        raise ValueError(
+            f"column {by!r} does not exist in {input_path}. Available columns: {columns}"
+        )
+    record = ProvenanceRecord(
+        operation="dissolve_layer",
+        parameters={"by": by, "aggfunc": aggfunc},
+        inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))],
+        engine=_engine_info(),
+    )
+    pre = verify.verify_loaded_inputs("dissolve_layer", input_path=gdf)
+    if verify.has_critical_failure(pre):
+        record.add_verification(pre).finish().write_for(output_path)
+        verify.enforce(pre, "dissolve_layer")
+    record.crs_decisions = {
+        "analysis_crs": verify.crs_label(gdf.crs),
+        "reason": "dissolve is a topological union; computed in the layer's native CRS",
+    }
+    # The group count is knowable BEFORE the engine runs: one output feature
+    # per distinct non-null key (or exactly one with no key). Declaring it here
+    # turns the row count into a closed-form postcondition instead of a report.
+    if by is None:
+        expected = 1 if len(gdf) else 0
+    else:
+        expected = int(gdf[by].nunique())
+        dropped = int(gdf[by].isna().sum())
+        if dropped:
+            record.notes.append(
+                f"{dropped} features have a null {by!r} key and are dropped by the "
+                "grouping (geopandas dissolve default) — they are not merged into "
+                "any group"
+            )
+    with verify.audit_on_failure(record, output_path, pre):
+        merged = gdf.dissolve(by=by, aggfunc=aggfunc, as_index=False)
+        _write(merged, output_path)
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="dissolve_layer",
+        preconditions=pre,
+        checks_fn=lambda: verify.verify_vector_output(
+            output_path,
+            expect_crs=gdf.crs,
+            expect_count=expected,
+            on_empty="ignore" if not len(gdf) else "warn",
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "by": by,
+        "aggfunc": aggfunc,
+        "feature_count": len(merged),
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
 def spatial_join(
     left_path: str, right_path: str, output_path: str, predicate: str = "intersects"
 ) -> dict[str, Any]:
