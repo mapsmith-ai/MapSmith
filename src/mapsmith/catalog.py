@@ -315,6 +315,129 @@ OPERATIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        "name": "nearest_join",
+        "status": "available",
+        "category": "vector",
+        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
+        "summary": "Nearest-neighbour join with the distance in meters in a named column "
+        "(UTM-measured on geographic CRS, decision recorded)",
+        "description": (
+            "Attach each feature's nearest neighbour from another layer, with the "
+            "distance IN METERS in a named column. Geographic-CRS inputs are measured "
+            "in an estimated UTM zone and returned in the input CRS, with the decision "
+            "recorded in the provenance manifest — a nearest distance in degrees is the "
+            "classic silent error of this operation. max_distance_meters drops pairs "
+            "farther than that; an emptied result carries a 'warnings' entry."
+        ),
+        "parameters": [
+            {
+                "name": "left_path",
+                "type": "str",
+                "required": True,
+                "description": "Layer whose features receive their nearest neighbour",
+            },
+            {
+                "name": "right_path",
+                "type": "str",
+                "required": True,
+                "description": "Layer providing the neighbours",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output path (.parquet or .gpkg)",
+            },
+            {
+                "name": "max_distance_meters",
+                "type": "float",
+                "required": False,
+                "description": "Drop pairs farther apart than this (meters, always)",
+            },
+            {
+                "name": "distance_column",
+                "type": "str",
+                "required": False,
+                "description": "Name of the distance column (default nearest_distance_m)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Nearest hospital for every school, with the distance",
+                "call": {
+                    "tool": "nearest_join",
+                    "arguments": {
+                        "left_path": "schools.parquet",
+                        "right_path": "hospitals.parquet",
+                        "output_path": "schools_hospital.parquet",
+                    },
+                },
+            },
+            {
+                "goal": "Wells within 500 m of a river, river attributes attached",
+                "call": {
+                    "tool": "nearest_join",
+                    "arguments": {
+                        "left_path": "wells.gpkg",
+                        "right_path": "rivers.parquet",
+                        "output_path": "wells_near_rivers.parquet",
+                        "max_distance_meters": 500,
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "explode_layer",
+        "status": "available",
+        "category": "vector",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "summary": "Split multi-part geometries into one feature per part, "
+        "with the part count verified",
+        "description": (
+            "Split every multi-part geometry into one feature per part, copying the "
+            "attributes. The output feature count is verified against the number of "
+            "parts counted before the engine ran, so a lost part fails loudly instead "
+            "of shipping. Inputs without a CRS are refused."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Layer to explode (must have a CRS)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output path (.parquet or .gpkg)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "One row per island from a multipolygon country layer",
+                "call": {
+                    "tool": "explode_layer",
+                    "arguments": {
+                        "input_path": "countries.parquet",
+                        "output_path": "islands.parquet",
+                    },
+                },
+            },
+            {
+                "goal": "Split multiline rivers into individual segments",
+                "call": {
+                    "tool": "explode_layer",
+                    "arguments": {
+                        "input_path": "rivers.gpkg",
+                        "output_path": "river_segments.parquet",
+                    },
+                },
+            },
+        ],
+    },
+    {
         "name": "reproject_layer",
         "status": "available",
         "category": "vector",

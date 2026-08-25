@@ -59,6 +59,18 @@ def _dissolve() -> Callable[..., dict[str, Any]]:
     return vector.dissolve
 
 
+def _nearest_join() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.nearest_join
+
+
+def _explode() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.explode
+
+
 def _reproject() -> Callable[..., dict[str, Any]]:
     from ..engines import vector
 
@@ -142,6 +154,17 @@ BINDINGS: dict[str, Binding] = {
     ),
     "dissolve_layer": Binding(
         _dissolve, ("input_path",), "output_path", None, ("same_as", "input_path"), "vector"
+    ),
+    "nearest_join": Binding(
+        _nearest_join,
+        ("left_path", "right_path"),
+        "output_path",
+        None,
+        ("same_as", "left_path"),
+        "vector",
+    ),
+    "explode_layer": Binding(
+        _explode, ("input_path",), "output_path", None, ("same_as", "input_path"), "vector"
     ),
     "reproject_layer": Binding(
         _reproject, ("input_path",), "output_path", None, ("target", "target_crs"), "vector"

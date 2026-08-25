@@ -210,6 +210,59 @@ def dissolve_layer(
 
 
 @mcp.tool(annotations=_WRITER)
+def nearest_join(
+    left_path: str,
+    right_path: str,
+    output_path: str,
+    max_distance_meters: float | None = None,
+    distance_column: str = "nearest_distance_m",
+) -> dict[str, Any]:
+    """Attach each feature's nearest neighbour from another layer, with the
+    distance IN METERS in a named column.
+
+    Geographic-CRS inputs are measured in an estimated UTM zone (decision
+    recorded in the manifest) and returned in the input CRS — a nearest
+    distance in degrees is the classic silent error of this operation, and it
+    cannot happen here. max_distance_meters drops pairs farther than that; an
+    emptied result comes back with a `warnings` entry, never silently.
+    """
+    _guard(left_path=left_path, right_path=right_path, output_path=output_path)
+    return _run(
+        "nearest_join",
+        {
+            "left": left_path,
+            "right": right_path,
+            "output": output_path,
+            "max_distance_meters": max_distance_meters,
+        },
+        vector.nearest_join,
+        left_path,
+        right_path,
+        output_path,
+        max_distance_meters,
+        distance_column,
+    )
+
+
+@mcp.tool(annotations=_WRITER)
+def explode_layer(input_path: str, output_path: str) -> dict[str, Any]:
+    """Split multi-part geometries into one feature per part (attributes copied).
+
+    The output feature count is verified against the number of parts counted
+    before the engine ran, so a lost part fails loudly instead of shipping.
+    Inputs without a CRS are refused.
+    """
+    _guard(input_path=input_path, output_path=output_path)
+    return _run(
+        "explode_layer",
+        {"input": input_path, "output": output_path},
+        vector.explode,
+        input_path,
+        output_path,
+    )
+
+
+@mcp.tool(annotations=_WRITER)
 def reproject_layer(input_path: str, target_crs: str, output_path: str) -> dict[str, Any]:
     """Reproject a layer to a target CRS, e.g. 'EPSG:32632' or a WKT string.
 

@@ -34,6 +34,8 @@ GOLDEN_QUERIES = {
     "reproject_layer": "convert a layer to a different coordinate system",
     "hillshade": "shaded relief image from elevation data",
     "spatial_join": "attach census attributes to buildings by location",
+    "nearest_join": "find the nearest hospital to each school with the distance",
+    "explode_layer": "split multipart geometries into single features",
 }
 
 

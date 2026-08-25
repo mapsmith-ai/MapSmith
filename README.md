@@ -122,7 +122,7 @@ had to repair. `get_provenance` returns it for any output.
   without the LLM is in there. No AI slop.
 - **The engines compute, the model orchestrates.** Geometry and numbers only ever come
   from deterministic tool executions — never from model output.
-- **Semantic tools, not a tool dump — and a catalog built for thousands.** 20 goal-level
+- **Semantic tools, not a tool dump — and a catalog built for thousands.** 22 goal-level
   tools plus a searchable operation catalog (progressive discovery), because agent accuracy
   collapses when you expose hundreds of raw tools. Every catalog entry declares what it
   applies to (input kind, CRS demand), so discovery **narrows deterministically before it
@@ -146,6 +146,8 @@ had to repair. `get_provenance` returns it for any output.
 | `clip_layer` | Clip a layer with a mask layer |
 | `overlay_layers` | Set-theoretic overlay (intersection/union/difference/…); dropped lower-dimension pieces are declared in the manifest |
 | `dissolve_layer` | Merge features per key; the aggregation is recorded in the manifest and the group count verified |
+| `nearest_join` | Nearest neighbour with the distance in meters, UTM-measured on geographic CRS (decision recorded) |
+| `explode_layer` | Multi-part to single-part, with the part count verified in closed form |
 | `reproject_layer` | Reproject to any CRS (EPSG code or WKT) |
 | `spatial_join` | Join by spatial predicate, auto-routed to the fastest engine (SedonaDB > DuckDB > GeoPandas) |
 | `run_sql` | Spatial SQL (DuckDB dialect) over GeoParquet and GDAL formats |
@@ -394,7 +396,7 @@ detects it, converts the input first, and discloses the workaround in the manife
   workspace — which is what the container runs with by default. DuckDB's own HTTP and S3
   filesystems stay off in every mode, so `read_parquet('s3://…')` does not work even with
   the opt-in: fetch the data down first, or run unconfined with remote reads on.
-- **You want the full breadth of a desktop GIS.** 20 tools plus a catalog that tells the
+- **You want the full breadth of a desktop GIS.** 22 tools plus a catalog that tells the
   agent what does *not* exist yet. The ~900 QGIS Processing algorithms are on the roadmap,
   not in the box.
 - **You expect plan validation to make a weak model strong.** Our own A/B says advisory

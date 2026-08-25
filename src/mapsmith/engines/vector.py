@@ -369,6 +369,135 @@ def dissolve(
     }
 
 
+def nearest_join(
+    left_path: str,
+    right_path: str,
+    output_path: str,
+    max_distance_meters: float | None = None,
+    distance_column: str = "nearest_distance_m",
+) -> dict[str, Any]:
+    if max_distance_meters is not None and max_distance_meters <= 0:
+        raise ValueError(f"max_distance_meters must be positive, got {max_distance_meters}")
+    left = _read(left_path)
+    right = _read(right_path)
+    record = ProvenanceRecord(
+        operation="nearest_join",
+        parameters={
+            "max_distance_meters": max_distance_meters,
+            "distance_column": distance_column,
+        },
+        inputs=[
+            InputRecord.from_path(left_path, crs=verify.crs_label(left.crs)),
+            InputRecord.from_path(right_path, crs=verify.crs_label(right.crs)),
+        ],
+        engine=_engine_info(),
+    )
+    pre = verify.verify_loaded_inputs("nearest_join", left_path=left, right_path=right)
+    if verify.has_critical_failure(pre):
+        record.add_verification(pre).finish().write_for(output_path)
+        verify.enforce(pre, "nearest_join")
+
+    original_crs = left.crs
+    if right.crs != left.crs:
+        right = right.to_crs(left.crs)
+    if original_crs.is_geographic:
+        # The distance column is in METERS, always: nearest-in-degrees is the
+        # classic silent killer of this operation (a degree of longitude is not
+        # a degree of latitude, and neither is a metre).
+        analysis_crs = left.estimate_utm_crs()
+        record.crs_decisions = {
+            "analysis_crs": str(analysis_crs),
+            "reason": (
+                "estimated UTM zone for metric nearest-distance on a geographic CRS; "
+                "output geometries are returned in the input CRS"
+            ),
+        }
+        left_m, right_m = left.to_crs(analysis_crs), right.to_crs(analysis_crs)
+    else:
+        record.crs_decisions = {
+            "analysis_crs": verify.crs_label(original_crs),
+            "reason": "nearest distances measured in the layers' native projected CRS",
+        }
+        left_m, right_m = left, right
+    pre += verify.verify_input_pairs("nearest_join", left_path=left_m, right_path=right_m)
+    with verify.audit_on_failure(record, output_path, pre):
+        joined = gpd.sjoin_nearest(
+            left_m, right_m, max_distance=max_distance_meters, distance_col=distance_column
+        )
+        joined = joined.drop(columns=[c for c in ("index_right",) if c in joined.columns])
+        if original_crs.is_geographic:
+            joined = joined.to_crs(original_crs)
+        _write(joined, output_path)
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="nearest_join",
+        preconditions=pre,
+        checks_fn=lambda: verify.verify_vector_output(
+            output_path,
+            expect_crs=original_crs,
+            # max_distance can legitimately empty the result; it comes back
+            # flagged rather than silent, like every suspicious emptiness.
+            on_empty="warn" if len(left) and len(right) else "ignore",
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "feature_count": len(joined),
+        "distance_column": distance_column,
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
+def explode(input_path: str, output_path: str) -> dict[str, Any]:
+    gdf = _read(input_path)
+    record = ProvenanceRecord(
+        operation="explode_layer",
+        parameters={},
+        inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))],
+        engine=_engine_info(),
+    )
+    pre = verify.verify_loaded_inputs("explode_layer", input_path=gdf)
+    if verify.has_critical_failure(pre):
+        record.add_verification(pre).finish().write_for(output_path)
+        verify.enforce(pre, "explode_layer")
+    record.crs_decisions = {
+        "analysis_crs": verify.crs_label(gdf.crs),
+        "reason": "explode changes structure, not coordinates; computed in the native CRS",
+    }
+    # The output size is knowable before the engine runs: one feature per
+    # part. Declaring it turns the count into a closed-form postcondition.
+    expected = int(
+        gdf.geometry.apply(
+            lambda g: len(g.geoms) if hasattr(g, "geoms") else 1
+        ).sum()
+    )
+    with verify.audit_on_failure(record, output_path, pre):
+        parts = gdf.explode(index_parts=False, ignore_index=True)
+        _write(parts, output_path)
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="explode_layer",
+        preconditions=pre,
+        checks_fn=lambda: verify.verify_vector_output(
+            output_path,
+            expect_crs=gdf.crs,
+            expect_count=expected,
+            on_empty="ignore" if not len(gdf) else "warn",
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "feature_count": len(parts),
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
 def spatial_join(
     left_path: str, right_path: str, output_path: str, predicate: str = "intersects"
 ) -> dict[str, Any]:
