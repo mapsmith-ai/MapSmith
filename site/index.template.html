@@ -285,13 +285,31 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     searchable catalogue rather than in the tool list. What is exposed is what an agent has to
     choose between.
   </p>
+  <h3 style="margin-top:2rem">Two search engines over one catalogue</h3>
   <p>
-    The catalogue itself is built to hold thousands of entries. Every operation declares what it
-    applies to, so discovery <strong>narrows deterministically before it ranks</strong> — a
-    geographic raster is never offered an operation that would refuse it, and no model is in that
-    loop. Ranking then runs on two interchangeable engines over the same corpus: lexical by
-    default, revision-pinned static embeddings optionally — with retrieval quality measured
-    against golden queries as the catalogue grows, so the scaling limit is a curve, not a guess.
+    {{TOOL_COUNT}} tools are exposed; the catalogue behind them holds {{CATALOG_COUNT}} operations
+    today and is built for thousands. Reaching that scale is a retrieval problem, so it is treated
+    as one — and measured like one, rather than assumed away.
+  </p>
+  <p>
+    Every operation declares what it applies to — input kind, whether it demands a projected CRS —
+    so discovery <strong>narrows deterministically before it ranks</strong>. A geographic raster is
+    never offered an operation that would refuse it, and no model is in that loop: the filter is
+    a property of the data, checked in code.
+  </p>
+  <p>
+    What survives the filter is then ranked by <strong>either of two interchangeable engines over
+    the same corpus</strong> — a lexical one that ships by default with no dependencies and no
+    network, and a <strong>vector engine</strong> using revision-pinned static embeddings, exact
+    to the bit across runs and machines. Both read the identical text, so a comparison between
+    them measures the ranking and nothing else. Both are held to golden queries in the test suite
+    with their latency recorded, which is what turns the scaling limit into a curve you can watch
+    instead of a number someone guessed.
+  </p>
+  <p class="pull">
+    Determinism is the point of doing it this way. Semantic search that reaches for a hosted
+    embedding API makes tool discovery a network call whose answer can change under you; here the
+    model revision is pinned in the source and the vectors come out identical byte for byte.
   </p>
   <table class="tools" style="margin-top:1.75rem">
     <tr><td>buffer_layer · clip_layer · overlay_layers · dissolve_layer</td><td>Vector geometry, with the metric-on-geographic trap handled explicitly rather than silently</td></tr>

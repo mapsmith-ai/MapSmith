@@ -247,12 +247,19 @@ def main(destination: Path) -> int:
         int(row.rsplit(":", 1)[1])
         for row in _git("grep", "-c", "^def test_", "--", "tests/").splitlines()
     )
+    # Catalogue entries, which is a different claim from exposed tools and the
+    # one the discovery section is about: capability count has no ceiling, the
+    # count an agent chooses between does.
+    from mapsmith import catalog
+
+    catalog_count = len(catalog.OPERATIONS)
 
     page = (Path(__file__).parent / "index.template.html").read_text(encoding="utf-8")
     for placeholder, value in {
         "{{MANIFEST}}": highlight(manifest),
         "{{VERSION}}": __version__,
         "{{TOOL_COUNT}}": str(tool_count),
+        "{{CATALOG_COUNT}}": str(catalog_count),
         "{{TEST_COUNT}}": str(test_count),
         "{{COMMIT}}": _git("rev-parse", "--short", "HEAD") or "unknown",
         "{{BUILT}}": manifest["finished_at"][:10],

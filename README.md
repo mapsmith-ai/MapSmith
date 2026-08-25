@@ -123,15 +123,9 @@ had to repair. `get_provenance` returns it for any output.
 - **The engines compute, the model orchestrates.** Geometry and numbers only ever come
   from deterministic tool executions — never from model output.
 - **Semantic tools, not a tool dump — and a catalog built for thousands.** 27 goal-level
-  tools plus a searchable operation catalog (progressive discovery), because agent accuracy
-  collapses when you expose hundreds of raw tools. Every catalog entry declares what it
-  applies to (input kind, CRS demand), so discovery **narrows deterministically before it
-  ranks** — a geographic raster is never offered an operation that would refuse it, and no
-  model is in that loop. Ranking runs on two interchangeable engines over the same corpus:
-  BM25 by default (deterministic, dependency-free) and revision-pinned static embeddings
-  (`[retrieval]` extra, golden-vector tested); retrieval quality is measured against golden
-  queries in the test suite as the catalog grows, so the scaling limit is a curve, not a
-  guess.
+  tools plus a searchable operation catalog, because agent accuracy collapses when you
+  expose hundreds of raw tools. Two search engines rank it and both are measured — see
+  [Finding the right operation](#finding-the-right-operation).
 - **Model-agnostic infrastructure.** Claude, GPT, Qwen, Kimi, GLM — anything that speaks
   MCP, cloud or local. The leverage is better contracts (typed plans, actionable error
   codes, a searchable catalog), not weights we would have to maintain. See
@@ -166,8 +160,38 @@ had to repair. `get_provenance` returns it for any output.
 | `validate_plan` | Statically validate a multi-step plan before running anything: operations, arguments, references, input files, simulated CRS flow |
 | `execute_plan` | Validate then run a plan step by step, with per-step provenance and a plan-level manifest |
 | `get_provenance` | Return the full lineage manifest of any MapSmith output |
-| `list_operations` | BM25-ranked catalog search; `detail=true` returns parameters and worked examples |
+| `list_operations` | Catalog search over both ranking engines; `detail=true` returns parameters and worked examples |
 | `server_info` | Version, license, available engines |
+
+### Finding the right operation
+
+Those are the tools an agent chooses between. Behind them the **catalog** holds every
+operation MapSmith can perform, and it is built to hold thousands: tool-selection accuracy
+degrades past a few dozen *exposed* tools, while capability count has no such ceiling. That
+makes reaching scale a retrieval problem, so it is treated as one — and measured like one.
+
+**First it narrows, deterministically.** Every catalog entry declares what it applies to:
+input kind (vector, raster, dataset, plan) and whether it demands a projected CRS. A
+geographic raster is never offered `slope`, because `slope` refuses one — and that filter
+is a property of the data checked in code, with no model in the loop.
+
+**Then it ranks, with either of two interchangeable engines over the same corpus:**
+
+| engine | what it is | what it guarantees |
+|---|---|---|
+| lexical (default) | Okapi BM25, ~40 lines, no dependencies and no network | Identical scores on every machine; term-sorted accumulation, because float addition is not associative |
+| **vector** (`[retrieval]` extra) | Static embeddings, model **revision pinned in the source**, 512 dimensions, ~30 MB, CPU-only | Bit-identical vectors across runs and machines, asserted against a golden vector in the test suite |
+
+Both engines embed the *identical* document text (`catalog.document_text`), so a comparison
+between them measures the ranking and nothing else. Both are held to a golden query set in
+the test suite — expected operation in the top 3 — with their per-query latency recorded as
+the catalog grows. That is what turns the scaling limit into a curve you can watch rather
+than a number someone guessed.
+
+Determinism is the reason for building it this way rather than reaching for a hosted
+embedding API: that would make tool discovery a network call whose answer can change under
+you, and an agent that finds a different tool tomorrow for the same question is not
+reproducible, whatever its manifest says.
 
 ### Formats
 
