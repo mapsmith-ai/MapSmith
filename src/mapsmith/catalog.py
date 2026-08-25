@@ -24,6 +24,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "describe_dataset",
         "status": "available",
         "category": "inspection",
+        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
         "summary": "Inspect a vector or raster dataset: CRS, schema/bands, extent, "
         "nodata, statistics",
         "description": (
@@ -63,6 +64,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "buffer_layer",
         "status": "available",
         "category": "vector",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Metric buffer with automatic UTM estimation on geographic CRS",
         "description": (
             "Buffer every feature by a distance in meters. Inputs in a geographic CRS "
@@ -121,6 +123,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "clip_layer",
         "status": "available",
         "category": "vector",
+        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
         "summary": "Clip a layer with a mask layer (CRS-aligned automatically)",
         "description": (
             "Keep only the parts of the input that fall inside the mask layer's area. "
@@ -178,6 +181,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "overlay_layers",
         "status": "available",
         "category": "vector",
+        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
         "summary": "Set-theoretic overlay of two layers: intersection, union, identity, "
         "symmetric_difference, difference (CRS-aligned automatically)",
         "description": (
@@ -246,6 +250,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "dissolve_layer",
         "status": "available",
         "category": "vector",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Merge features into one geometry per key, with the aggregation "
         "recorded in the manifest and the group count verified",
         "description": (
@@ -313,6 +318,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "reproject_layer",
         "status": "available",
         "category": "vector",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Reproject a layer to a target CRS (EPSG code or WKT)",
         "description": (
             "Transform a dataset to a target coordinate reference system. Use it before "
@@ -370,6 +376,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "spatial_join",
         "status": "available",
         "category": "vector",
+        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
         "summary": "Join by spatial predicate (intersects/within/contains); auto-routed to "
         "SedonaDB or DuckDB for speed, GeoPandas fallback",
         "description": (
@@ -454,6 +461,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "run_sql",
         "status": "available",
         "category": "sql",
+        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
         "summary": "Spatial SQL (DuckDB dialect, ST_* functions) over GeoParquet and GDAL "
         "formats; materializes GeoParquet outputs with provenance",
         "description": (
@@ -516,6 +524,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "zonal_statistics",
         "status": "available",
         "category": "raster",
+        "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False},
         "summary": "Statistics of a raster within vector zones via exactextract "
         "(exact fractional pixel coverage); requires the [raster] extra",
         "description": (
@@ -584,6 +593,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "get_provenance",
         "status": "available",
         "category": "provenance",
+        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
         "summary": "Full lineage manifest of any MapSmith output",
         "description": (
             "Return the complete lineage manifest of a dataset MapSmith wrote: inputs "
@@ -620,6 +630,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "hillshade",
         "status": "available",
         "category": "terrain",
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
         "summary": "Shaded relief from a DEM (Whitebox engine, in-memory); "
         "requires the [whitebox] extra",
         "description": (
@@ -686,6 +697,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "slope",
         "status": "available",
         "category": "terrain",
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": True},
         "summary": "Slope gradient from a DEM in degrees, percent or radians "
         "(Whitebox engine); requires the [whitebox] extra",
         "description": (
@@ -747,6 +759,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "aspect",
         "status": "available",
         "category": "terrain",
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": True},
         "summary": "Aspect from a DEM: downslope azimuth in degrees, 0 = north, "
         "flat cells = -1 (Whitebox engine); requires the [whitebox] extra",
         "description": (
@@ -797,6 +810,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "flow_accumulation",
         "status": "available",
         "category": "hydrology",
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
         "summary": "D8 flow accumulation from a DEM with automatic depression filling; "
         "requires the [whitebox] extra",
         "description": (
@@ -857,6 +871,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "watershed",
         "status": "available",
         "category": "hydrology",
+        "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False},
         "summary": "Watershed delineation from a DEM and pour points (Whitebox engine); "
         "requires the [whitebox] extra",
         "description": (
@@ -916,6 +931,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "validate_plan",
         "status": "available",
         "category": "planning",
+        "applicability": {"inputs": ["plan"], "requires_projected_crs": False},
         "summary": "Static validation of a multi-step plan before execution: operations, "
         "arguments, references, input files, simulated CRS flow",
         "description": (
@@ -995,6 +1011,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "execute_plan",
         "status": "available",
         "category": "planning",
+        "applicability": {"inputs": ["plan"], "requires_projected_crs": False},
         "summary": "Validate then run a multi-step plan; per-step provenance plus a "
         "plan-level manifest tying the chain together",
         "description": (
@@ -1082,6 +1099,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "preview_map",
         "status": "available",
         "category": "visualization",
+        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
         "summary": "Interactive in-chat map of one or more datasets (MCP Apps panel) "
         "with per-layer provenance and verification status",
         "description": (
@@ -1128,12 +1146,14 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "isochrone",
         "status": "planned",
         "category": "network",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Travel-time polygons (Valhalla engine)",
     },
     {
         "name": "qgis_processing",
         "status": "planned",
         "category": "bridge",
+        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
         "summary": "~900 QGIS/GRASS/SAGA algorithms via GPL-isolated subprocess sidecar",
     },
 ]
