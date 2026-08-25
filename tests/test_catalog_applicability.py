@@ -60,3 +60,38 @@ def test_search_applies_the_filter_before_bm25():
     assert all(entry["name"] != "slope" for entry in hits)
     hits_projected = catalog.search("slope in degrees", input_kind="raster", projected=True)
     assert hits_projected and hits_projected[0]["name"] == "slope"
+
+
+def test_search_names_its_engine_and_refuses_an_unknown_one():
+    """Every result says which engine ranked it: a score of 10.03 and one of
+    0.38 are not comparable, and a caller reading both needs to know which
+    scale it is on."""
+    hits = catalog.search("area of a parcel", limit=3)
+    assert hits and all(entry["engine"] == "lexical" for entry in hits)
+    with pytest.raises(ValueError, match="engine must be one of"):
+        catalog.search("area", engine="nonsense")
+
+
+def test_auto_engine_always_answers_whatever_is_installed():
+    """auto is the deployment switch: it must never fail for want of an extra.
+    With the extra it ranks by vectors, without it by BM25 — either way the
+    caller gets results and is told which."""
+    hits = catalog.search("how big is this field really", limit=3, engine="auto")
+    assert hits
+    engines = {entry["engine"] for entry in hits}
+    assert engines in ({"vector"}, {"lexical"}), engines
+
+
+def test_the_vector_engine_also_narrows_before_it_ranks():
+    """The applicability filter is not a property of BM25: it runs first for
+    both engines, or the guarantee is only true of the default one."""
+    pytest.importorskip("model2vec")
+    hits = catalog.search(
+        "slope in degrees", input_kind="raster", projected=False, engine="vector"
+    )
+    assert hits and all(entry["name"] not in ("slope", "aspect") for entry in hits)
+    assert all(entry["engine"] == "vector" for entry in hits)
+    projected = catalog.search(
+        "steepness of the terrain", input_kind="raster", projected=True, engine="vector"
+    )
+    assert {"slope", "aspect"} & {entry["name"] for entry in projected}

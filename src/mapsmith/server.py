@@ -735,6 +735,7 @@ def list_operations(
     limit: int = 10,
     input_kind: str | None = None,
     projected: bool | None = None,
+    engine: str = "lexical",
 ) -> list[dict[str, Any]]:
     """Search the catalog of available and planned operations (progressive discovery).
 
@@ -747,9 +748,23 @@ def list_operations(
     detail=True adds parameters and worked example calls — use it on the exact
     operation name before calling an unfamiliar tool. Empty query lists every
     applicable operation, planned ones included.
+
+    Two ranking engines are available over the same corpus, and every result
+    says which one produced it. engine='lexical' (default) is BM25: identical
+    scores on every machine, no dependencies, no network. engine='vector' uses
+    revision-pinned static embeddings (the [retrieval] extra) and matches
+    wording the catalog does not literally contain. engine='auto' takes the
+    vector engine when it is installed and falls back to lexical when it is
+    not. If a query returns nothing useful, the other engine is one argument
+    away.
     """
     return catalog.search(
-        query, limit=limit, detail=detail, input_kind=input_kind, projected=projected
+        query,
+        limit=limit,
+        detail=detail,
+        input_kind=input_kind,
+        projected=projected,
+        engine=engine,
     )
 
 

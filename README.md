@@ -27,8 +27,10 @@ hundred-line emitter that never imports MapSmith. Records carry `spec_version`, 
 real MapSmith output against the spec's own validator.
 
 Evidence before promises: an [A/B on GABench](docs/benchmarks.md) whose headline is a null
-result — with the analysis that took our own positive number apart — [notebooks](examples/)
-on a real USGS DEM of Mount St. Helens, and an
+result — with the analysis that took our own positive number apart — a correctness suite in
+its own organisation, [**Argleton**](https://argleton.org), whose published run grades
+MapSmith on eight traps with answers computed on paper and has already sent two defects back
+here, [notebooks](examples/) on a real USGS DEM of Mount St. Helens, and an
 [in-chat map panel](#see-results-inside-the-chat) that shows the verification status of
 every layer it draws.
 
@@ -123,8 +125,10 @@ had to repair. `get_provenance` returns it for any output.
 - **The engines compute, the model orchestrates.** Geometry and numbers only ever come
   from deterministic tool executions — never from model output.
 - **Semantic tools, not a tool dump — and a catalog built for thousands.** 27 goal-level
-  tools plus a searchable operation catalog, because agent accuracy collapses when you
-  expose hundreds of raw tools. Two search engines rank it and both are measured — see
+  tools plus a searchable operation catalog, because tool-selection accuracy degrades once
+  a few dozen tools are exposed at once, and fastest when two of them apply to the same
+  input. Capability count has no such ceiling, so capability lives in the catalog. Two
+  search engines rank it and both are measured — see
   [Finding the right operation](#finding-the-right-operation).
 - **Model-agnostic infrastructure.** Claude, GPT, Qwen, Kimi, GLM — anything that speaks
   MCP, cloud or local. The leverage is better contracts (typed plans, actionable error
@@ -142,11 +146,11 @@ had to repair. `get_provenance` returns it for any output.
 | `dissolve_layer` | Merge features per key; the aggregation is recorded in the manifest and the group count verified |
 | `nearest_join` | Nearest neighbour with the distance in meters, UTM-measured on geographic CRS (decision recorded) |
 | `explode_layer` | Multi-part to single-part, with the part count verified in closed form |
-| `measure_area` | Area in m² — ground (ellipsoidal) or planar with the CRS's own unit; invalid rings repaired before measuring, and a plane that is not equal-area here comes back with the ratio |
+| `measure_area` | Area in m², always: ground on the ellipsoid, or planar converted with the CRS's own declared linear unit (survey feet are not metres). Invalid rings repaired *before* measuring, and a plane that is not equal-area here comes back with the ratio against the ground area |
 | `merge_layers` | Append layers (schema union); null-filled columns are named in the manifest, the count verified against the sum |
 | `simplify_layer` | Douglas-Peucker with the drift measured: area/length before and after recorded in the manifest |
 | `centroid_layer` | Geometric centroids computed in a metric CRS, never on degrees (decision recorded) |
-| `convert_format` | Convert between GeoParquet/GeoPackage/GeoJSON, re-read and verified; lossy conversions refused with the reason |
+| `convert_format` | Convert between GeoParquet/GeoPackage/GeoJSON by output extension, re-read and verified (count and CRS). Two conversions are refused with the reason rather than performed: shapefile output, which truncates field names to 10 characters silently, and GeoJSON for a non-WGS84 layer |
 | `reproject_layer` | Reproject to any CRS (EPSG code or WKT) |
 | `spatial_join` | Join by spatial predicate, auto-routed to the fastest engine (SedonaDB > DuckDB > GeoPandas) |
 | `run_sql` | Spatial SQL (DuckDB dialect) over GeoParquet and GDAL formats |
@@ -160,7 +164,7 @@ had to repair. `get_provenance` returns it for any output.
 | `validate_plan` | Statically validate a multi-step plan before running anything: operations, arguments, references, input files, simulated CRS flow |
 | `execute_plan` | Validate then run a plan step by step, with per-step provenance and a plan-level manifest |
 | `get_provenance` | Return the full lineage manifest of any MapSmith output |
-| `list_operations` | Catalog search over both ranking engines; `detail=true` returns parameters and worked examples |
+| `list_operations` | Catalog search: the applicability filter, then ranking by `engine` — BM25, embeddings, or auto; `detail=true` returns parameters and worked examples |
 | `server_info` | Version, license, available engines |
 
 ### Finding the right operation
@@ -175,12 +179,21 @@ input kind (vector, raster, dataset, plan) and whether it demands a projected CR
 geographic raster is never offered `slope`, because `slope` refuses one — and that filter
 is a property of the data checked in code, with no model in the loop.
 
-**Then it ranks, with either of two interchangeable engines over the same corpus:**
+**Then it ranks, with either of two engines the caller can pick.** `list_operations` takes
+`engine`: `lexical` (the default), `vector`, or `auto` — which uses the vector engine where it
+is installed and falls back to lexical where it is not. Every result carries the engine that
+produced it, because a BM25 score of 10.03 and a cosine of 0.38 are not on the same scale. If
+a query comes back useless, the other engine is one argument away.
 
 | engine | what it is | what it guarantees |
 |---|---|---|
-| lexical (default) | Okapi BM25, ~40 lines, no dependencies and no network | Identical scores on every machine; term-sorted accumulation, because float addition is not associative |
-| **vector** (`[retrieval]` extra) | Static embeddings, model **revision pinned in the source**, 512 dimensions, ~30 MB, CPU-only | Bit-identical vectors across runs and machines, asserted against a golden vector in the test suite |
+| `lexical` — **the default** | Okapi BM25, ~40 lines, no dependencies and no network | Identical scores on every machine; term-sorted accumulation, because float addition is not associative |
+| `vector` (`[retrieval]` extra) | Static embeddings — a token lookup plus pooling, no transformer, no GPU. Model **revision pinned in the source**, 512 dimensions, ~130 MB of artifacts fetched once | Bit-identical across calls in one process (measured, multiprocessing off), with the vectors themselves pinned by a golden-vector test — so a change in the model, the tokenizer or the pooling fails a test instead of an analysis |
+| `auto` — the deployment switch | The vector engine when the extra is present, lexical otherwise | A deployment can turn embeddings on without any caller changing; a missing extra degrades to a working default rather than an error |
+
+The default stays lexical for one reason: a default that needs a download is not a default.
+The applicability filter above runs first for **both** engines — otherwise the guarantee would
+only be true of one of them, and there is a test that says so.
 
 Both engines embed the *identical* document text (`catalog.document_text`), so a comparison
 between them measures the ranking and nothing else. Both are held to a golden query set in
@@ -191,7 +204,9 @@ than a number someone guessed.
 Determinism is the reason for building it this way rather than reaching for a hosted
 embedding API: that would make tool discovery a network call whose answer can change under
 you, and an agent that finds a different tool tomorrow for the same question is not
-reproducible, whatever its manifest says.
+reproducible, whatever its manifest says. The one network access left is the model download
+on first use, at the pinned revision; after that the vector engine is local, and an install
+that never makes it keeps BM25 — which is why BM25, not the embedding, is the default.
 
 ### Formats
 
@@ -455,13 +470,25 @@ Next, in the order we intend to do it. The linked items carry a written spec —
   dismiss in one line. Closed-form truth, no model in the evaluator, fixtures rebuilt rather than
   vendored.
 
-  Its [first published result](https://argleton.org/#results) measures MapSmith, and says something
-  about us worth repeating here: **MapSmith scores 0 on those traps and its verification had nothing
-  to do with it.** Seven checks passed on that run and not one looks at whether the number is right
-  — the answer was correct because the underlying reader was. A provenance manifest records what was
-  done; it does not certify that it was right, and this README used to imply otherwise by promising
-  a run "with verification *disabled*". There is no such switch, we are not adding one, and on those
-  families it would change nothing. #25 is closed against Argleton rather than left open here.
+  Its [published results](https://argleton.org/#results) measure MapSmith, and what they say about
+  us is why they are linked from here. On the current eight-family run MapSmith answers every trap
+  correctly — **0.00 silent errors over 8 traps, nothing skipped** — and the run itself separates
+  the passes it earned from the ones it did not: the mismatched-CRS join and the feet-as-metres
+  unit are MapSmith's own discipline, the Web Mercator pass comes from a default (ground area is
+  geodesic unless you ask for the plane) rather than from care, and the TIFF-predictor pass is
+  still rasterio's. **The finding from the first run stands and matters more than the score: that
+  0 and MapSmith's verification had nothing to do with each other** — seven checks passed on that
+  trap and not one of them looks at whether the number is right. A provenance manifest records what
+  was done; it does not certify that it was right, and this README used to imply otherwise by
+  promising a run "with verification *disabled*". There is no such switch and we are not adding one.
+
+  Two defects have come back from it, which is the return we wanted from putting the suite outside:
+  a multi-layer container resolved silently to its default layer, answering 4 features where the
+  truth was 31 ([#29](https://github.com/mapsmith-ai/MapSmith/issues/29), filed before the trap was
+  published), and three probes that came back `unsupported` because MapSmith had no area operation
+  at all — `measure_area` exists because a trap said so, and it carries the first check here that
+  asks whether the *number* is right rather than whether the operation ran. #25 is closed against
+  Argleton rather than left open here.
 - [ ] [Agent-loop repair](https://github.com/mapsmith-ai/MapSmith/issues/26): hand verification failures back to the agent as structured, actionable errors, with a bounded retry budget recorded in the manifest. Our [own measurements](docs/benchmarks.md) say the runtime error message is the information channel that works
 - [ ] [Tool contracts that carry their own rules](https://github.com/mapsmith-ai/MapSmith/issues/27): argument constraints enforced *and* stated, and errors that name the rule rather than only the violation. The one intervention in our benchmark work that moved a metric past its noise floor
 - [ ] [Satellite embeddings as a first-class input](https://github.com/mapsmith-ai/MapSmith/issues/24): per-zone embedding vectors (multiband zonal statistics) and similarity rasters against a reference location, over the open [AlphaEarth annual dataset](https://developers.google.com/earth-engine/guides/aef_on_gcs_readme) (CC-BY 4.0 COGs). Deterministic arithmetic on a raster — no model inference in MapSmith — with the tile, year and reference vector recorded in the manifest

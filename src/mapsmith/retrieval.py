@@ -68,24 +68,43 @@ def _index():
     return vectors / norms
 
 
-def rank(query: str, limit: int = 10) -> list[tuple[dict[str, Any], float]]:
+@cache
+def _row_of() -> dict[str, int]:
+    """Catalog name to its row in :func:`_index`, so a narrowed candidate set
+    can be scored against the same embeddings instead of a second index."""
+    from . import catalog
+
+    return {op["name"]: row for row, op in enumerate(catalog.OPERATIONS)}
+
+
+def rank(
+    query: str,
+    limit: int = 10,
+    candidates: list[dict[str, Any]] | None = None,
+) -> list[tuple[dict[str, Any], float]]:
     """Catalog entries ranked by cosine similarity to the query.
 
     Same signature and tie-break as :func:`mapsmith.catalog.rank`, so the two
     engines are interchangeable behind one interface and comparable in one
-    harness.
+    harness. ``candidates`` restricts the ranking to an already-narrowed subset
+    (the deterministic applicability filter runs first, for both engines).
     """
     import numpy as np
 
     from . import catalog
 
+    operations = catalog.OPERATIONS if candidates is None else candidates
+    if not operations:
+        return []
     vector = embed([query])[0]
     norm = float(np.linalg.norm(vector))
     if norm == 0:
-        return [(op, 0.0) for op in catalog.OPERATIONS][:limit]
-    scores = _index() @ (vector / norm)
+        return [(op, 0.0) for op in operations][:limit]
+    rows = _row_of()
+    matrix = _index()[[rows[op["name"]] for op in operations]]
+    scores = matrix @ (vector / norm)
     ranked = sorted(
-        zip(catalog.OPERATIONS, (float(s) for s in scores), strict=True),
+        zip(operations, (float(s) for s in scores), strict=True),
         key=lambda pair: (-pair[1], pair[0]["name"]),
     )
     return ranked[:limit]

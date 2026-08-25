@@ -8,12 +8,64 @@ All notable changes to MapSmith are documented here, in the format of
 
 ### Added
 
+- **Nine more tools, 18 → 27.** `describe_dataset` now reads rasters as well as
+  vectors; `slope` and `aspect` land on the Whitebox engine (geographic-CRS DEMs
+  refused rather than measured in degrees); `merge_layers`, `simplify_layer`,
+  `centroid_layer` and `convert_format` cover the layer plumbing that was
+  missing, each recording what it cost — null-filled columns named, the
+  simplification's area and length before and after, a lossy conversion refused
+  with the reason rather than performed quietly. The catalogue is at 27
+  operations (25 available, 2 planned).
+- **`measure_area`, and the first check that asks whether the number is right.**
+  Ground (ellipsoidal) or planar area with the CRS's own linear unit, invalid
+  rings repaired before measuring and the repair reported as a repair. When the
+  plane asked for is not equal-area, the result carries the ratio against the
+  ellipsoidal area as a non-critical check: a Web Mercator parcel comes back
+  flagged as reporting 1.80× the ground it covers. Every other check in this
+  codebase asks whether the operation ran. This one asks whether the answer is
+  the answer. It exists because
+  [Argleton](https://argleton.org) returned `unsupported` on three probes —
+  MapSmith had no area operation at all, which is a gap in a catalogue rather
+  than a bug in code, and the suite is what named it.
+- **A catalogue built for thousands: declared applicability, then two ranking
+  engines.** Every entry declares what it applies to (input kind, whether it
+  demands a projected CRS), so discovery narrows deterministically in code
+  before anything ranks — a geographic raster is never offered `slope`, because
+  `slope` refuses one. What survives is ranked by either of two interchangeable
+  engines the caller selects with `list_operations(engine=…)` — `lexical`,
+  `vector`, or `auto` — over the identical document text: Okapi BM25 by default (no
+  dependencies, no network, term-sorted accumulation because float addition is
+  not associative) or static embeddings with the model revision pinned in the
+  source (`[retrieval]` extra, bit-identical vectors asserted against a golden
+  vector). Both are held to a golden query set with their per-query latency
+  recorded, so the scaling limit is a curve rather than a number someone
+  guessed.
+- **Overlay and dissolve declare their semantics in the manifest.** Dropped
+  lower-dimension pieces from an overlay are named rather than silently absent,
+  and a dissolve's aggregation is recorded with the group count verified in
+  closed form.
 - **Manifests now carry `spec_version`** (`1.0.0-draft.1`). The manifest format
   is becoming a specification of its own — schema, toolchain-free validator,
   conformance suite and a minimal emitter that does not import MapSmith — and
   MapSmith is one implementation of it rather than its definition. A CI test
   validates a real writer's output against the spec's own validator, so the day
   our manifest stops conforming to our published format, the build says so.
+
+### Changed
+
+- **A multi-layer container is refused instead of resolved to its default
+  layer** ([#29]). Opening `project.gpkg` without naming a layer used to hand
+  back whichever layer GDAL happened to list first — consistently, and wrongly.
+  There is no signal in that: the operation succeeds, the manifest records a
+  clean run, and the count is an ordinary number for the wrong layer.
+  Multi-layer inputs now require an explicit `layer`, and the error names the
+  layers available. Found by [Argleton](https://argleton.org)'s trap 006, which
+  answered 4 features where the truth was 31, and filed here before the trap was
+  published.
+- **`nearest_join` reports its distance in metres by contract**, not in the
+  units the input happened to carry, with the reprojection recorded in
+  `crs_decisions`; `explode_layer` knows its part count before the engine runs,
+  so the verification is a comparison rather than a report.
 
 ### Fixed
 
@@ -61,6 +113,7 @@ All notable changes to MapSmith are documented here, in the format of
   as geometry too, rather than surviving as opaque bytes.
 
 [#28]: https://github.com/mapsmith-ai/MapSmith/issues/28
+[#29]: https://github.com/mapsmith-ai/MapSmith/issues/29
 
 ## [0.2.2] — 2026-08-22
 

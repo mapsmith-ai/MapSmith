@@ -182,6 +182,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <a href="https://github.com/mapsmith-ai/MapSmith">Source</a>
     <a href="https://pypi.org/project/mapsmith/">PyPI</a>
     <a href="https://github.com/mapsmith-ai/MapSmith/blob/main/docs/benchmarks.md">Benchmarks</a>
+    <a href="#evidence">Evidence</a>
     <a href="#install">Install</a>
   </nav>
 </div></header>
@@ -298,21 +299,27 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     a property of the data, checked in code.
   </p>
   <p>
-    What survives the filter is then ranked by <strong>either of two interchangeable engines over
-    the same corpus</strong> — a lexical one that ships by default with no dependencies and no
-    network, and a <strong>vector engine</strong> using revision-pinned static embeddings, exact
-    to the bit across runs and machines. Both read the identical text, so a comparison between
-    them measures the ranking and nothing else. Both are held to golden queries in the test suite
-    with their latency recorded, which is what turns the scaling limit into a curve you can watch
-    instead of a number someone guessed.
+    What survives the filter is ranked by <strong>either of two engines, and the caller picks</strong>.
+    The default is <strong>Okapi BM25</strong> — forty lines, no dependencies, no network, identical
+    scores on every machine. Beside it, over the identical corpus, a <strong>vector engine</strong>
+    whose static-embedding model is pinned to an exact revision in the source and whose vectors are
+    pinned by a golden-vector test, so a change in the model, the tokenizer or the pooling fails a
+    test instead of an analysis. A third setting takes the vector engine where it is installed and
+    falls back where it is not, so a deployment can turn embeddings on without any caller changing.
+    Every result carries the engine that produced it, because a BM25 score and a cosine are not on
+    the same scale — and both engines are held to the same golden queries with their latency
+    recorded, so the scaling limit is a curve you can watch rather than a number someone guessed.
   </p>
   <p class="pull">
     Determinism is the point of doing it this way. Semantic search that reaches for a hosted
     embedding API makes tool discovery a network call whose answer can change under you; here the
-    model revision is pinned in the source and the vectors come out identical byte for byte.
+    model revision is pinned in the source, the vectors are pinned by a test, and the default
+    engine needs no network at all.
   </p>
   <table class="tools" style="margin-top:1.75rem">
     <tr><td>buffer_layer · clip_layer · overlay_layers · dissolve_layer</td><td>Vector geometry, with the metric-on-geographic trap handled explicitly rather than silently</td></tr>
+    <tr><td>measure_area</td><td>Ground or planar area, with the plane checked against the ellipsoid — the first check here that asks whether the <em>number</em> is right rather than whether the operation ran</td></tr>
+    <tr><td>merge_layers · simplify_layer · centroid_layer · convert_format</td><td>Layer plumbing with the cost recorded: null-filled columns named, simplification drift measured before and after, and the two lossy conversions — shapefile output, GeoJSON for a non-WGS84 layer — refused with the reason instead of performed</td></tr>
     <tr><td>reproject_layer</td><td>Coordinate systems, with the decision and its reason recorded</td></tr>
     <tr><td>zonal_statistics</td><td>Raster statistics per polygon, via exactextract — partial pixels weighted, not counted or dropped</td></tr>
     <tr><td>hillshade · slope · aspect · flow_accumulation · watershed</td><td>Terrain and hydrology on Whitebox Workflows</td></tr>
@@ -329,7 +336,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <div>
       <div class="grid3">
         <div class="stat"><b>375</b><span>TASK-RUNS, 5 ARMS</span></div>
-        <div class="stat"><b>{{TEST_COUNT}}</b><span>TESTS, CLOSED-FORM</span></div>
+        <div class="stat"><b>{{TEST_COUNT}}</b><span>TEST FUNCTIONS, CLOSED-FORM</span></div>
       </div>
       <p style="font-size:0.94rem;color:var(--ink-soft);margin-top:1.5rem">
         Published with the analysis that took our own positive number apart, and with a conclusion
@@ -347,8 +354,18 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
         write a file, and hand you a number that is wrong — and every trajectory benchmark in
         circulation scores that run full marks.
       </p>
+      <p>
+        So the instrument that does look at the number lives outside this repository:
+        <a href="https://argleton.org"><strong>Argleton</strong></a>, a correctness suite in its own
+        organisation, where every probe's answer is derived on paper before any system runs. Its
+        current run grades MapSmith on eight traps — <strong>0.00 silent errors, nothing skipped</strong>
+        — and states which of those passes were earned and which were inherited from the library
+        underneath. It has already sent two defects back here, which is what putting it outside was
+        for.
+      </p>
       <p style="font-size:0.94rem;color:var(--ink-soft)">
-        <a href="https://github.com/mapsmith-ai/MapSmith/blob/main/docs/benchmarks.md">Read the benchmark →</a>
+        <a href="https://github.com/mapsmith-ai/MapSmith/blob/main/docs/benchmarks.md">Read the benchmark →</a><br>
+        <a href="https://argleton.org">See the correctness suite →</a>
       </p>
     </div>
   </div>
@@ -373,6 +390,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   <nav>
     <a href="https://github.com/mapsmith-ai/MapSmith">GitHub</a>
     <a href="https://pypi.org/project/mapsmith/">PyPI</a>
+    <a href="https://argleton.org">Argleton</a>
     <a href="https://github.com/mapsmith-ai/MapSmith/security">Security</a>
   </nav>
 </div></footer>

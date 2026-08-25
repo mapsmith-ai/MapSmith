@@ -1686,32 +1686,61 @@ def applicable(input_kind: str | None = None, projected: bool | None = None) -> 
     return kept
 
 
+SEARCH_ENGINES = ("lexical", "vector", "auto")
+
+
 def search(
     query: str = "",
     limit: int = 10,
     detail: bool = False,
     input_kind: str | None = None,
     projected: bool | None = None,
+    engine: str = "lexical",
 ) -> list[dict[str, Any]]:
     """Search the catalog. Compact entries by default; detail=True adds parameters/examples.
 
     Empty query lists the whole catalog (roadmap included). With a query, results
-    are BM25-ranked and carry a ``score`` field. ``input_kind``/``projected``
-    narrow the candidates deterministically BEFORE ranking (see :func:`applicable`).
+    carry a ``score`` and an ``engine`` field. ``input_kind``/``projected``
+    narrow the candidates deterministically BEFORE ranking, whichever engine
+    ranks them (see :func:`applicable`).
+
+    ``engine``: ``lexical`` (default) is BM25 — deterministic, dependency-free,
+    no network ever. ``vector`` is the embedding engine (``[retrieval]`` extra),
+    which fetches a revision-pinned model on first use. ``auto`` prefers the
+    vector engine and falls back to lexical when the extra is absent, so a
+    deployment can turn it on without the caller knowing. The default stays
+    lexical because a default that needs a download is not a default.
     """
+    if engine not in SEARCH_ENGINES:
+        raise ValueError(f"engine must be one of {list(SEARCH_ENGINES)}, got {engine!r}")
     candidates = applicable(input_kind, projected)
     if not query.strip():
         return [dict(op) if detail else _compact(op) for op in candidates]
-    query_tokens = _tokenize(query)
-    scores = bm25_scores(query_tokens, [_document(op) for op in candidates])
-    ranked = sorted(
-        ((op, s) for op, s in zip(candidates, scores, strict=True) if s > 0),
-        key=lambda pair: (-pair[1], pair[0]["name"]),
-    )
+
+    used = engine
+    ranked: list[tuple[dict[str, Any], float]]
+    if engine in ("vector", "auto"):
+        try:
+            from . import retrieval
+
+            ranked = retrieval.rank(query, limit=limit, candidates=candidates)
+            used = "vector"
+        except ImportError:
+            if engine == "vector":
+                raise
+            used = "lexical"
+    if used == "lexical":
+        query_tokens = _tokenize(query)
+        scores = bm25_scores(query_tokens, [_document(op) for op in candidates])
+        ranked = sorted(
+            ((op, s) for op, s in zip(candidates, scores, strict=True) if s > 0),
+            key=lambda pair: (-pair[1], pair[0]["name"]),
+        )
     results = []
     for op, score in ranked[:limit]:
         entry = dict(op) if detail else _compact(op)
         entry["score"] = round(score, 4)
+        entry["engine"] = used
         results.append(entry)
     return results
 

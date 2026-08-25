@@ -445,31 +445,50 @@ organisation on purpose: an evaluation that lives inside the thing it
 evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
-What it says about MapSmith so far (five-family run, engine tier):
+What it says about MapSmith (eight-family run, engine tier, `spec_commit`
+[`bc95d3b`](https://github.com/argleton/argleton/tree/main/results/2026-08-25-eight-families)):
 
-| | silent error rate | completion rate | traps run |
-|---|---|---|---|
-| MapSmith | **0.00** | 1.00 | 3 |
-| naive composition (read file, take statistic) | 0.80 | 1.00 | 5 |
+| | silent error rate | completion rate | traps run | not applicable |
+|---|---|---|---|---|
+| MapSmith | **0.00** | 1.00 | 8 | 0 |
+| naive composition (read file, take statistic) | 0.875 | 1.00 | 8 | 0 |
 
-Two findings from those runs are worth more than the score, and both are ours
-to state:
+Read the last column before the rate: an adapter that could only be asked two
+questions must not be able to look better than one that faced all eight. This
+is the first run where MapSmith answers every probe.
+
+Four findings are worth more than the score, and all four are ours to state:
 
 1. **The first 0.00 was inherited, not earned.** On the predictor trap MapSmith
    wrote a manifest with seven passing checks, and not one of them looks at
    whether the number is right — the answer was correct because rasterio undoes
    the predictor. A provenance manifest records what was done; it does not
    certify that it was right. MapSmith only claims the first, and Argleton
-   exists to measure the second.
+   exists to measure the second. Unchanged since day one, and still the honest
+   reading of that family.
 2. **The mismatched-CRS pass is earned.** No library aligns two coordinate
    frames on your behalf: the naive composition answers "0 points in the zone"
    — a finding-shaped wrong answer, no exception, no warning — while MapSmith
    answers correctly because its join reprojects and records the decision in
    `crs_decisions`. The first family where the discipline, not the dependency,
    produces the number.
+3. **The suite caught its author.** On the ambiguous-container trap MapSmith's
+   reader resolved a multi-layer GeoPackage to its default layer without
+   saying so and answered 4 features where the truth is 31. It was
+   [filed against MapSmith](https://github.com/mapsmith-ai/MapSmith/issues/29)
+   before the trap was published, and the fix landed after that run rather than
+   before it — which is the only version of this story that is worth anything.
+4. **The suite wrote part of our roadmap.** Three probes came back
+   `unsupported` because MapSmith had no area operation at all — a gap in a
+   catalogue rather than a bug in code, and composing one out of raw SQL would
+   have measured DuckDB instead of MapSmith. `measure_area` exists because a
+   trap said so, and it carries the first check in this codebase that asks
+   whether the *number* is right: a planar area is compared against the
+   ellipsoidal one, so Web Mercator comes back flagged as reporting 1.80× the
+   ground it covers.
 
-That pair is the honest shape of the transition: trajectory benchmarks could
-not see either finding, and a suite four days old already produced both. New
+That set is the honest shape of the transition: trajectory benchmarks could not
+see any of the four, and the suite produced them in its first three days. New
 families are added with a clean twin and a closed-form truth each
 ([how](https://github.com/argleton/argleton/blob/main/docs/ADDING-A-TRAP.md)),
 and results are rerun on every commit.

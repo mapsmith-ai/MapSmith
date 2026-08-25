@@ -14,6 +14,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 README = ROOT / "README.md"
+SITE_TEMPLATE = ROOT / "site" / "index.template.html"
+SITE_BUILD = ROOT / "site" / "build.py"
 LINK = re.compile(r"\[[^\]]*\]\(([^)#\s]+)(?:#[^)]*)?\)")
 
 # Root pages a visitor is expected to find from the front door. CLAUDE.md is
@@ -259,6 +261,67 @@ def test_the_word_gis_survives_where_a_search_can_see_it():
     assert "GIS" in registry, "the MCP Registry description does not contain the word GIS"
     first_screen = README.read_text(encoding="utf-8").split("## Quickstart")[0]
     assert "GIS" in first_screen, "the README says what it is without ever saying GIS"
+
+
+# --------------------------------------------------------------------------
+# mapsmith.dev. The site is the other front door, and until 2026-08-25 no test
+# looked at it: the workflow checked that no placeholder survived the build and
+# nothing checked what the page said. A generated page drifts exactly like a
+# README, and worse, because the repository still reads correctly while it does.
+# --------------------------------------------------------------------------
+
+
+def test_the_site_names_only_tools_that_exist():
+    """A tool table on the published page outlives the tool it describes."""
+    from mapsmith import server
+
+    registered = {t.name for t in server.mcp._tool_manager.list_tools()}
+    table = re.search(
+        r'<table class="tools".*?</table>', SITE_TEMPLATE.read_text(encoding="utf-8"), re.DOTALL
+    )
+    assert table, "the site template lost its tool table"
+    named = set(re.findall(r"\b([a-z]+(?:_[a-z]+)+)\b", table.group(0)))
+    ghosts = sorted(named - registered)
+    assert not ghosts, (
+        f"mapsmith.dev advertises tools that are not registered: {ghosts}. "
+        "The page is generated, so nothing else will ever notice."
+    )
+
+
+def test_every_number_on_the_site_comes_from_a_placeholder_the_build_fills():
+    """Both directions. A `{{NEW_COUNT}}` nobody fills breaks the build (which
+    is fine, it is loud); a placeholder the build still computes and the page
+    no longer shows is a claim that quietly left the shop window."""
+    template = SITE_TEMPLATE.read_text(encoding="utf-8")
+    build = SITE_BUILD.read_text(encoding="utf-8")
+    in_page = set(re.findall(r"\{\{[A-Z_]+\}\}", template))
+    assert in_page, "the site template lost its placeholders"
+    filled = {p for p in re.findall(r'"(\{\{[A-Z_]+\}\})"', build)}
+    assert not in_page - filled, f"placeholders the build does not fill: {sorted(in_page - filled)}"
+    assert not filled - in_page, (
+        f"the build computes values the page no longer shows: {sorted(filled - in_page)}"
+    )
+
+
+def test_the_twin_project_is_linked_from_both_of_our_front_doors():
+    """The mirror image of the defect a reader found on 2026-08-24: argleton.org
+    was linked from its own repository's homepage field, which nobody sees, and
+    from nowhere in its README. Here the risk is the same one facing outward —
+    the strongest evidence MapSmith has is a suite that grades it and lives in
+    another organisation, so both front doors have to point at it, and the
+    README has to do it on the first screen rather than in a roadmap entry
+    four hundred lines down."""
+    first_screen = README.read_text(encoding="utf-8").split("## Quickstart")[0]
+    assert "argleton.org" in first_screen, (
+        "the README's first screen does not link the correctness suite that grades MapSmith"
+    )
+    assert "argleton.org" in SITE_TEMPLATE.read_text(encoding="utf-8"), (
+        "mapsmith.dev states the silent-error problem and never points at the instrument "
+        "that measures it"
+    )
+    assert "argleton" in (ROOT / "docs" / "benchmarks.md").read_text(encoding="utf-8").lower(), (
+        "benchmarks.md is where the hand-off to Argleton is declared; it no longer names it"
+    )
 
 
 # Words that promise instead of stating. Each one has a concrete replacement:

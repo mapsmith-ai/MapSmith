@@ -243,6 +243,14 @@ def main(destination: Path) -> int:
     tool_count = (ROOT / "src" / "mapsmith" / "server.py").read_text(
         encoding="utf-8"
     ).count("@mcp.tool(")
+    # Test *functions*, which is what the page says, and deliberately not what
+    # `pytest -q` prints. Parametrisation expands these into more cases (456 at
+    # the time of writing against 303 functions), and asking pytest for the
+    # bigger number would make the front page depend on which optional extras
+    # the build machine happens to have: every module guarded by
+    # `importorskip` drops out of collection. A number on this page has to come
+    # out the same on any checkout, so it is counted from the source and
+    # labelled for what it is.
     test_count = sum(
         int(row.rsplit(":", 1)[1])
         for row in _git("grep", "-c", "^def test_", "--", "tests/").splitlines()
@@ -279,7 +287,8 @@ def main(destination: Path) -> int:
         f"manifest.json {len(checks)} checks, "
         f"{sum(c['passed'] for c in checks)} passed | "
         f"engine {manifest['engine']['name']} {manifest['engine']['version']} | "
-        f"{tool_count} tools, {test_count} tests | index.html "
+        f"{tool_count} tools, {catalog_count} catalogue entries, "
+        f"{test_count} test functions | index.html "
         f"{(destination / 'index.html').stat().st_size // 1024} KB"
     )
     return 0
