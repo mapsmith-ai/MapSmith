@@ -544,16 +544,28 @@ def preview_map(paths: list[str], max_features: int = 2000) -> dict[str, Any]:
 
 
 @mcp.tool(annotations=_READONLY)
-def list_operations(query: str = "", detail: bool = False, limit: int = 10) -> list[dict[str, Any]]:
+def list_operations(
+    query: str = "",
+    detail: bool = False,
+    limit: int = 10,
+    input_kind: str | None = None,
+    projected: bool | None = None,
+) -> list[dict[str, Any]]:
     """Search the catalog of available and planned operations (progressive discovery).
 
     Describe what you need in plain words (e.g. 'statistics of a raster inside
-    polygons') and results come back ranked by relevance (BM25). Compact entries
-    by default; detail=True adds parameters and worked example calls — use it on
-    the exact operation name before calling an unfamiliar tool. Empty query
-    lists the whole catalog including planned (not yet available) operations.
+    polygons') and results come back ranked by relevance. Narrow first, then
+    rank: pass input_kind ('vector', 'raster', 'dataset', 'plan') and/or
+    projected=False (data in a geographic CRS) and the catalog deterministically
+    drops the operations that do not apply — the ones that would refuse your
+    data anyway — BEFORE any ranking runs. Compact entries by default;
+    detail=True adds parameters and worked example calls — use it on the exact
+    operation name before calling an unfamiliar tool. Empty query lists every
+    applicable operation, planned ones included.
     """
-    return catalog.search(query, limit=limit, detail=detail)
+    return catalog.search(
+        query, limit=limit, detail=detail, input_kind=input_kind, projected=projected
+    )
 
 
 @mcp.tool(annotations=_READONLY)

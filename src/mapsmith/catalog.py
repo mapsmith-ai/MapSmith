@@ -1181,6 +1181,16 @@ def _document(op: dict[str, Any]) -> list[str]:
     return _tokenize(" ".join(parts))
 
 
+def document_text(op: dict[str, Any]) -> str:
+    """The exact retrieval corpus of one entry, as plain text.
+
+    One corpus for every ranking engine: the optional embedding layer
+    (:mod:`mapsmith.retrieval`) embeds THIS text, so a comparison between BM25
+    and embeddings measures the ranking, never a difference in what was read.
+    """
+    return " ".join(_document(op))
+
+
 def bm25_scores(query_tokens: list[str], documents: list[list[str]]) -> list[float]:
     """Okapi BM25 scores per document (Lucene-style ln(1+x) idf, always non-negative)."""
     n_docs = len(documents)
@@ -1224,16 +1234,64 @@ def _compact(op: dict[str, Any]) -> dict[str, Any]:
     return {k: op[k] for k in ("name", "status", "category", "summary")}
 
 
-def search(query: str = "", limit: int = 10, detail: bool = False) -> list[dict[str, Any]]:
+APPLICABILITY_KINDS = {"vector", "raster", "dataset", "plan"}
+
+
+def applicable(input_kind: str | None = None, projected: bool | None = None) -> list[dict[str, Any]]:
+    """The subset of the catalog applicable to the data in hand — deterministically.
+
+    Narrow-then-rank: this filter runs BEFORE any ranking, uses only what each
+    entry declares (no model, no scores), and its outcome is a statement simple
+    enough to put in a manifest: "this operation was offered because the input
+    is a projected raster". ``input_kind`` keeps entries that accept that kind
+    (entries accepting any ``dataset`` match vector and raster); ``projected=False``
+    drops entries that require a projected CRS — the ones that would refuse the
+    data anyway.
+    """
+    if input_kind is not None and input_kind not in APPLICABILITY_KINDS:
+        raise ValueError(
+            f"input_kind must be one of {sorted(APPLICABILITY_KINDS)}, got {input_kind!r}"
+        )
+    kept = []
+    for op in OPERATIONS:
+        block = op["applicability"]
+        if input_kind is not None:
+            accepted = set(block["inputs"])
+            widened = accepted | ({"vector", "raster"} if "dataset" in accepted else set())
+            if input_kind not in widened and not (
+                input_kind == "dataset" and accepted & {"vector", "raster", "dataset"}
+            ):
+                continue
+        if projected is False and block["requires_projected_crs"]:
+            continue
+        kept.append(op)
+    return kept
+
+
+def search(
+    query: str = "",
+    limit: int = 10,
+    detail: bool = False,
+    input_kind: str | None = None,
+    projected: bool | None = None,
+) -> list[dict[str, Any]]:
     """Search the catalog. Compact entries by default; detail=True adds parameters/examples.
 
     Empty query lists the whole catalog (roadmap included). With a query, results
-    are BM25-ranked and carry a ``score`` field.
+    are BM25-ranked and carry a ``score`` field. ``input_kind``/``projected``
+    narrow the candidates deterministically BEFORE ranking (see :func:`applicable`).
     """
+    candidates = applicable(input_kind, projected)
     if not query.strip():
-        return [dict(op) if detail else _compact(op) for op in OPERATIONS]
+        return [dict(op) if detail else _compact(op) for op in candidates]
+    query_tokens = _tokenize(query)
+    scores = bm25_scores(query_tokens, [_document(op) for op in candidates])
+    ranked = sorted(
+        ((op, s) for op, s in zip(candidates, scores, strict=True) if s > 0),
+        key=lambda pair: (-pair[1], pair[0]["name"]),
+    )
     results = []
-    for op, score in rank(query, limit=limit):
+    for op, score in ranked[:limit]:
         entry = dict(op) if detail else _compact(op)
         entry["score"] = round(score, 4)
         results.append(entry)

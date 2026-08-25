@@ -285,13 +285,21 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     searchable catalogue rather than in the tool list. What is exposed is what an agent has to
     choose between.
   </p>
+  <p>
+    The catalogue itself is built to hold thousands of entries. Every operation declares what it
+    applies to, so discovery <strong>narrows deterministically before it ranks</strong> — a
+    geographic raster is never offered an operation that would refuse it, and no model is in that
+    loop. Ranking then runs on two interchangeable engines over the same corpus: lexical by
+    default, revision-pinned static embeddings optionally — with retrieval quality measured
+    against golden queries as the catalogue grows, so the scaling limit is a curve, not a guess.
+  </p>
   <table class="tools" style="margin-top:1.75rem">
-    <tr><td>buffer_layer · clip_layer · overlay_layers</td><td>Vector geometry, with the metric-on-geographic trap handled explicitly rather than silently</td></tr>
+    <tr><td>buffer_layer · clip_layer · overlay_layers · dissolve_layer</td><td>Vector geometry, with the metric-on-geographic trap handled explicitly rather than silently</td></tr>
     <tr><td>reproject_layer</td><td>Coordinate systems, with the decision and its reason recorded</td></tr>
     <tr><td>zonal_statistics</td><td>Raster statistics per polygon, via exactextract — partial pixels weighted, not counted or dropped</td></tr>
-    <tr><td>hillshade · slope · flow_accumulation · watershed</td><td>Terrain and hydrology on Whitebox Workflows</td></tr>
+    <tr><td>hillshade · slope · aspect · flow_accumulation · watershed</td><td>Terrain and hydrology on Whitebox Workflows</td></tr>
     <tr><td>run_sql</td><td>Spatial SQL on DuckDB, sandboxed to the workspace with external access off</td></tr>
-    <tr><td>validate_plan · run_plan</td><td>A typed DAG checked before anything executes: stable error codes, simulated CRS flow</td></tr>
+    <tr><td>validate_plan · execute_plan</td><td>A typed DAG checked before anything executes: stable error codes, simulated CRS flow</td></tr>
     <tr><td>preview_map</td><td>An in-chat map panel that shows the verification status of every layer it draws</td></tr>
   </table>
 </div></section>

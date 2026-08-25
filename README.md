@@ -122,9 +122,16 @@ had to repair. `get_provenance` returns it for any output.
   without the LLM is in there. No AI slop.
 - **The engines compute, the model orchestrates.** Geometry and numbers only ever come
   from deterministic tool executions — never from model output.
-- **Semantic tools, not a tool dump.** 20 goal-level tools plus a searchable operation
-  catalog (progressive discovery), because agent accuracy collapses when you expose
-  hundreds of raw tools.
+- **Semantic tools, not a tool dump — and a catalog built for thousands.** 20 goal-level
+  tools plus a searchable operation catalog (progressive discovery), because agent accuracy
+  collapses when you expose hundreds of raw tools. Every catalog entry declares what it
+  applies to (input kind, CRS demand), so discovery **narrows deterministically before it
+  ranks** — a geographic raster is never offered an operation that would refuse it, and no
+  model is in that loop. Ranking runs on two interchangeable engines over the same corpus:
+  BM25 by default (deterministic, dependency-free) and revision-pinned static embeddings
+  (`[retrieval]` extra, golden-vector tested); retrieval quality is measured against golden
+  queries in the test suite as the catalog grows, so the scaling limit is a curve, not a
+  guess.
 - **Model-agnostic infrastructure.** Claude, GPT, Qwen, Kimi, GLM — anything that speaks
   MCP, cloud or local. The leverage is better contracts (typed plans, actionable error
   codes, a searchable catalog), not weights we would have to maintain. See
