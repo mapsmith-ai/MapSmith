@@ -165,6 +165,42 @@ def gpkg_layers(path: str) -> list[str] | None:
     return None
 
 
+def ambiguous_layers(path: str) -> list[str] | None:
+    """Layer names of a MULTI-layer OGR source, or None when there is nothing
+    to choose: single layer, unlistable, or not an OGR path at all.
+
+    Despite its name, :func:`gpkg_layers` lists any OGR source; this wrapper
+    only adds the question that matters here — is there more than one?
+    """
+    if str(path).lower().endswith(".parquet"):
+        return None
+    layers = gpkg_layers(path)
+    return layers if layers and len(layers) > 1 else None
+
+
+def refuse_ambiguous_container(path: str) -> None:
+    """Raise for a multi-layer container nobody chose a layer of (issue #29).
+
+    GDAL's default — the first layer — answers a question the caller never
+    asked, and the manifest could not honestly record which data produced the
+    numbers. Refusing is the only answer every component can give
+    consistently; the message tells the agent how to choose instead.
+    """
+    layers = ambiguous_layers(path)
+    if not layers:
+        return
+    shown = ", ".join(layers[:8]) + (", ..." if len(layers) > 8 else "")
+    raise ValueError(
+        f"{path} holds {len(layers)} layers ({shown}) and no layer was chosen. "
+        "MapSmith will not pick one for you: the format's default is simply the "
+        "first layer, which may not be the one you mean, and the provenance "
+        "manifest could not honestly say which data produced the numbers. "
+        "Inspect the container with describe_dataset, then extract the layer "
+        "you mean into its own dataset — e.g. run_sql: SELECT * FROM "
+        f"ST_Read('{path}', layer='<name>') with an output_path."
+    )
+
+
 def _read_geoparquet(path: str, *, allow_no_geometry: bool) -> gpd.GeoDataFrame:
     """GeoParquet 1.x through GeoPandas, 2.0-native through pyarrow.
 
@@ -224,16 +260,20 @@ def read_vector(path: str) -> gpd.GeoDataFrame:
     is not bundled in the wheels, so routing ``.parquet`` through ``read_file``
     breaks on a default install.
 
-    A multi-layer container gives GDAL's default: the first layer. That is a
-    poor answer, but it is the answer ``verify.probe_crs``, the plan validator,
-    the engine dispatcher and SedonaDB all already give, and an input read
-    differently from the one they inspected is worse than one read badly —
-    the dispatcher would compare one layer's CRS and the engine operate on
-    another's. Picking a layer deliberately is issue #29; picking a *different*
-    one here would have been a silent fork.
+    A multi-layer container with no chosen layer is REFUSED (issue #29, closed
+    the day Argleton's trap 006 measured the old behaviour). GDAL's default —
+    the first layer — answered a question the caller never asked, silently:
+    quieter even than the bare pyogrio call, whose stderr warning this reader
+    used to swallow. Refusal is the one answer every component can give
+    consistently; ``verify.probe_crs`` returns ``unknown`` for the same case so
+    the dispatcher and the plan validator never inspect a layer no operation
+    will read. The single deliberate exception stays in
+    :func:`read_vector_or_table`: verification prefers the stem-named layer of
+    outputs MapSmith wrote and named itself.
     """
     if str(path).lower().endswith(".parquet"):
         return _read_geoparquet(path, allow_no_geometry=False)
+    refuse_ambiguous_container(path)
     return gpd.read_file(path)
 
 
@@ -253,8 +293,16 @@ def read_vector_or_table(path: str) -> gpd.GeoDataFrame:
         return _read_geoparquet(path, allow_no_geometry=True)
     if lower.endswith(".gpkg"):
         stem = Path(path).stem
-        if stem in (gpkg_layers(path) or []):
+        layers = gpkg_layers(path) or []
+        if stem in layers:
             return gpd.read_file(path, layer=stem)
+        if len(layers) > 1:
+            # Verification-only tolerance, chosen on purpose rather than
+            # inherited from GDAL: a foreign multi-layer container must still
+            # be INSPECTABLE for its defects so the checks land in a manifest,
+            # and the repair separately refuses to rewrite containers.
+            # Operational reads refuse this same case outright (#29).
+            return gpd.read_file(path, layer=layers[0])
     return read_vector(path)
 
 
@@ -275,6 +323,7 @@ def read_vector_capped(path: str, cap: int) -> tuple[gpd.GeoDataFrame, int, list
 
     import pyogrio
 
+    refuse_ambiguous_container(path)
     info = pyogrio.read_info(path)
     total = int(info.get("features") or -1)
     meta_bounds = info.get("total_bounds")

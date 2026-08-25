@@ -32,6 +32,34 @@ def _write(gdf: gpd.GeoDataFrame, output_path: str) -> None:
 
 
 def describe(path: str) -> dict[str, Any]:
+    layers = readers.ambiguous_layers(path)
+    if layers:
+        # Inspection is the one place a multi-layer container is NOT refused:
+        # describing every layer is exactly what lets the caller choose one,
+        # which is what every other operation now requires (#29).
+        import pyogrio
+
+        described = []
+        for name in layers:
+            info = pyogrio.read_info(path, layer=name)
+            described.append({
+                "layer": name,
+                "feature_count": int(info.get("features") or -1),
+                "geometry_type": info.get("geometry_type"),
+                "crs": str(info["crs"]) if info.get("crs") else None,
+            })
+        return {
+            "path": str(path),
+            "kind": "vector-container",
+            "layer_count": len(described),
+            "layers": described,
+            "hint": (
+                "this container holds more than one layer, and operations need a "
+                "single-layer dataset: extract the one you mean first — e.g. "
+                "run_sql: SELECT * FROM ST_Read(path, layer='<name>') with an "
+                "output_path"
+            ),
+        }
     gdf = _read(path)
     bounds = gdf.total_bounds
     return {

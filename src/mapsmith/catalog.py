@@ -28,12 +28,15 @@ OPERATIONS: list[dict[str, Any]] = [
         "nodata, statistics",
         "description": (
             "Inspect a dataset before analysing it. Vector: coordinate reference system, "
-            "geometry types, attribute schema, bounding extent and feature count. Raster "
-            "(.tif): CRS, grid size, resolution, bands with dtype, nodata value and "
-            "masked statistics — nodata cells are excluded from min/max/mean and counted "
-            "separately. Call it first on any dataset you have not seen yet: most silent "
-            "GIS errors start with wrong assumptions about CRS, units or nodata. Raster "
-            "inspection requires the [raster] extra."
+            "geometry types, attribute schema, bounding extent and feature count. A "
+            "multi-layer container is described per layer (name, feature count, geometry "
+            "type, CRS) — operations refuse containers with no chosen layer, so this is "
+            "where you find the layer to extract. Raster (.tif): CRS, grid size, "
+            "resolution, bands with dtype, nodata value and masked statistics — nodata "
+            "cells are excluded from min/max/mean and counted separately. Call it first "
+            "on any dataset you have not seen yet: most silent GIS errors start with "
+            "wrong assumptions about CRS, units, nodata or which layer you are on. "
+            "Raster inspection requires the [raster] extra."
         ),
         "parameters": [
             {

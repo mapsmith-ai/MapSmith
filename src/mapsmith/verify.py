@@ -44,6 +44,13 @@ def probe_crs(path: str) -> str:
                 return UNKNOWN_CRS
             with rasterio.open(path) as ds:
                 return str(ds.crs) if ds.crs else UNKNOWN_CRS
+        from . import readers
+
+        if readers.ambiguous_layers(str(path)):
+            # A container with no chosen layer has no single CRS to report.
+            # Reporting the first layer's would have the dispatcher and the
+            # plan validator inspect a layer no operation will read (#29).
+            return UNKNOWN_CRS
         import pyogrio
 
         crs = pyogrio.read_info(str(path)).get("crs")

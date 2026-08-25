@@ -236,14 +236,16 @@ def test_every_vector_read_goes_through_the_one_reader():
     )
 
 
-def test_a_multi_layer_input_is_read_as_every_other_component_sees_it(tmp_path):
-    """Inputs get GDAL's first layer, like probe_crs, the plan validator, the
-    dispatcher and SedonaDB. Preferring the stem-named layer here instead would
-    have the dispatcher compare one layer's CRS while the engine operates on
-    another's — and preview_map show a layer nobody touched.
+def test_a_multi_layer_input_is_refused_as_every_other_component_sees_it(tmp_path):
+    """A container with no chosen layer is refused everywhere at once (#29).
 
-    Outputs are the opposite case (MapSmith wrote them and named the layer), so
-    the verification reader does prefer the stem.
+    The old contract was "everyone consistently takes GDAL's first layer",
+    which was consistent and wrong: Argleton's trap 006 measured describe
+    answering about a layer nobody asked for, silently. The new contract is
+    refusal with the layers named — and probe_crs reports `unknown` for the
+    same case, so the dispatcher and the plan validator never inspect a layer
+    no operation will read. Outputs are the opposite case (MapSmith wrote and
+    named them), so the verification reader still prefers the stem.
     """
     from mapsmith import readers, verify
 
@@ -255,10 +257,11 @@ def test_a_multi_layer_input_is_read_as_every_other_component_sees_it(tmp_path):
         {"a": [9]}, geometry=gpd.GeoSeries.from_wkt(["POINT (9 45)"]), crs="EPSG:32632"
     ).to_file(container, layer="roads", driver="GPKG")
 
-    first = gpd.read_file(container).crs  # what GDAL hands back by default
-    assert verify.probe_crs(str(container)) == verify.crs_label(first)
-    assert readers.read_vector(str(container)).crs == first
-    assert readers.read_vector_capped(str(container), 10)[0].crs == first
+    with pytest.raises(ValueError, match="aaa_scratch.*roads|roads.*aaa_scratch"):
+        readers.read_vector(str(container))
+    with pytest.raises(ValueError, match="no layer was chosen"):
+        readers.read_vector_capped(str(container), 10)
+    assert verify.probe_crs(str(container)) == verify.UNKNOWN_CRS
     # verification, on the other hand, must see the layer MapSmith named
     assert readers.read_vector_or_table(str(container)).crs.to_epsg() == 32632
 

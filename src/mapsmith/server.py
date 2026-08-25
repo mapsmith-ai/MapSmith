@@ -103,11 +103,16 @@ def _run(operation: str, params: dict[str, Any], fn, *args) -> dict[str, Any]:
 def describe_dataset(path: str) -> dict[str, Any]:
     """Inspect a dataset, vector or raster, before analysing it.
 
-    Vector: CRS, geometry types, schema, extent, feature count. Raster (.tif):
-    CRS, grid size, resolution, bands with dtype, nodata and masked statistics
-    (nodata cells counted separately). Call this first on any dataset you have
-    not inspected yet — most silent GIS errors start with wrong assumptions
-    about CRS, units or nodata. Raster inspection requires the [raster] extra.
+    Vector: CRS, geometry types, schema, extent, feature count. A MULTI-LAYER
+    container (e.g. a GeoPackage holding several layers) is described per
+    layer — name, feature count, geometry type, CRS — because operations
+    refuse containers with no chosen layer: extract the layer you mean first
+    (run_sql: SELECT * FROM ST_Read(path, layer='name') with an output_path).
+    Raster (.tif): CRS, grid size, resolution, bands with dtype, nodata and
+    masked statistics (nodata cells counted separately). Call this first on
+    any dataset you have not inspected yet — most silent GIS errors start with
+    wrong assumptions about CRS, units, nodata or which layer you are on.
+    Raster inspection requires the [raster] extra.
     """
     _guard(path=path)
     from .engines import dispatch
