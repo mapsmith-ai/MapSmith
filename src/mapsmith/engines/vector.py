@@ -8,9 +8,12 @@ Design rules:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import geopandas as gpd
+import pandas as pd
+import shapely
 
 from .. import readers, verify
 from ..provenance import InputRecord, ProvenanceRecord
@@ -492,6 +495,346 @@ def explode(input_path: str, output_path: str) -> dict[str, Any]:
     return {
         "output": str(output_path),
         "feature_count": len(parts),
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
+# Dimension class per geometry type: merging polygons with more polygons is
+# routine; merging polygons with points is almost always a mistake upstream.
+_GEOMETRY_CLASS = {
+    "Point": "point",
+    "MultiPoint": "point",
+    "LineString": "line",
+    "MultiLineString": "line",
+    "LinearRing": "line",
+    "Polygon": "polygon",
+    "MultiPolygon": "polygon",
+    "GeometryCollection": "collection",
+}
+
+
+def merge(input_paths: list[str], output_path: str) -> dict[str, Any]:
+    if len(input_paths) < 2:
+        raise ValueError(
+            f"merge_layers needs at least two input layers, got {len(input_paths)}"
+        )
+    frames = [_read(p) for p in input_paths]
+    record = ProvenanceRecord(
+        operation="merge_layers",
+        parameters={"layer_count": len(frames)},
+        inputs=[
+            InputRecord.from_path(path, crs=verify.crs_label(frame.crs))
+            for path, frame in zip(input_paths, frames)
+        ],
+        engine=_engine_info(),
+    )
+    named = {f"input_{i}": frame for i, frame in enumerate(frames, start=1)}
+    pre = verify.verify_loaded_inputs("merge_layers", **named)
+    if verify.has_critical_failure(pre):
+        record.add_verification(pre).finish().write_for(output_path)
+        verify.enforce(pre, "merge_layers")
+    target = frames[0].crs
+    moved = sum(1 for frame in frames[1:] if not verify.same_crs(frame.crs, target))
+    if moved:
+        frames = [
+            frame if verify.same_crs(frame.crs, target) else frame.to_crs(target)
+            for frame in frames
+        ]
+        record.crs_decisions = {
+            "analysis_crs": verify.crs_label(target),
+            "reason": f"{moved} of {len(frames)} layers reprojected to the first "
+            "layer's CRS before merging",
+        }
+    else:
+        record.crs_decisions = {
+            "analysis_crs": verify.crs_label(target),
+            "reason": "all layers share the first layer's CRS; no reprojection needed",
+        }
+    # A column missing from one input becomes nulls in its rows — data that
+    # looks measured and is actually absent. The manifest names those columns.
+    per_layer = [set(frame.columns) - {frame.geometry.name} for frame in frames]
+    partial = sorted(set.union(*per_layer) - set.intersection(*per_layer))
+    if partial:
+        record.notes.append(
+            "columns present in only some inputs are null-filled in the rows of "
+            f"the others: {partial}"
+        )
+    classes = sorted({
+        _GEOMETRY_CLASS.get(t, "other")
+        for frame in frames
+        for t in frame.geom_type.dropna().unique()
+    })
+    if len(classes) > 1:
+        record.notes.append(
+            f"the merged layer mixes geometry classes {classes}: many formats and "
+            "operations reject mixed layers — merge like with like unless this is "
+            "deliberate"
+        )
+    geometry_name = frames[0].geometry.name
+    frames = [
+        frame if frame.geometry.name == geometry_name
+        else frame.rename_geometry(geometry_name)
+        for frame in frames
+    ]
+    # One output row per input row: the count is knowable before the engine runs.
+    expected = sum(len(frame) for frame in frames)
+    with verify.audit_on_failure(record, output_path, pre):
+        merged = pd.concat(frames, ignore_index=True)
+        _write(merged, output_path)
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="merge_layers",
+        preconditions=pre,
+        checks_fn=lambda: verify.verify_vector_output(
+            output_path,
+            expect_crs=target,
+            expect_count=expected,
+            on_empty="fail" if expected else "ignore",
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "layer_count": len(input_paths),
+        "feature_count": len(merged),
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
+def simplify(input_path: str, tolerance_meters: float, output_path: str) -> dict[str, Any]:
+    if tolerance_meters <= 0:
+        raise ValueError(f"tolerance_meters must be positive, got {tolerance_meters}")
+    gdf = _read(input_path)
+    if gdf.crs is None:
+        raise ValueError(readers.no_crs_message(
+            gdf,
+            f"{input_path} has no CRS. Refusing to simplify without knowing the "
+            "units — assign a CRS first (see reproject_layer).",
+        ))
+    record = ProvenanceRecord(
+        operation="simplify_layer",
+        parameters={"tolerance_meters": tolerance_meters, "preserve_topology": True},
+        inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))],
+        engine=_engine_info(),
+    )
+    pre = verify.verify_loaded_inputs("simplify_layer", input_path=gdf)
+    original_crs = gdf.crs
+    # An empty layer has nothing to estimate a UTM zone from (estimate_utm_crs
+    # raises a raw pyproj error), and nothing to simplify: it passes through in
+    # its own CRS with the reason recorded, instead of crashing without a manifest.
+    if original_crs.is_geographic and len(gdf):
+        analysis_crs = gdf.estimate_utm_crs()
+        record.crs_decisions = {
+            "analysis_crs": str(analysis_crs),
+            "reason": "estimated UTM zone for metric simplification on a geographic "
+            "CRS; output geometries are returned in the input CRS",
+        }
+        work = gdf.to_crs(analysis_crs)
+        restore = True
+    else:
+        record.crs_decisions = {
+            "analysis_crs": verify.crs_label(original_crs),
+            "reason": "empty input layer: no UTM zone to estimate, nothing to simplify"
+            if original_crs.is_geographic
+            else "input CRS is already projected; tolerance interpreted in its units",
+        }
+        work = gdf.copy()
+        restore = False
+    vertices_before = int(shapely.get_num_coordinates(work.geometry.values).sum())
+    area_before = float(work.geometry.area.sum())
+    length_before = float(work.geometry.length.sum())
+    with verify.audit_on_failure(record, output_path, pre):
+        work[work.geometry.name] = work.geometry.simplify(
+            tolerance_meters, preserve_topology=True
+        )
+        vertices_after = int(shapely.get_num_coordinates(work.geometry.values).sum())
+        # Simplification moves boundaries: the drift is measured and recorded,
+        # never assumed away. Zero drift is a statement too.
+        if area_before > 0:
+            area_after = float(work.geometry.area.sum())
+            drift = (area_after - area_before) / area_before * 100
+            record.notes.append(
+                f"total area {area_before:.6g} -> {area_after:.6g} square CRS units "
+                f"({drift:+.4f}%) in the analysis CRS"
+            )
+        if length_before > 0:
+            length_after = float(work.geometry.length.sum())
+            drift = (length_after - length_before) / length_before * 100
+            record.notes.append(
+                f"total length {length_before:.6g} -> {length_after:.6g} CRS units "
+                f"({drift:+.4f}%) in the analysis CRS"
+            )
+        record.notes.append(
+            f"vertices {vertices_before} -> {vertices_after} "
+            f"(tolerance {tolerance_meters} in analysis-CRS units)"
+        )
+        if restore:
+            work = work.to_crs(original_crs)
+        _write(work, output_path)
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="simplify_layer",
+        preconditions=pre,
+        checks_fn=lambda: verify.verify_vector_output(
+            output_path,
+            expect_crs=original_crs,
+            expect_count=len(gdf),
+            on_empty="fail" if len(gdf) else "ignore",
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "feature_count": len(work),
+        "vertices_before": vertices_before,
+        "vertices_after": vertices_after,
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
+def centroid(input_path: str, output_path: str) -> dict[str, Any]:
+    gdf = _read(input_path)
+    if gdf.crs is None:
+        raise ValueError(readers.no_crs_message(
+            gdf,
+            f"{input_path} has no CRS. Refusing to compute centroids without knowing "
+            "the units — assign a CRS first (see reproject_layer).",
+        ))
+    record = ProvenanceRecord(
+        operation="centroid_layer",
+        parameters={},
+        inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))],
+        engine=_engine_info(),
+    )
+    pre = verify.verify_loaded_inputs("centroid_layer", input_path=gdf)
+    original_crs = gdf.crs
+    # Same guard as simplify: estimate_utm_crs on an empty layer raises a raw
+    # pyproj error before any manifest exists, and there is nothing to measure.
+    if original_crs.is_geographic and len(gdf):
+        # A planar centroid of degree coordinates lands in the wrong place —
+        # quietly, and by more the farther from the equator the data sits.
+        analysis_crs = gdf.estimate_utm_crs()
+        record.crs_decisions = {
+            "analysis_crs": str(analysis_crs),
+            "reason": "estimated UTM zone for planar centroids on a geographic CRS; "
+            "output points are returned in the input CRS",
+        }
+        work = gdf.to_crs(analysis_crs)
+        restore = True
+    else:
+        record.crs_decisions = {
+            "analysis_crs": verify.crs_label(original_crs),
+            "reason": "empty input layer: no UTM zone to estimate, nothing to measure"
+            if original_crs.is_geographic
+            else "centroids computed in the layer's native projected CRS",
+        }
+        work = gdf.copy()
+        restore = False
+    record.notes.append(
+        "the geometric centroid of a concave or multi-part feature can fall outside "
+        "the feature itself; a point guaranteed inside is a different operation "
+        "(representative point), not a tighter centroid"
+    )
+    with verify.audit_on_failure(record, output_path, pre):
+        work[work.geometry.name] = work.geometry.centroid
+        if restore:
+            work = work.to_crs(original_crs)
+        _write(work, output_path)
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="centroid_layer",
+        preconditions=pre,
+        checks_fn=lambda: verify.verify_vector_output(
+            output_path,
+            expect_crs=original_crs,
+            expect_count=len(gdf),
+            expect_geometry={"Point"},
+            on_empty="fail" if len(gdf) else "ignore",
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "feature_count": len(work),
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
+CONVERT_FORMATS = {".parquet": "GeoParquet", ".gpkg": "GeoPackage", ".geojson": "GeoJSON"}
+
+
+def convert(input_path: str, output_path: str) -> dict[str, Any]:
+    suffix = Path(str(output_path)).suffix.lower()
+    if suffix == ".shp":
+        raise ValueError(
+            "refusing to write a shapefile: field names are truncated to 10 characters "
+            "and dtypes are coerced, silently — a conversion that quietly renames "
+            "columns is a silent error. Write GeoPackage (.gpkg) instead; if a legacy "
+            "tool truly needs a shapefile, export from the GeoPackage in that tool, "
+            "where the renaming is visible."
+        )
+    if suffix not in CONVERT_FORMATS:
+        raise ValueError(
+            f"output format {suffix!r} is not supported: use one of "
+            f"{sorted(CONVERT_FORMATS)}"
+        )
+    gdf = _read(input_path)
+    # RFC 7946 prescribes WGS84 lon-lat, which the authorities spell two ways:
+    # OGC:CRS84 (the GeoParquet default) and EPSG:4326 (whose formal axis order
+    # GeoDataFrames ignore anyway). Both are the same coordinates here.
+    wgs84 = gdf.crs is not None and any(
+        verify.same_crs(gdf.crs, crs) for crs in ("EPSG:4326", "OGC:CRS84")
+    )
+    if suffix == ".geojson" and gdf.crs is not None and not wgs84:
+        raise ValueError(
+            f"GeoJSON (RFC 7946) is WGS84 by definition and this layer is in "
+            f"{verify.crs_label(gdf.crs)}: writing it would produce a file whose CRS "
+            "some readers honour and others ignore. Reproject to EPSG:4326 first "
+            "(reproject_layer), or convert to .gpkg/.parquet, which carry any CRS."
+        )
+    record = ProvenanceRecord(
+        operation="convert_format",
+        parameters={"target_format": CONVERT_FORMATS[suffix]},
+        inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))],
+        engine=_engine_info(),
+    )
+    pre = verify.verify_loaded_inputs("convert_format", input_path=gdf)
+    if verify.has_critical_failure(pre):
+        record.add_verification(pre).finish().write_for(output_path)
+        verify.enforce(pre, "convert_format")
+    record.crs_decisions = {
+        "analysis_crs": verify.crs_label(gdf.crs),
+        "reason": "no CRS change: format conversion does not transform coordinates",
+    }
+    with verify.audit_on_failure(record, output_path, pre):
+        _write(gdf, output_path)
+    # Geometry is carried through verbatim, so an invalid input gives an invalid
+    # output: as in reproject, this is where mechanical repair earns its keep,
+    # and every repair lands in the manifest and the result.
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="convert_format",
+        preconditions=pre,
+        checks_fn=lambda: verify.verify_vector_output(
+            output_path,
+            expect_crs=gdf.crs,
+            expect_count=len(gdf),
+            on_empty="ignore",
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "format": CONVERT_FORMATS[suffix],
+        "feature_count": len(gdf),
         "provenance": manifest,
         "verified": True,
         **extras,

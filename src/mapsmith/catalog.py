@@ -438,6 +438,229 @@ OPERATIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        "name": "merge_layers",
+        "status": "available",
+        "category": "vector",
+        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
+        "summary": "Append two or more layers into one, schema union, "
+        "count verified against the sum",
+        "description": (
+            "Append two or more vector layers into a single dataset. Attributes are "
+            "aligned by column name (schema union); columns present in only some "
+            "inputs are null-filled in the others and the manifest names them. "
+            "Layers are reprojected to the first layer's CRS when they differ, with "
+            "the decision recorded. The output feature count is verified against "
+            "the sum of the input counts. This is an append, not a geometric union: "
+            "use dissolve_layer afterwards to merge geometries."
+        ),
+        "parameters": [
+            {
+                "name": "input_paths",
+                "type": "list[str]",
+                "required": True,
+                "description": "Two or more vector datasets to append (each must have a CRS)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output path (.parquet or .gpkg)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Combine three regional road layers into one national layer",
+                "call": {
+                    "tool": "merge_layers",
+                    "arguments": {
+                        "input_paths": ["roads_north.gpkg", "roads_centre.gpkg", "roads_south.gpkg"],
+                        "output_path": "roads_all.parquet",
+                    },
+                },
+            },
+            {
+                "goal": "Stack this year's and last year's survey points",
+                "call": {
+                    "tool": "merge_layers",
+                    "arguments": {
+                        "input_paths": ["survey_2025.parquet", "survey_2026.parquet"],
+                        "output_path": "survey_both.parquet",
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "simplify_layer",
+        "status": "available",
+        "category": "vector",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "summary": "Simplify geometries with the drift measured: area and length "
+        "before/after recorded in the manifest",
+        "description": (
+            "Reduce vertex counts with Douglas-Peucker simplification, topology "
+            "preserved. Simplification moves boundaries, so the manifest records "
+            "total area and total length before and after with the drift percentage "
+            "— measured, never assumed away. Geographic-CRS inputs are simplified "
+            "in an estimated UTM zone (decision recorded) and returned in the input "
+            "CRS; on projected CRS the tolerance is interpreted in the CRS units. "
+            "The feature count is verified unchanged. Inputs without a CRS are "
+            "refused."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Layer to simplify (must have a CRS)",
+            },
+            {
+                "name": "tolerance_meters",
+                "type": "float",
+                "required": True,
+                "description": "Maximum deviation from the original geometry, in "
+                "meters (CRS units on a projected CRS)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output path (.parquet or .gpkg)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Lighten a parcel layer for a web map, keeping shapes within 5 m",
+                "call": {
+                    "tool": "simplify_layer",
+                    "arguments": {
+                        "input_path": "parcels.parquet",
+                        "tolerance_meters": 5,
+                        "output_path": "parcels_light.parquet",
+                    },
+                },
+            },
+            {
+                "goal": "Generalise coastline detail below 100 m before printing",
+                "call": {
+                    "tool": "simplify_layer",
+                    "arguments": {
+                        "input_path": "coastline.gpkg",
+                        "tolerance_meters": 100,
+                        "output_path": "coastline_100m.parquet",
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "centroid_layer",
+        "status": "available",
+        "category": "vector",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "summary": "One point per feature: geometric centroids computed in a "
+        "metric CRS, never on degrees",
+        "description": (
+            "Replace each geometry with its geometric centroid. Geographic-CRS "
+            "inputs are measured in an estimated UTM zone (decision recorded in "
+            "the manifest) and returned in the input CRS — a planar centroid of "
+            "degree coordinates lands in the wrong place, quietly. Output verified: "
+            "same feature count, Point geometry, input CRS. The manifest carries "
+            "the caveat that a concave or multi-part feature's centroid can fall "
+            "outside the feature. Inputs without a CRS are refused."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Layer whose features to reduce to centroids (must have a CRS)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output path (.parquet or .gpkg)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Label points for a polygon layer of municipalities",
+                "call": {
+                    "tool": "centroid_layer",
+                    "arguments": {
+                        "input_path": "municipalities.gpkg",
+                        "output_path": "municipality_points.parquet",
+                    },
+                },
+            },
+            {
+                "goal": "Turn building footprints into points for a density analysis",
+                "call": {
+                    "tool": "centroid_layer",
+                    "arguments": {
+                        "input_path": "buildings.parquet",
+                        "output_path": "building_points.parquet",
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "convert_format",
+        "status": "available",
+        "category": "vector",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "summary": "Convert between vector formats, re-read and verified; "
+        "lossy conversions are refused with the reason",
+        "description": (
+            "Convert a vector dataset to the format named by the output extension: "
+            ".parquet (GeoParquet, canonical), .gpkg (GeoPackage) or .geojson. The "
+            "output is re-read and verified: same feature count, same CRS. Two "
+            "conversions are refused with the reason instead of performed lossily: "
+            "shapefile output (field names silently truncated to 10 characters) and "
+            "GeoJSON for non-WGS84 layers (RFC 7946 is WGS84 by definition — "
+            "reproject to EPSG:4326 first). Inputs without a CRS are refused."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Vector dataset to convert (must have a CRS)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output path; the extension picks the format "
+                "(.parquet, .gpkg or .geojson)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Bring a GeoPackage into the canonical analytical format",
+                "call": {
+                    "tool": "convert_format",
+                    "arguments": {
+                        "input_path": "parcels.gpkg",
+                        "output_path": "parcels.parquet",
+                    },
+                },
+            },
+            {
+                "goal": "Export a WGS84 result as GeoJSON for a web client",
+                "call": {
+                    "tool": "convert_format",
+                    "arguments": {
+                        "input_path": "result_wgs84.parquet",
+                        "output_path": "result.geojson",
+                    },
+                },
+            },
+        ],
+    },
+    {
         "name": "reproject_layer",
         "status": "available",
         "category": "vector",

@@ -71,6 +71,30 @@ def _explode() -> Callable[..., dict[str, Any]]:
     return vector.explode
 
 
+def _merge() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.merge
+
+
+def _simplify() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.simplify
+
+
+def _centroid() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.centroid
+
+
+def _convert() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.convert
+
+
 def _reproject() -> Callable[..., dict[str, Any]]:
     from ..engines import vector
 
@@ -165,6 +189,18 @@ BINDINGS: dict[str, Binding] = {
     ),
     "explode_layer": Binding(
         _explode, ("input_path",), "output_path", None, ("same_as", "input_path"), "vector"
+    ),
+    # merge_layers takes a LIST of input paths; static analysis tracks only
+    # string path arguments, so its inputs are opaque here, like run_sql's.
+    "merge_layers": Binding(_merge, (), "output_path", None, ("unknown", ""), "vector"),
+    "simplify_layer": Binding(
+        _simplify, ("input_path",), "output_path", None, ("same_as", "input_path"), "vector"
+    ),
+    "centroid_layer": Binding(
+        _centroid, ("input_path",), "output_path", None, ("same_as", "input_path"), "vector"
+    ),
+    "convert_format": Binding(
+        _convert, ("input_path",), "output_path", None, ("same_as", "input_path"), "vector"
     ),
     "reproject_layer": Binding(
         _reproject, ("input_path",), "output_path", None, ("target", "target_crs"), "vector"

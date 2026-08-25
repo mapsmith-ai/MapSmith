@@ -263,6 +263,101 @@ def explode_layer(input_path: str, output_path: str) -> dict[str, Any]:
 
 
 @mcp.tool(annotations=_WRITER)
+def merge_layers(input_paths: list[str], output_path: str) -> dict[str, Any]:
+    """Append two or more layers into one (schema union, attributes aligned by name).
+
+    Layers are reprojected to the FIRST layer's CRS when they differ; the decision
+    is recorded in the provenance manifest. Columns present in only some inputs
+    are null-filled in the others and the manifest names them — data that looks
+    measured and is actually absent is a silent error. The output feature count
+    is verified against the sum of the input counts. Inputs without a CRS are
+    refused. This is an append, not a geometric union: use dissolve_layer to
+    merge geometries afterwards.
+    """
+    for path in input_paths:
+        workspace.guard(path, "input_paths")
+    _guard(output_path=output_path)
+    return _run(
+        "merge_layers",
+        {"inputs": list(input_paths), "output": output_path},
+        vector.merge,
+        input_paths,
+        output_path,
+    )
+
+
+@mcp.tool(annotations=_WRITER)
+def simplify_layer(
+    input_path: str, tolerance_meters: float, output_path: str
+) -> dict[str, Any]:
+    """Simplify geometries (Douglas-Peucker, topology preserved) with the drift
+    measured: the manifest records total area and length before and after.
+
+    Geographic-CRS inputs are simplified in an estimated UTM zone (decision
+    recorded) and returned in the input CRS — a tolerance in degrees is a
+    different distance at every latitude. On projected CRS the tolerance is
+    interpreted in the CRS units. The feature count is verified unchanged;
+    vertex counts before/after are in the result. Inputs without a CRS are
+    refused.
+    """
+    _guard(input_path=input_path, output_path=output_path)
+    return _run(
+        "simplify_layer",
+        {
+            "input": input_path,
+            "tolerance_meters": tolerance_meters,
+            "output": output_path,
+        },
+        vector.simplify,
+        input_path,
+        tolerance_meters,
+        output_path,
+    )
+
+
+@mcp.tool(annotations=_WRITER)
+def centroid_layer(input_path: str, output_path: str) -> dict[str, Any]:
+    """One point per feature: the geometric centroid, computed in a metric CRS.
+
+    Geographic-CRS inputs are measured in an estimated UTM zone (decision
+    recorded in the manifest) and returned in the input CRS — a planar centroid
+    of degree coordinates lands in the wrong place, quietly. The output is
+    verified: same feature count, Point geometry, input CRS. Note the manifest's
+    caveat: the centroid of a concave or multi-part feature can fall outside it.
+    Inputs without a CRS are refused.
+    """
+    _guard(input_path=input_path, output_path=output_path)
+    return _run(
+        "centroid_layer",
+        {"input": input_path, "output": output_path},
+        vector.centroid,
+        input_path,
+        output_path,
+    )
+
+
+@mcp.tool(annotations=_WRITER)
+def convert_format(input_path: str, output_path: str) -> dict[str, Any]:
+    """Convert a vector dataset between formats; the target is chosen by the
+    output extension (.parquet, .gpkg, .geojson).
+
+    The output is re-read and verified: same feature count, same CRS. Two
+    conversions are refused with the reason: shapefile (field names truncated to
+    10 characters, silently) and GeoJSON for non-WGS84 layers (RFC 7946 is WGS84
+    by definition — reproject first). Invalid geometry carried through is
+    repaired deterministically and reported in a 'repairs' key.
+    """
+    _guard(input_path=input_path, output_path=output_path)
+    return _run(
+        "convert_format",
+        {"input": input_path, "output": output_path},
+        vector.convert,
+        input_path,
+        output_path,
+    )
+
+
+@mcp.tool(annotations=_WRITER)
 def reproject_layer(input_path: str, target_crs: str, output_path: str) -> dict[str, Any]:
     """Reproject a layer to a target CRS, e.g. 'EPSG:32632' or a WKT string.
 
