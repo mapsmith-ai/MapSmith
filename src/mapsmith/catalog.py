@@ -438,6 +438,78 @@ OPERATIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        "name": "measure_area",
+        "status": "available",
+        "category": "vector",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "summary": "Area per feature in square metres — ground (ellipsoidal) or "
+        "planar with the CRS's own unit, with the distortion checked",
+        "description": (
+            "Measure the area of every feature in square metres, written to a named "
+            "column, with the total in the result. method='geodesic' (default) "
+            "measures ground area on the ellipsoid the layer's CRS names, so no map "
+            "plane and no projection distortion enter. method='planar' measures in "
+            "the layer's own CRS and converts with its declared linear unit — a "
+            "layer in US survey feet is never assumed to be in metres — and is "
+            "refused on a geographic CRS, where an area would be in square degrees. "
+            "Invalid geometry is repaired before measuring, because the planar area "
+            "of a self-intersecting ring is the signed shoelace: a number that "
+            "matches no region and comes back without complaint. A planar result is "
+            "compared against the ground area, so a plane that is not equal-area at "
+            "this location returns a warning carrying the ratio."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Vector dataset to measure (must have a CRS)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output path (.parquet or .gpkg) with the area column added",
+            },
+            {
+                "name": "method",
+                "type": "str",
+                "required": False,
+                "description": "'geodesic' (default, ground area on the ellipsoid) or "
+                "'planar' (the layer's own plane, converted from its linear unit)",
+            },
+            {
+                "name": "area_column",
+                "type": "str",
+                "required": False,
+                "description": "Name of the column to write (default 'area_m2')",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "How large are these parcels on the ground?",
+                "call": {
+                    "tool": "measure_area",
+                    "arguments": {
+                        "input_path": "parcels.gpkg",
+                        "output_path": "parcels_measured.parquet",
+                    },
+                },
+            },
+            {
+                "goal": "Area in the cadastral plane of a layer stored in US survey feet",
+                "call": {
+                    "tool": "measure_area",
+                    "arguments": {
+                        "input_path": "parcels_stateplane.gpkg",
+                        "output_path": "parcels_planar.parquet",
+                        "method": "planar",
+                    },
+                },
+            },
+        ],
+    },
+    {
         "name": "merge_layers",
         "status": "available",
         "category": "vector",

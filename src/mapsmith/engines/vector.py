@@ -841,6 +841,179 @@ def convert(input_path: str, output_path: str) -> dict[str, Any]:
     }
 
 
+AREA_METHODS = {"planar", "geodesic"}
+
+# Above this relative gap between the planar and the geodesic area, the map
+# plane is not telling the truth about the ground and the result says so. A
+# conformal projection (Web Mercator at 42 degrees: 1.80) blows straight past
+# it; a transverse Mercator zone used as intended (1.0003) stays under.
+_DISTORTION_TOLERANCE = 0.01
+
+
+def _geodesic_areas(gdf: gpd.GeoDataFrame) -> list[float]:
+    """Ground area per feature, on the ellipsoid the layer's own CRS names."""
+    from pyproj import Geod
+
+    ellipsoid = gdf.crs.ellipsoid
+    geod = Geod(
+        a=ellipsoid.semi_major_metre, rf=ellipsoid.inverse_flattening
+    )
+    lonlat = gdf.to_crs("EPSG:4326") if not verify.same_crs(gdf.crs, "EPSG:4326") else gdf
+    return [
+        abs(geod.geometry_area_perimeter(geom)[0]) if geom is not None else 0.0
+        for geom in lonlat.geometry
+    ]
+
+
+def measure_area(
+    input_path: str,
+    output_path: str,
+    method: str = "geodesic",
+    area_column: str = "area_m2",
+) -> dict[str, Any]:
+    if method not in AREA_METHODS:
+        raise ValueError(f"method must be one of {sorted(AREA_METHODS)}, got {method!r}")
+    gdf = _read(input_path)
+    if gdf.crs is None:
+        raise ValueError(readers.no_crs_message(
+            gdf,
+            f"{input_path} has no CRS. Refusing to measure an area without knowing "
+            "the units — assign a CRS first (see reproject_layer).",
+        ))
+    if method == "planar" and gdf.crs.is_geographic:
+        raise ValueError(
+            f"{input_path} is in a geographic CRS ({verify.crs_label(gdf.crs)}), so a "
+            "planar area would be in square degrees — a number that is not an area of "
+            "anything. Use method='geodesic' for ground area, or reproject to a "
+            "projected CRS first (reproject_layer)."
+        )
+    record = ProvenanceRecord(
+        operation="measure_area",
+        parameters={"method": method, "area_column": area_column},
+        inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))],
+        engine=_engine_info(),
+    )
+    pre = verify.verify_loaded_inputs("measure_area", input_path=gdf)
+    if verify.has_critical_failure(pre):
+        record.add_verification(pre).finish().write_for(output_path)
+        verify.enforce(pre, "measure_area")
+
+    # Repair BEFORE measuring, not after: the planar area of a self-intersecting
+    # ring is the signed shoelace — a number that matches no region and raises
+    # nothing. Measuring first and repairing the output would keep the wrong
+    # number. Every repair is recorded, because a silent repair trades one
+    # silence for another.
+    invalid = int((~gdf.geometry.is_valid).sum())
+    if invalid:
+        from shapely.validation import make_valid
+
+        gdf = gdf.copy()
+        gdf[gdf.geometry.name] = gdf.geometry.apply(make_valid)
+        record.notes.append(
+            f"{invalid} invalid geometries repaired with make_valid BEFORE measuring: "
+            "the planar area of a self-intersecting ring is the signed shoelace, "
+            "which matches no region and is returned without complaint"
+        )
+
+    geodesic = _geodesic_areas(gdf)
+    if method == "planar":
+        # The unit comes from the CRS, exactly once, and is not assumed to be
+        # the metre: a layer in US survey feet is 0.0929 m2 per square foot.
+        factor = gdf.crs.axis_info[0].unit_conversion_factor
+        areas = [float(a) * factor**2 for a in gdf.geometry.area]
+        record.crs_decisions = {
+            "analysis_crs": verify.crs_label(gdf.crs),
+            "reason": "planar area in the layer's own CRS, converted to square metres "
+            f"with its declared linear unit ({gdf.crs.axis_info[0].unit_name}, "
+            f"factor {factor!r})",
+        }
+    else:
+        areas = geodesic
+        record.crs_decisions = {
+            "analysis_crs": f"{gdf.crs.ellipsoid.name} (ellipsoidal)",
+            "reason": "ground area computed on the ellipsoid the layer's CRS names; "
+            "no map plane is involved, so no projection distortion enters",
+        }
+    planar_total = float(sum(areas)) if method == "planar" else None
+    geodesic_total = float(sum(geodesic))
+    total = float(sum(areas))
+
+    distortion: float | None = None
+    if method == "planar" and geodesic_total > 0:
+        distortion = planar_total / geodesic_total
+        record.notes.append(
+            f"planar total {planar_total:.6g} m2 against the ellipsoidal ground area "
+            f"{geodesic_total:.6g} m2: ratio {distortion:.6f}"
+        )
+
+    with verify.audit_on_failure(record, output_path, pre):
+        measured = gdf.copy()
+        measured[area_column] = areas
+        _write(measured, output_path)
+
+    def checks() -> list[verify.Check]:
+        result = verify.verify_vector_output(
+            output_path,
+            expect_crs=gdf.crs,
+            expect_count=len(gdf),
+            on_empty="fail" if len(gdf) else "ignore",
+        )
+        polygonal = int(
+            gdf.geom_type.isin(["Polygon", "MultiPolygon", "GeometryCollection"]).sum()
+        )
+        result.append(
+            verify.Check(
+                "area_is_measurable",
+                polygonal > 0 or not len(gdf),
+                f"{polygonal}/{len(gdf)} features have polygonal geometry",
+                critical=False,
+                hint=None if polygonal or not len(gdf) else
+                "Points and lines enclose no area, so every value is 0. That is "
+                "arithmetically right and probably not the question: check whether "
+                "the layer you meant is the polygon one.",
+            )
+        )
+        if distortion is not None:
+            off = abs(distortion - 1.0)
+            result.append(
+                verify.Check(
+                    "planar_area_matches_ground",
+                    off <= _DISTORTION_TOLERANCE,
+                    f"planar/ellipsoidal area ratio {distortion:.6f}",
+                    critical=False,
+                    hint=None if off <= _DISTORTION_TOLERANCE else
+                    f"This CRS's plane reports {distortion:.4f}x the ground area at "
+                    "this location — it is not equal-area here. The planar number is "
+                    "arithmetically exact and answers a question about the map, not "
+                    "about the land. For ground area use method='geodesic' "
+                    f"({geodesic_total:.6g} m2).",
+                )
+            )
+        return result
+
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="measure_area",
+        preconditions=pre,
+        checks_fn=checks,
+        # geometry was already repaired before measuring; repairing the output
+        # again would change what the recorded numbers describe
+        repair=False,
+    )
+    return {
+        "output": str(output_path),
+        "method": method,
+        "area_column": area_column,
+        "total_area_m2": total,
+        "feature_count": len(gdf),
+        "ground_area_m2": geodesic_total,
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
 def spatial_join(
     left_path: str, right_path: str, output_path: str, predicate: str = "intersects"
 ) -> dict[str, Any]:

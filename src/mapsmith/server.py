@@ -263,6 +263,43 @@ def explode_layer(input_path: str, output_path: str) -> dict[str, Any]:
 
 
 @mcp.tool(annotations=_WRITER)
+def measure_area(
+    input_path: str,
+    output_path: str,
+    method: str = "geodesic",
+    area_column: str = "area_m2",
+) -> dict[str, Any]:
+    """Area per feature in SQUARE METRES, written to a named column, with the
+    total in the result.
+
+    method='geodesic' (default) measures ground area on the ellipsoid the
+    layer's CRS names: no map plane, so no projection distortion. method=
+    'planar' measures in the layer's own CRS and converts with its declared
+    linear unit — a layer in US survey feet is not assumed to be in metres —
+    and is refused on a geographic CRS, where an area would be in square
+    degrees.
+
+    Two things this tool does that a bare area call cannot: invalid geometry is
+    repaired BEFORE measuring (the planar area of a self-intersecting ring is
+    the signed shoelace, a number matching no region, returned without
+    complaint) and every repair is recorded; and a planar measurement is
+    compared against the ground area, so a plane that is not equal-area here
+    comes back with a `warnings` entry carrying the ratio — Web Mercator at 42°
+    reports 1.80× the land it covers.
+    """
+    _guard(input_path=input_path, output_path=output_path)
+    return _run(
+        "measure_area",
+        {"input": input_path, "output": output_path, "method": method},
+        vector.measure_area,
+        input_path,
+        output_path,
+        method,
+        area_column,
+    )
+
+
+@mcp.tool(annotations=_WRITER)
 def merge_layers(input_paths: list[str], output_path: str) -> dict[str, Any]:
     """Append two or more layers into one (schema union, attributes aligned by name).
 

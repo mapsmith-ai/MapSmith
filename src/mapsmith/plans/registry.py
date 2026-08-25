@@ -71,6 +71,12 @@ def _explode() -> Callable[..., dict[str, Any]]:
     return vector.explode
 
 
+def _measure_area() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.measure_area
+
+
 def _merge() -> Callable[..., dict[str, Any]]:
     from ..engines import vector
 
@@ -189,6 +195,9 @@ BINDINGS: dict[str, Binding] = {
     ),
     "explode_layer": Binding(
         _explode, ("input_path",), "output_path", None, ("same_as", "input_path"), "vector"
+    ),
+    "measure_area": Binding(
+        _measure_area, ("input_path",), "output_path", None, ("same_as", "input_path"), "vector"
     ),
     # merge_layers takes a LIST of input paths; static analysis tracks only
     # string path arguments, so its inputs are opaque here, like run_sql's.
