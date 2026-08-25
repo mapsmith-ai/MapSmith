@@ -72,18 +72,35 @@ def test_found_at_3_stays_above_the_breakage_floor(warm_model):
 
 
 def test_bm25_and_embedding_read_the_same_corpus(warm_model):
-    """The comparison is honest only if both engines rank the same text."""
+    """The comparison is honest only if both engines rank the same text — and
+    it reports quality AND latency side by side, because the decision that
+    would supersede the BM25 default needs both curves, not one."""
+    import time
+
     texts = [catalog.document_text(op) for op in catalog.OPERATIONS]
     assert len(texts) == len(catalog.OPERATIONS)
     assert all(isinstance(t, str) and t for t in texts)
+
+    retrieval.rank("warm the index", limit=1)  # index build must not bill the first query
     both = {}
+    timings = {"bm25": 0.0, "embedding": 0.0}
     for expected, query in GOLDEN_QUERIES.items():
+        start = time.perf_counter()
         bm25_top = [op["name"] for op, _ in catalog.rank(query, limit=3)]
+        timings["bm25"] += time.perf_counter() - start
+        start = time.perf_counter()
         embed_top = [op["name"] for op, _ in retrieval.rank(query, limit=3)]
+        timings["embedding"] += time.perf_counter() - start
         both[expected] = (expected in bm25_top, expected in embed_top)
+
     bm25_found = sum(1 for hit, _ in both.values() if hit)
     embed_found = sum(1 for _, hit in both.values() if hit)
-    print(f"\nfound@3 on {len(both)} golden queries: bm25={bm25_found}, embedding={embed_found}")
+    per_query = {name: total / len(both) * 1000 for name, total in timings.items()}
+    print(
+        f"\ncatalog size {len(catalog.OPERATIONS)} | found@3 on {len(both)} golden queries: "
+        f"bm25={bm25_found} ({per_query['bm25']:.2f} ms/query), "
+        f"embedding={embed_found} ({per_query['embedding']:.2f} ms/query)"
+    )
     # No winner asserted: the point of running both is the printed curve over
     # time, and the decision that would supersede the BM25 default is taken on
     # accumulated numbers, not on one test run.
