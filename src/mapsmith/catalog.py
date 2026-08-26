@@ -1823,6 +1823,81 @@ OPERATIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        "name": "band_math",
+        "status": "available",
+        "tool": None,
+        "category": "raster",
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
+        "summary": "Arithmetic across a raster's bands (NDVI and friends), with "
+        "declared scale and offset applied",
+        "description": (
+            "Evaluate an arithmetic expression over a raster's bands, written with "
+            "b1, b2, … and the operators + - * / and parentheses; nothing else is "
+            "accepted, and the expression is evaluated over arrays rather than "
+            "executed. Three things happen that a hand-rolled version usually skips, "
+            "each of which is a plausible wrong number: the scale and offset the file "
+            "DECLARES are applied and recorded (GDAL states this is the caller's job "
+            "and does not do it, so an index on stored digital numbers is off by "
+            "whatever the calibration was); arithmetic runs in float64, because "
+            "subtracting two uint16 bands wraps around at zero and returns ~65535 "
+            "silently; and the output is written as float32 with a declared nodata "
+            "instead of inheriting an integer profile that would round an index in "
+            "[-1, 1] to zeros and ones. Requires the [raster] extra. Called through "
+            "run_operation."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Multi-band raster (.tif)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output GeoTIFF path (float32, nodata -9999)",
+            },
+            {
+                "name": "expression",
+                "type": "str",
+                "required": True,
+                "description": "Arithmetic over band references, e.g. "
+                "'(b2 - b1) / (b2 + b1)' for NDVI with red in band 1 and NIR in band 2; operators + - * / ** and parentheses",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "NDVI from a scene with red in band 1 and near-infrared in band 2",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "band_math",
+                        "arguments": {
+                            "input_path": "scene.tif",
+                            "output_path": "ndvi.tif",
+                            "expression": "(b2 - b1) / (b2 + b1)",
+                        },
+                    },
+                },
+            },
+            {
+                "goal": "Convert a thermal band from tenths of a kelvin to celsius",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "band_math",
+                        "arguments": {
+                            "input_path": "thermal.tif",
+                            "output_path": "celsius.tif",
+                            "expression": "b1 / 10 - 273.15",
+                        },
+                    },
+                },
+            },
+        ],
+    },
+    {
         "name": "isochrone",
         "status": "planned",
         "category": "network",

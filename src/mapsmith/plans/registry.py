@@ -137,6 +137,12 @@ def _reclassify_raster() -> Callable[..., dict[str, Any]]:
     return raster.reclassify
 
 
+def _band_math() -> Callable[..., dict[str, Any]]:
+    from ..engines import raster
+
+    return raster.band_math
+
+
 def _zonal_statistics() -> Callable[..., dict[str, Any]]:
     from ..engines import raster
 
@@ -260,6 +266,14 @@ BINDINGS: dict[str, Binding] = {
     ),
     "reclassify_raster": Binding(
         _reclassify_raster,
+        ("input_path",),
+        "output_path",
+        "exactextract",
+        ("same_as", "input_path"),
+        "raster",
+    ),
+    "band_math": Binding(
+        _band_math,
         ("input_path",),
         "output_path",
         "exactextract",

@@ -29,7 +29,7 @@ real MapSmith output against the spec's own validator.
 Evidence before promises: an [A/B on GABench](docs/benchmarks.md) whose headline is a null
 result — with the analysis that took our own positive number apart — a correctness suite in
 its own organisation, [**Argleton**](https://argleton.org), whose published run grades
-MapSmith on nine traps with answers computed on paper and has already sent two defects back
+MapSmith on ten traps with answers computed on paper and has already sent two defects back
 here, [notebooks](examples/) on a real USGS DEM of Mount St. Helens, and an
 [in-chat map panel](#see-results-inside-the-chat) that shows the verification status of
 every layer it draws.

@@ -12,6 +12,7 @@ raster CRS.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import geopandas as gpd
@@ -626,3 +627,160 @@ def reclassify(
         "provenance": str(manifest),
         "verified": True,
     }
+
+
+# Only these names, and only these operators, reach the evaluator. Band
+# references are b1..bN; everything else is rejected before anything is read.
+_BAND_REFERENCE = re.compile(r"\bb([1-9][0-9]?)\b")
+_ALLOWED_EXPRESSION = re.compile(r"^[b0-9+\-*/(). ]+$")
+
+
+def band_math(input_path: str, output_path: str, expression: str) -> dict[str, Any]:
+    """Evaluate an arithmetic expression over a raster's bands (NDVI and friends).
+
+    Bands are referenced as ``b1``, ``b2``, … and the expression may use
+    ``+ - * / ** ( )`` and numbers, nothing else — it is matched against a
+    regular expression before anything is read, then evaluated over numpy
+    arrays with no builtins in scope. ``**`` is allowed on purpose (an index
+    that squares a band is ordinary); names, calls and attribute access are
+    not.
+
+    Three things are done that a hand-rolled version usually is not, each of
+    which is a silent wrong answer waiting:
+
+    * **Declared scale and offset are applied**, and the manifest says so. GDAL
+      states that applying them is the caller's job and that ``RasterIO`` will
+      not; an index computed on stored digital numbers is a plausible number
+      that is not the one asked for.
+    * **Arithmetic happens in float64.** Subtracting two ``uint16`` bands wraps
+      around at zero — ``red - nir`` where red is larger comes back near 65535,
+      silently — and the result of an index built on that is well formed and
+      meaningless.
+    * **The output is written as float32 with a declared nodata**, rather than
+      inheriting the input's integer profile, which would round an index in
+      [-1, 1] to zeros and ones on the way to disk.
+    """
+    rasterio = _require_rasterio()
+    import numpy as np
+
+    if not _ALLOWED_EXPRESSION.match(expression):
+        raise ValueError(
+            f"expression {expression!r} may only contain band references (b1, b2, …), "
+            "numbers, the operators + - * / ** and parentheses. Names, function "
+            "calls and attribute access are rejected before the file is opened."
+        )
+    referenced = sorted({int(m) for m in _BAND_REFERENCE.findall(expression)})
+    if not referenced:
+        raise ValueError(
+            f"expression {expression!r} references no band; write them as b1, b2, …"
+        )
+
+    with rasterio.open(input_path) as src:
+        missing = [b for b in referenced if b > src.count]
+        if missing:
+            raise ValueError(
+                f"expression references band(s) {missing} but {input_path} has "
+                f"{src.count} band(s)"
+            )
+        record = ProvenanceRecord(
+            operation="band_math",
+            parameters={"expression": expression, "bands_used": referenced},
+            inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(src.crs))],
+            engine={"name": "rasterio", "version": rasterio.__version__},
+        )
+        record.crs_decisions = {
+            "analysis_crs": verify.crs_label(src.crs),
+            "reason": "band arithmetic is per-cell; geometry and CRS are unchanged",
+        }
+        # float64 before any arithmetic: integer bands wrap around on subtraction.
+        namespace: dict[str, Any] = {}
+        applied: list[str] = []
+        for band_index in referenced:
+            data = src.read(band_index, masked=True).astype("float64")
+            scale = src.scales[band_index - 1]
+            offset = src.offsets[band_index - 1]
+            if scale != 1.0 or offset != 0.0:
+                data = data * scale + offset
+                applied.append(f"b{band_index}: value * {scale} + {offset}")
+            namespace[f"b{band_index}"] = data
+        if applied:
+            record.notes.append(
+                "declared scale and offset applied before the expression — "
+                + "; ".join(applied)
+                + ". GDAL leaves this to the caller, so an index computed on the "
+                "stored numbers would have been a plausible wrong answer"
+            )
+        else:
+            record.notes.append(
+                "no band declares a scale or offset: the stored values are the "
+                "physical ones"
+            )
+        source_shape = (src.height, src.width)
+        profile = src.profile.copy()
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        computed = eval(
+            expression, {"__builtins__": {}}, namespace
+        )
+    computed = np.ma.masked_invalid(np.ma.asarray(computed))
+    nodata_out = -9999.0
+    profile.update(count=1, dtype="float32", nodata=nodata_out)
+    for key in ("blockxsize", "blockysize", "tiled"):
+        profile.pop(key, None)
+    with rasterio.open(output_path, "w", **profile) as dst:
+        dst.write(computed.filled(nodata_out).astype("float32"), 1)
+
+    checks: list[verify.Check] = []
+    with rasterio.open(output_path) as out:
+        checks.append(
+            verify.Check(
+                "shape_preserved",
+                (out.height, out.width) == source_shape,
+                f"{out.height}x{out.width}",
+            )
+        )
+        checks.append(
+            verify.Check(
+                "written_as_float",
+                out.dtypes[0].startswith("float"),
+                out.dtypes[0],
+            )
+        )
+        band = out.read(1, masked=True)
+        valid = int(band.count())
+        invalid = int(band.size - valid)
+        checks.append(
+            verify.Check(
+                "result_not_all_nodata",
+                valid > 0,
+                f"{valid} of {band.size} cells carry a value",
+                critical=False,
+                hint=None
+                if valid
+                else "Every cell is nodata: the expression divided by zero or "
+                "operated on nodata everywhere. Check the bands' nodata values.",
+            )
+        )
+        stats = (
+            {"min": float(band.min()), "max": float(band.max()), "mean": float(band.mean())}
+            if valid
+            else {}
+        )
+
+    manifest = record.add_verification(checks).finish().write_for(output_path)
+    verify.enforce(checks, "band_math")
+    result = {
+        "output": str(output_path),
+        "expression": expression,
+        "bands_used": referenced,
+        "nodata_cells": invalid,
+        "provenance": str(manifest),
+        "verified": True,
+        **stats,
+    }
+    if applied:
+        result["scale_offset_applied"] = applied
+    advisories = verify.advisories(checks)
+    if advisories:
+        result["warnings"] = advisories
+    return result
