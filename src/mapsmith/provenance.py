@@ -174,10 +174,21 @@ class InputRecord:
     path: str
     sha256: str
     crs: str | None = None
+    # Which layer was read, for containers holding more than one. The spec asks
+    # for it in exactly these words: "without it, an auditor holding a
+    # five-layer container and this record cannot tell which layer produced the
+    # numbers." Since #29 MapSmith knows the answer — it refuses containers
+    # with no chosen layer — so leaving the field empty was recording ignorance
+    # it no longer had.
+    layer: str | None = None
 
     @classmethod
-    def from_path(cls, path: str | Path, crs: str | None = None) -> InputRecord:
-        return cls(path=posix_path(path), sha256=sha256_of(path), crs=crs)
+    def from_path(
+        cls, path: str | Path, crs: str | None = None, layer: str | None = None
+    ) -> InputRecord:
+        return cls(
+            path=posix_path(path), sha256=sha256_of(path), crs=crs, layer=layer
+        )
 
 
 def posix_path(path: str | Path) -> str:
@@ -217,6 +228,15 @@ class ProvenanceRecord:
     repairs: list[dict[str, Any]] = field(default_factory=list)
     # disclosures about how the inputs were handled before the engine saw them
     notes: list[str] = field(default_factory=list)
+    # `producer` is the spec's field for "the software that emitted this
+    # record, as distinct from the engine that computed the result", and until
+    # now MapSmith declared its version in a field of its own invention. Both
+    # are emitted: the spec field so a third-party reader finds what the spec
+    # told it to look for, and `mapsmith_version` because manifests already on
+    # disk carry it and something out there may key on it.
+    producer: dict[str, str] = field(
+        default_factory=lambda: {"name": "mapsmith", "version": __version__}
+    )
     mapsmith_version: str = __version__
     started_at: str = field(default_factory=_utcnow)
     finished_at: str | None = None

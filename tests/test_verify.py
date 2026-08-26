@@ -144,3 +144,182 @@ def test_every_manifest_mapsmith_writes_conforms_to_the_spec(tmp_path):
     assert record["output"]["path"].endswith("wells_100m.parquet")
     assert "\\" not in record["output"]["path"]
     assert record["output"]["sha256"] == hashlib.sha256(out.read_bytes()).hexdigest()
+
+
+def test_every_writing_operation_conforms_to_the_spec(tmp_path):
+    """The test above proves one operation conforms. This one proves they all do.
+
+    The catalog is the list, so an operation added tomorrow is covered the day
+    it is added — which is the point: the previous version of this file
+    validated `buffer_layer` and nothing else, and four raster operations
+    shipped without anyone checking whether their manifests were still
+    manifests. They were, and that was luck rather than a control.
+
+    Operations behind an absent extra are skipped rather than silently passed,
+    and the test says how many it actually validated: a conformance test that
+    quietly checks nothing is worse than no conformance test.
+    """
+    import json
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).parent / "data"))
+    from manifest_spec_validator import problems
+
+    from mapsmith import catalog
+    from mapsmith.plans.registry import BINDINGS
+
+    fixtures = _spec_fixtures(tmp_path)
+    validated: list[str] = []
+    skipped: list[str] = []
+    for entry in catalog.OPERATIONS:
+        if entry["status"] != "available":
+            continue
+        name = entry["name"]
+        binding = BINDINGS.get(name)
+        if binding is None or binding.output_arg is None:
+            continue  # readers write no manifest
+        call = fixtures.get(name)
+        if call is None:
+            skipped.append(name)
+            continue
+        try:
+            result = call()
+        except ImportError:
+            skipped.append(name)
+            continue
+        record = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+        assert problems(record) == [], f"{name} writes a manifest the spec rejects"
+        assert record["operation"] == name
+        assert record["spec_version"].startswith("1."), name
+        validated.append(name)
+
+    assert len(validated) >= 22, (
+        f"only {len(validated)} operations were validated ({sorted(validated)}); "
+        f"no fixture for {sorted(skipped)} — add one rather than let coverage rot"
+    )
+
+
+def _spec_fixtures(tmp_path):
+    """One real call per writing operation, for the conformance sweep.
+
+    Real calls on real files: a hand-built record would validate the test's
+    idea of a manifest rather than MapSmith's.
+    """
+    import geopandas as gpd
+    from shapely.geometry import Point, Polygon
+
+    from mapsmith.engines import vector
+
+    crs = "EPSG:32632"
+    square = Polygon([(0, 0), (100, 0), (100, 100), (0, 100)])
+    other = Polygon([(50, 50), (150, 50), (150, 150), (50, 150)])
+    layer = tmp_path / "a.parquet"
+    gpd.GeoDataFrame({"k": ["x"], "v": [1]}, geometry=[square], crs=crs).to_parquet(layer)
+    second = tmp_path / "b.parquet"
+    gpd.GeoDataFrame({"j": [2]}, geometry=[other], crs=crs).to_parquet(second)
+    points = tmp_path / "p.parquet"
+    gpd.GeoDataFrame(
+        {"n": [1, 2]}, geometry=[Point(10, 10), Point(90, 90)], crs=crs
+    ).to_parquet(points)
+
+    def out(name: str) -> str:
+        return str(tmp_path / name)
+
+    fixtures = {
+        "buffer_layer": lambda: vector.buffer(str(layer), 10.0, out("buf.parquet")),
+        "clip_layer": lambda: vector.clip(str(layer), str(second), out("clip.parquet")),
+        "overlay_layers": lambda: vector.overlay(
+            str(layer), str(second), out("ov.parquet")
+        ),
+        "dissolve_layer": lambda: vector.dissolve(str(layer), out("dis.parquet"), by="k"),
+        "nearest_join": lambda: vector.nearest_join(
+            str(points), str(layer), out("near.parquet")
+        ),
+        "explode_layer": lambda: vector.explode(str(layer), out("exp.parquet")),
+        "measure_area": lambda: vector.measure_area(str(layer), out("area.parquet")),
+        "merge_layers": lambda: vector.merge(
+            [str(layer), str(second)], out("merge.parquet")
+        ),
+        "simplify_layer": lambda: vector.simplify(str(layer), 1.0, out("simp.parquet")),
+        "centroid_layer": lambda: vector.centroid(str(layer), out("cent.parquet")),
+        "convert_format": lambda: vector.convert(str(layer), out("conv.gpkg")),
+        "reproject_layer": lambda: vector.reproject(
+            str(layer), "EPSG:4326", out("rep.parquet")
+        ),
+        "spatial_join": lambda: vector.spatial_join(
+            str(points), str(layer), out("sj.parquet")
+        ),
+    }
+
+    try:
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_origin
+
+        from mapsmith.engines import raster
+    except ImportError:
+        return fixtures
+
+    grid = tmp_path / "grid.tif"
+    with rasterio.open(
+        grid, "w", driver="GTiff", height=4, width=4, count=2, dtype="int16",
+        crs=crs, transform=from_origin(0, 100, 25, 25), nodata=-9999,
+    ) as ds:
+        ds.write(np.arange(16, dtype="int16").reshape(4, 4), 1)
+        ds.write(np.arange(16, 32, dtype="int16").reshape(4, 4), 2)
+    query = (
+        f"SELECT * FROM read_parquet('{str(layer).replace(chr(92), '/')}')"
+    )
+    from mapsmith.engines import duckdb_engine
+
+    fixtures["run_sql"] = lambda: duckdb_engine.run_sql(query, out("sql.parquet"))
+
+    fixtures.update({
+        "resample_raster": lambda: raster.resample(
+            str(grid), out("res.tif"), 50, "nearest"
+        ),
+        "clip_raster": lambda: raster.clip_raster(
+            str(grid), str(layer), out("clipr.tif")
+        ),
+        "reclassify_raster": lambda: raster.reclassify(
+            str(grid), out("rc.tif"), ["0:8:1", "8:40:2"]
+        ),
+        "band_math": lambda: raster.band_math(str(grid), out("bm.tif"), "b2 - b1"),
+        "zonal_statistics": lambda: raster.zonal_statistics(
+            str(grid), str(layer), out("zs.parquet"), stats=["mean"]
+        ),
+    })
+
+    try:
+        from mapsmith.engines import whitebox_engine
+    except ImportError:
+        return fixtures
+
+    # A tilted plane with a single low corner: enough terrain for the
+    # derivatives and the hydrology to have something to route.
+    rows, cols = 24, 24
+    yy, xx = np.mgrid[0:rows, 0:cols]
+    surface = (100.0 + xx * 2.0 + yy * 1.0).astype("float32")
+    dem = tmp_path / "dem.tif"
+    with rasterio.open(
+        dem, "w", driver="GTiff", height=rows, width=cols, count=1, dtype="float32",
+        crs=crs, transform=from_origin(0, rows * 10.0, 10, 10), nodata=-9999.0,
+    ) as ds:
+        ds.write(surface, 1)
+    pour = tmp_path / "pour.parquet"
+    gpd.GeoDataFrame(
+        {"id": [1]}, geometry=[Point(5.0, 5.0)], crs=crs
+    ).to_parquet(pour)
+    fixtures.update({
+        "hillshade": lambda: whitebox_engine.hillshade(str(dem), out("hs.tif")),
+        "slope": lambda: whitebox_engine.slope(str(dem), out("slope.tif")),
+        "aspect": lambda: whitebox_engine.aspect(str(dem), out("aspect.tif")),
+        "flow_accumulation": lambda: whitebox_engine.flow_accumulation(
+            str(dem), out("facc.tif")
+        ),
+        "watershed": lambda: whitebox_engine.watershed(
+            str(dem), str(pour), out("ws.tif")
+        ),
+    })
+    return fixtures
