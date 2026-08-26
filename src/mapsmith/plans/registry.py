@@ -119,6 +119,12 @@ def _run_sql() -> Callable[..., dict[str, Any]]:
     return duckdb_engine.run_sql
 
 
+def _resample_raster() -> Callable[..., dict[str, Any]]:
+    from ..engines import raster
+
+    return raster.resample
+
+
 def _zonal_statistics() -> Callable[..., dict[str, Any]]:
     from ..engines import raster
 
@@ -224,6 +230,14 @@ BINDINGS: dict[str, Binding] = {
     ),
     # run_sql reads whatever the query names: inputs are opaque to static analysis.
     "run_sql": Binding(_run_sql, (), "output_path", None, ("unknown", ""), "vector"),
+    "resample_raster": Binding(
+        _resample_raster,
+        ("input_path",),
+        "output_path",
+        "exactextract",
+        ("same_as", "input_path"),
+        "raster",
+    ),
     "zonal_statistics": Binding(
         _zonal_statistics,
         ("raster_path", "zones_path"),

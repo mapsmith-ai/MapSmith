@@ -185,3 +185,179 @@ def zonal_statistics(
         "verified": True,
         **extras,
     }
+
+
+# Resampling methods that AVERAGE their neighbours. On a categorical raster
+# these invent class codes that were never in the data, which is the whole
+# reason this operation refuses to have a default.
+# Measured against the installed rasterio, not assumed: read() accepts nine of
+# the fifteen Resampling members and raises ResamplingAlgorithmError for
+# min/max/med/q1/q3/sum, which are warp-only. rasterio has three different
+# valid sets (read, warp, overviews) and the intersection is what matters here.
+INTERPOLATING_RESAMPLING = {
+    "bilinear", "cubic", "cubic_spline", "lanczos", "average", "rms", "gauss",
+}
+# These pick an existing value instead of deriving one, so a class code
+# survives them. On the read path that is exactly two methods.
+CATEGORICAL_RESAMPLING = {"nearest", "mode"}
+WARP_ONLY_RESAMPLING = {"min", "max", "med", "q1", "q3", "sum"}
+# Beyond this many distinct values a raster is treated as continuous and the
+# new-code check is skipped: the point is to catch class codes, not elevations.
+_CATEGORICAL_MAX_CLASSES = 64
+
+
+def resample(
+    input_path: str,
+    output_path: str,
+    resolution: float,
+    resampling: str,
+) -> dict[str, Any]:
+    """Resample a raster to a target cell size. The method is REQUIRED, by design.
+
+    Every raster library defaults to nearest neighbour, and the caller who
+    wanted a smooth surface silently gets a blocky one; the caller who reaches
+    for bilinear on land-cover codes silently gets classes that do not exist.
+    Neither failure raises anything, so the choice is the caller's to state.
+    """
+    rasterio = _require_rasterio()
+    from rasterio.enums import Resampling
+
+    if resolution <= 0:
+        raise ValueError(f"resolution must be positive, got {resolution}")
+    valid = INTERPOLATING_RESAMPLING | CATEGORICAL_RESAMPLING
+    if resampling not in valid:
+        warp_only = (
+            f" '{resampling}' exists in rasterio's Resampling enum but is valid only "
+            "for warping, not for the read path this operation uses."
+            if resampling in WARP_ONLY_RESAMPLING
+            else ""
+        )
+        raise ValueError(
+            f"resampling must be one of {sorted(valid)}, got {resampling!r}.{warp_only} "
+            "There is no default on purpose: interpolating methods (bilinear, cubic, "
+            "average) derive values between the ones present, which is right for a "
+            "continuous surface and wrong for class codes — use nearest or mode there."
+        )
+    method = getattr(Resampling, resampling)
+
+    with rasterio.open(input_path) as src:
+        if src.crs is None:
+            raise ValueError(
+                f"{input_path} declares no CRS, so a resolution in its units cannot be "
+                "interpreted. Assign a CRS first."
+            )
+        left, bottom, right, top = src.bounds
+        # Closed form: the new grid covers the same extent, so its shape follows
+        # from the extent and the target cell size. Computed BEFORE the engine
+        # runs, then verified against what landed on disk.
+        width = max(1, round((right - left) / resolution))
+        height = max(1, round((top - bottom) / resolution))
+        source_values, categorical = _distinct_values(src)
+        record = ProvenanceRecord(
+            operation="resample_raster",
+            parameters={
+                "resolution": resolution,
+                "resampling": resampling,
+                "target_shape": [height, width],
+            },
+            inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(src.crs))],
+            engine={"name": "rasterio", "version": rasterio.__version__},
+        )
+        record.crs_decisions = {
+            "analysis_crs": verify.crs_label(src.crs),
+            "reason": "resampling changes the grid, not the coordinate system; "
+            "the target resolution is read in the raster's own CRS units",
+        }
+        data = src.read(out_shape=(src.count, height, width), resampling=method)
+        profile = src.profile.copy()
+        profile.update(
+            width=width,
+            height=height,
+            transform=src.transform * src.transform.scale(
+                src.width / width, src.height / height
+            ),
+        )
+        # The source's tiling describes the source's grid: carried onto a
+        # smaller output GDAL complains and drops it. Let the driver choose.
+        for key in ("blockxsize", "blockysize", "tiled"):
+            profile.pop(key, None)
+
+    with rasterio.open(output_path, "w", **profile) as dst:
+        dst.write(data)
+
+    checks: list[verify.Check] = []
+    with rasterio.open(output_path) as out:
+        checks.append(
+            verify.Check(
+                "shape_matches_resolution",
+                (out.height, out.width) == (height, width),
+                f"expected {height}x{width}, got {out.height}x{out.width}",
+            )
+        )
+        checks.append(
+            verify.Check(
+                "crs_preserved",
+                verify.same_crs(out.crs, record.inputs[0].crs),
+                f"{verify.crs_label(out.crs)}",
+            )
+        )
+        result_values, _ = _distinct_values(out)
+
+    # The check that looks at the VALUES, not at whether the run finished: an
+    # interpolating method on a categorical raster produces codes that were
+    # never in the input, and nothing else in the stack will say so.
+    invented: list[float] = []
+    if categorical and resampling in INTERPOLATING_RESAMPLING and result_values is not None:
+        invented = sorted(result_values - source_values)
+        checks.append(
+            verify.Check(
+                "no_invented_class_codes",
+                not invented,
+                f"{resampling} introduced codes absent from the input: {invented}"
+                if invented
+                else "output codes are a subset of the input codes",
+                critical=False,
+                hint=(
+                    "This raster looks categorical (integer, few distinct values) and was "
+                    f"resampled with '{resampling}', which averages neighbours. The codes "
+                    f"{invented} exist in the result and not in the source: if they mean "
+                    "something in your legend, every downstream count and area for those "
+                    "classes is fabricated. Use nearest or mode for class codes."
+                )
+                if invented
+                else None,
+            )
+        )
+
+    manifest = record.add_verification(checks).finish().write_for(output_path)
+    verify.enforce(checks, "resample_raster")
+    result = {
+        "output": str(output_path),
+        "resolution": resolution,
+        "resampling": resampling,
+        "shape": [height, width],
+        "provenance": str(manifest),
+        "verified": True,
+    }
+    hinted = verify.advisories(checks)
+    if hinted:
+        result["warnings"] = hinted
+    if invented:
+        result["invented_values"] = invented
+    return result
+
+
+def _distinct_values(dataset: Any) -> tuple[set[float] | None, bool]:
+    """The distinct values of band 1, and whether the raster looks categorical.
+
+    Categorical here means integer dtype with few distinct values — a heuristic,
+    stated as such: it decides whether to RUN a non-critical check, never
+    whether to alter data.
+    """
+    import numpy as np
+
+    if not np.issubdtype(np.dtype(dataset.dtypes[0]), np.integer):
+        return None, False
+    band = dataset.read(1, masked=True)
+    values = {float(v) for v in np.unique(band.compressed())}
+    return (values, True) if len(values) <= _CATEGORICAL_MAX_CLASSES else (values, False)

@@ -1586,6 +1586,88 @@ OPERATIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        "name": "resample_raster",
+        "status": "available",
+        "tool": None,
+        "category": "raster",
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
+        "summary": "Resample a raster to a target cell size; the method is required, "
+        "and inventing class codes is reported",
+        "description": (
+            "Change a raster's cell size. The resampling method is a REQUIRED argument "
+            "with no default, because both defaults are wrong half the time: nearest "
+            "neighbour on a continuous surface gives blocky terrain, and bilinear or "
+            "average on class codes invents classes that were never in the data. When "
+            "the input looks categorical (integer, few distinct values) and the method "
+            "averages neighbours, the result is compared against the input's own set of "
+            "values and any code that appeared out of nothing is reported — in the "
+            "manifest and in the result. The output shape is derived from the extent and "
+            "the target resolution before the engine runs, then verified. Requires the "
+            "[raster] extra. Called through run_operation."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Raster to resample (.tif); must declare a CRS",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output GeoTIFF path",
+            },
+            {
+                "name": "resolution",
+                "type": "float",
+                "required": True,
+                "description": "Target cell size, in the raster's own CRS units",
+            },
+            {
+                "name": "resampling",
+                "type": "str",
+                "required": True,
+                "description": "nearest, mode, min, max, med, q1, q3 (keep existing "
+                "values — use for class codes) or bilinear, cubic, cubic_spline, "
+                "lanczos, average, rms, sum (derive new values — use for continuous "
+                "surfaces). No default: the choice belongs to the caller",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Coarsen a 10 m land-cover map to 30 m without inventing classes",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "resample_raster",
+                        "arguments": {
+                            "input_path": "landcover.tif",
+                            "output_path": "landcover_30m.tif",
+                            "resolution": 30,
+                            "resampling": "mode",
+                        },
+                    },
+                },
+            },
+            {
+                "goal": "Refine a coarse elevation grid to 10 m for a smooth surface",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "resample_raster",
+                        "arguments": {
+                            "input_path": "dem_30m.tif",
+                            "output_path": "dem_10m.tif",
+                            "resolution": 10,
+                            "resampling": "bilinear",
+                        },
+                    },
+                },
+            },
+        ],
+    },
+    {
         "name": "isochrone",
         "status": "planned",
         "category": "network",
