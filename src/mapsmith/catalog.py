@@ -1668,6 +1668,161 @@ OPERATIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        "name": "clip_raster",
+        "status": "available",
+        "tool": None,
+        "category": "raster",
+        "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False},
+        "summary": "Clip a raster to a vector mask, with the mask reprojected "
+        "explicitly instead of assumed",
+        "description": (
+            "Cut a raster down to the area of a vector mask. The mask is reprojected "
+            "to the raster's CRS when they differ and the decision is recorded — "
+            "rasterio's own mask function never checks the CRS, and when two "
+            "coordinate systems overlap numerically without meaning the same thing "
+            "(metres against US survey feet, one UTM zone against its neighbour) it "
+            "clips a plausible wrong piece of the raster in silence. The output is "
+            "verified to be no larger than the source, and an all-nodata result "
+            "comes back flagged. If the source declares no nodata value, the manifest "
+            "says so: the area outside the mask is then filled with 0, which is a "
+            "legal elevation. Requires the [raster] extra. Called through "
+            "run_operation."
+        ),
+        "parameters": [
+            {
+                "name": "raster_path",
+                "type": "str",
+                "required": True,
+                "description": "Raster to clip (.tif); must declare a CRS",
+            },
+            {
+                "name": "mask_path",
+                "type": "str",
+                "required": True,
+                "description": "Polygon layer defining the area to keep (must have a CRS)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output GeoTIFF path",
+            },
+            {
+                "name": "all_touched",
+                "type": "bool",
+                "required": False,
+                "description": "False (default) keeps cells whose centre is inside the "
+                "mask; True keeps every cell the mask touches, which enlarges the "
+                "result by roughly half a cell around the perimeter",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Cut a national DEM down to one catchment",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "clip_raster",
+                        "arguments": {
+                            "raster_path": "dem.tif",
+                            "mask_path": "catchment.gpkg",
+                            "output_path": "dem_catchment.tif",
+                        },
+                    },
+                },
+            },
+            {
+                "goal": "Extract a land-cover tile for a municipality, keeping every "
+                "touched cell",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "clip_raster",
+                        "arguments": {
+                            "raster_path": "landcover.tif",
+                            "mask_path": "municipality.parquet",
+                            "output_path": "landcover_city.tif",
+                            "all_touched": True,
+                        },
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "reclassify_raster",
+        "status": "available",
+        "tool": None,
+        "category": "raster",
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
+        "summary": "Map value ranges onto new codes, half-open by contract, "
+        "with overlaps refused",
+        "description": (
+            "Reclassify raster values into new codes. Each interval is written "
+            "'low:high:new' and is HALF-OPEN — low <= value < high — which is the "
+            "only convention that tiles the number line without overlap, and the "
+            "off-by-one at the boundary is the classic silent error here: a cell of "
+            "exactly 100 belongs to the interval that starts at 100. Overlapping "
+            "intervals are refused before anything runs, because a value in two of "
+            "them would take whichever was listed first. Cells matching no interval "
+            "become nodata and are counted in the manifest, rather than keeping "
+            "their original value and mixing old codes with new ones in one band. "
+            "The output is verified to contain only the codes that were asked for. "
+            "Requires the [raster] extra. Called through run_operation."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Raster to reclassify (.tif)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output GeoTIFF path (float32, nodata -9999)",
+            },
+            {
+                "name": "intervals",
+                "type": "list[str]",
+                "required": True,
+                "description": "Ranges as 'low:high:new', low inclusive and high "
+                "exclusive, e.g. ['0:100:1', '100:200:2', '200:1000:3']",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Turn a slope raster into three steepness classes",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "reclassify_raster",
+                        "arguments": {
+                            "input_path": "slope.tif",
+                            "output_path": "slope_classes.tif",
+                            "intervals": ["0:5:1", "5:15:2", "15:90:3"],
+                        },
+                    },
+                },
+            },
+            {
+                "goal": "Flag elevations above a flood threshold as safe, below as at risk",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "reclassify_raster",
+                        "arguments": {
+                            "input_path": "dem.tif",
+                            "output_path": "flood_risk.tif",
+                            "intervals": ["-100:12:1", "12:9000:0"],
+                        },
+                    },
+                },
+            },
+        ],
+    },
+    {
         "name": "isochrone",
         "status": "planned",
         "category": "network",

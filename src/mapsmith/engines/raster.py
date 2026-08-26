@@ -361,3 +361,268 @@ def _distinct_values(dataset: Any) -> tuple[set[float] | None, bool]:
     band = dataset.read(1, masked=True)
     values = {float(v) for v in np.unique(band.compressed())}
     return (values, True) if len(values) <= _CATEGORICAL_MAX_CLASSES else (values, False)
+
+
+def clip_raster(
+    raster_path: str,
+    mask_path: str,
+    output_path: str,
+    all_touched: bool = False,
+) -> dict[str, Any]:
+    """Clip a raster to the area of a vector mask, with the CRS handled openly.
+
+    ``rasterio.mask`` never looks at a CRS — its documentation states the
+    precondition and the code does not enforce it. Three things then happen,
+    and only the first is loud: disjoint bounds raise or warn; bounds that
+    overlap *numerically* while the CRS differ (metres against US survey feet,
+    UTM 32N against 33N) clip a plausible wrong piece of the raster in total
+    silence; degrees against metres usually yields an all-nodata output with a
+    warning nobody reads. So the mask is reprojected here, deliberately, and
+    the decision is recorded.
+    """
+    rasterio = _require_rasterio()
+    from rasterio.mask import mask as rio_mask
+
+    frame = readers.read_vector(mask_path)
+    with rasterio.open(raster_path) as src:
+        if src.crs is None:
+            raise ValueError(
+                f"{raster_path} declares no CRS, so a vector mask cannot be placed "
+                "on it. Assign a CRS first."
+            )
+        record = ProvenanceRecord(
+            operation="clip_raster",
+            parameters={"all_touched": all_touched},
+            inputs=[
+                InputRecord.from_path(raster_path, crs=verify.crs_label(src.crs)),
+                InputRecord.from_path(mask_path, crs=verify.crs_label(frame.crs)),
+            ],
+            engine={"name": "rasterio", "version": rasterio.__version__},
+        )
+        pre = verify.verify_loaded_inputs("clip_raster", mask_path=frame)
+        if verify.has_critical_failure(pre):
+            record.add_verification(pre).finish().write_for(output_path)
+            verify.enforce(pre, "clip_raster")
+        if verify.same_crs(frame.crs, src.crs):
+            record.crs_decisions = {
+                "analysis_crs": verify.crs_label(src.crs),
+                "reason": "mask and raster already share a CRS; no reprojection needed",
+            }
+        else:
+            frame = frame.to_crs(src.crs)
+            record.crs_decisions = {
+                "analysis_crs": verify.crs_label(src.crs),
+                "reason": (
+                    f"mask reprojected from {verify.crs_label(record.inputs[1].crs)} to "
+                    "the raster CRS before clipping; rasterio.mask does not check CRS "
+                    "and would have clipped the wrong area without saying so"
+                ),
+            }
+        # nodata: rasterio.mask falls back to 0 when the raster declares none,
+        # and 0 is a valid elevation, reflectance and temperature. Refuse to
+        # let that be implicit.
+        nodata = src.nodata
+        if nodata is None:
+            record.notes.append(
+                "the source raster declares no nodata value, so the area outside the "
+                "mask is filled with 0 — a legal value in most bands. Consider "
+                "declaring nodata on the source before clipping"
+            )
+        with verify.audit_on_failure(record, output_path, pre):
+            data, transform = rio_mask(
+                src, list(frame.geometry), crop=True, all_touched=all_touched
+            )
+            profile = src.profile.copy()
+            profile.update(
+                height=data.shape[1], width=data.shape[2], transform=transform
+            )
+            for key in ("blockxsize", "blockysize", "tiled"):
+                profile.pop(key, None)
+            with rasterio.open(output_path, "w", **profile) as dst:
+                dst.write(data)
+        source_shape = (src.height, src.width)
+
+    checks: list[verify.Check] = []
+    with rasterio.open(output_path) as out:
+        checks.append(
+            verify.Check(
+                "crs_preserved",
+                verify.same_crs(out.crs, record.inputs[0].crs),
+                verify.crs_label(out.crs),
+            )
+        )
+        # A clip can only shrink the grid. Growing means the mask was placed
+        # somewhere the raster is not, which is the CRS failure this operation
+        # exists to prevent.
+        checks.append(
+            verify.Check(
+                "not_larger_than_source",
+                out.height <= source_shape[0] and out.width <= source_shape[1],
+                f"{out.height}x{out.width} from {source_shape[0]}x{source_shape[1]}",
+            )
+        )
+        band = out.read(1, masked=True)
+        valid = int(band.count())
+        checks.append(
+            verify.Check(
+                "result_not_empty",
+                valid > 0,
+                f"{valid} cells with data",
+                critical=False,
+                hint=None
+                if valid
+                else "The clip produced a raster with no data at all. The mask and the "
+                "raster overlap in extent but not where the data is — or the mask "
+                "covers only nodata cells. Check the two extents before trusting it.",
+            )
+        )
+        result_shape = [out.height, out.width]
+
+    manifest = record.add_verification(checks).finish().write_for(output_path)
+    verify.enforce(checks, "clip_raster")
+    result = {
+        "output": str(output_path),
+        "shape": result_shape,
+        "valid_cells": valid,
+        "provenance": str(manifest),
+        "verified": True,
+    }
+    advisories = verify.advisories(checks)
+    if advisories:
+        result["warnings"] = advisories
+    return result
+
+
+def reclassify(
+    input_path: str,
+    output_path: str,
+    intervals: list[str],
+) -> dict[str, Any]:
+    """Reclassify raster values into new codes, with the ranges stated as text.
+
+    Each interval is ``"low:high:new"``, half-open — ``low <= value < high`` —
+    so ``["0:100:1", "100:200:2"]`` maps everything under 100 to 1 and
+    everything from 100 up to (not including) 200 to 2. Half-open is the only
+    convention that tiles the number line without overlap, and the off-by-one
+    at the boundary is the classic silent error of this operation: a cell of
+    exactly 100 belongs to the second class, and this docstring is the contract.
+
+    Ranges are checked for overlap before anything runs, and cells that fall in
+    no interval become nodata and are counted in the manifest — the alternative,
+    leaving them at their original value, mixes old codes with new ones in the
+    same band and is unreadable afterwards.
+    """
+    rasterio = _require_rasterio()
+    import numpy as np
+
+    parsed: list[tuple[float, float, float]] = []
+    for entry in intervals:
+        parts = str(entry).split(":")
+        if len(parts) != 3:
+            raise ValueError(
+                f"interval {entry!r} must be 'low:high:new', e.g. '0:100:1' "
+                "(low inclusive, high exclusive)"
+            )
+        try:
+            low, high, new = (float(p) for p in parts)
+        except ValueError as exc:
+            raise ValueError(f"interval {entry!r} has a non-numeric bound") from exc
+        if not low < high:
+            raise ValueError(f"interval {entry!r}: low must be less than high")
+        parsed.append((low, high, new))
+    for i, (low_a, high_a, _) in enumerate(parsed):
+        for low_b, high_b, _ in parsed[i + 1:]:
+            if low_a < high_b and low_b < high_a:
+                raise ValueError(
+                    f"intervals [{low_a}, {high_a}) and [{low_b}, {high_b}) overlap: "
+                    "a value in both would take whichever class was listed first, "
+                    "which is a coin toss the caller should not have to know about"
+                )
+
+    with rasterio.open(input_path) as src:
+        record = ProvenanceRecord(
+            operation="reclassify_raster",
+            parameters={
+                "intervals": [f"{low}:{high}:{new}" for low, high, new in parsed],
+                "bounds": "low inclusive, high exclusive",
+            },
+            inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(src.crs))],
+            engine={"name": "rasterio", "version": rasterio.__version__},
+        )
+        record.crs_decisions = {
+            "analysis_crs": verify.crs_label(src.crs),
+            "reason": "reclassification changes values, not geometry or CRS",
+        }
+        band = src.read(1, masked=True)
+        nodata_out = -9999.0
+        # Plain arrays on purpose: comparisons on a masked array return masked
+        # booleans, and indexing with those does not mean what it looks like.
+        # The validity mask is carried separately and applied explicitly.
+        valid = ~np.ma.getmaskarray(band)
+        values = np.ma.getdata(band).astype("float64")
+        result_band = np.full(band.shape, nodata_out, dtype="float32")
+        assigned = np.zeros(band.shape, dtype=bool)
+        for low, high, new in parsed:
+            selected = valid & (values >= low) & (values < high)
+            result_band[selected] = new
+            assigned |= selected
+        unmapped = int(np.sum(valid & ~assigned))
+        profile = src.profile.copy()
+        profile.update(dtype="float32", nodata=nodata_out, count=1)
+        for key in ("blockxsize", "blockysize", "tiled"):
+            profile.pop(key, None)
+        source_shape = (src.height, src.width)
+
+    if unmapped:
+        record.notes.append(
+            f"{unmapped} cells fell outside every interval and became nodata "
+            f"({nodata_out}); they are not left at their original values, which "
+            "would mix old codes with new ones in one band"
+        )
+    with rasterio.open(output_path, "w", **profile) as dst:
+        dst.write(result_band, 1)
+
+    checks: list[verify.Check] = []
+    with rasterio.open(output_path) as out:
+        checks.append(
+            verify.Check(
+                "shape_preserved",
+                (out.height, out.width) == source_shape,
+                f"{out.height}x{out.width}",
+            )
+        )
+        checks.append(
+            verify.Check(
+                "crs_preserved",
+                verify.same_crs(out.crs, record.inputs[0].crs),
+                verify.crs_label(out.crs),
+            )
+        )
+        written = out.read(1, masked=True)
+        produced = {float(v) for v in np.unique(written.compressed())}
+        declared = {new for _, _, new in parsed}
+        # Closed form: every value in the output must be one of the codes the
+        # caller asked for. Anything else means the mapping did not do what the
+        # intervals say, and a reclassified raster nobody can trust is worse
+        # than one that failed.
+        checks.append(
+            verify.Check(
+                "values_are_declared_codes",
+                produced <= declared,
+                f"unexpected codes {sorted(produced - declared)}"
+                if produced - declared
+                else f"all values in {sorted(declared)}",
+            )
+        )
+        result_shape = [out.height, out.width]
+
+    manifest = record.add_verification(checks).finish().write_for(output_path)
+    verify.enforce(checks, "reclassify_raster")
+    return {
+        "output": str(output_path),
+        "shape": result_shape,
+        "unmapped_cells": unmapped,
+        "codes": sorted(declared),
+        "provenance": str(manifest),
+        "verified": True,
+    }

@@ -125,6 +125,18 @@ def _resample_raster() -> Callable[..., dict[str, Any]]:
     return raster.resample
 
 
+def _clip_raster() -> Callable[..., dict[str, Any]]:
+    from ..engines import raster
+
+    return raster.clip_raster
+
+
+def _reclassify_raster() -> Callable[..., dict[str, Any]]:
+    from ..engines import raster
+
+    return raster.reclassify
+
+
 def _zonal_statistics() -> Callable[..., dict[str, Any]]:
     from ..engines import raster
 
@@ -232,6 +244,22 @@ BINDINGS: dict[str, Binding] = {
     "run_sql": Binding(_run_sql, (), "output_path", None, ("unknown", ""), "vector"),
     "resample_raster": Binding(
         _resample_raster,
+        ("input_path",),
+        "output_path",
+        "exactextract",
+        ("same_as", "input_path"),
+        "raster",
+    ),
+    "clip_raster": Binding(
+        _clip_raster,
+        ("raster_path", "mask_path"),
+        "output_path",
+        "exactextract",
+        ("same_as", "raster_path"),
+        "raster",
+    ),
+    "reclassify_raster": Binding(
+        _reclassify_raster,
         ("input_path",),
         "output_path",
         "exactextract",
