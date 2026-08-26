@@ -77,9 +77,43 @@ def test_available_operations_have_complete_docs():
         assert op.get("parameters"), f"{op['name']} has no parameters"
         assert len(op.get("examples", [])) >= 2, f"{op['name']} needs >=2 examples"
         declared = {p["name"] for p in op["parameters"]}
+        assert "tool" in op, f"{op['name']} must declare its tool (a name, or None)"
         for example in op["examples"]:
-            assert example["call"]["tool"] == op["name"]
-            used = set(example["call"]["arguments"])
+            if op["tool"] is None:
+                # An operation with no tool of its own is called through
+                # run_operation, and its examples must show exactly that —
+                # otherwise the catalog documents a call that does not exist.
+                assert example["call"]["tool"] == "run_operation", (
+                    f"{op['name']} has no dedicated tool: its examples must call "
+                    "run_operation"
+                )
+                assert example["call"]["arguments"]["operation"] == op["name"]
+                used = set(example["call"]["arguments"]["arguments"])
+            else:
+                assert example["call"]["tool"] == op["tool"]
+                used = set(example["call"]["arguments"])
             assert used <= declared, (
                 f"{op['name']} example uses undeclared params: {used - declared}"
             )
+
+
+def test_every_declared_tool_actually_exists_on_the_server():
+    """A catalog entry naming a tool that is not registered documents a call
+    the agent cannot make; one naming None must be reachable through
+    run_operation, which is only true if the registry binds it."""
+    import asyncio
+
+    from mapsmith import server
+    from mapsmith.plans.registry import BINDINGS
+
+    registered = {t.name for t in asyncio.run(server.mcp.list_tools())}
+    assert "run_operation" in registered, "the catch-all tool must be exposed"
+    for op in catalog.OPERATIONS:
+        if op["status"] != "available":
+            continue
+        if op["tool"] is None:
+            assert op["name"] in BINDINGS, (
+                f"{op['name']} has no tool and no binding: it is unreachable"
+            )
+        else:
+            assert op["tool"] in registered, f"{op['name']} names a tool that does not exist"

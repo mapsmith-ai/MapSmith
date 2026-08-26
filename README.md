@@ -124,7 +124,7 @@ had to repair. `get_provenance` returns it for any output.
   without the LLM is in there. No AI slop.
 - **The engines compute, the model orchestrates.** Geometry and numbers only ever come
   from deterministic tool executions — never from model output.
-- **Semantic tools, not a tool dump — and a catalog built for thousands.** 27 goal-level
+- **Semantic tools, not a tool dump — and a catalog built for thousands.** 28 goal-level
   tools plus a searchable operation catalog, because tool-selection accuracy degrades once
   a few dozen tools are exposed at once, and fastest when two of them apply to the same
   input. Capability count has no such ceiling, so capability lives in the catalog. Two
@@ -165,6 +165,7 @@ had to repair. `get_provenance` returns it for any output.
 | `execute_plan` | Validate then run a plan step by step, with per-step provenance and a plan-level manifest |
 | `get_provenance` | Return the full lineage manifest of any MapSmith output |
 | `list_operations` | Catalog search: the applicability filter, then ranking by `engine` — BM25, embeddings, or auto; `detail=true` returns parameters and worked examples |
+| `run_operation` | Run any catalog operation by name, including those with no tool of their own; arguments validated against the catalog before anything runs |
 | `server_info` | Version, license, available engines |
 
 ### Finding the right operation
@@ -194,6 +195,15 @@ a query comes back useless, the other engine is one argument away.
 The default stays lexical for one reason: a default that needs a download is not a default.
 The applicability filter above runs first for **both** engines — otherwise the guarantee would
 only be true of one of them, and there is a test that says so.
+
+**Then it runs, tool or no tool.** Most catalog operations have a tool of their own; the newer
+ones increasingly do not, and `run_operation(operation, arguments)` runs those by name. This is
+deliberate: capability count has no ceiling, but the *exposed tool list* has one, so the catalog
+is allowed to grow faster than the tool list. Arguments are checked against the catalog before
+anything executes — unknown operation (with a "did you mean", from the same ranking), missing or
+misnamed argument, wrong type, path outside the workspace — and every error carries a stable
+code. Execution goes through the same path as `execute_plan`, so an operation cannot behave one
+way alone and another way inside a plan.
 
 Both engines embed the *identical* document text (`catalog.document_text`), so a comparison
 between them measures the ranking and nothing else. Both are held to a golden query set in
@@ -440,7 +450,7 @@ detects it, converts the input first, and discloses the workaround in the manife
   workspace — which is what the container runs with by default. DuckDB's own HTTP and S3
   filesystems stay off in every mode, so `read_parquet('s3://…')` does not work even with
   the opt-in: fetch the data down first, or run unconfined with remote reads on.
-- **You want the full breadth of a desktop GIS.** 27 tools plus a catalog that tells the
+- **You want the full breadth of a desktop GIS.** 28 tools plus a catalog that tells the
   agent what does *not* exist yet. The ~900 QGIS Processing algorithms are on the roadmap,
   not in the box.
 - **You expect plan validation to make a weak model strong.** Our own A/B says advisory

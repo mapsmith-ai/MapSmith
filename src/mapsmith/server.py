@@ -768,6 +768,52 @@ def list_operations(
     )
 
 
+@mcp.tool(annotations=_WRITER)
+def run_operation(operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Run ANY catalog operation by name, including the ones with no tool of
+    their own — which is most of them, and increasingly so.
+
+    The tools above are the handful an agent reaches for constantly. The
+    catalog holds every operation MapSmith can perform, and it grows faster
+    than the tool list on purpose: tool-selection accuracy degrades past a few
+    dozen exposed tools, while capability count has no such ceiling. Discover
+    with list_operations (use detail=true to get parameters and worked
+    examples), then call it here.
+
+    Arguments are validated against the catalog BEFORE anything runs —
+    unknown operation, missing or misnamed argument, wrong type, path outside
+    the workspace — and the errors come back with stable codes, so a failed
+    call tells the planner what to fix instead of what went wrong. Execution
+    goes through the same path as execute_plan, so an operation cannot behave
+    one way here and another way in a plan.
+    """
+    from .plans import executor
+    from .plans.models import Plan, PlanStep
+
+    if not isinstance(arguments, dict):
+        raise TypeError("arguments must be an object of argument name -> value")
+    plan = Plan(
+        goal=f"single operation: {operation}",
+        steps=[PlanStep(id="step", operation=operation, arguments=arguments)],
+    )
+    result = executor.execute(plan)
+    if not result.get("executed") and "validation" in result:
+        # The plan wrapper is an implementation detail; the caller asked for one
+        # operation and gets one operation's diagnosis back.
+        return {
+            "ran": False,
+            "operation": operation,
+            "reason": result["reason"],
+            "errors": [
+                {"code": issue["code"], "message": issue["message"]}
+                for issue in result["validation"]["errors"]
+            ],
+        }
+    step = result["steps"][0] if result.get("steps") else {}
+    flat = {key: value for key, value in step.items() if key not in ("id", "operation")}
+    return {"ran": result.get("executed", False), "operation": operation, **flat}
+
+
 @mcp.tool(annotations=_READONLY)
 def server_info() -> dict[str, Any]:
     """MapSmith version, licensing, and available engines."""
