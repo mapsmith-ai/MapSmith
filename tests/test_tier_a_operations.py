@@ -79,7 +79,10 @@ def test_join_reports_the_fan_out(tmp_path):
     assert result["input_feature_count"] == 10
     assert result["feature_count"] == 13  # the fan-out, stated
     checks = {w["check"] for w in result["warnings"]}
-    assert "x-mapsmith:join_did_not_multiply" in checks
+    # `feature_count_exact` and not an extension name: the predicate is the core
+    # definition, so §3.6 of the spec requires the core name. Asserting the name
+    # here is the point -- a consumer branches on it.
+    assert "feature_count_exact" in checks
     # 13 rows * 5000 = 65000 is the wrong answer this warning exists to prevent.
     assert float(gpd.read_parquet(out)["area_m2"].sum()) == 65_000.0
     assert any("counts the multiplied features" in n for n in _manifest(out)["notes"])

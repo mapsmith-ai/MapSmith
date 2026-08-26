@@ -189,6 +189,13 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
     from mapsmith.plans.registry import BINDINGS
 
     fixtures = _spec_fixtures(tmp_path)
+    writing = [
+        entry["name"]
+        for entry in catalog.OPERATIONS
+        if entry["status"] == "available"
+        and (binding := BINDINGS.get(entry["name"])) is not None
+        and binding.output_arg is not None
+    ]
     validated: list[str] = []
     skipped: list[str] = []
     for entry in catalog.OPERATIONS:
@@ -213,11 +220,81 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
         assert record["spec_version"].startswith("1."), name
         validated.append(name)
 
-    assert len(validated) >= 32, (
-        f"only {len(validated)} operations were validated ({sorted(validated)}); "
-        f"no fixture for {sorted(skipped)} — add one rather than let coverage rot"
+    # An invariant, not a threshold. `>= 32` was wrong in both directions: with
+    # every extra installed there are 34 writing operations and 34 fixtures, so
+    # the number let TWO fixtures disappear in silence -- exactly the defect
+    # this test exists to close. And on a checkout without [raster]/[whitebox]
+    # only 21 fixtures can run, so the same number FAILED while blaming missing
+    # fixtures for an absent extra. Comparing the two sets says the true thing
+    # in either environment, and needs no maintenance when the 35th operation
+    # lands.
+    assert set(validated) | set(skipped) == set(writing), (
+        "every writing operation must be either validated or explicitly skipped; "
+        f"unaccounted for: {sorted(set(writing) - set(validated) - set(skipped))}"
+    )
+    assert validated, "the sweep validated nothing at all"
+    print(
+        f"conformance sweep: {len(validated)} of {len(writing)} writing operations "
+        f"validated, {len(skipped)} skipped for a missing extra ({sorted(skipped)})"
     )
 
+
+
+def test_every_check_name_in_the_source_obeys_the_vocabulary():
+    """Not only the names a fixture happens to trigger.
+
+    The conformance sweep above sees the checks that actually fire on its
+    fixtures, which on 2026-08-26 was 12 of the 16 extension names in the
+    source: four live on conditional branches -- the axis-order probe in
+    `run_sql`, the invented-class-code guard, the flat-length warning on 3D
+    geometries, the repair-path input check -- and no fixture reaches them. All
+    four turned out to be well formed, checked by hand. The next one might not
+    be, and "checked by hand" is not a control.
+
+    Read from the source with `ast` rather than by executing anything: a name on
+    a branch nothing takes is exactly the case that matters here.
+    """
+    import ast
+    import sys
+    from pathlib import Path
+
+    import mapsmith
+
+    # The rule is read from the vendored spec copy, not from a local
+    # restatement of it: two copies of one mistake agree perfectly.
+    sys.path.insert(0, str(Path(__file__).parent / "data"))
+    from manifest_spec_validator import CORE_CHECK_NAMES, EXTENSION_CHECK_NAME
+
+    root = Path(mapsmith.__file__).parent
+    found: dict[str, str] = {}
+    for module in sorted(root.rglob("*.py")):
+        tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            callee = node.func
+            name = (
+                callee.attr if isinstance(callee, ast.Attribute)
+                else callee.id if isinstance(callee, ast.Name)
+                else None
+            )
+            if name != "Check" or not node.args:
+                continue
+            first = node.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                found.setdefault(first.value, module.name)
+
+    assert len(found) >= 25, f"only {len(found)} check names found in the source: {sorted(found)}"
+    offenders = {
+        check: where
+        for check, where in found.items()
+        if check not in CORE_CHECK_NAMES and not EXTENSION_CHECK_NAME.fullmatch(check)
+    }
+    assert not offenders, (
+        f"these check names are neither a core name from section 3.6 of the spec nor an "
+        f"extension `x-<producer>:<name>`: {offenders}. An unconstrained vocabulary makes "
+        "two records incomparable, which is the point of having a format."
+    )
 
 def _spec_fixtures(tmp_path):
     """One real call per writing operation, for the conformance sweep.

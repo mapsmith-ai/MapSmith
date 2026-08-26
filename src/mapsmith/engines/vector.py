@@ -1022,7 +1022,10 @@ def measure_area(
             off = abs(distortion - 1.0)
             result.append(
                 verify.Check(
-                    "planar_area_matches_ground",
+                    # Prefixed: the core of section 3.6 has no name for "the
+                    # map plane reports the ground area", and inventing an
+                    # unprefixed one is what makes two records incomparable.
+                    "x-mapsmith:planar_area_matches_ground",
                     off <= _DISTORTION_TOLERANCE,
                     f"planar/ellipsoidal area ratio {distortion:.6f}",
                     critical=False,
@@ -1211,7 +1214,17 @@ def join_table(
 
     checks: list[verify.Check] = [
         verify.Check(
-            "x-mapsmith:join_did_not_multiply",
+            # `feature_count_exact` and not an extension: the predicate here is
+            # word for word the core definition in section 3.6 of the spec --
+            # the output's feature count equals a count derived before the
+            # operation ran -- and §3.6 says a producer performing a core check
+            # MUST use the core name. `validate_geometry` in this same file
+            # already emits `feature_count_exact` for the identical comparison,
+            # so calling it something else here answered "does this system check
+            # that the count was preserved?" with yes for one operation and no
+            # for the other. The fan-out diagnosis lives in `hint`, which is
+            # where a name cannot carry it anyway.
+            "feature_count_exact",
             len(joined) == len(gdf),
             f"{len(gdf)} features in, {len(joined)} out",
             critical=False,
@@ -1848,10 +1861,17 @@ def validate_geometry(input_path: str, output_path: str) -> dict[str, Any]:
             f"{len(checked)} of {len(gdf)} features written",
         ),
         verify.Check(
-            "x-mapsmith:invalid_geometry_reported",
-            True,
-            f"{invalid} of {len(gdf)} features invalid, reasons in "
-            "validity_reason; nothing was repaired",
+            # This used to be `passed=True`, a constant -- a declaration wearing
+            # a check's clothes, which raised the count of passing checks
+            # without adding evidence. That is the defect this project measures
+            # in other systems. The predicate now asserts what the operation
+            # actually promises: every feature it calls invalid carries a reason
+            # a reader can act on. It fails if GEOS ever returns an empty
+            # explanation, which is the only way the promise could break.
+            "x-mapsmith:invalid_geometry_explained",
+            all(r.strip() for r in reasons),
+            f"{invalid} of {len(gdf)} features invalid, every one with a reason "
+            "in validity_reason; nothing was repaired",
         ),
     ]
     manifest, extras = verify.audited(

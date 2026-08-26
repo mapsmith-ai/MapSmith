@@ -291,7 +291,15 @@ def verify_input_pairs(operation: str, **frames: Any) -> list[Check]:
             # instead of returning a check that verified nothing
             checks.append(
                 Check(
-                    "inputs_comparable",
+                    # Prefixed so this conforms today, but it is a CANDIDATE
+                    # FOR THE CORE: "the inputs share a coordinate system" is a
+                    # precondition any producer comparing two layers performs,
+                    # and the core already carries two of that family
+                    # (input_crs_present, inputs_may_intersect). Left out of the
+                    # core, every producer names it differently -- which is the
+                    # argument of section 3.6. Promoting it tightens the spec, so
+                    # it waits for a version bump instead of happening quietly.
+                    "x-mapsmith:inputs_comparable",
                     False,
                     f"'{a_arg}' is {crs_label(a_gdf.crs)} and "
                     f"'{b_arg}' is {crs_label(b_gdf.crs)}",

@@ -329,7 +329,7 @@ def test_extents_are_not_compared_across_coordinate_systems():
     b = _gdf([Point(0, 0).buffer(1)], crs="EPSG:4326")
     checks = verify.verify_input_pairs("spatial_join", left_path=a, right_path=b)
     assert not any(c.name == "inputs_may_intersect" for c in checks)
-    comparable = next(c for c in checks if c.name == "inputs_comparable")
+    comparable = next(c for c in checks if c.name == "x-mapsmith:inputs_comparable")
     assert comparable.passed is False and comparable.critical is False
 
 

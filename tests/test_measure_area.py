@@ -74,11 +74,11 @@ def test_planar_on_web_mercator_warns_with_the_ratio(tmp_path):
     assert result["ground_area_m2"] == pytest.approx(6651.335, abs=0.01)
     # 12000 / 6651.335 = 1.8038: the plane reports 1.8x the land it covers.
     warnings = result.get("warnings", [])
-    assert any("planar_area_matches_ground" in str(w) or "ground area" in str(w)
+    assert any("x-mapsmith:planar_area_matches_ground" in str(w) or "ground area" in str(w)
                for w in warnings), warnings
     checks = {c["name"]: c for c in _manifest(out)["verification"]}
-    assert checks["planar_area_matches_ground"]["passed"] is False
-    assert "1.80" in checks["planar_area_matches_ground"]["detail"]
+    assert checks["x-mapsmith:planar_area_matches_ground"]["passed"] is False
+    assert "1.80" in checks["x-mapsmith:planar_area_matches_ground"]["detail"]
 
 
 def test_planar_on_an_equal_area_crs_does_not_warn(tmp_path):
@@ -88,7 +88,7 @@ def test_planar_on_an_equal_area_crs_does_not_warn(tmp_path):
     assert result["total_area_m2"] == 10000.0
     assert result["ground_area_m2"] == pytest.approx(10000.0, abs=0.01)
     checks = {c["name"]: c for c in _manifest(out)["verification"]}
-    assert checks["planar_area_matches_ground"]["passed"] is True
+    assert checks["x-mapsmith:planar_area_matches_ground"]["passed"] is True
 
 
 def test_invalid_geometry_is_repaired_before_measuring_and_recorded(tmp_path):
