@@ -1927,6 +1927,600 @@ OPERATIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        "name": "join_table",
+        "status": "available",
+        "tool": None,
+        "workload": "sql",
+        "category": "vector",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "summary": "Join a CSV table onto a layer by key, keys read as text and fan-out measured",
+        "description": (
+            "Join attributes from a CSV onto a layer. Keys are read as TEXT on both sides, always: a reader that infers types turns the identifier '001' into 1, which matches nothing, and rows drop out of an inner join with no error — leading zeros are the norm in ISTAT, FIPS, INSEE and postal codes. Cardinality is measured rather than assumed: if the table has more than one row per key the join multiplies features, and any sum over the result double-counts them, so the before/after counts and the duplicate keys are reported in the manifest and in the result. Called through run_operation."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Layer to join onto (must have a CRS)",
+            },
+            {
+                "name": "table_path",
+                "type": "str",
+                "required": True,
+                "description": "CSV file with the attributes",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output path (.parquet or .gpkg)",
+            },
+            {
+                "name": "on",
+                "type": "str",
+                "required": True,
+                "description": "Key column, present in both the layer and the table",
+            },
+            {
+                "name": "how",
+                "type": "str",
+                "required": False,
+                "description": "'left' (default, keeps every feature) or 'inner'",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Attach population figures to municipalities by ISTAT code",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "join_table",
+                        "arguments": {"input_path": "municipalities.gpkg", "table_path": "population.csv", "output_path": "municipalities_pop.parquet", "on": "istat_code"},
+                    },
+                },
+            },
+            {
+                "goal": "Join owners to cadastral parcels, keeping only matched parcels",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "join_table",
+                        "arguments": {"input_path": "parcels.parquet", "table_path": "owners.csv", "output_path": "owned.parquet", "on": "parcel_id", "how": "inner"},
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "measure_length",
+        "status": "available",
+        "tool": None,
+        "workload": "small_vector",
+        "category": "vector",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "summary": "Length per feature in metres — geodesic, planar, or through space with the Z the geometry carries",
+        "description": (
+            "Measure length. method='3d' uses the elevations the geometry carries: a pipe climbing 300 m over 400 m of ground is 500 m of pipe, and every 2D length in the stack answers 400 without mentioning it — in PostGIS the difference is the function's name, in Shapely a property that drops the coordinate. 'geodesic' (default) measures on the ellipsoid the CRS names; 'planar' measures in the CRS plane and converts by its declared unit, and is refused on a geographic CRS. When the layer has Z and a flat method was chosen, the 3D length comes back beside it as a non-critical check. Called through run_operation."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Line or polygon layer (must have a CRS)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output path (.parquet or .gpkg)",
+            },
+            {
+                "name": "method",
+                "type": "str",
+                "required": False,
+                "description": "geodesic (default), planar, or 3d",
+            },
+            {
+                "name": "length_column",
+                "type": "str",
+                "required": False,
+                "description": "Column for the per-feature length (default length_m)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Metres of pipe needed for a pipeline that climbs",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "measure_length",
+                        "arguments": {"input_path": "pipeline.gpkg", "output_path": "pipe_lengths.parquet", "method": "3d"},
+                    },
+                },
+            },
+            {
+                "goal": "Length of a coastline on the ellipsoid",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "measure_length",
+                        "arguments": {"input_path": "coastline.parquet", "output_path": "coast_length.parquet"},
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "aggregate_weighted",
+        "status": "available",
+        "tool": None,
+        "workload": "sql",
+        "category": "vector",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "summary": "A rate over an area: the ratio of totals, with the unweighted mean reported beside it",
+        "description": (
+            "Combine a per-feature rate into one figure for the whole area, weighted by a second column. Averaging three unemployment rates treats a town of a thousand as equal to a city of a hundred thousand: 13.67% where the area's actual rate is 1.38%. This computes sum(value * weight) / sum(weight), records both totals so the number can be checked without the data, and returns the unweighted mean beside it — when the two differ materially that difference is the finding, and hiding it would make this a black box that happens to be right. Called through run_operation."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Layer whose features carry the value and the weight",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output path (.parquet or .gpkg), one feature",
+            },
+            {
+                "name": "value_column",
+                "type": "str",
+                "required": True,
+                "description": "The rate or ratio to combine",
+            },
+            {
+                "name": "weight_column",
+                "type": "str",
+                "required": True,
+                "description": "The size each value should count for (population, area, labour force)",
+            },
+            {
+                "name": "result_column",
+                "type": "str",
+                "required": False,
+                "description": "Column for the weighted value (default weighted_value)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Unemployment rate of a wider area from its municipalities",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "aggregate_weighted",
+                        "arguments": {"input_path": "municipalities.gpkg", "output_path": "area_rate.parquet", "value_column": "unemployment_rate_pct", "weight_column": "labour_force"},
+                    },
+                },
+            },
+            {
+                "goal": "Mean tree cover across census tracts, weighted by tract area",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "aggregate_weighted",
+                        "arguments": {"input_path": "tracts.parquet", "output_path": "cover.parquet", "value_column": "tree_cover_pct", "weight_column": "area_ha"},
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "parse_coordinates",
+        "status": "available",
+        "tool": None,
+        "workload": "small_vector",
+        "category": "vector",
+        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
+        "summary": "Point layer from a coordinate table, DMS or decimal, stated by the caller rather than guessed",
+        "description": (
+            "Build points from a CSV. The caller names the columns holding each coordinate: one for decimal degrees, three for degrees/minutes/seconds, optionally a fourth for the hemisphere. The caller says which because the file cannot: 41.5324 and 41 degrees 53 minutes 24 seconds latitudes for the same station and they are 40 km apart, so a reader that guesses is wrong quietly. The conversion and the columns used go in the manifest, and values outside the valid range are refused rather than wrapped: a latitude of 91 is a parsing failure, not a place. Called through run_operation."
+        ),
+        "parameters": [
+            {
+                "name": "table_path",
+                "type": "str",
+                "required": True,
+                "description": "CSV with the coordinate columns",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output path (.parquet or .gpkg)",
+            },
+            {
+                "name": "latitude_columns",
+                "type": "str",
+                "required": True,
+                "description": "Comma-separated: one column (decimal), three (deg,min,sec) or four (plus hemisphere letter)",
+            },
+            {
+                "name": "longitude_columns",
+                "type": "str",
+                "required": True,
+                "description": "Same, for longitude",
+            },
+            {
+                "name": "crs",
+                "type": "str",
+                "required": False,
+                "description": "CRS of the coordinates (default EPSG:4326)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Points from a survey register in degrees, minutes and seconds",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "parse_coordinates",
+                        "arguments": {"table_path": "stations.csv", "output_path": "stations.parquet", "latitude_columns": "lat_deg,lat_min,lat_sec,lat_hem", "longitude_columns": "lon_deg,lon_min,lon_sec,lon_hem"},
+                    },
+                },
+            },
+            {
+                "goal": "Points from a table already in decimal degrees",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "parse_coordinates",
+                        "arguments": {"table_path": "sites.csv", "output_path": "sites.parquet", "latitude_columns": "latitude", "longitude_columns": "longitude"},
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "point_on_surface",
+        "status": "available",
+        "tool": None,
+        "workload": "small_vector",
+        "category": "vector",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "summary": "One point per feature, verified to lie ON the feature — unlike a centroid",
+        "description": (
+            "Reduce each feature to a representative point that is guaranteed to be on it. The difference from centroid_layer is the reason this exists: the centroid of an L-shaped parcel, a crescent or a ring falls outside the shape, so locating a feature by its centroid can put it in the wrong district — and a district name carries no magnitude to sanity-check. Every output point is verified against its own input feature, which is a postcondition rather than an opinion. Called through run_operation."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Polygon layer (must have a CRS)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output path (.parquet or .gpkg)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Label points for parcels that are not convex",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "point_on_surface",
+                        "arguments": {"input_path": "parcels.gpkg", "output_path": "labels.parquet"},
+                    },
+                },
+            },
+            {
+                "goal": "A point inside each administrative unit, for joining",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "point_on_surface",
+                        "arguments": {"input_path": "districts.parquet", "output_path": "district_points.parquet"},
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "hull_layer",
+        "status": "available",
+        "tool": None,
+        "workload": "small_vector",
+        "category": "vector",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "summary": "Convex hull, envelope or minimum rotated rectangle, with the inflation reported",
+        "description": (
+            "Wrap each feature in a hull. The three kinds differ by how much they claim: an envelope is axis-aligned and can be several times the feature's area, an oriented rectangle follows it, a convex hull follows it more closely. Which one was used goes in the manifest along with the ratio between the hull's area and the feature's, because 'the extent of the site' is a phrase that hides all three and any count over a hull includes ground the feature does not occupy. Called through run_operation."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Layer to wrap (must have a CRS)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output path (.parquet or .gpkg)",
+            },
+            {
+                "name": "kind",
+                "type": "str",
+                "required": False,
+                "description": "convex (default), envelope, or oriented",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Convex hull of each survey cluster",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "hull_layer",
+                        "arguments": {"input_path": "samples.parquet", "output_path": "clusters.parquet"},
+                    },
+                },
+            },
+            {
+                "goal": "Axis-aligned bounding box per feature, for a tile index",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "hull_layer",
+                        "arguments": {"input_path": "scenes.gpkg", "output_path": "tiles.parquet", "kind": "envelope"},
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "validate_geometry",
+        "status": "available",
+        "tool": None,
+        "workload": "small_vector",
+        "category": "vector",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "summary": "Report which geometries are invalid and why, repairing nothing",
+        "description": (
+            "Write the layer back with a validity flag and the GEOS reason per feature. Every other operation here repairs what it can and records the repair; this is the inspection that comes first, so a caller can decide what to do about a self-intersection instead of finding out afterwards that something was rewritten. An invalid ring does not crash — its area is the signed shoelace of a shape that means nothing — so knowing before measuring is the point. Called through run_operation."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Layer to check",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output path, with is_valid and validity_reason columns",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Find the self-intersections in a digitised parcel layer",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "validate_geometry",
+                        "arguments": {"input_path": "parcels.gpkg", "output_path": "parcels_checked.parquet"},
+                    },
+                },
+            },
+            {
+                "goal": "Check a layer before measuring areas on it",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "validate_geometry",
+                        "arguments": {"input_path": "concessions.parquet", "output_path": "checked.parquet"},
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "count_in_polygons",
+        "status": "available",
+        "tool": None,
+        "workload": "heavy_join",
+        "category": "vector",
+        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
+        "summary": "Points per polygon with the boundary rule stated, and the points that fell nowhere counted",
+        "description": (
+            "Count points in each polygon. 'intersects' (default) includes points on the boundary; 'within' excludes them — and on a partition of districts that share edges, that is the difference between counting every point and dropping the ones on the seams, silently, because a join returning fewer rows looks exactly like a join that had fewer to find. The points that fall in no polygon are counted and reported, which is the number that makes the difference visible. Called through run_operation."
+        ),
+        "parameters": [
+            {
+                "name": "points_path",
+                "type": "str",
+                "required": True,
+                "description": "Point layer",
+            },
+            {
+                "name": "polygons_path",
+                "type": "str",
+                "required": True,
+                "description": "Polygon layer to count into",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output: the polygons with a count column",
+            },
+            {
+                "name": "predicate",
+                "type": "str",
+                "required": False,
+                "description": "intersects (default), within, or contains",
+            },
+            {
+                "name": "count_column",
+                "type": "str",
+                "required": False,
+                "description": "Column for the count (default point_count)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Wells per district, counting those on shared boundaries",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "count_in_polygons",
+                        "arguments": {"points_path": "wells.gpkg", "polygons_path": "districts.gpkg", "output_path": "district_counts.parquet"},
+                    },
+                },
+            },
+            {
+                "goal": "Incidents per census tract, strictly inside only",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "count_in_polygons",
+                        "arguments": {"points_path": "incidents.parquet", "polygons_path": "tracts.parquet", "output_path": "tract_counts.parquet", "predicate": "within"},
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "focal_statistics",
+        "status": "available",
+        "tool": None,
+        "workload": "raster",
+        "category": "raster",
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
+        "summary": "Moving-window statistic over a raster, window size required and checked odd",
+        "description": (
+            "Compute a statistic in a square window around every cell. The window size is required: Whitebox defaults to 11 x 11, which on a 1 m grid is a 5.5 m radius, so a 'local' statistic quietly stops being local and returns a perfectly ordinary-looking smoothed surface. It must be odd, because an even window has no centre cell and shifts the result half a cell against its input. For class codes use majority or diversity: mean on a land-cover map invents codes the same way an interpolating resample does, and the manifest says so. Requires the [whitebox] extra. Called through run_operation."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Raster (.tif)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output GeoTIFF",
+            },
+            {
+                "name": "statistic",
+                "type": "str",
+                "required": True,
+                "description": "mean, median, maximum, minimum, range, standard_deviation, majority, diversity, total",
+            },
+            {
+                "name": "window",
+                "type": "int",
+                "required": True,
+                "description": "Window size in cells; odd, at least 3",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Smooth a noisy DEM with a 3x3 mean",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "focal_statistics",
+                        "arguments": {"input_path": "dem.tif", "output_path": "dem_smooth.tif", "statistic": "mean", "window": 3},
+                    },
+                },
+            },
+            {
+                "goal": "Most common land-cover class in a 5x5 neighbourhood",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "focal_statistics",
+                        "arguments": {"input_path": "landcover.tif", "output_path": "landcover_majority.tif", "statistic": "majority", "window": 5},
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "extract_streams",
+        "status": "available",
+        "tool": None,
+        "workload": "raster",
+        "category": "hydrology",
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
+        "summary": "Stream network from a flow-accumulation grid, threshold required and its unit recorded",
+        "description": (
+            "Threshold a flow-accumulation grid into a stream network. The threshold is required and its unit is recorded, because that is where this goes wrong: flow accumulation is either a cell count or a specific contributing area depending on how it was produced, the two differ by orders of magnitude, and a threshold tuned for one applied to the other gives a network that is well formed, drawn on the map, and wrong. There is no defensible default — the literature says so plainly — so the caller states it and the record keeps it. Requires the [whitebox] extra. Called through run_operation."
+        ),
+        "parameters": [
+            {
+                "name": "flow_accumulation_path",
+                "type": "str",
+                "required": True,
+                "description": "Flow-accumulation raster, e.g. the output of flow_accumulation",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Output GeoTIFF of the stream network",
+            },
+            {
+                "name": "threshold",
+                "type": "float",
+                "required": True,
+                "description": "Minimum accumulation for a cell to be a stream, in the input's own unit",
+            },
+            {
+                "name": "zero_background",
+                "type": "bool",
+                "required": False,
+                "description": "False (default) leaves non-stream cells as nodata; True writes zeros",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Stream network from a cell-count accumulation grid",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "extract_streams",
+                        "arguments": {"flow_accumulation_path": "flowacc.tif", "output_path": "streams.tif", "threshold": 1000},
+                    },
+                },
+            },
+            {
+                "goal": "A denser network for a small catchment, zeros in the background",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "extract_streams",
+                        "arguments": {"flow_accumulation_path": "flowacc.tif", "output_path": "streams_fine.tif", "threshold": 100, "zero_background": True},
+                    },
+                },
+            },
+        ],
+    },
+    {
         "name": "isochrone",
         "status": "planned",
         "workload": "heavy_join",

@@ -138,3 +138,47 @@ def test_measure_area_refuses_a_crs_less_input(tmp_path):
     gpd.GeoDataFrame({"i": [1]}, geometry=[box(0, 0, 1, 1)], crs=None).to_parquet(naked)
     with pytest.raises(ValueError, match="no CRS"):
         vector.measure_area(str(naked), str(tmp_path / "x.parquet"))
+
+
+def test_a_courtyard_is_subtracted_on_the_ellipsoid_too(tmp_path):
+    """The bug Argleton's trap 011 found, the day after measure_area shipped.
+
+    `Geod.geometry_area_perimeter` returns a signed value whose sign follows
+    ring orientation, so taking abs() of the whole geometry added the hole
+    instead of subtracting it: a 10000 m2 parcel with a 1600 m2 courtyard came
+    back as 11609 on the geodesic path while the planar path said 8400. The
+    two disagreeing by 38% is what the distortion check noticed.
+
+    Closed form: outer 100x100 = 10000, courtyard 40x40 = 1600, so 8400 planar.
+    On the ellipsoid at this latitude the same parcel is 8406.7 — the UTM zone's
+    own 0.08% scale, which is the only difference there should ever be here.
+    """
+    import geopandas as gpd
+    from shapely.geometry import Polygon
+
+    from mapsmith.engines import vector
+
+    east, north = 500_000.0, 5_030_000.0
+    parcel = tmp_path / "courtyard.parquet"
+    gpd.GeoDataFrame(
+        {"id": [1]},
+        geometry=[
+            Polygon(
+                [(east, north), (east + 100, north), (east + 100, north + 100),
+                 (east, north + 100)],
+                [[(east + 30, north + 30), (east + 70, north + 30),
+                  (east + 70, north + 70), (east + 30, north + 70)]],
+            )
+        ],
+        crs="EPSG:32632",
+    ).to_parquet(parcel)
+
+    planar = vector.measure_area(str(parcel), str(tmp_path / "p.parquet"), method="planar")
+    assert planar["total_area_m2"] == pytest.approx(8400.0, abs=0.01)
+
+    geodesic = vector.measure_area(str(parcel), str(tmp_path / "g.parquet"))
+    assert geodesic["total_area_m2"] == pytest.approx(8406.7, abs=0.5)
+    # Not 11609: that is the two rings added, which is the whole point.
+    assert geodesic["total_area_m2"] < 10000.0
+    # And with the paths agreeing to 0.08%, the distortion check stays quiet.
+    assert not geodesic.get("warnings")

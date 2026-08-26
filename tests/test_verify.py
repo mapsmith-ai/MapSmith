@@ -194,7 +194,7 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
         assert record["spec_version"].startswith("1."), name
         validated.append(name)
 
-    assert len(validated) >= 22, (
+    assert len(validated) >= 32, (
         f"only {len(validated)} operations were validated ({sorted(validated)}); "
         f"no fixture for {sorted(skipped)} — add one rather than let coverage rot"
     )
@@ -207,7 +207,7 @@ def _spec_fixtures(tmp_path):
     idea of a manifest rather than MapSmith's.
     """
     import geopandas as gpd
-    from shapely.geometry import Point, Polygon
+    from shapely.geometry import LineString, Point, Polygon
 
     from mapsmith.engines import vector
 
@@ -251,6 +251,51 @@ def _spec_fixtures(tmp_path):
             str(points), str(layer), out("sj.parquet")
         ),
     }
+
+    # --- the tier-A operations, whose fixtures are the traps' own -----------
+    table = tmp_path / "table.csv"
+    table.write_text("k,v\nx,10\n", encoding="utf-8")
+    keyed = tmp_path / "keyed.parquet"
+    gpd.GeoDataFrame({"k": ["x"]}, geometry=[square], crs=crs).to_parquet(keyed)
+    weighted = tmp_path / "weighted.parquet"
+    gpd.GeoDataFrame(
+        {"value": [20.0, 1.0], "weight": [1000, 99000]},
+        geometry=[square, other],
+        crs=crs,
+    ).to_parquet(weighted)
+    dms = tmp_path / "dms.csv"
+    dms.write_text("id,lat,lon\n1,41.89,12.49\n", encoding="utf-8")
+    climbing = tmp_path / "climbing.parquet"
+    gpd.GeoDataFrame(
+        {"i": [1]}, geometry=[LineString([(0, 0, 0), (400, 0, 300)])], crs=crs
+    ).to_parquet(climbing)
+
+    fixtures.update({
+        "join_table": lambda: vector.join_table(
+            str(keyed), str(table), out("joined.parquet"), on="k"
+        ),
+        "measure_length": lambda: vector.measure_length(
+            str(climbing), out("length.parquet"), method="3d"
+        ),
+        "aggregate_weighted": lambda: vector.aggregate_weighted(
+            str(weighted), out("agg.parquet"),
+            value_column="value", weight_column="weight",
+        ),
+        "parse_coordinates": lambda: vector.parse_coordinates(
+            str(dms), out("parsed.parquet"),
+            latitude_columns="lat", longitude_columns="lon",
+        ),
+        "point_on_surface": lambda: vector.point_on_surface(
+            str(layer), out("pos.parquet")
+        ),
+        "hull_layer": lambda: vector.hull(str(layer), out("hull.parquet")),
+        "validate_geometry": lambda: vector.validate_geometry(
+            str(layer), out("valid.parquet")
+        ),
+        "count_in_polygons": lambda: vector.count_in_polygons(
+            str(points), str(layer), out("counts.parquet")
+        ),
+    })
 
     try:
         import numpy as np
@@ -320,6 +365,15 @@ def _spec_fixtures(tmp_path):
         ),
         "watershed": lambda: whitebox_engine.watershed(
             str(dem), str(pour), out("ws.tif")
+        ),
+        "focal_statistics": lambda: whitebox_engine.focal_statistics(
+            str(dem), out("focal.tif"), statistic="mean", window=3
+        ),
+        "extract_streams": lambda: whitebox_engine.extract_streams(
+            whitebox_engine.flow_accumulation(str(dem), out("facc_for_streams.tif"))
+            and out("facc_for_streams.tif"),
+            out("streams.tif"),
+            threshold=5.0,
         ),
     })
     return fixtures

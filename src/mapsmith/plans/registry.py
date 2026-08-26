@@ -143,6 +143,66 @@ def _band_math() -> Callable[..., dict[str, Any]]:
     return raster.band_math
 
 
+def _join_table() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.join_table
+
+
+def _measure_length() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.measure_length
+
+
+def _aggregate_weighted() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.aggregate_weighted
+
+
+def _parse_coordinates() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.parse_coordinates
+
+
+def _point_on_surface() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.point_on_surface
+
+
+def _hull_layer() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.hull
+
+
+def _validate_geometry() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.validate_geometry
+
+
+def _count_in_polygons() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.count_in_polygons
+
+
+def _focal_statistics() -> Callable[..., dict[str, Any]]:
+    from ..engines import whitebox_engine
+
+    return whitebox_engine.focal_statistics
+
+
+def _extract_streams() -> Callable[..., dict[str, Any]]:
+    from ..engines import whitebox_engine
+
+    return whitebox_engine.extract_streams
+
+
 def _zonal_statistics() -> Callable[..., dict[str, Any]]:
     from ..engines import raster
 
@@ -278,6 +338,86 @@ BINDINGS: dict[str, Binding] = {
         "output_path",
         "exactextract",
         ("same_as", "input_path"),
+        "raster",
+    ),
+    "join_table": Binding(
+        _join_table,
+        ("input_path", "table_path"),
+        "output_path",
+        None,
+        ("same_as", "input_path"),
+        "vector",
+    ),
+    "measure_length": Binding(
+        _measure_length,
+        ("input_path",),
+        "output_path",
+        None,
+        ("same_as", "input_path"),
+        "vector",
+    ),
+    "aggregate_weighted": Binding(
+        _aggregate_weighted,
+        ("input_path",),
+        "output_path",
+        None,
+        ("same_as", "input_path"),
+        "vector",
+    ),
+    "parse_coordinates": Binding(
+        _parse_coordinates,
+        ("table_path",),
+        "output_path",
+        None,
+        ("same_as", "output_path"),
+        "vector",
+    ),
+    "point_on_surface": Binding(
+        _point_on_surface,
+        ("input_path",),
+        "output_path",
+        None,
+        ("same_as", "input_path"),
+        "vector",
+    ),
+    "hull_layer": Binding(
+        _hull_layer,
+        ("input_path",),
+        "output_path",
+        None,
+        ("same_as", "input_path"),
+        "vector",
+    ),
+    "validate_geometry": Binding(
+        _validate_geometry,
+        ("input_path",),
+        "output_path",
+        None,
+        ("same_as", "input_path"),
+        "vector",
+    ),
+    "count_in_polygons": Binding(
+        _count_in_polygons,
+        ("points_path", "polygons_path"),
+        "output_path",
+        None,
+        ("same_as", "polygons_path"),
+        "vector",
+    ),
+    "focal_statistics": Binding(
+        _focal_statistics,
+        ("input_path",),
+        "output_path",
+        "whitebox",
+        ("same_as", "input_path"),
+        "raster",
+    ),
+    "extract_streams": Binding(
+        _extract_streams,
+        ("flow_accumulation_path",),
+        "output_path",
+        "whitebox",
+        ("same_as", "flow_accumulation_path"),
         "raster",
     ),
     "zonal_statistics": Binding(

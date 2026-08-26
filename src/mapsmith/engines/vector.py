@@ -8,6 +8,7 @@ Design rules:
 
 from __future__ import annotations
 
+import itertools
 from pathlib import Path
 from typing import Any
 
@@ -851,18 +852,52 @@ _DISTORTION_TOLERANCE = 0.01
 
 
 def _geodesic_areas(gdf: gpd.GeoDataFrame) -> list[float]:
-    """Ground area per feature, on the ellipsoid the layer's own CRS names."""
+    """Ground area per feature, on the ellipsoid the layer's own CRS names.
+
+    Rings are measured one at a time and holes are subtracted explicitly.
+    `Geod.geometry_area_perimeter` returns a signed value whose sign depends on
+    ring orientation, so wrapping the whole geometry in `abs()` — which is what
+    this function used to do — turns a courtyard into extra land: a parcel of
+    10000 m2 with a 1600 m2 courtyard came back as 11609 instead of 8407, the
+    two rings added rather than subtracted.
+
+    Found by Argleton's trap 011, built the day after this function shipped,
+    for exactly this class of error. The planar path never had the bug, because
+    Shapely's `.area` already accounts for interiors — which is why the two
+    disagreed by 38% and the distortion check was the thing that noticed.
+    """
     from pyproj import Geod
+    from shapely.geometry import MultiPolygon, Polygon
 
     ellipsoid = gdf.crs.ellipsoid
     geod = Geod(
         a=ellipsoid.semi_major_metre, rf=ellipsoid.inverse_flattening
     )
     lonlat = gdf.to_crs("EPSG:4326") if not verify.same_crs(gdf.crs, "EPSG:4326") else gdf
-    return [
-        abs(geod.geometry_area_perimeter(geom)[0]) if geom is not None else 0.0
-        for geom in lonlat.geometry
-    ]
+
+    def ring_area(ring) -> float:
+        lons, lats = ring.coords.xy
+        return abs(geod.polygon_area_perimeter(list(lons), list(lats))[0])
+
+    def polygon_area(polygon: Polygon) -> float:
+        return ring_area(polygon.exterior) - sum(
+            ring_area(interior) for interior in polygon.interiors
+        )
+
+    areas: list[float] = []
+    for geom in lonlat.geometry:
+        if geom is None or geom.is_empty:
+            areas.append(0.0)
+        elif isinstance(geom, Polygon):
+            areas.append(polygon_area(geom))
+        elif isinstance(geom, MultiPolygon):
+            areas.append(sum(polygon_area(part) for part in geom.geoms))
+        else:
+            # Points and lines enclose no area; the caller's own check refuses
+            # them before this runs, and returning 0 keeps that the only place
+            # the refusal lives.
+            areas.append(0.0)
+    return areas
 
 
 def measure_area(
@@ -1082,3 +1117,879 @@ def spatial_join(
         "verified": True,
         **extras,
     }
+
+
+JOIN_KINDS = {"inner", "left"}
+
+
+def join_table(
+    input_path: str,
+    table_path: str,
+    output_path: str,
+    on: str,
+    how: str = "left",
+) -> dict[str, Any]:
+    """Join a CSV table onto a layer by a key column, keys read as text.
+
+    Two things go wrong in this operation and neither raises anything, so both
+    are handled here rather than left to the caller.
+
+    **Keys are read as text, always.** A CSV reader that infers types turns the
+    identifier ``001`` into the integer ``1``, which matches nothing: rows drop
+    out of an inner join with no error, and the total they carried disappears.
+    Leading zeros are the norm in national identifier schemes — ISTAT, FIPS,
+    INSEE, postcodes — so the safe reading is the one that preserves them.
+
+    **Cardinality is measured, not assumed.** If the table has more than one row
+    per key, the join multiplies features, and any sum over the result counts
+    the duplicated ones twice. The row counts before and after are compared and
+    the fan-out is reported: a join that changed the feature count is a fact the
+    caller has to know before aggregating.
+    """
+    import pandas as pd
+
+    if how not in JOIN_KINDS:
+        raise ValueError(f"how must be one of {sorted(JOIN_KINDS)}, got {how!r}")
+    gdf = _read(input_path)
+    if on not in gdf.columns:
+        columns = [c for c in gdf.columns if c != gdf.geometry.name]
+        raise ValueError(
+            f"key column {on!r} is not in {input_path}. Available: {columns}"
+        )
+    # dtype=str on the key alone: the other columns keep their natural types,
+    # because turning a population into a string would trade one silent defect
+    # for another.
+    table = pd.read_csv(table_path, dtype={on: str})
+    if on not in table.columns:
+        raise ValueError(
+            f"key column {on!r} is not in {table_path}. Available: {list(table.columns)}"
+        )
+
+    record = ProvenanceRecord(
+        operation="join_table",
+        parameters={"on": on, "how": how, "key_dtype": "str"},
+        inputs=[
+            InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs)),
+            InputRecord.from_path(table_path),
+        ],
+        engine={"name": "pandas", "version": pd.__version__},
+    )
+    record.crs_decisions = {
+        "analysis_crs": verify.crs_label(gdf.crs),
+        "reason": "an attribute join changes columns, not geometry or CRS",
+    }
+    pre = verify.verify_loaded_inputs("join_table", input_path=gdf)
+    if verify.has_critical_failure(pre):
+        record.add_verification(pre).finish().write_for(output_path)
+        verify.enforce(pre, "join_table")
+
+    gdf = gdf.copy()
+    gdf[on] = gdf[on].astype(str)
+    duplicated_keys = int(table[on].duplicated().sum())
+    unmatched = int((~gdf[on].isin(set(table[on]))).sum())
+
+    with verify.audit_on_failure(record, output_path, pre):
+        joined = gdf.merge(table, on=on, how=how)
+        _write(joined, output_path)
+
+    if duplicated_keys:
+        record.notes.append(
+            f"{duplicated_keys} duplicate key(s) in the table: the join produced "
+            f"{len(joined)} features from {len(gdf)}, so any sum over the result "
+            "counts the multiplied features more than once — aggregate the table "
+            "before joining if that is not what you want"
+        )
+    if unmatched:
+        record.notes.append(
+            f"{unmatched} feature(s) matched no row in the table"
+            + (
+                " and were dropped by the inner join"
+                if how == "inner"
+                else " and carry null attributes"
+            )
+        )
+
+    checks: list[verify.Check] = [
+        verify.Check(
+            "x-mapsmith:join_did_not_multiply",
+            len(joined) == len(gdf),
+            f"{len(gdf)} features in, {len(joined)} out",
+            critical=False,
+            hint=None
+            if len(joined) == len(gdf)
+            else (
+                "The table has more than one row per key, so features were "
+                "duplicated. Summing an area or a population over this result "
+                "counts the duplicated features once per row — the classic "
+                "fan-out. Aggregate the table first, or count distinct."
+            ),
+        ),
+        verify.Check(
+            "x-mapsmith:every_feature_matched",
+            unmatched == 0,
+            f"{unmatched} of {len(gdf)} features matched nothing",
+            critical=False,
+            hint=None
+            if unmatched == 0
+            else (
+                "Keys were compared as text, so this is a real mismatch rather "
+                "than a type problem. Check for whitespace, case, or codes that "
+                "exist on one side only."
+            ),
+        ),
+    ]
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="join_table",
+        preconditions=pre,
+        checks_fn=lambda: checks
+        + verify.verify_vector_output(
+            output_path,
+            expect_crs=gdf.crs,
+            on_empty="warn" if len(gdf) else "ignore",
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "feature_count": len(joined),
+        "input_feature_count": len(gdf),
+        "unmatched_features": unmatched,
+        "duplicate_keys": duplicated_keys,
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
+LENGTH_METHODS = {"planar", "geodesic", "3d"}
+
+
+def measure_length(
+    input_path: str,
+    output_path: str,
+    method: str = "geodesic",
+    length_column: str = "length_m",
+) -> dict[str, Any]:
+    """Length per feature in metres, with the third dimension counted when asked.
+
+    ``3d`` uses the Z the geometry carries: a pipe that climbs 300 m over 400 m
+    of ground is 500 m of pipe, and every 2D length function in the stack
+    answers 400 without mentioning it — in PostGIS the difference is the name of
+    the function (``ST_Length`` against ``ST_3DLength``), in Shapely it is a
+    property that quietly drops the coordinate.
+
+    ``geodesic`` (the default) measures on the ellipsoid the CRS names; ``planar``
+    measures in the CRS's own plane and converts to metres by its declared unit.
+    When the layer has Z and a flat method was chosen, the result carries the 3D
+    length alongside as a non-critical check, because the difference is exactly
+    what nobody notices.
+    """
+    if method not in LENGTH_METHODS:
+        raise ValueError(f"method must be one of {sorted(LENGTH_METHODS)}, got {method!r}")
+    gdf = _read(input_path)
+    if gdf.crs is None:
+        raise ValueError(readers.no_crs_message(
+            gdf, f"{input_path} has no CRS, so a length in metres has no meaning."
+        ))
+    record = ProvenanceRecord(
+        operation="measure_length",
+        parameters={"method": method, "length_column": length_column},
+        inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))],
+        engine=_engine_info(),
+    )
+    pre = verify.verify_loaded_inputs("measure_length", input_path=gdf)
+    if verify.has_critical_failure(pre):
+        record.add_verification(pre).finish().write_for(output_path)
+        verify.enforce(pre, "measure_length")
+
+    has_z = bool(shapely.has_z(gdf.geometry.values).any())
+    if method == "3d":
+        if not has_z:
+            raise ValueError(
+                f"{input_path} has no Z coordinates, so a 3D length would equal the "
+                "2D one. Use method='planar' or 'geodesic' and say so, rather than "
+                "reporting a 3D measurement that measured nothing of the sort."
+            )
+        lengths = [_length_3d(geom) for geom in gdf.geometry]
+        record.crs_decisions = {
+            "analysis_crs": verify.crs_label(gdf.crs),
+            "reason": "3D length in the layer's own projected CRS: horizontal and "
+            "vertical units must match, which they do not on a geographic CRS",
+        }
+        if gdf.crs.is_geographic:
+            raise ValueError(
+                "a 3D length on a geographic CRS would add degrees to metres. "
+                "Reproject to a projected CRS first (reproject_layer)."
+            )
+    elif method == "geodesic":
+        lengths = _geodesic_lengths(gdf)
+        record.crs_decisions = {
+            "analysis_crs": verify.crs_label(gdf.crs),
+            "reason": "measured on the ellipsoid the layer's CRS names; the plane "
+            "is not consulted",
+        }
+    else:
+        factor = 1.0 if gdf.crs.is_geographic else gdf.crs.axis_info[0].unit_conversion_factor
+        if gdf.crs.is_geographic:
+            raise ValueError(
+                "a planar length on a geographic CRS would be in degrees. Use "
+                "method='geodesic', or reproject first."
+            )
+        lengths = [float(geom.length) * factor for geom in gdf.geometry]
+        record.crs_decisions = {
+            "analysis_crs": verify.crs_label(gdf.crs),
+            "reason": f"planar length in the CRS plane, converted to metres by its "
+            f"declared unit (factor {factor})",
+        }
+
+    measured = gdf.copy()
+    measured[length_column] = lengths
+    total = float(sum(lengths))
+    with verify.audit_on_failure(record, output_path, pre):
+        _write(measured, output_path)
+
+    checks: list[verify.Check] = []
+    if has_z and method != "3d":
+        three_d = float(sum(_length_3d(geom) for geom in gdf.geometry))
+        difference = abs(three_d - total) / three_d * 100 if three_d else 0.0
+        checks.append(
+            verify.Check(
+                "x-mapsmith:flat_length_on_3d_geometry",
+                difference < 0.01,
+                f"the layer carries Z: {method} gives {total:.3f} m, the 3D length "
+                f"is {three_d:.3f} m ({difference:.2f}% apart)",
+                critical=False,
+                hint=(
+                    "The geometry has elevations and this measurement ignored them. "
+                    "For anything that follows the ground — a pipe, a cable, a path "
+                    "— use method='3d'. If the plan-view length is what you wanted, "
+                    "this check is the record that you chose it."
+                )
+                if difference >= 0.01
+                else None,
+            )
+        )
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="measure_length",
+        preconditions=pre,
+        checks_fn=lambda: checks
+        + verify.verify_vector_output(
+            output_path, expect_crs=gdf.crs, expect_count=len(gdf), on_empty="ignore"
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "method": method,
+        "total_length_m": total,
+        "feature_count": len(measured),
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
+def _length_3d(geom: Any) -> float:
+    """Length of a geometry through space, using Z where it exists."""
+    import math
+
+    if geom is None or geom.is_empty:
+        return 0.0
+    if hasattr(geom, "geoms"):
+        return sum(_length_3d(part) for part in geom.geoms)
+    coords = list(geom.coords)
+    total = 0.0
+    for start, end in itertools.pairwise(coords):
+        dx, dy = end[0] - start[0], end[1] - start[1]
+        dz = (end[2] - start[2]) if len(start) > 2 and len(end) > 2 else 0.0
+        total += math.sqrt(dx * dx + dy * dy + dz * dz)
+    return total
+
+
+def _geodesic_lengths(gdf: gpd.GeoDataFrame) -> list[float]:
+    """Length per feature on the ellipsoid the layer's CRS names."""
+    from pyproj import Geod
+
+    ellipsoid = gdf.crs.ellipsoid
+    geod = Geod(a=ellipsoid.semi_major_metre, rf=ellipsoid.inverse_flattening)
+    lonlat = gdf.to_crs("EPSG:4326") if not verify.same_crs(gdf.crs, "EPSG:4326") else gdf
+    return [
+        float(geod.geometry_length(geom)) if geom is not None and not geom.is_empty else 0.0
+        for geom in lonlat.geometry
+    ]
+
+
+def aggregate_weighted(
+    input_path: str,
+    output_path: str,
+    value_column: str,
+    weight_column: str,
+    result_column: str = "weighted_value",
+) -> dict[str, Any]:
+    """A rate over a whole area: the ratio of totals, not the average of ratios.
+
+    Averaging three unemployment rates treats a town of a thousand as equal to a
+    city of a hundred thousand — 13.67% where the area's actual rate is 1.38%.
+    The weighted value here is ``sum(value * weight) / sum(weight)``, which is
+    what a rate means, and both totals are recorded so the number can be checked
+    without the data.
+
+    The unweighted mean is computed too and returned beside it: when the two
+    differ materially, that difference is the whole finding, and hiding it would
+    make this operation a black box that happens to be right.
+    """
+    import pandas as pd
+
+    gdf = _read(input_path)
+    for column in (value_column, weight_column):
+        if column not in gdf.columns:
+            available = [c for c in gdf.columns if c != gdf.geometry.name]
+            raise ValueError(f"column {column!r} is not in {input_path}. Available: {available}")
+    values = pd.to_numeric(gdf[value_column], errors="coerce")
+    weights = pd.to_numeric(gdf[weight_column], errors="coerce")
+    if weights.isna().any() or values.isna().any():
+        raise ValueError(
+            f"{value_column!r} and {weight_column!r} must both be numeric in every "
+            "row: a weighted aggregate over missing values would silently weight "
+            "them as zero"
+        )
+    total_weight = float(weights.sum())
+    if total_weight == 0:
+        raise ValueError(f"the weights in {weight_column!r} sum to zero")
+    weighted = float((values * weights).sum() / total_weight)
+    unweighted = float(values.mean())
+
+    record = ProvenanceRecord(
+        operation="aggregate_weighted",
+        parameters={
+            "value_column": value_column,
+            "weight_column": weight_column,
+            "result_column": result_column,
+        },
+        inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))],
+        engine=_engine_info(),
+    )
+    record.crs_decisions = {
+        "analysis_crs": verify.crs_label(gdf.crs),
+        "reason": "an attribute aggregate; geometry is dissolved into one feature "
+        "and coordinates are not transformed",
+    }
+    record.notes.append(
+        f"weighted {weighted:.6g} = sum({value_column} * {weight_column}) / "
+        f"sum({weight_column}) = {(values * weights).sum():.6g} / {total_weight:.6g}; "
+        f"the unweighted mean of {value_column} is {unweighted:.6g}"
+    )
+    pre = verify.verify_loaded_inputs("aggregate_weighted", input_path=gdf)
+    with verify.audit_on_failure(record, output_path, pre):
+        merged = gdf.dissolve(aggfunc="first", as_index=False)
+        merged[result_column] = weighted
+        merged[f"{weight_column}_total"] = total_weight
+        _write(merged, output_path)
+
+    difference = abs(weighted - unweighted)
+    relative = difference / abs(weighted) * 100 if weighted else 0.0
+    checks = [
+        verify.Check(
+            "x-mapsmith:weighting_changed_the_answer",
+            relative < 1.0,
+            f"weighted {weighted:.6g} against unweighted {unweighted:.6g} "
+            f"({relative:.1f}% apart)",
+            critical=False,
+            hint=(
+                "The units being aggregated differ enough in weight that averaging "
+                "the values would have given a materially different answer. That is "
+                "not an error here — this operation weights — but it is the number "
+                "to quote if anyone compares this result with a plain mean."
+            )
+            if relative >= 1.0
+            else None,
+        )
+    ]
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="aggregate_weighted",
+        preconditions=pre,
+        checks_fn=lambda: checks
+        + verify.verify_vector_output(
+            output_path, expect_crs=gdf.crs, expect_count=1, on_empty="fail"
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "weighted_value": weighted,
+        "unweighted_mean": unweighted,
+        "total_weight": total_weight,
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
+def parse_coordinates(
+    table_path: str,
+    output_path: str,
+    latitude_columns: str,
+    longitude_columns: str,
+    crs: str = "EPSG:4326",
+) -> dict[str, Any]:
+    """Build a point layer from a table of coordinates, DMS or decimal, stated.
+
+    ``latitude_columns`` and ``longitude_columns`` name the columns that hold
+    each coordinate, comma-separated: one column for decimal degrees, three for
+    degrees/minutes/seconds, optionally a fourth for the hemisphere letter. The
+    caller says which, because the file cannot: 41.5324 and 41°53'24" are both
+    plausible latitudes for the same station and they are 40 km apart, so a
+    reader that guesses will be wrong quietly.
+
+    The conversion is 41 + 53/60 + 24/3600, recorded in the manifest with the
+    column names it used. Values outside the valid range are refused rather
+    than wrapped: a latitude of 91 is a parsing failure, not a place.
+    """
+    import pandas as pd
+
+    def columns_of(spec: str, what: str) -> list[str]:
+        names = [c.strip() for c in spec.split(",") if c.strip()]
+        if len(names) not in (1, 3, 4):
+            raise ValueError(
+                f"{what} must name 1 column (decimal degrees), 3 (degrees, minutes, "
+                f"seconds) or 4 (plus a hemisphere letter), got {len(names)}: {names}"
+            )
+        return names
+
+    lat_cols = columns_of(latitude_columns, "latitude_columns")
+    lon_cols = columns_of(longitude_columns, "longitude_columns")
+    table = pd.read_csv(table_path)
+    for name in lat_cols + lon_cols:
+        if name not in table.columns:
+            raise ValueError(
+                f"column {name!r} is not in {table_path}. Available: {list(table.columns)}"
+            )
+
+    def to_degrees(row, names: list[str]) -> float:
+        if len(names) == 1:
+            return float(row[names[0]])
+        degrees = abs(float(row[names[0]]))
+        value = degrees + float(row[names[1]]) / 60 + float(row[names[2]]) / 3600
+        sign = -1.0 if float(row[names[0]]) < 0 else 1.0
+        if len(names) == 4:
+            hemisphere = str(row[names[3]]).strip().upper()
+            if hemisphere in ("S", "W"):
+                sign = -1.0
+            elif hemisphere not in ("N", "E"):
+                raise ValueError(
+                    f"hemisphere {row[names[3]]!r} is not one of N, S, E, W"
+                )
+        return sign * value
+
+    latitudes = [to_degrees(row, lat_cols) for _, row in table.iterrows()]
+    longitudes = [to_degrees(row, lon_cols) for _, row in table.iterrows()]
+    for value, limit, what in ((latitudes, 90, "latitude"), (longitudes, 180, "longitude")):
+        outside = [v for v in value if abs(v) > limit]
+        if outside:
+            raise ValueError(
+                f"{what} values outside +/-{limit} after conversion: {outside[:3]}. "
+                "That is a parsing failure rather than a place — check whether the "
+                "columns really hold what the arguments say they do."
+            )
+
+    record = ProvenanceRecord(
+        operation="parse_coordinates",
+        parameters={
+            "latitude_columns": lat_cols,
+            "longitude_columns": lon_cols,
+            "crs": crs,
+            "interpretation": "decimal degrees" if len(lat_cols) == 1 else
+            "degrees + minutes/60 + seconds/3600",
+        },
+        inputs=[InputRecord.from_path(table_path)],
+        engine={"name": "pandas", "version": pd.__version__},
+    )
+    record.crs_decisions = {
+        "analysis_crs": crs,
+        "reason": f"coordinates read as {'decimal degrees' if len(lat_cols) == 1 else 'DMS'} "
+        f"from the columns the caller named, and placed in {crs}",
+    }
+    points = gpd.GeoDataFrame(
+        table.copy(),
+        geometry=gpd.points_from_xy(longitudes, latitudes),
+        crs=crs,
+    )
+    _write(points, output_path)
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="parse_coordinates",
+        preconditions=[],
+        checks_fn=lambda: verify.verify_vector_output(
+            output_path,
+            expect_crs=crs,
+            expect_count=len(table),
+            expect_geometry={"Point"},
+            on_empty="fail" if len(table) else "ignore",
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "feature_count": len(points),
+        "latitude_range": [min(latitudes), max(latitudes)],
+        "longitude_range": [min(longitudes), max(longitudes)],
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
+def point_on_surface(input_path: str, output_path: str) -> dict[str, Any]:
+    """One point per feature, guaranteed to lie ON the feature.
+
+    Different from :func:`centroid` and the difference is the whole reason this
+    exists: the centroid of an L-shaped parcel, a crescent or a ring falls
+    outside the shape, so locating a feature by its centroid can put it in the
+    wrong district — with a district name as the answer, which carries no
+    magnitude to sanity-check. Every output point is verified to be on its own
+    input feature, which is a closed-form postcondition, not an opinion.
+    """
+    gdf = _read(input_path)
+    if gdf.crs is None:
+        raise ValueError(readers.no_crs_message(
+            gdf, f"{input_path} has no CRS."
+        ))
+    record = ProvenanceRecord(
+        operation="point_on_surface",
+        parameters={},
+        inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))],
+        engine=_engine_info(),
+    )
+    record.crs_decisions = {
+        "analysis_crs": verify.crs_label(gdf.crs),
+        "reason": "a representative point is chosen inside the geometry; no "
+        "reprojection is involved and none would change the answer",
+    }
+    pre = verify.verify_loaded_inputs("point_on_surface", input_path=gdf)
+    with verify.audit_on_failure(record, output_path, pre):
+        points = gdf.copy()
+        points[points.geometry.name] = gdf.geometry.representative_point()
+        _write(points, output_path)
+
+    inside = int(
+        sum(
+            point.intersects(polygon)
+            for point, polygon in zip(points.geometry, gdf.geometry)
+            if point is not None and polygon is not None
+        )
+    )
+    checks = [
+        verify.Check(
+            "x-mapsmith:point_lies_on_its_feature",
+            inside == len(gdf),
+            f"{inside} of {len(gdf)} points lie on their own feature",
+        )
+    ]
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="point_on_surface",
+        preconditions=pre,
+        checks_fn=lambda: checks
+        + verify.verify_vector_output(
+            output_path,
+            expect_crs=gdf.crs,
+            expect_count=len(gdf),
+            expect_geometry={"Point"},
+            on_empty="fail" if len(gdf) else "ignore",
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "feature_count": len(points),
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
+HULL_KINDS = {"convex", "envelope", "oriented"}
+
+
+def hull(input_path: str, output_path: str, kind: str = "convex") -> dict[str, Any]:
+    """The convex hull, bounding box or minimum rotated rectangle of each feature.
+
+    The three differ by how much they claim: an envelope is axis-aligned and can
+    be several times the feature's area, an oriented rectangle follows it, a
+    convex hull follows it more closely still. Which one was used goes in the
+    manifest, because "the extent of the site" is a phrase that hides all three,
+    and the ratio between the hull's area and the feature's is reported so the
+    inflation is visible rather than implied.
+    """
+    if kind not in HULL_KINDS:
+        raise ValueError(f"kind must be one of {sorted(HULL_KINDS)}, got {kind!r}")
+    gdf = _read(input_path)
+    if gdf.crs is None:
+        raise ValueError(readers.no_crs_message(gdf, f"{input_path} has no CRS."))
+    record = ProvenanceRecord(
+        operation="hull_layer",
+        parameters={"kind": kind},
+        inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))],
+        engine=_engine_info(),
+    )
+    record.crs_decisions = {
+        "analysis_crs": verify.crs_label(gdf.crs),
+        "reason": f"the {kind} hull is computed in the layer's own CRS; a hull "
+        "computed after reprojection is a different shape",
+    }
+    pre = verify.verify_loaded_inputs("hull_layer", input_path=gdf)
+    original_area = float(gdf.geometry.area.sum())
+    with verify.audit_on_failure(record, output_path, pre):
+        hulled = gdf.copy()
+        if kind == "convex":
+            hulled[hulled.geometry.name] = gdf.geometry.convex_hull
+        elif kind == "envelope":
+            hulled[hulled.geometry.name] = gdf.geometry.envelope
+        else:
+            hulled[hulled.geometry.name] = gdf.geometry.minimum_rotated_rectangle()
+        _write(hulled, output_path)
+    hull_area = float(hulled.geometry.area.sum())
+    if original_area > 0:
+        record.notes.append(
+            f"{kind} hull area {hull_area:.6g} against the features' own "
+            f"{original_area:.6g} ({hull_area / original_area:.3f}x): the hull "
+            "claims the difference, and any count or area over it includes ground "
+            "the features do not occupy"
+        )
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="hull_layer",
+        preconditions=pre,
+        checks_fn=lambda: [
+            verify.Check(
+                "x-mapsmith:hull_contains_its_feature",
+                all(
+                    h.buffer(1e-9).contains(g)
+                    for h, g in zip(hulled.geometry, gdf.geometry)
+                    if h is not None and g is not None and not g.is_empty
+                ),
+                "every hull contains the feature it was built from",
+            )
+        ]
+        + verify.verify_vector_output(
+            output_path, expect_crs=gdf.crs, expect_count=len(gdf), on_empty="ignore"
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "kind": kind,
+        "feature_count": len(hulled),
+        "hull_area": hull_area,
+        "feature_area": original_area,
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
+def validate_geometry(input_path: str, output_path: str) -> dict[str, Any]:
+    """Report which geometries are invalid and why, repairing nothing.
+
+    Every other operation here repairs what it can and records the repair. This
+    one is the inspection step that comes first: it writes the layer back with a
+    validity column and the GEOS reason per feature, so a caller can decide what
+    to do about a self-intersection instead of discovering afterwards that
+    something was rewritten. An invalid ring is not a crash — its area is the
+    signed shoelace of a shape that means nothing — so knowing before measuring
+    is the point.
+    """
+    from shapely.validation import explain_validity
+
+    gdf = _read(input_path)
+    record = ProvenanceRecord(
+        operation="validate_geometry",
+        parameters={},
+        inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))],
+        engine=_engine_info(),
+    )
+    record.crs_decisions = {
+        "analysis_crs": verify.crs_label(gdf.crs),
+        "reason": "validity is a property of the coordinates as stored; nothing is "
+        "reprojected and nothing is repaired",
+    }
+    pre = verify.verify_loaded_inputs("validate_geometry", input_path=gdf)
+    reasons = [
+        "valid" if geom is None or geom.is_valid else explain_validity(geom)
+        for geom in gdf.geometry
+    ]
+    invalid = sum(1 for r in reasons if r != "valid")
+    checked = gdf.copy()
+    checked["is_valid"] = [r == "valid" for r in reasons]
+    checked["validity_reason"] = reasons
+    with verify.audit_on_failure(record, output_path, pre):
+        _write(checked, output_path)
+    if invalid:
+        record.notes.append(
+            f"{invalid} of {len(gdf)} features are invalid; nothing was repaired "
+            "here by design — the reasons are in the validity_reason column"
+        )
+    # The generic output checks are the wrong ones here: `geometry_valid` is
+    # critical everywhere else, and this operation exists precisely to carry an
+    # invalid geometry through to disk with its diagnosis attached. Failing on
+    # that would make the inspection impossible to perform.
+    output_checks = [
+        verify.Check(
+            "crs_present",
+            _read_output_crs(output_path) is not None,
+            verify.crs_label(gdf.crs),
+        ),
+        verify.Check(
+            "feature_count_exact",
+            len(checked) == len(gdf),
+            f"{len(checked)} of {len(gdf)} features written",
+        ),
+        verify.Check(
+            "x-mapsmith:invalid_geometry_reported",
+            True,
+            f"{invalid} of {len(gdf)} features invalid, reasons in "
+            "validity_reason; nothing was repaired",
+        ),
+    ]
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="validate_geometry",
+        preconditions=pre,
+        checks_fn=lambda: output_checks,
+        # repairing here would defeat the operation
+        repair=False,
+    )
+    return {
+        "output": str(output_path),
+        "feature_count": len(checked),
+        "invalid_count": invalid,
+        "reasons": sorted({r for r in reasons if r != "valid"}),
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
+COUNT_PREDICATES = {"intersects", "within", "contains"}
+
+
+def count_in_polygons(
+    points_path: str,
+    polygons_path: str,
+    output_path: str,
+    predicate: str = "intersects",
+    count_column: str = "point_count",
+) -> dict[str, Any]:
+    """Count points per polygon, with the boundary rule stated and its cost measured.
+
+    ``intersects`` (the default) includes points on the boundary; ``within``
+    excludes them. On a partition — districts that share edges — that is the
+    difference between counting every point and dropping the ones on the seams,
+    silently, because a join that returns fewer rows looks exactly like a join
+    that had fewer to find. Both counts are computed: the total under the chosen
+    predicate, and how many points fall in no polygon at all.
+    """
+    if predicate not in COUNT_PREDICATES:
+        raise ValueError(
+            f"predicate must be one of {sorted(COUNT_PREDICATES)}, got {predicate!r}"
+        )
+    points = _read(points_path)
+    polygons = _read(polygons_path)
+    record = ProvenanceRecord(
+        operation="count_in_polygons",
+        parameters={"predicate": predicate, "count_column": count_column},
+        inputs=[
+            InputRecord.from_path(points_path, crs=verify.crs_label(points.crs)),
+            InputRecord.from_path(polygons_path, crs=verify.crs_label(polygons.crs)),
+        ],
+        engine=_engine_info(),
+    )
+    pre = verify.verify_loaded_inputs(
+        "count_in_polygons", points_path=points, polygons_path=polygons
+    )
+    if verify.has_critical_failure(pre):
+        record.add_verification(pre).finish().write_for(output_path)
+        verify.enforce(pre, "count_in_polygons")
+    if not verify.same_crs(points.crs, polygons.crs):
+        points = points.to_crs(polygons.crs)
+        record.crs_decisions = {
+            "analysis_crs": verify.crs_label(polygons.crs),
+            "reason": "points reprojected onto the polygons' CRS before counting",
+        }
+    else:
+        record.crs_decisions = {
+            "analysis_crs": verify.crs_label(polygons.crs),
+            "reason": "both layers share a CRS; no reprojection needed",
+        }
+    pre += verify.verify_input_pairs(
+        "count_in_polygons", points_path=points, polygons_path=polygons
+    )
+    with verify.audit_on_failure(record, output_path, pre):
+        joined = gpd.sjoin(points, polygons, predicate=predicate, how="inner")
+        counts = joined.groupby("index_right").size()
+        result = polygons.copy()
+        result[count_column] = [int(counts.get(i, 0)) for i in result.index]
+        _write(result, output_path)
+
+    matched = int(joined["index_right"].notna().sum())
+    distinct_points = len(set(joined.index))
+    unplaced = len(points) - distinct_points
+    record.notes.append(
+        f"{distinct_points} of {len(points)} points fall in at least one polygon "
+        f"under `{predicate}`; the counts sum to {matched}, which exceeds the "
+        "number of points when polygons overlap or share edges"
+        if matched != distinct_points
+        else f"{distinct_points} of {len(points)} points fall in a polygon under "
+        f"`{predicate}`"
+    )
+    checks = [
+        verify.Check(
+            "x-mapsmith:every_point_placed",
+            unplaced == 0,
+            f"{unplaced} of {len(points)} points fall in no polygon",
+            critical=False,
+            hint=None
+            if unplaced == 0
+            else (
+                f"Those points are outside every polygon under `{predicate}`. If the "
+                "polygons are meant to cover the whole study area, check the "
+                "boundaries: with `within`, a point exactly on a shared edge belongs "
+                "to neither side and disappears from the totals."
+            ),
+        )
+    ]
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="count_in_polygons",
+        preconditions=pre,
+        checks_fn=lambda: checks
+        + verify.verify_vector_output(
+            output_path,
+            expect_crs=polygons.crs,
+            expect_count=len(polygons),
+            on_empty="ignore",
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "predicate": predicate,
+        "polygon_count": len(result),
+        "points_placed": distinct_points,
+        "points_unplaced": unplaced,
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
+def _read_output_crs(path: str) -> Any:
+    """The CRS of a dataset just written, for a check that must not re-validate it."""
+    try:
+        return readers.read_vector_or_table(path).crs
+    except Exception:  # noqa: BLE001 — the check reports absence, it does not diagnose
+        return None

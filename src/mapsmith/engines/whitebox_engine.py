@@ -557,3 +557,177 @@ def watershed(
             "provenance": str(manifest),
             "verified": True,
         }
+
+
+FOCAL_STATISTICS = {
+    "mean": "mean_filter",
+    "median": "median_filter",
+    "maximum": "maximum_filter",
+    "minimum": "minimum_filter",
+    "range": "range_filter",
+    "standard_deviation": "standard_deviation_filter",
+    "majority": "majority_filter",
+    "diversity": "diversity_filter",
+    "total": "total_filter",
+}
+
+
+def focal_statistics(
+    input_path: str,
+    output_path: str,
+    statistic: str,
+    window: int,
+) -> dict[str, Any]:
+    """A moving-window statistic over a raster, with the window size required.
+
+    Whitebox's filters default to an 11 x 11 window. On a 1 m DEM that is a
+    5.5 m radius, so a "local" statistic quietly stops being local — and the
+    result is a perfectly ordinary-looking smoothed surface. The window is
+    therefore a required argument here, and must be odd: an even window has no
+    centre cell, so the output is offset by half a cell from its input, which
+    is a shift nothing downstream can see.
+
+    For class codes use `majority` or `diversity`; `mean` on a land-cover map
+    invents codes, the same way an interpolating resample does.
+    """
+    wb = _require()
+    if statistic not in FOCAL_STATISTICS:
+        raise ValueError(
+            f"statistic must be one of {sorted(FOCAL_STATISTICS)}, got {statistic!r}"
+        )
+    if window < 3 or window % 2 == 0:
+        raise ValueError(
+            f"window must be an odd number of cells, at least 3, got {window}. "
+            "An even window has no centre cell and shifts the result by half a "
+            "cell against its input."
+        )
+    wbe = wb.WbEnvironment()
+    wbe.verbose = False
+    with _read_dem(wbe, input_path) as (raster, crs, _geographic, input_note):
+        record = ProvenanceRecord(
+            operation="focal_statistics",
+            parameters={"statistic": statistic, "window": window, "shape": "square"},
+            inputs=[InputRecord.from_path(input_path, crs=crs)],
+            engine=_engine_info(),
+        )
+        record.crs_decisions = {
+            "analysis_crs": crs,
+            "reason": "a moving window is measured in CELLS, not in ground units: "
+            "the same window covers a different distance on a different grid, and "
+            "no reprojection would change that",
+        }
+        record.notes.append(
+            f"window {window}x{window} cells; at this raster's resolution that is "
+            f"{window} cells across, and the statistic is not comparable with one "
+            "computed at another resolution"
+        )
+        if statistic in ("mean", "median", "total", "standard_deviation", "range"):
+            record.notes.append(
+                f"'{statistic}' derives values that need not exist in the input: "
+                "correct for a continuous surface, wrong for class codes, where "
+                "'majority' or 'diversity' are the ones that keep the alphabet"
+            )
+        # `wbe.remote_sensing`, not `wbe.raster`: the typed stub files them
+        # under raster and the runtime does not have them there. Third time
+        # a Whitebox tool is not where its documentation says (after
+        # terrain.general vs terrain.derivatives), so this path was found by
+        # introspecting the installed package.
+        method = getattr(wbe.remote_sensing, FOCAL_STATISTICS[statistic])
+        result = method(input=raster, filter_size_x=window, filter_size_y=window)
+        wbe.write_raster(result, str(output_path))
+
+        meta = raster.metadata()
+        checks = _raster_checks(
+            wbe,
+            output_path,
+            expect_epsg=raster.crs_epsg(),
+            expect_shape=(meta.rows, meta.columns),
+            value_range=None,
+        )
+        if input_note:
+            record.notes.append(input_note)
+        manifest = record.add_verification(checks).finish().write_for(output_path)
+        verify.enforce(checks, "focal_statistics")
+        return {
+            "output": str(output_path),
+            "statistic": statistic,
+            "window": window,
+            "provenance": str(manifest),
+            "verified": True,
+        }
+
+
+def extract_streams(
+    flow_accumulation_path: str,
+    output_path: str,
+    threshold: float,
+    zero_background: bool = False,
+) -> dict[str, Any]:
+    """The stream network implied by a flow-accumulation grid and a threshold.
+
+    The threshold is required, and the manifest records which UNIT it is in,
+    because that is where this operation goes wrong: `d8_flow_accum` produces
+    either a cell count or a specific contributing area depending on its
+    `out_type`, the two differ by orders of magnitude, and a threshold tuned for
+    one applied to the other gives a stream network that is well formed, drawn
+    on the map, and wrong. There is no defensible default for the threshold
+    either — the literature says so plainly — so the caller states it and the
+    record keeps it.
+    """
+    wb = _require()
+    if threshold <= 0:
+        raise ValueError(
+            f"threshold must be positive, got {threshold}. With 0 every cell that "
+            "drains anything becomes a stream, which is the whole DEM."
+        )
+    wbe = wb.WbEnvironment()
+    wbe.verbose = False
+    with _read_dem(wbe, flow_accumulation_path) as (accumulation, crs, _geographic, note):
+        record = ProvenanceRecord(
+            operation="extract_streams",
+            parameters={
+                "threshold": threshold,
+                "zero_background": zero_background,
+                "threshold_unit": "whatever unit the input flow accumulation is in",
+            },
+            inputs=[InputRecord.from_path(flow_accumulation_path, crs=crs)],
+            engine=_engine_info(),
+        )
+        record.crs_decisions = {
+            "analysis_crs": crs,
+            "reason": "thresholding an existing grid changes values, not geometry",
+        }
+        record.notes.append(
+            "the threshold is compared against the input's own values: if that grid "
+            "came from d8_flow_accum with out_type='cells' the unit is a cell count, "
+            "and with 'sca' it is a specific contributing area — the two differ by "
+            "orders of magnitude and produce different networks from the same number"
+        )
+        # `wbe.streams.extract_streams`, measured: the stub nests it under a
+        # `network_extraction` sub-namespace that does not exist at runtime.
+        result = wbe.streams.extract_streams(
+            flow_accumulation=accumulation,
+            threshold=threshold,
+            zero_background=zero_background,
+        )
+        wbe.write_raster(result, str(output_path))
+
+        meta = accumulation.metadata()
+        checks = _raster_checks(
+            wbe,
+            output_path,
+            expect_epsg=accumulation.crs_epsg(),
+            expect_shape=(meta.rows, meta.columns),
+            value_range=None,
+        )
+        if note:
+            record.notes.append(note)
+        manifest = record.add_verification(checks).finish().write_for(output_path)
+        verify.enforce(checks, "extract_streams")
+        return {
+            "output": str(output_path),
+            "threshold": threshold,
+            "zero_background": zero_background,
+            "provenance": str(manifest),
+            "verified": True,
+        }
