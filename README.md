@@ -482,8 +482,8 @@ Next, in the order we intend to do it. The linked items carry a written spec —
   vendored.
 
   Its [published results](https://argleton.org/#results) measure MapSmith, and what they say about
-  us is why they are linked from here. On the current eight-family run MapSmith answers every trap
-  correctly — **0.00 silent errors over 8 traps, nothing skipped** — and the run itself separates
+  us is why they are linked from here. On the current eighteen-family run MapSmith answers every
+  trap correctly — **0.00 silent errors over 20 traps, nothing skipped** — and the run itself separates
   the passes it earned from the ones it did not: the mismatched-CRS join and the feet-as-metres
   unit are MapSmith's own discipline, the Web Mercator pass comes from a default (ground area is
   geodesic unless you ask for the plane) rather than from care, and the TIFF-predictor pass is
@@ -505,7 +505,8 @@ Next, in the order we intend to do it. The linked items carry a written spec —
 - [ ] [Satellite embeddings as a first-class input](https://github.com/mapsmith-ai/MapSmith/issues/24): per-zone embedding vectors (multiband zonal statistics) and similarity rasters against a reference location, over the open [AlphaEarth annual dataset](https://developers.google.com/earth-engine/guides/aef_on_gcs_readme) (CC-BY 4.0 COGs). Deterministic arithmetic on a raster — no model inference in MapSmith — with the tile, year and reference vector recorded in the manifest
 - [ ] Authenticated remote mode (OAuth on the existing Streamable HTTP transport) and [long-job progress via MCP Tasks](https://github.com/mapsmith-ai/MapSmith/issues/8). This is the item that closes the one limitation [SECURITY.md](SECURITY.md) declares outright: the HTTP transport has no authentication today
 - [x] Slope and aspect (Whitebox, closed-form tested; geographic-CRS DEMs refused)
-- [ ] More terrain & hydrology: stream network extraction, curvature
+- [x] Stream network extraction (Whitebox, from a flow-accumulation grid; the threshold and its unit recorded in the manifest)
+- [ ] More terrain & hydrology: curvature
 - [ ] Map panel: MapLibre vector rendering, and an export of the panel as a self-contained HTML file you host yourself (raster OSM tiles already ship). No hosted viewer — MapSmith runs on your machine and we would rather not own your maps
 - [ ] [Sandboxed code-execution tool](https://github.com/mapsmith-ai/MapSmith/issues/7) for the long tail
 - [ ] QGIS Processing sidecar (subprocess-isolated): ~900 algorithms. By far the largest item on this list — parameter mapping and error handling for an external process, not an afternoon

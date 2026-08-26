@@ -16,7 +16,7 @@ body:
     id: today
     attributes:
       label: How you do it today
-      description: The QGIS / ArcGIS / PostGIS / R equivalent, if any.
+      description: The QGIS / PostGIS / R equivalent, if any.
   - type: textarea
     id: data
     attributes:

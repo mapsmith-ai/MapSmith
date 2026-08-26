@@ -174,8 +174,8 @@ def test_the_changelog_covers_the_released_version():
     and the version in pyproject is what PyPI will publish, so they must agree."""
     from mapsmith import __version__
 
-    # regex, not tomllib: that is stdlib only from 3.11 and this suite runs on
-    # the minimum supported Python (3.10)
+    # regex, not tomllib: a substring check over the raw text stays true however
+    # the dependency is expressed — extra, marker or version pin
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     declared = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.MULTILINE)
     assert declared and declared.group(1) == __version__, (
@@ -428,8 +428,8 @@ def test_declared_dependencies_are_not_advertised_as_future_work():
     """"More to come: X" for an X that already ships reads as either sloppy or
     dishonest, and both cost the same."""
     text = README.read_text(encoding="utf-8")
-    # read as text, not via tomllib: that is stdlib only from 3.11 and this
-    # suite has to run on the minimum supported Python (3.10)
+    # read as text, not via tomllib: a substring check stays true however the
+    # dependency is expressed — extra, marker or version pin
     all_deps = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     # substrings, so the check survives renaming "WhiteboxTools" to the name of
     # the library we actually depend on ("Whitebox Workflows")
@@ -464,4 +464,110 @@ def test_an_illustrative_url_is_never_rendered_as_a_link(page: Path):
     assert not offenders, (
         f"{page.name}: illustrative URLs rendered as clickable links — wrap them in "
         f"backticks so a reader does not follow one and find nothing: {offenders}"
+    )
+
+
+# Vendor names we do not write in public, at all: no note, no table row, no
+# comparison. The reason is not politeness — it is that a public comparison
+# invites a reply we have no standing to have, and a single sentence about a
+# vendor is enough to frame this project as competing with one rather than
+# measuring anything. The GDAL driver short names below are the one exception:
+# they are identifiers GDAL itself emits, and the deny-list test that keeps new
+# drivers from arriving unreviewed cannot spell them any other way.
+VENDOR_SILENCE = re.compile(r"esri|arcgis|arcpy|arcmap", re.IGNORECASE)
+DRIVER_IDENTIFIERS = ("ESRI Shapefile", "ESRIJSON")
+
+
+def _tracked_text_files() -> list[Path]:
+    """Every tracked file a stranger can read, source included."""
+    import subprocess
+
+    out = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files"], capture_output=True, text=True, check=True
+    ).stdout.split("\n")
+    keep = {".md", ".py", ".html", ".yml", ".yaml", ".toml", ".json", ".cff", ".txt", ".ipynb"}
+    return [
+        ROOT / name
+        for name in out
+        if name and (ROOT / name).suffix in keep and (ROOT / name).exists()
+    ]
+
+
+def test_no_vendor_is_named_in_public():
+    """Silence about a named vendor is a decision, so it needs a check.
+
+    A prose mention costs nothing to add and cannot be taken back once it is in
+    a public git history, which is exactly the shape of mistake a test should
+    be catching instead of a reviewer. One test over every tracked file rather
+    than one per file: the whole list of offenders in a single failure is what
+    a person fixing this wants to see."""
+    offenders = {}
+    for page in _tracked_text_files():
+        if page.resolve() == Path(__file__).resolve():
+            continue  # this file names them in order to forbid them
+        text = page.read_text(encoding="utf-8", errors="replace")
+        for identifier in DRIVER_IDENTIFIERS:
+            text = text.replace(identifier, "")
+        found = sorted({m.group(0) for m in VENDOR_SILENCE.finditer(text)})
+        if found:
+            offenders[str(page.relative_to(ROOT)).replace("\\", "/")] = found
+    assert not offenders, (
+        f"these files name a vendor we stay silent about in public: {offenders}. "
+        "Say the thing without the name, or drop the sentence."
+    )
+
+
+def test_the_roadmap_does_not_list_a_shipped_operation_as_future_work():
+    """The tool-name version of this check stopped being enough.
+
+    Operations can now ship without a tool of their own, so a capability can be
+    live and still sit unticked on the roadmap — which is how "stream network
+    extraction" stayed listed as future work on the day `extract_streams`
+    shipped. Names are matched by stem so the prose form of a capability
+    ("stream network extraction") is caught alongside the identifier.
+
+    Parentheticals are stripped before matching, because that is where an item
+    names a shipped operation as *context* for something new rather than as the
+    promise: "per-zone embedding vectors (multiband zonal statistics)" promises
+    the embeddings, not `zonal_statistics`. Matching the main clause keeps the
+    check sharp without an allow-list that would grow until it meant nothing."""
+    from mapsmith import catalog
+
+    available = [
+        entry["name"] for entry in catalog.OPERATIONS if entry.get("status") == "available"
+    ]
+    todo = re.findall(r"^- \[ \] (.+)$", README.read_text(encoding="utf-8"), re.MULTILINE)
+    offenders = {}
+    for name in available:
+        stems = [token.rstrip("s") for token in name.split("_") if len(token.rstrip("s")) > 3]
+        if not stems:
+            continue
+        for item in todo:
+            promise = re.sub(r"\([^)]*\)", "", item)
+            if all(re.search(rf"\b{stem}", promise, re.IGNORECASE) for stem in stems):
+                offenders[name] = item
+    assert not offenders, (
+        f"the roadmap lists shipped operations as future work: {offenders}. "
+        "Tick the box, or say precisely which part is still missing."
+    )
+
+
+def test_no_public_page_states_a_python_floor_that_disagrees_with_the_package():
+    """`pyproject.toml` is the floor; a page that names a different one is a lie
+    a newcomer discovers as a failed install.
+
+    CONTRIBUTING said 3.10 for a day after the floor moved to 3.12 (D-038), and
+    the only reader who would ever notice is the one it costs the most."""
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    declared = re.search(r'requires-python\s*=\s*">=\s*(\d+\.\d+)"', pyproject)
+    assert declared, "pyproject.toml no longer declares requires-python in a readable form"
+    floor = declared.group(1)
+    stated = re.compile(r"Python\s*(?:>=|≥|>)\s*(\d+\.\d+)")
+    offenders = {}
+    for page in _showcase_pages():
+        for found in stated.findall(page.read_text(encoding="utf-8")):
+            if found != floor:
+                offenders[str(page.relative_to(ROOT)).replace("\\", "/")] = found
+    assert not offenders, (
+        f"pyproject requires Python >={floor} but these pages say otherwise: {offenders}"
     )

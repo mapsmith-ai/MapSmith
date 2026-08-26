@@ -396,7 +396,8 @@ def test_two_different_unnamed_crs_do_not_collapse_to_one_label():
     assert verify.crs_label(first) != verify.crs_label(second)
 
     # And the same two under a shared *name*, which is the common case in the
-    # wild (QGIS and ESRI hand out "Custom LAEA" and "WGS_1984_Albers" freely).
+    # wild (desktop GIS tools hand out "Custom LAEA" and "WGS_1984_Albers"
+    # freely).
     # The name branch used to answer first, so the digest never ran.
     named = [
         CRS.from_json_dict(crs.to_json_dict() | {"name": "Custom LAEA"})

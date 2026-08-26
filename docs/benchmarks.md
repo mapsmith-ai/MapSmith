@@ -445,17 +445,17 @@ organisation on purpose: an evaluation that lives inside the thing it
 evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
-What it says about MapSmith (eight-family run, engine tier, `spec_commit`
-[`bc95d3b`](https://github.com/argleton/argleton/tree/main/results/2026-08-25-eight-families)):
+What it says about MapSmith (eighteen-family run, engine tier, `spec_commit`
+[`cadf41b`](https://github.com/argleton/argleton/tree/main/results/2026-08-26-eighteen-families)):
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
-| MapSmith | **0.00** | 1.00 | 8 | 0 |
-| naive composition (read file, take statistic) | 0.875 | 1.00 | 8 | 0 |
+| MapSmith | **0.00** | 1.00 | 20 | 0 |
+| naive composition (read file, take statistic) | 0.95 | 1.00 | 20 | 0 |
 
 Read the last column before the rate: an adapter that could only be asked two
-questions must not be able to look better than one that faced all eight. This
-is the first run where MapSmith answers every probe.
+questions must not be able to look better than one that faced all twenty.
+MapSmith answers every probe in this run, with nothing marked not applicable.
 
 Four findings are worth more than the score, and all four are ours to state:
 
@@ -488,7 +488,7 @@ Four findings are worth more than the score, and all four are ours to state:
    ground it covers.
 
 That set is the honest shape of the transition: trajectory benchmarks could not
-see any of the four, and the suite produced them in its first three days. New
+see any of the four, and the suite produced them in its first four days. New
 families are added with a clean twin and a closed-form truth each
 ([how](https://github.com/argleton/argleton/blob/main/docs/ADDING-A-TRAP.md)),
 and results are rerun on every commit.

@@ -14,8 +14,7 @@ All notable changes to MapSmith are documented here, in the format of
   `centroid_layer` and `convert_format` cover the layer plumbing that was
   missing, each recording what it cost — null-filled columns named, the
   simplification's area and length before and after, a lossy conversion refused
-  with the reason rather than performed quietly. The catalogue is at 27
-  operations (25 available, 2 planned).
+  with the reason rather than performed quietly.
 - **`measure_area`, and the first check that asks whether the number is right.**
   Ground (ellipsoidal) or planar area with the CRS's own linear unit, invalid
   rings repaired before measuring and the repair reported as a repair. When the
@@ -40,11 +39,24 @@ All notable changes to MapSmith are documented here, in the format of
   vector). Both are held to a golden query set with their per-query latency
   recorded, so the scaling limit is a curve rather than a number someone
   guessed.
+- **An operation no longer needs a tool of its own** (`run_operation`, the 28th
+  tool). The one-to-one contract between catalogue entries and exposed tools was
+  what capped the catalogue at the size of the tool list, and it is gone:
+  `run_operation(operation, arguments)` runs any catalogue entry by name.
+  Arguments are validated against the catalogue before anything executes —
+  unknown operation (with a "did you mean" from the same ranking), missing or
+  misnamed argument, wrong type, path outside the workspace — and execution goes
+  through the same path as `execute_plan`, so an operation cannot behave one way
+  alone and another way inside a plan. Ten operations arrived this way, none
+  with a tool of its own: `measure_length`, `join_table`, `aggregate_weighted`,
+  `parse_coordinates`, `point_on_surface`, `hull_layer`, `validate_geometry`,
+  `count_in_polygons`, `focal_statistics` and `extract_streams`. The catalogue is
+  at 41 operations (39 available, 2 planned) behind 28 tools.
 - **Overlay and dissolve declare their semantics in the manifest.** Dropped
   lower-dimension pieces from an overlay are named rather than silently absent,
   and a dissolve's aggregation is recorded with the group count verified in
   closed form.
-- **Manifests now carry `spec_version`** (`1.0.0-draft.1`). The manifest format
+- **Manifests now carry `spec_version`** (`1.0.0-draft.2`). The manifest format
   is becoming a specification of its own — schema, toolchain-free validator,
   conformance suite and a minimal emitter that does not import MapSmith — and
   MapSmith is one implementation of it rather than its definition. A CI test

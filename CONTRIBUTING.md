@@ -34,4 +34,4 @@ To keep dual-licensing possible (AGPL + commercial), we ask contributors to sign
 
 ## Code style
 
-Python ≥3.10, `ruff` clean, type hints on public functions, tests for every operation.
+Python ≥3.12, `ruff` clean, type hints on public functions, tests for every operation.
