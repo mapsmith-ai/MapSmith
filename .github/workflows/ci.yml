@@ -24,7 +24,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.12"]
+        # Both arms must resolve to the SAME library versions, which is only
+        # possible above 3.12: rasterio 1.5 requires it, so a 3.10 arm silently
+        # tested 1.4.x while the 3.12 arm tested 1.5.x — two arms, two products,
+        # one green tick. The floor moved instead of the pin, because pinning
+        # would have frozen us on an old rasterio to keep an old Python alive.
+        python-version: ["3.12", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -32,10 +37,65 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install
         run: pip install -e .[test,raster,whitebox]
+      # A green tick that does not say what it ran against cannot be read six
+      # months later: the resolved versions are the other half of the result.
+      - name: Record resolved versions
+        run: |
+          pip freeze --exclude-editable | sort > resolved-${{ matrix.python-version }}.txt
+          cat resolved-${{ matrix.python-version }}.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: resolved-${{ matrix.python-version }}
+          path: resolved-${{ matrix.python-version }}.txt
       - name: Lint
         run: ruff check .
       - name: Test
         run: pytest -q
+
+  # The arms are only comparable if they installed the same thing. Asserting it
+  # turns "we are always on the latest compatible" from an intention into a
+  # check: the day a release drops support for one of the two Pythons, this
+  # fails and names the package, instead of one arm quietly testing an older
+  # library for months.
+  same-libraries:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: resolved-*
+          merge-multiple: false
+      - name: Compare resolved versions
+        run: |
+          python - <<'PY'
+          import pathlib, sys
+          files = sorted(pathlib.Path(".").glob("resolved-*/resolved-*.txt"))
+          if len(files) != 2:
+              sys.exit(f"expected two resolution files, found {[str(f) for f in files]}")
+          def parsed(path):
+              out = {}
+              for line in path.read_text().splitlines():
+                  if "==" in line:
+                      name, _, version = line.partition("==")
+                      out[name.lower().strip()] = version.strip()
+              return out
+          a, b = parsed(files[0]), parsed(files[1])
+          differing = sorted(
+              (name, a.get(name, "absent"), b.get(name, "absent"))
+              for name in set(a) | set(b)
+              if a.get(name) != b.get(name)
+          )
+          if differing:
+              print(f"{files[0].name} vs {files[1].name}")
+              for name, left, right in differing:
+                  print(f"  {name}: {left} != {right}")
+              sys.exit(
+                  "the two Python arms installed different library versions. "
+                  "Either a release dropped one of them, or a dependency needs a "
+                  "floor raised -- decide which, do not let the arms drift."
+              )
+          print(f"both arms resolved {len(a)} packages identically")
+          PY
 
   # The container is the supported install path, so its defaults are part of the
   # product and belong under test. Docker is not available on the machine this is
@@ -94,7 +154,7 @@ jobs:
           test "$label" = "$name" || { echo "image label '$label' != server.json '$name'"; exit 1; }
 
   publish:
-    needs: [test, image]
+    needs: [test, same-libraries, image]
     # Never from a pull request: the tests would gate it, but publishing an
     # unmerged branch as `:latest` is not something a gate can make correct.
     if: github.event_name == 'push'

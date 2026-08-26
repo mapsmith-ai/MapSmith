@@ -18,11 +18,15 @@ MapSmith gives AI agents professional-grade geoprocessing via MCP, with **verifi
 - Tool path arguments are untrusted (they come from an LLM agent): every path-taking tool guards them via `workspace.guard` (non-local forms always rejected; containment when `MAPSMITH_WORKSPACE` is set), and the DuckDB connection sandboxes itself under a workspace (`allowed_directories` + external access off + config lock — order is load-bearing, see `duckdb_engine._connect`). New tools and engines must keep both layers.
 - Version pins are deliberate: `mcp>=1.26,<2` (1.26 is the floor for resource `meta`, needed by the MCP Apps map panel; v2 renamed FastMCP→MCPServer; migration planned with MCP Tasks), `ruff>=0.16,<0.17` (new ruff minors add default rules and break CI).
 - Tests use closed-form expected values (e.g., a known 5×5 raster block → mean=22, sum=550) plus rejection-path tests; `pytest.importorskip` for extras.
-- Run `python -m ruff check .` before committing; CI runs lint + tests on Python 3.10/3.12 + Docker build.
-- **The floor is Python 3.10**, and local runs happen on a newer interpreter, so stdlib added
-  after 3.10 breaks only in CI: no `tomllib`, `datetime.UTC`, `StrEnum`, `contextlib.chdir`,
-  `ExceptionGroup` (3.11), no `itertools.batched`, `typing.override` (3.12). Ruff's
-  `target-version` catches too-new *syntax*; too-new *modules* are on you.
+- Run `python -m ruff check .` before committing; CI runs lint + tests on Python 3.12/3.14, asserts both arms resolved the same library versions, and builds + runs the Docker image.
+- **The floor is Python 3.12**, raised from 3.10 on 2026-08-26 for one reason: rasterio
+  1.5 requires 3.12, so a 3.10 CI arm resolved to rasterio 1.4.x while the 3.12 arm got
+  1.5.x — two arms testing two different products under one green tick. Both arms now run
+  the same libraries, and a CI job compares their resolved versions and fails if they
+  diverge. What this unlocks, deliberately: `tomllib`, `datetime.UTC`, `StrEnum`,
+  `contextlib.chdir`, `ExceptionGroup`, `itertools.batched`, `typing.override` are all
+  available now. What still bites: stdlib added in 3.13 or later breaks only on the 3.12
+  arm, and ruff's `target-version` catches too-new *syntax* but never too-new *modules*.
 - Docker (or `uvx` where wheels work) is the only supported install path — keep it true in docs.
 - Verify external-library APIs against primary documentation before coding against them; this repo has already been bitten by from-memory APIs three times.
 

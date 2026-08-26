@@ -53,6 +53,17 @@ All notable changes to MapSmith are documented here, in the format of
 
 ### Changed
 
+- **The Python floor is now 3.12** (was 3.10). One reason, and it is about testing
+  rather than syntax: rasterio 1.5 requires Python 3.12, so the 3.10 CI arm resolved to
+  rasterio 1.4.x while the 3.12 arm got 1.5.x — two arms testing two different products
+  under one green tick, with nothing anywhere saying so. Pinning rasterio down would have
+  frozen the project on an old raster stack to keep an old Python alive, so the floor
+  moved instead. CI now runs 3.12 and 3.14, **asserts that both arms resolved identical
+  library versions**, and records the full resolution as a build artifact — a green tick
+  that cannot say what it ran against is not readable six months later. The container
+  moves to `python:3.14-slim`. Docker and `uvx` are the supported install paths and both
+  bring their own interpreter, so this is invisible on them.
+
 - **A multi-layer container is refused instead of resolved to its default
   layer** ([#29]). Opening `project.gpkg` without naming a layer used to hand
   back whichever layer GDAL happened to list first — consistently, and wrongly.

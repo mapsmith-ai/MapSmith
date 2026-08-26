@@ -7,7 +7,7 @@ name = "mapsmith"
 version = "0.2.2"
 description = "Professional-grade GIS geoprocessing for AI agents via MCP, with verifiable provenance"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = "AGPL-3.0-or-later"
 authors = [{ name = "MapSmith", email = "mapsmith@proton.me" }]
 keywords = ["mcp", "gis", "geoprocessing", "geospatial", "ai-agents", "provenance"]
@@ -16,6 +16,9 @@ classifiers = [
   "Intended Audience :: Science/Research",
   "Topic :: Scientific/Engineering :: GIS",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
   # 1.26 is the floor for resource `meta` (the MCP Apps map panel needs it);
@@ -67,9 +70,10 @@ Repository = "https://github.com/mapsmith-ai/MapSmith"
 packages = ["src/mapsmith"]
 
 [tool.ruff]
-# the floor is 3.10: this makes ruff refuse syntax newer than it, which
-# local runs on a newer interpreter would otherwise hide until CI
-target-version = "py310"
+# the floor is 3.12: this makes ruff refuse syntax newer than it, which
+# local runs on a newer interpreter would otherwise hide until CI.
+# It catches syntax, never modules — a 3.13 stdlib import still reaches CI.
+target-version = "py312"
 line-length = 100
 src = ["src", "tests"]
 extend-exclude = [

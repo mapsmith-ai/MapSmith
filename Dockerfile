@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # MCP Registry ownership proof: must equal the server.json "name" exactly.
 LABEL io.modelcontextprotocol.server.name="io.github.mapsmith-ai/mapsmith"
