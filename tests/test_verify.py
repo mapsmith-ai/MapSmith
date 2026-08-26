@@ -103,6 +103,34 @@ def test_a_manifest_path_does_not_depend_on_the_host(tmp_path):
     assert recorded.path == PurePath(source).as_posix()
 
 
+
+def _spec_problems(record: dict) -> list[str]:
+    """Every way this record fails the spec, according to BOTH implementations.
+
+    The standalone validator alone is not enough, and until 2026-08-26 it was
+    all this file used: the schema is the NORMATIVE implementation, and the two
+    had drifted on every recommended field. A CI that says "conforming" using
+    the lenient one of two implementations is worse than one that says nothing,
+    because it is the sentence a reader trusts.
+    """
+    import json
+    import sys
+    from pathlib import Path
+
+    data = Path(__file__).parent / "data"
+    sys.path.insert(0, str(data))
+    from manifest_spec_validator import problems
+
+    found = list(problems(record))
+    try:
+        import jsonschema
+    except ImportError:  # pragma: no cover - jsonschema is in the test extra
+        return found
+    schema = json.loads((data / "manifest-v1.schema.json").read_text(encoding="utf-8"))
+    checker = jsonschema.Draft202012Validator(schema)
+    found += [f"schema: {error.message}" for error in checker.iter_errors(record)]
+    return found
+
 def test_every_manifest_mapsmith_writes_conforms_to_the_spec(tmp_path):
     """MapSmith is an implementation of the manifest spec, not its definition.
 
@@ -113,13 +141,8 @@ def test_every_manifest_mapsmith_writes_conforms_to_the_spec(tmp_path):
     record would validate the test's idea of a manifest rather than MapSmith's.
     """
     import json
-    import sys
-    from pathlib import Path
 
     import geopandas as gpd
-
-    sys.path.insert(0, str(Path(__file__).parent / "data"))
-    from manifest_spec_validator import problems
 
     from mapsmith.engines import vector
 
@@ -134,7 +157,7 @@ def test_every_manifest_mapsmith_writes_conforms_to_the_spec(tmp_path):
 
     record = json.loads((tmp_path / "wells_100m.parquet.provenance.json")
                         .read_text(encoding="utf-8"))
-    assert problems(record) == [], "a MapSmith manifest no longer conforms to the spec"
+    assert _spec_problems(record) == [], "a MapSmith manifest no longer conforms to the spec"
     assert record["spec_version"].startswith("1.")
 
     # The record must describe the bytes it sits beside — recomputed here from
@@ -160,11 +183,7 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
     quietly checks nothing is worse than no conformance test.
     """
     import json
-    import sys
     from pathlib import Path
-
-    sys.path.insert(0, str(Path(__file__).parent / "data"))
-    from manifest_spec_validator import problems
 
     from mapsmith import catalog
     from mapsmith.plans.registry import BINDINGS
@@ -189,7 +208,7 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
             skipped.append(name)
             continue
         record = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
-        assert problems(record) == [], f"{name} writes a manifest the spec rejects"
+        assert _spec_problems(record) == [], f"{name} writes a manifest the spec rejects"
         assert record["operation"] == name
         assert record["spec_version"].startswith("1."), name
         validated.append(name)

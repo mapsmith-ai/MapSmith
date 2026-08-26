@@ -1,22 +1,9 @@
-"""VENDORED copy of the manifest-spec standalone validator - do not edit here.
+"""Vendored, unmodified, from mapsmith-ai/manifest-spec `validator/validate.py`.
 
-Source: github.com/mapsmith-ai/manifest-spec, validator/validate.py, spec
-1.0.0-draft.2. Vendored because this repository's CI must not depend on cloning
-another one; any change belongs upstream first.
-
-Standalone validator for provenance manifests (spec v1). Stdlib only.
-
-This is a second, independent implementation of the contract: the JSON Schema
-in ``schema/`` is the normative one, and this file re-states it in plain Python
-so that checking a manifest needs no toolchain at all. The two are kept in
-agreement by the conformance suite — a fixture that one accepts and the other
-rejects is a bug in one of them, and the suite says which.
-
-Usage:
-    python validate.py manifest.json [more.json ...]
-
-Exit 0 when every file conforms; 1 otherwise, with one reason per line. As a
-library: ``problems(record) -> list[str]`` (empty means conforming).
+A copy and not a dependency: the point of the standalone validator is that
+checking a record needs no toolchain, and a test that pip-installs the spec
+repository to prove it would be testing something else. The conformance agent
+diffs this against upstream; drift is a finding, not a merge.
 """
 
 from __future__ import annotations
@@ -53,6 +40,27 @@ EXTENSION_CHECK_NAME = re.compile(r"^x-[a-z0-9][a-z0-9_-]*:[a-z0-9][a-z0-9_]*$")
 SPEC_VERSION = re.compile(r"^1\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 TIMESTAMP = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$")
+
+
+def _optional(
+    out: list[str], where: dict, field: str, kinds: type | tuple, label: str = ""
+) -> bool:
+    """A field that is not required but IS typed. Absent is fine; wrong is not.
+
+    RECOMMENDED is not the same as unchecked, and until 2026-08-26 here it was:
+    this file looked only at the required fields, so a record carrying
+    `producer` as a string, or `crs_decisions.analysis_crs` as a number, passed
+    here and failed against the schema. Twelve mutations out of fifteen
+    disagreed that way — which made the claim at the top of this file, two
+    implementations kept in agreement, false about its own subject.
+    """
+    if field not in where:
+        return False
+    if not isinstance(where[field], kinds):
+        prefix = f"{label}." if label else ""
+        out.append(f"`{prefix}{field}` has the wrong type")
+        return False
+    return True
 
 
 def problems(record: object) -> list[str]:
@@ -97,6 +105,9 @@ def problems(record: object) -> list[str]:
                     )
             if need("sha256", str, item, label) and not SHA256.fullmatch(item["sha256"]):
                 out.append(f"`{label}.sha256` must be 64 lowercase hex characters")
+            for field in ("crs", "layer"):
+                if item.get(field) is not None and not isinstance(item[field], str):
+                    out.append(f"`{label}.{field}` must be a string or null")
 
     if need("engine", dict):
         for field in ("name", "version"):
@@ -127,6 +138,10 @@ def problems(record: object) -> list[str]:
                     )
             need("passed", bool, check, label)
             need("detail", str, check, label)
+            _optional(out, check, "critical", bool, label)
+            for field in ("hint", "argument"):
+                if check.get(field) is not None and not isinstance(check[field], str):
+                    out.append(f"`{label}.{field}` must be a string or null")
 
     if "output" in record:
         out_field = record["output"]
@@ -143,6 +158,29 @@ def problems(record: object) -> list[str]:
                 out_field["sha256"]
             ):
                 out.append("`output.sha256` must be 64 lowercase hex characters")
+
+    # The RECOMMENDED fields of section 3.4. Optional to emit, typed once
+    # emitted: a consumer that finds `notes` holding a bare string instead of a
+    # list has to guess, and guessing is what this format exists to remove.
+    if _optional(out, record, "crs_decisions", dict):
+        for key, value in record["crs_decisions"].items():
+            if not isinstance(value, str):
+                out.append(
+                    f"`crs_decisions.{key}` must be a string: section 3.7 fixes the keys, "
+                    "and the values are prose a reader can check"
+                )
+    if _optional(out, record, "notes", list):
+        for n, note in enumerate(record["notes"]):
+            if not isinstance(note, str):
+                out.append(f"`notes[{n}]` must be a string")
+    if _optional(out, record, "repairs", list):
+        for n, repair in enumerate(record["repairs"]):
+            if not isinstance(repair, dict):
+                out.append(f"`repairs[{n}]` must be an object")
+    _optional(out, record, "parameters_redacted", bool)
+    if _optional(out, record, "producer", dict):
+        for field in ("name", "version"):
+            _optional(out, record["producer"], field, str, "producer")
 
     stamps = {}
     for field in ("started_at", "finished_at"):

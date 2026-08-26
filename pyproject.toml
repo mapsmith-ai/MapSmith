@@ -57,7 +57,11 @@ raster = ["exactextract>=0.2", "rasterio>=1.3"]
 whitebox = ["whitebox-workflows>=2.0.6,<3"]
 postgres = ["psycopg[binary]>=3.2"]
 retrieval = ["model2vec>=0.9,<1"]
-test = ["pytest>=8.0", "ruff>=0.16,<0.17"]
+# jsonschema is here and not optional-with-a-skip: the manifest conformance
+# test validates against the NORMATIVE schema as well as the standalone
+# validator, and an importorskip would have quietly left CI checking only
+# the lenient one of the two.
+test = ["pytest>=8.0", "ruff>=0.16,<0.17", "jsonschema>=4.23"]
 
 [project.scripts]
 mapsmith = "mapsmith.server:main"

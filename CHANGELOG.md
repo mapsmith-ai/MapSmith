@@ -8,6 +8,17 @@ All notable changes to MapSmith are documented here, in the format of
 
 ### Added
 
+- **Manifest conformance is now checked against the normative schema too, not
+  only the standalone validator.** The two implementations had drifted on every
+  recommended field: seventeen ways of writing a record that the schema rejects
+  and the validator accepts — `producer` as a string, `crs_decisions` values as
+  numbers, `notes` as a bare string, `inputs[].layer` as an integer. The
+  validator now types those fields, the vendored copy is refreshed, the schema
+  is vendored alongside it, and `jsonschema` moved into the `[test]` extra
+  rather than behind an `importorskip`, because a CI that says "conforming"
+  using the lenient one of two implementations is worse than one that says
+  nothing.
+
 - **Nine more tools, 18 → 27.** `describe_dataset` now reads rasters as well as
   vectors; `slope` and `aspect` land on the Whitebox engine (geographic-CRS DEMs
   refused rather than measured in degrees); `merge_layers`, `simplify_layer`,
