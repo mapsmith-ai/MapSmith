@@ -11,7 +11,7 @@ import hashlib
 import json
 import re
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path, PurePath
 from typing import Any
 
@@ -25,7 +25,7 @@ SPEC_VERSION = "1.0.0-draft.2"
 
 
 def _utcnow() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def sha256_of(path: str | Path, chunk_size: int = 1 << 20) -> str:

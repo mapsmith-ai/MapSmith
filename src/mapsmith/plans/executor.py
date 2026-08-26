@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -44,7 +44,7 @@ def execute(plan: Plan) -> dict[str, Any]:
             "validation": report.model_dump(),
         }
 
-    started = datetime.now(timezone.utc).isoformat()
+    started = datetime.now(UTC).isoformat()
     outputs: dict[str, str] = {}
     steps: list[dict[str, Any]] = []
     failure: dict[str, Any] | None = None
@@ -137,7 +137,7 @@ def _write_plan_manifest(
         "plan_sha256": plan.sha256(),
         "goal": plan.goal,
         "started_at": started,
-        "finished_at": datetime.now(timezone.utc).isoformat(),
+        "finished_at": datetime.now(UTC).isoformat(),
         "steps": [
             {
                 **record,
