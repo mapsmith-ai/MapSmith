@@ -74,15 +74,15 @@ def test_bilinear_on_class_codes_reports_the_class_it_invented(landcover, tmp_pa
     assert result["verified"] is True
     assert result["invented_values"] == [2.0]
     checks = {w["check"] for w in result["warnings"]}
-    assert "no_invented_class_codes" in checks
-    hint = next(w["hint"] for w in result["warnings"] if w["check"] == "no_invented_class_codes")
+    assert "x-mapsmith:no_invented_class_codes" in checks
+    hint = next(w["hint"] for w in result["warnings"] if w["check"] == "x-mapsmith:no_invented_class_codes")
     assert "nearest or mode" in hint
     with rasterio.open(out) as ds:
         data = ds.read(1)
     assert int((data == 2).sum()) == 4  # one whole column of a class that never existed
     manifest = _manifest(out)
     failed = [c for c in manifest["verification"] if not c["passed"]]
-    assert [c["name"] for c in failed] == ["no_invented_class_codes"]
+    assert [c["name"] for c in failed] == ["x-mapsmith:no_invented_class_codes"]
 
 
 def test_mode_is_treated_as_categorical_and_invents_nothing(landcover, tmp_path):

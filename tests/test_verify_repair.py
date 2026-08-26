@@ -354,7 +354,7 @@ def test_total_erosion_is_flagged_with_a_hint(tmp_path):
     _gdf([Point(0, 0).buffer(5)]).to_parquet(src)
 
     result = vector.buffer(str(src), -50, str(out))
-    hints = [w["hint"] for w in result["warnings"] if w["check"] == "geometry_not_empty"]
+    hints = [w["hint"] for w in result["warnings"] if w["check"] == "result_not_empty"]
     assert hints and "wrong sign or magnitude" in hints[0]
 
 

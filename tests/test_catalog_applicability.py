@@ -95,3 +95,30 @@ def test_the_vector_engine_also_narrows_before_it_ranks():
         "steepness of the terrain", input_kind="raster", projected=True, engine="vector"
     )
     assert {"slope", "aspect"} & {entry["name"] for entry in projected}
+
+
+def test_every_operation_declares_a_workload_the_dispatcher_knows():
+    """D-041: declaring is not routing, but a declaration the router cannot read
+    is decoration. Every entry carries a workload, and every workload is a value
+    of the enum the dispatcher switches on — so the day routing is extended, the
+    catalog is already the input it needs."""
+    from mapsmith.engines.dispatch import Workload
+
+    valid = {w.value for w in Workload}
+    for op in catalog.OPERATIONS:
+        assert "workload" in op, f"{op['name']} declares no workload"
+        assert op["workload"] in valid, (
+            f"{op['name']} declares workload {op['workload']!r}, "
+            f"which the dispatcher does not know: {sorted(valid)}"
+        )
+
+
+def test_a_raster_operation_is_never_filed_as_a_vector_workload():
+    """Closed-form: the raster category and the raster workload must agree.
+    A GeoTIFF operation filed as heavy_join is how a router eventually sends a
+    grid to a spatial-join engine."""
+    for op in catalog.OPERATIONS:
+        if op["category"] == "raster" or op["applicability"]["inputs"] == ["raster"]:
+            assert op["workload"] == "raster", (
+                f"{op['name']} is a raster operation declared as {op['workload']!r}"
+            )

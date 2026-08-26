@@ -290,14 +290,14 @@ def resample(
     with rasterio.open(output_path) as out:
         checks.append(
             verify.Check(
-                "shape_matches_resolution",
+                "x-mapsmith:shape_matches_resolution",
                 (out.height, out.width) == (height, width),
                 f"expected {height}x{width}, got {out.height}x{out.width}",
             )
         )
         checks.append(
             verify.Check(
-                "crs_preserved",
+                "crs_matches",
                 verify.same_crs(out.crs, record.inputs[0].crs),
                 f"{verify.crs_label(out.crs)}",
             )
@@ -312,7 +312,7 @@ def resample(
         invented = sorted(result_values - source_values)
         checks.append(
             verify.Check(
-                "no_invented_class_codes",
+                "x-mapsmith:no_invented_class_codes",
                 not invented,
                 f"{resampling} introduced codes absent from the input: {invented}"
                 if invented
@@ -447,7 +447,7 @@ def clip_raster(
     with rasterio.open(output_path) as out:
         checks.append(
             verify.Check(
-                "crs_preserved",
+                "crs_matches",
                 verify.same_crs(out.crs, record.inputs[0].crs),
                 verify.crs_label(out.crs),
             )
@@ -457,7 +457,7 @@ def clip_raster(
         # exists to prevent.
         checks.append(
             verify.Check(
-                "not_larger_than_source",
+                "x-mapsmith:not_larger_than_source",
                 out.height <= source_shape[0] and out.width <= source_shape[1],
                 f"{out.height}x{out.width} from {source_shape[0]}x{source_shape[1]}",
             )
@@ -594,7 +594,7 @@ def reclassify(
         )
         checks.append(
             verify.Check(
-                "crs_preserved",
+                "crs_matches",
                 verify.same_crs(out.crs, record.inputs[0].crs),
                 verify.crs_label(out.crs),
             )
@@ -608,7 +608,7 @@ def reclassify(
         # than one that failed.
         checks.append(
             verify.Check(
-                "values_are_declared_codes",
+                "x-mapsmith:values_are_declared_codes",
                 produced <= declared,
                 f"unexpected codes {sorted(produced - declared)}"
                 if produced - declared
@@ -741,7 +741,7 @@ def band_math(input_path: str, output_path: str, expression: str) -> dict[str, A
         )
         checks.append(
             verify.Check(
-                "written_as_float",
+                "x-mapsmith:written_as_float",
                 out.dtypes[0].startswith("float"),
                 out.dtypes[0],
             )
@@ -751,7 +751,7 @@ def band_math(input_path: str, output_path: str, expression: str) -> dict[str, A
         invalid = int(band.size - valid)
         checks.append(
             verify.Check(
-                "result_not_all_nodata",
+                "result_not_empty",
                 valid > 0,
                 f"{valid} of {band.size} cells carry a value",
                 critical=False,

@@ -197,7 +197,7 @@ def _raster_checks(
     shape = (meta.rows, meta.columns)
     checks.append(
         verify.Check(
-            "dimensions_match_input",
+            "shape_preserved",
             shape == expect_shape,
             f"expected {expect_shape}, got {shape}",
         )
@@ -211,7 +211,7 @@ def _raster_checks(
         valid = arr[(arr != meta.nodata) & ~np.isnan(arr)]
     checks.append(
         verify.Check(
-            "has_valid_cells",
+            "result_not_empty",
             valid.size > 0,
             f"{valid.size}/{arr.size} valid cells",
         )

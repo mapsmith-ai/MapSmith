@@ -26,6 +26,30 @@ import re
 import sys
 from pathlib import Path
 
+# Section 3.6: the closed core of check names. A producer performing one of
+# these checks uses this name for it; anything else carries an `x-<producer>:`
+# prefix. Kept as a literal list rather than derived from the schema, because
+# this validator exists to be an INDEPENDENT implementation — two copies of one
+# mistake agree with each other perfectly.
+CORE_CHECK_NAMES = frozenset({
+    "crs_present",
+    "crs_matches",
+    "geometry_valid",
+    "feature_count_exact",
+    "feature_count_bounded",
+    "row_count_exact",
+    "result_not_empty",
+    "extent_within_expected",
+    "shape_preserved",
+    "values_in_expected_range",
+    "input_crs_present",
+    "input_not_empty",
+    "inputs_may_intersect",
+    "geometry_types",
+})
+EXTENSION_CHECK_NAME = re.compile(r"^x-[a-z0-9][a-z0-9_-]*:[a-z0-9][a-z0-9_]*$")
+
+
 SPEC_VERSION = re.compile(r"^1\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 TIMESTAMP = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$")
@@ -90,8 +114,17 @@ def problems(record: object) -> list[str]:
             if not isinstance(check, dict):
                 out.append(f"`{label}` must be an object")
                 continue
-            if need("name", str, check, label) and not check["name"]:
-                out.append(f"`{label}.name` must not be empty")
+            if need("name", str, check, label):
+                name = check["name"]
+                if not name:
+                    out.append(f"`{label}.name` must not be empty")
+                elif name not in CORE_CHECK_NAMES and not EXTENSION_CHECK_NAME.match(name):
+                    out.append(
+                        f"`{label}.name` is {name!r}, which is neither a core check "
+                        "name (section 3.6) nor an extension named "
+                        "`x-<producer>:<name>`. An unconstrained vocabulary makes two "
+                        "records incomparable, which is the point of having a format."
+                    )
             need("passed", bool, check, label)
             need("detail", str, check, label)
 

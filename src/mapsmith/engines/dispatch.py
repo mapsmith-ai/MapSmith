@@ -20,13 +20,23 @@ class Workload(str, Enum):
     SQL = "sql"                # filters, aggregations, ad-hoc SQL
     HEAVY_JOIN = "heavy_join"  # polygon overlay, distance joins, KNN
     SMALL_VECTOR = "small_vector"  # long-tail ops on small data
+    # Grids. None of the three vector engines applies, and saying so is the
+    # point: without this value a raster operation would have to be filed under
+    # one of the others, and a router reading the catalog would eventually send
+    # a GeoTIFF to DuckDB. Every catalog entry declares its workload (D-041),
+    # so the enum has to be able to describe every entry.
+    RASTER = "raster"
 
 
-# Preference order per workload class; first available wins.
+# Preference order per workload class; first available wins. RASTER has none:
+# its engines (rasterio, exactextract, Whitebox) are chosen by the operation,
+# not by data size, and pretending otherwise would invite a routing decision
+# that has no basis.
 _PREFERENCES: dict[Workload, list[str]] = {
     Workload.SQL: ["duckdb", "geopandas"],
     Workload.HEAVY_JOIN: ["sedonadb", "duckdb", "geopandas"],
     Workload.SMALL_VECTOR: ["geopandas"],
+    Workload.RASTER: [],
 }
 
 

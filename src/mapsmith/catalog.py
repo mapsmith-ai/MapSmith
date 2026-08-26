@@ -24,6 +24,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "describe_dataset",
         "status": "available",
         "tool": "describe_dataset",
+        "workload": "small_vector",
         "category": "inspection",
         "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
         "summary": "Inspect a vector or raster dataset: CRS, schema/bands, extent, "
@@ -65,6 +66,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "buffer_layer",
         "status": "available",
         "tool": "buffer_layer",
+        "workload": "small_vector",
         "category": "vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Metric buffer with automatic UTM estimation on geographic CRS",
@@ -125,6 +127,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "clip_layer",
         "status": "available",
         "tool": "clip_layer",
+        "workload": "heavy_join",
         "category": "vector",
         "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
         "summary": "Clip a layer with a mask layer (CRS-aligned automatically)",
@@ -184,6 +187,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "overlay_layers",
         "status": "available",
         "tool": "overlay_layers",
+        "workload": "heavy_join",
         "category": "vector",
         "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
         "summary": "Set-theoretic overlay of two layers: intersection, union, identity, "
@@ -254,6 +258,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "dissolve_layer",
         "status": "available",
         "tool": "dissolve_layer",
+        "workload": "sql",
         "category": "vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Merge features into one geometry per key, with the aggregation "
@@ -323,6 +328,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "nearest_join",
         "status": "available",
         "tool": "nearest_join",
+        "workload": "heavy_join",
         "category": "vector",
         "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
         "summary": "Nearest-neighbour join with the distance in meters in a named column "
@@ -397,6 +403,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "explode_layer",
         "status": "available",
         "tool": "explode_layer",
+        "workload": "small_vector",
         "category": "vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Split multi-part geometries into one feature per part, "
@@ -448,6 +455,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "measure_area",
         "status": "available",
         "tool": "measure_area",
+        "workload": "sql",
         "category": "vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Area per feature in square metres — ground (ellipsoidal) or "
@@ -521,6 +529,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "merge_layers",
         "status": "available",
         "tool": "merge_layers",
+        "workload": "heavy_join",
         "category": "vector",
         "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
         "summary": "Append two or more layers into one, schema union, "
@@ -575,6 +584,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "simplify_layer",
         "status": "available",
         "tool": "simplify_layer",
+        "workload": "small_vector",
         "category": "vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Simplify geometries with the drift measured: area and length "
@@ -639,6 +649,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "centroid_layer",
         "status": "available",
         "tool": "centroid_layer",
+        "workload": "small_vector",
         "category": "vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "One point per feature: geometric centroids computed in a "
@@ -693,6 +704,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "convert_format",
         "status": "available",
         "tool": "convert_format",
+        "workload": "small_vector",
         "category": "vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Convert between vector formats, re-read and verified; "
@@ -748,6 +760,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "reproject_layer",
         "status": "available",
         "tool": "reproject_layer",
+        "workload": "small_vector",
         "category": "vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Reproject a layer to a target CRS (EPSG code or WKT)",
@@ -807,6 +820,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "spatial_join",
         "status": "available",
         "tool": "spatial_join",
+        "workload": "heavy_join",
         "category": "vector",
         "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
         "summary": "Join by spatial predicate (intersects/within/contains); auto-routed to "
@@ -893,6 +907,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "run_sql",
         "status": "available",
         "tool": "run_sql",
+        "workload": "sql",
         "category": "sql",
         "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
         "summary": "Spatial SQL (DuckDB dialect, ST_* functions) over GeoParquet and GDAL "
@@ -957,6 +972,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "zonal_statistics",
         "status": "available",
         "tool": "zonal_statistics",
+        "workload": "raster",
         "category": "raster",
         "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False},
         "summary": "Statistics of a raster within vector zones via exactextract "
@@ -1027,6 +1043,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "get_provenance",
         "status": "available",
         "tool": "get_provenance",
+        "workload": "small_vector",
         "category": "provenance",
         "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
         "summary": "Full lineage manifest of any MapSmith output",
@@ -1065,6 +1082,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "hillshade",
         "status": "available",
         "tool": "hillshade",
+        "workload": "raster",
         "category": "terrain",
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
         "summary": "Shaded relief from a DEM (Whitebox engine, in-memory); "
@@ -1133,6 +1151,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "slope",
         "status": "available",
         "tool": "slope",
+        "workload": "raster",
         "category": "terrain",
         "applicability": {"inputs": ["raster"], "requires_projected_crs": True},
         "summary": "Slope gradient from a DEM in degrees, percent or radians "
@@ -1196,6 +1215,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "aspect",
         "status": "available",
         "tool": "aspect",
+        "workload": "raster",
         "category": "terrain",
         "applicability": {"inputs": ["raster"], "requires_projected_crs": True},
         "summary": "Aspect from a DEM: downslope azimuth in degrees, 0 = north, "
@@ -1248,6 +1268,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "flow_accumulation",
         "status": "available",
         "tool": "flow_accumulation",
+        "workload": "raster",
         "category": "hydrology",
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
         "summary": "D8 flow accumulation from a DEM with automatic depression filling; "
@@ -1310,6 +1331,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "watershed",
         "status": "available",
         "tool": "watershed",
+        "workload": "raster",
         "category": "hydrology",
         "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False},
         "summary": "Watershed delineation from a DEM and pour points (Whitebox engine); "
@@ -1371,6 +1393,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "validate_plan",
         "status": "available",
         "tool": "validate_plan",
+        "workload": "small_vector",
         "category": "planning",
         "applicability": {"inputs": ["plan"], "requires_projected_crs": False},
         "summary": "Static validation of a multi-step plan before execution: operations, "
@@ -1452,6 +1475,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "execute_plan",
         "status": "available",
         "tool": "execute_plan",
+        "workload": "small_vector",
         "category": "planning",
         "applicability": {"inputs": ["plan"], "requires_projected_crs": False},
         "summary": "Validate then run a multi-step plan; per-step provenance plus a "
@@ -1541,6 +1565,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "preview_map",
         "status": "available",
         "tool": "preview_map",
+        "workload": "small_vector",
         "category": "visualization",
         "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
         "summary": "Interactive in-chat map of one or more datasets (MCP Apps panel) "
@@ -1589,6 +1614,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "resample_raster",
         "status": "available",
         "tool": None,
+        "workload": "raster",
         "category": "raster",
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
         "summary": "Resample a raster to a target cell size; the method is required, "
@@ -1671,6 +1697,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "clip_raster",
         "status": "available",
         "tool": None,
+        "workload": "raster",
         "category": "raster",
         "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False},
         "summary": "Clip a raster to a vector mask, with the mask reprojected "
@@ -1753,6 +1780,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "reclassify_raster",
         "status": "available",
         "tool": None,
+        "workload": "raster",
         "category": "raster",
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
         "summary": "Map value ranges onto new codes, half-open by contract, "
@@ -1826,6 +1854,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "name": "band_math",
         "status": "available",
         "tool": None,
+        "workload": "raster",
         "category": "raster",
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
         "summary": "Arithmetic across a raster's bands (NDVI and friends), with "
@@ -1900,6 +1929,7 @@ OPERATIONS: list[dict[str, Any]] = [
     {
         "name": "isochrone",
         "status": "planned",
+        "workload": "heavy_join",
         "category": "network",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Travel-time polygons (Valhalla engine)",
@@ -1907,6 +1937,7 @@ OPERATIONS: list[dict[str, Any]] = [
     {
         "name": "qgis_processing",
         "status": "planned",
+        "workload": "small_vector",
         "category": "bridge",
         "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
         "summary": "~900 QGIS/GRASS/SAGA algorithms via GPL-isolated subprocess sidecar",

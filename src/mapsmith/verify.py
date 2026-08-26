@@ -388,7 +388,7 @@ def verify_vector_output(
         empty = int(gdf.geometry.is_empty.sum())
         checks.append(
             Check(
-                "geometry_not_empty",
+                "result_not_empty",
                 empty == 0,
                 f"{empty}/{len(gdf)} empty geometries" if empty else "none empty",
                 critical=False,

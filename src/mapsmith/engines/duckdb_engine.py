@@ -127,6 +127,79 @@ def _rel(path: str) -> str:
     return f"ST_Read('{_quote(path)}')"
 
 
+# The spheroid functions take their coordinates in an order the SQL text does
+# not state, and every file format stores the other one. Listed by name rather
+# than matched loosely: a false positive here would train a caller to ignore
+# the check, which is worse than not having it.
+_SPHEROID_FUNCTIONS = (
+    "st_area_spheroid",
+    "st_perimeter_spheroid",
+    "st_distance_spheroid",
+    "st_length_spheroid",
+)
+# A square whose sides are 0.0008 degrees of longitude by 0.0006 of latitude at
+# 41.9 north. Its ground area is ~4424 m2 by three independent methods (pyproj
+# geodesic, a UTM 33N planar measurement, and the local metric by hand), so the
+# probe can tell which axis order a build assumes by comparing against a number
+# nobody in this file computed.
+_PROBE_LONLAT = (
+    "POLYGON((12.4 41.9, 12.4008 41.9, 12.4008 41.9006, 12.4 41.9006, 12.4 41.9))"
+)
+_PROBE_TRUTH_M2 = 4424.01
+
+
+def _mentions_spheroid_function(query: str) -> list[str]:
+    lowered = sql_policy.strip_comments(query).lower()
+    return [name for name in _SPHEROID_FUNCTIONS if name in lowered]
+
+
+def _axis_order_check(con: Any, used: list[str]) -> verify.Check | None:
+    """Ask the installed build which axis order its spheroid functions assume.
+
+    Measured at run time, not assumed from a version number: DuckDB has
+    announced that `geometry_always_xy` warns in 1.5, errors in 2.0 and flips
+    to true in 2.1, so a hardcoded verdict would be wrong twice — once now if
+    the build is patched, once later when the default changes. When the build
+    reads coordinates the way files store them, this returns None and the
+    caller sees nothing, which is the correct amount of noise.
+    """
+    try:
+        as_stored = con.sql(
+            f"SELECT ST_Area_Spheroid(ST_GeomFromText('{_PROBE_LONLAT}'))"
+        ).fetchone()[0]
+        flipped = con.sql(
+            "SELECT ST_Area_Spheroid(ST_FlipCoordinates("
+            f"ST_GeomFromText('{_PROBE_LONLAT}')))"
+        ).fetchone()[0]
+    except Exception:  # noqa: BLE001 — the probe must never break the caller's query
+        return None
+    if as_stored is None or flipped is None:
+        return None
+    stored_is_right = abs(as_stored - _PROBE_TRUTH_M2) < abs(flipped - _PROBE_TRUTH_M2)
+    if stored_is_right:
+        return None
+    error = abs(as_stored - _PROBE_TRUTH_M2) / _PROBE_TRUTH_M2 * 100
+    return verify.Check(
+        "x-mapsmith:spheroid_axis_order",
+        False,
+        f"{', '.join(used)} read coordinates as (latitude, longitude) in this "
+        f"build: on a reference square whose ground area is {_PROBE_TRUTH_M2} m2 "
+        f"they answer {as_stored:.2f} ({error:.0f}% out), and {flipped:.2f} with "
+        "the axes swapped",
+        critical=False,
+        hint=(
+            "Every file format stores longitude first, and these functions read "
+            "latitude first, so a geometry read from a file and passed straight "
+            "in comes back wrong by a plausible margin — no error, no warning. "
+            "Wrap the geometry in ST_FlipCoordinates(), or measure in a projected "
+            "CRS with ST_Area(ST_Transform(...)). MapSmith's own measure_area "
+            "does the second. This check disappears on its own when the engine "
+            "changes its default, because it probes the build rather than "
+            "trusting a version number."
+        ),
+    )
+
+
 def run_sql(query: str, output_path: str | None = None) -> dict[str, Any]:
     """Run spatial SQL. With output_path, materialize the result as GeoParquet."""
     # SQL text is out of reach of the path guard at the tool boundary, and GDAL
@@ -155,18 +228,36 @@ def run_sql(query: str, output_path: str | None = None) -> dict[str, Any]:
         out_crs = verify.probe_crs(output_path)
         checks = [
             verify.Check(
-                "output_has_georeference",
+                "crs_present",
                 out_crs != verify.UNKNOWN_CRS,
                 out_crs if out_crs != verify.UNKNOWN_CRS else
                 "no geo metadata (non-spatial result?)",
                 critical=False,
             )
         ]
+        used = _mentions_spheroid_function(query)
+        if used and (axis := _axis_order_check(con, used)):
+            checks.append(axis)
         manifest = record.add_verification(checks).finish().write_for(output_path)
-        return {"output": str(output_path), "row_count": int(count), "provenance": str(manifest)}
+        result = {
+            "output": str(output_path),
+            "row_count": int(count),
+            "provenance": str(manifest),
+        }
+        if advisories := verify.advisories(checks):
+            result["warnings"] = advisories
+        return result
     result = con.sql(query)
     rows = result.fetchmany(_PREVIEW_ROWS)
+    # No output file means no manifest, and a preview query is exactly where a
+    # caller is deciding whether to trust a number: the advisory has to reach
+    # them here too, or it only exists when it is least needed.
+    advisories: list[dict[str, Any]] = []
+    used = _mentions_spheroid_function(query)
+    if used and (axis := _axis_order_check(con, used)):
+        advisories = verify.advisories([axis])
     return {
+        **({"warnings": advisories} if advisories else {}),
         "columns": [d[0] for d in result.description],
         "rows": [[repr(v) if isinstance(v, (bytes, bytearray)) else v for v in r] for r in rows],
         "truncated_at": _PREVIEW_ROWS,

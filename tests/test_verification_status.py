@@ -40,7 +40,7 @@ def test_a_failed_non_critical_check_is_not_verified(tmp_path):
     """The exact shape of a run_sql manifest whose only check failed."""
     path = _manifest(
         tmp_path,
-        [{"name": "output_has_georeference", "passed": False, "critical": False,
+        [{"name": "crs_present", "passed": False, "critical": False,
           "detail": "no geo metadata"}],
         inputs=[],
         operation="run_sql",
@@ -56,7 +56,7 @@ def test_a_passing_non_critical_check_is_still_not_verified(tmp_path):
     """Passing a check nobody considers load-bearing is not verification."""
     path = _manifest(
         tmp_path,
-        [{"name": "output_has_georeference", "passed": True, "critical": False,
+        [{"name": "crs_present", "passed": True, "critical": False,
           "detail": "EPSG:32632"}],
         inputs=[],
         operation="run_sql",
@@ -67,7 +67,7 @@ def test_a_passing_non_critical_check_is_still_not_verified(tmp_path):
 def test_passing_critical_checks_are_verified(tmp_path):
     path = _manifest(tmp_path, [
         {"name": "crs_present", "passed": True, "critical": True, "detail": "EPSG:32632"},
-        {"name": "geometry_not_empty", "passed": False, "critical": False, "detail": "1/1 empty"},
+        {"name": "result_not_empty", "passed": False, "critical": False, "detail": "1/1 empty"},
     ])
     summary = preview.provenance_summary(path)
     assert summary["status"] == "verified"

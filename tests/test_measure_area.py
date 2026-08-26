@@ -102,13 +102,13 @@ def test_invalid_geometry_is_repaired_before_measuring_and_recorded(tmp_path):
     # The repair must be where the rest of the system looks for repairs, in
     # the manifest AND in the tool result — not buried in a free-text note.
     assert result["repairs"] == [{
-        "check": "input_geometry_valid",
+        "check": "x-mapsmith:input_geometry_valid",
         "action": result["repairs"][0]["action"],
         "resolved": True,
     }]
     assert "BEFORE measuring" in result["repairs"][0]["action"]
     manifest = _manifest(out)
-    assert manifest["repairs"][0]["check"] == "input_geometry_valid"
+    assert manifest["repairs"][0]["check"] == "x-mapsmith:input_geometry_valid"
     assert manifest["repairs"][0]["resolved"] is True
 
 
@@ -118,8 +118,8 @@ def test_points_measure_zero_and_say_so(tmp_path):
     result = vector.measure_area(source, str(out), method="planar")
     assert result["total_area_m2"] == 0.0
     checks = {c["name"]: c for c in _manifest(out)["verification"]}
-    assert checks["area_is_measurable"]["passed"] is False
-    assert checks["area_is_measurable"]["critical"] is False
+    assert checks["x-mapsmith:area_is_measurable"]["passed"] is False
+    assert checks["x-mapsmith:area_is_measurable"]["critical"] is False
 
 
 def test_measure_area_refuses_planar_on_geographic_and_bad_method(tmp_path):

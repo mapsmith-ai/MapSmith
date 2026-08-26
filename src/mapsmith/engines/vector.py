@@ -915,7 +915,7 @@ def measure_area(
         # whether MapSmith rewrote the caller's geometry.
         input_repairs = [{
             "round": 1,
-            "check": "input_geometry_valid",
+            "check": "x-mapsmith:input_geometry_valid",
             "operation": "measure_area",
             "action": f"make_valid applied to {invalid} input geometries BEFORE "
             "measuring: the planar area of a self-intersecting ring is the signed "
@@ -973,7 +973,7 @@ def measure_area(
         )
         result.append(
             verify.Check(
-                "area_is_measurable",
+                "x-mapsmith:area_is_measurable",
                 polygonal > 0 or not len(gdf),
                 f"{polygonal}/{len(gdf)} features have polygonal geometry",
                 critical=False,

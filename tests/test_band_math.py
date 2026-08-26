@@ -107,7 +107,7 @@ def test_division_by_zero_becomes_nodata_and_is_counted(tmp_path):
     result = raster.band_math(scene, str(out), "(b2 - b1) / (b2 + b1)")
     assert result["nodata_cells"] == 16
     checks = {w["check"] for w in result.get("warnings", [])}
-    assert "result_not_all_nodata" in checks
+    assert "result_not_empty" in checks
 
 
 def test_only_arithmetic_over_bands_is_accepted(scene, tmp_path):

@@ -82,7 +82,7 @@ def test_hillshade_provenance_and_verification(flat_dem, tmp_path):
     assert manifest["crs_decisions"]["analysis_crs"] == "EPSG:32631"
     names = {c["name"]: c["passed"] for c in manifest["verification"]}
     assert names["crs_matches"] is True
-    assert names["dimensions_match_input"] is True
+    assert names["shape_preserved"] is True
     assert names["values_in_expected_range"] is True
 
 
