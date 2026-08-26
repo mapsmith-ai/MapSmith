@@ -571,3 +571,34 @@ def test_no_public_page_states_a_python_floor_that_disagrees_with_the_package():
     assert not offenders, (
         f"pyproject requires Python >={floor} but these pages say otherwise: {offenders}"
     )
+
+def test_every_test_fixture_is_tracked_by_git():
+    """A file the tests read must be a file CI has.
+
+    `tests/data/` is ignored wholesale with per-filename exceptions, which is
+    the right default for datasets and the wrong shape for vendored
+    dependencies: the exception is a filename, so the SECOND vendored file is
+    ignored by default. That has now happened twice -- the spec validator, then
+    the schema beside it on 2026-08-26 -- and both times the symptom was a suite
+    that passed locally and a CI that could not find the file. The `.gitignore`
+    comment recording the first one did not prevent the second, because prose
+    does not run."""
+    import subprocess
+
+    tracked = set(
+        subprocess.run(
+            ["git", "-C", str(ROOT), "ls-files", "tests/data"],
+            capture_output=True, text=True, check=True,
+        ).stdout.split()
+    )
+    on_disk = {
+        path.relative_to(ROOT).as_posix()
+        for path in (ROOT / "tests" / "data").rglob("*")
+        if path.is_file() and "__pycache__" not in path.parts
+    }
+    missing = sorted(on_disk - tracked)
+    assert not missing, (
+        f"these files are read by the tests and not tracked by git: {missing}. "
+        "CI checks out the repository, not this machine: add them, or the suite "
+        "passes here and fails there."
+    )

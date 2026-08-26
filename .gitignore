@@ -21,12 +21,18 @@ venv/
 *.parquet
 *.provenance.json
 data/
-# ...except the vendored spec validator: a test dependency, not a dataset. It
-# was silently ignored once, and the conformance test passed locally while CI
-# could not even import it.
+# ...except the vendored spec artefacts: test dependencies, not datasets. This
+# has now bitten twice in the same way -- the validator was silently ignored
+# once, and on 2026-08-26 the schema next to it went the same way, because the
+# exception was a filename rather than a rule. Both times the conformance test
+# passed locally and CI could not find the file. The comment did not prevent the
+# second one, so `test_showcase.py` now checks that everything under
+# `tests/data/` is tracked: a rule that asserts a property without checking it
+# is worse than no rule.
 !tests/data/
 tests/data/*
 !tests/data/manifest_spec_validator.py
+!tests/data/manifest-v1.schema.json
 
 # Scratch databases: probing the DuckDB sandbox (ATTACH, COPY) drops these in
 # the repo root, and one of them reached a public commit before we noticed.
