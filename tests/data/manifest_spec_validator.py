@@ -31,6 +31,7 @@ CORE_CHECK_NAMES = frozenset({
     "values_in_expected_range",
     "input_crs_present",
     "input_not_empty",
+    "inputs_share_crs",
     "inputs_may_intersect",
     "geometry_types",
 })
@@ -163,11 +164,36 @@ def problems(record: object) -> list[str]:
     # emitted: a consumer that finds `notes` holding a bare string instead of a
     # list has to guess, and guessing is what this format exists to remove.
     if _optional(out, record, "crs_decisions", dict):
-        for key, value in record["crs_decisions"].items():
+        decisions = record["crs_decisions"]
+        for field in ("analysis_crs", "reason"):
+            # A specific message rather than the generic "wrong type": these
+            # two are prose a reader checks, and saying so helps whoever emits.
+            if field in decisions and not isinstance(decisions[field], str):
+                out.append(f"`crs_decisions.{field}` must be a string")
+        for field in ("source_crs", "target_crs"):
+            if decisions.get(field) is not None and not isinstance(decisions[field], str):
+                out.append(f"`crs_decisions.{field}` must be a string or null")
+        # Section 3.7: the other values are deliberately NOT all strings. Before
+        # draft.3 they were, and the cost was that "was this a ballpark
+        # transformation?" could only be answered in prose -- which is what
+        # section 7 faults other formats for.
+        if _optional(out, decisions, "transformation", dict, "crs_decisions"):
+            shift = decisions["transformation"]
+            _optional(out, shift, "pipeline", str, "crs_decisions.transformation")
+            _optional(out, shift, "is_ballpark", bool, "crs_decisions.transformation")
+            accuracy = shift.get("accuracy_m")
+            # `isinstance(True, int)` is True in Python, and a boolean accuracy is
+            # not a number in JSON: the two implementations must agree on that.
+            if accuracy is not None and (
+                isinstance(accuracy, bool) or not isinstance(accuracy, (int, float))
+            ):
+                out.append("`crs_decisions.transformation.accuracy_m` must be a number or null")
+    if _optional(out, record, "environment", dict):
+        for key, value in record["environment"].items():
             if not isinstance(value, str):
                 out.append(
-                    f"`crs_decisions.{key}` must be a string: section 3.7 fixes the keys, "
-                    "and the values are prose a reader can check"
+                    f"`environment.{key}` must be a string: section 3.8 records configuration "
+                    "as the engine reports it, not as a parsed value"
                 )
     if _optional(out, record, "notes", list):
         for n, note in enumerate(record["notes"]):

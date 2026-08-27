@@ -142,6 +142,7 @@
                   "values_in_expected_range",
                   "input_crs_present",
                   "input_not_empty",
+                  "inputs_share_crs",
                   "inputs_may_intersect",
                   "geometry_types"
                 ]
@@ -190,7 +191,7 @@
     },
     "crs_decisions": {
       "type": "object",
-      "description": "RECOMMENDED. Coordinate-system decisions and the reason for each, in words. Silent reprojection is the most expensive habit in the field, and a bare CRS name records the what while losing the why. Section 3.7 fixes the keys.",
+      "description": "RECOMMENDED. Coordinate-system decisions and the reason for each. `analysis_crs` and `reason` are strings; other values may be of any type, because the question a consumer most needs answered here (was the transformation a ballpark one?) has to be answerable in a form a program can branch on. Section 3.7 fixes the keys.",
       "properties": {
         "analysis_crs": {
           "type": "string",
@@ -199,11 +200,48 @@
         "reason": {
           "type": "string",
           "description": "Why that system, in words a reader can check, naming the alternative rejected where there was one."
+        },
+        "source_crs": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The CRS the coordinates were in before the operation."
+        },
+        "target_crs": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The CRS they were put into, when the operation transformed them."
+        },
+        "transformation": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "pipeline": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The transformation operation string the engine used."
+            },
+            "accuracy_m": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "The transformation's stated accuracy in metres, or null when the engine states none."
+            },
+            "is_ballpark": {
+              "type": "boolean",
+              "description": "True when no datum transformation was available and the engine treated the datums as equivalent. A boolean and not prose: a consumer has to be able to branch on it."
+            }
+          },
+          "description": "How the coordinates were transformed. Section 3.7."
         }
       },
-      "additionalProperties": {
-        "type": "string"
-      }
+      "additionalProperties": true
     },
     "notes": {
       "type": "array",
@@ -234,6 +272,13 @@
         }
       },
       "description": "RECOMMENDED. The software that emitted this record, as distinct from the engine that computed the result."
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "RECOMMENDED. The configuration that influenced the result and lives neither in the data nor in the call: PROJ_NETWORK, GDAL_* variables, a project-level ellipsoid, AREA_OR_POINT, the presence of a datum grid. The correct answer is not a number, it is this number with this configuration. Section 3.8."
     }
   }
 }

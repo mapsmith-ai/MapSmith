@@ -196,6 +196,120 @@ def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
     }
 
 
+def _datum_transformation(source_crs, target_crs) -> tuple[Any, dict[str, Any]]:
+    """Pick the transformation, then look at which one was picked.
+
+    `to_crs` is one line and it is not enough. PROJ falls back to a BALLPARK
+    transformation when it has no datum shift for a pair -- and, measured on
+    PROJ 9.5.1, sometimes even when it does have one: on EPSG:4806 (Monte Mario
+    with the Rome prime meridian) `Transformer.from_crs` returns the ballpark
+    while `TransformerGroup` lists a real operation first. A ballpark is the
+    engine declaring that it will treat the two datums as equivalent. No shift is
+    applied, nothing is raised, nothing is logged, and the latitude comes back
+    exactly as it went in -- 74 m out in Italy, and the output CRS is genuinely
+    the one that was asked for, so every check downstream passes.
+
+    Argleton trap 021 is that case, and MapSmith fell into it exactly as the
+    naive composition does. This is the fix, and it is deliberately a
+    computation and not a disclosure: `accuracy` and `TransformerGroup` are
+    plain pyproj, so any caller can do this without a provenance format.
+
+    Returns the transformer to use and the `crs_decisions.transformation` record
+    that section 3.7 of the manifest spec asks for.
+    """
+    from pyproj import Transformer
+    from pyproj.transformer import TransformerGroup
+
+    chosen = Transformer.from_crs(source_crs, target_crs, always_xy=True)
+    accuracy = _accuracy_of(chosen, source_crs)
+    if accuracy is not None and accuracy >= 0:
+        return chosen, {
+            "pipeline": _pipeline_of(chosen),
+            "accuracy_m": float(accuracy),
+            "is_ballpark": False,
+        }
+
+    # No `area_of_interest` here, and that is measured rather than assumed.
+    # Handing PROJ the data's own extent looks obviously right and makes the
+    # answer worse: on EPSG:4806 with the extent of the data, the group comes
+    # back holding ONLY the ballpark -- the 44 m operation disappears -- so the
+    # "better" call would fall back to no datum shift at all. Checked on
+    # PROJ 9.5.1, 2026-08-27.
+    stated = [
+        candidate
+        for candidate in TransformerGroup(source_crs, target_crs, always_xy=True).transformers
+        if candidate.accuracy is not None and candidate.accuracy >= 0
+    ]
+    if not stated:
+        # Every route is a ballpark: there is no datum shift to apply, and
+        # saying so is the only honest answer. Recording `is_ballpark: true`
+        # rather than refusing keeps the operation usable where the caller
+        # knows the datums are equivalent -- the point is that the record says
+        # which case this was.
+        return chosen, {
+            "pipeline": _pipeline_of(chosen),
+            "accuracy_m": None,
+            "is_ballpark": True,
+        }
+    best = stated[0]
+    return best, {
+        "pipeline": _pipeline_of(best),
+        "accuracy_m": float(best.accuracy),
+        "is_ballpark": False,
+        # The caller is owed this: the transformation the library would have
+        # picked by itself applied no datum shift, and this one was chosen
+        # instead. Without it the record says the right thing and hides that
+        # anything happened.
+        "default_was_ballpark": True,
+    }
+
+
+def _accuracy_of(transformer, source_crs) -> float | None:
+    """PROJ reports the operation only after one has been used, so use one.
+
+    `Transformer.accuracy` is -1 until `proj_trans` runs; the honest value comes
+    from `get_last_used_operation()` after a transform. A point inside the CRS's
+    own area of use is what gets asked, because which operation PROJ selects can
+    depend on where the coordinate is.
+    """
+    area = source_crs.area_of_use
+    x, y = (0.0, 0.0)
+    if area is not None:
+        # A bounding box that crosses the antimeridian has west > east, and a
+        # plain midpoint of it lands on the far side of the planet -- which is
+        # outside every real transformation's extent and therefore always
+        # ballpark. This cost an afternoon on 2026-08-26.
+        y = (area.south + area.north) / 2
+        x = (area.west + area.east) / 2
+        if area.west > area.east:
+            x = ((area.west + area.east + 360) / 2 + 180) % 360 - 180
+    try:
+        transformer.transform(x, y)
+        used = transformer.get_last_used_operation()
+    except Exception:  # noqa: BLE001 — no operation to inspect is itself the answer
+        return None
+    return used.accuracy
+
+
+def _pipeline_of(transformer) -> str | None:
+    try:
+        return transformer.to_proj4() or None
+    except Exception:  # noqa: BLE001 — a missing pipeline string is not a failure
+        return None
+
+
+def _transformed(geometry, transformer):
+    """Apply a chosen transformer to one geometry.
+
+    `to_crs` cannot be used here: it picks its own transformation, which is the
+    thing being avoided. `shapely.ops.transform` applies the one we selected.
+    """
+    from shapely.ops import transform as shapely_transform
+
+    if geometry is None or geometry.is_empty:
+        return geometry
+    return shapely_transform(transformer.transform, geometry)
+
 def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, Any]:
     gdf = _read(input_path)
     record = ProvenanceRecord(
@@ -208,8 +322,41 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
     if verify.has_critical_failure(pre):
         record.add_verification(pre).finish().write_for(output_path)
         verify.enforce(pre, "reproject_layer")
+
+    from pyproj import CRS as _CRS
+
+    target = _CRS.from_user_input(target_crs)
+    transformer, shift = _datum_transformation(gdf.crs, target)
+    # The field section 3.7 of the manifest spec calls "where this format earns
+    # its keep", and which this operation left empty until 2026-08-27 -- the one
+    # operation whose entire purpose IS a decision about the CRS.
+    record.crs_decisions = {
+        "analysis_crs": verify.crs_label(target),
+        "reason": (
+            "the caller asked for this CRS; the datum transformation was chosen by "
+            "stated accuracy and the choice is recorded beside it"
+        ),
+        "source_crs": verify.crs_label(gdf.crs),
+        "target_crs": verify.crs_label(target),
+        "transformation": shift,
+    }
+    if shift.get("default_was_ballpark"):
+        record.notes.append(
+            "the transformation this library selects by default for this pair is a "
+            "ballpark one, which applies no datum shift at all; a published operation "
+            f"with a stated accuracy of {shift['accuracy_m']} m was used instead"
+        )
+    if shift["is_ballpark"]:
+        record.notes.append(
+            "no datum transformation is available for this pair, so the coordinates "
+            "were carried across as if the two datums coincided (PROJ calls this a "
+            "ballpark transformation). The result is not shifted; how far it is from "
+            "the true position depends on the datums and can be tens of metres."
+        )
     with verify.audit_on_failure(record, output_path, pre):
-        reprojected = gdf.to_crs(target_crs)
+        reprojected = gdf.set_geometry(
+            gdf.geometry.apply(lambda g: _transformed(g, transformer))
+        ).set_crs(target, allow_override=True)
         _write(reprojected, output_path)
     # reprojection carries geometry through verbatim, so an invalid input gives
     # an invalid output: this is where mechanical repair actually earns its keep
@@ -218,16 +365,40 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
         output_path,
         operation="reproject_layer",
         preconditions=pre,
-        checks_fn=lambda: verify.verify_vector_output(
-            output_path,
-            expect_crs=target_crs,
-            expect_count=len(gdf),
-            on_empty="fail" if len(gdf) else "ignore",
-        ),
+        checks_fn=lambda: [
+            *verify.verify_vector_output(
+                output_path,
+                expect_crs=target_crs,
+                expect_count=len(gdf),
+                on_empty="fail" if len(gdf) else "ignore",
+            ),
+            verify.Check(
+                # Not critical: a ballpark is legitimate when the caller knows
+                # the two datums coincide. What is not legitimate is not saying
+                # so, and `crs_matches` passing while the coordinates never moved
+                # is exactly how this went unnoticed.
+                "x-mapsmith:datum_shift_applied",
+                not shift["is_ballpark"],
+                (
+                    f"{shift['pipeline'] or 'transformation'} — stated accuracy "
+                    f"{shift['accuracy_m']} m"
+                    if not shift["is_ballpark"]
+                    else "ballpark: no datum transformation was available, so the "
+                    "coordinates were carried across unshifted"
+                ),
+                critical=False,
+                hint=None if not shift["is_ballpark"] else (
+                    "The output CRS is the one you asked for and the coordinates "
+                    "were not moved. If the two datums are not equivalent, the "
+                    "result is off by the datum shift — tens of metres is typical."
+                ),
+            ),
+        ],
     )
     return {
         "output": str(output_path),
         "crs": verify.crs_label(reprojected.crs),
+        "transformation": shift,
         "provenance": manifest,
         "verified": True,
         **extras,
