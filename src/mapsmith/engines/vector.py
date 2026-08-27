@@ -1975,6 +1975,143 @@ def hull(input_path: str, output_path: str, kind: str = "convex") -> dict[str, A
     }
 
 
+VORONOI_BOUNDARIES = {"envelope", "convex_hull"}
+
+
+def voronoi_polygons(
+    input_path: str,
+    output_path: str,
+    boundary: str = "envelope",
+    margin_fraction: float = 0.0,
+) -> dict[str, Any]:
+    """Thiessen polygons from a point layer, each carrying its own point's attributes.
+
+    Two things about a Voronoi diagram are easy to get wrong and impossible to
+    see afterwards, so both are handled here rather than left to the caller.
+
+    First, the JOIN. Shapely returns the cells as a collection whose order is an
+    implementation detail, not the input order: zip them with the points and
+    every attribute lands on a neighbour's cell. The result is a map that is
+    correct in shape, wrong in every value, and indistinguishable from the right
+    one. This asks shapely for the ordered form AND then verifies the join
+    geometrically -- each output cell must contain the point whose row it
+    carries. A declaration that the order is right is not a check; containment
+    is.
+
+    Second, the BOUNDARY. The cells of the outermost points are infinite, so
+    every real Voronoi layer is a clipped one, and the clip decides their areas.
+    An area computed over these polygons is therefore partly a property of the
+    boundary, not of the data: `boundary` says which one was used (the points'
+    bounding box, or their convex hull), `margin_fraction` expands it, and both
+    go in the manifest with a note saying the outer areas depend on them.
+    """
+    if boundary not in VORONOI_BOUNDARIES:
+        raise ValueError(
+            f"boundary must be one of {sorted(VORONOI_BOUNDARIES)}, got {boundary!r}"
+        )
+    if margin_fraction < 0:
+        raise ValueError(f"margin_fraction cannot be negative, got {margin_fraction}")
+    gdf = _read(input_path)
+    if gdf.crs is None:
+        raise ValueError(readers.no_crs_message(gdf, f"{input_path} has no CRS."))
+    kinds = set(gdf.geom_type.dropna().unique())
+    if kinds - {"Point"}:
+        raise ValueError(
+            f"voronoi_polygons needs a point layer; {input_path} holds {sorted(kinds)}. "
+            "A Voronoi diagram is defined by points, and passing polygons would "
+            "silently use their vertices, which is a different question."
+        )
+    points = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty].copy()
+    if len(points) < 2:
+        raise ValueError(
+            f"voronoi_polygons needs at least 2 distinct points, got {len(points)} "
+            f"usable in {input_path}: with one point there is no boundary to draw."
+        )
+
+    record = ProvenanceRecord(
+        operation="voronoi_polygons",
+        parameters={"boundary": boundary, "margin_fraction": margin_fraction},
+        inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))],
+        engine=_engine_info(),
+    )
+    record.crs_decisions = {
+        "analysis_crs": verify.crs_label(gdf.crs),
+        "reason": "the cells are built in the layer's own CRS; a Voronoi diagram "
+        "computed after reprojection has different edges, because equidistance is "
+        "a property of the plane it is measured in",
+    }
+    pre = verify.verify_loaded_inputs("voronoi_polygons", input_path=points)
+
+    with verify.audit_on_failure(record, output_path, pre):
+        minx, miny, maxx, maxy = points.total_bounds
+        margin = margin_fraction * max(maxx - minx, maxy - miny)
+        window = shapely.box(minx - margin, miny - margin, maxx + margin, maxy + margin)
+        collection = shapely.MultiPoint(list(points.geometry))
+        # ordered=True is what makes the positional join legal at all; without it
+        # shapely is free to return the cells in any order.
+        cells = shapely.voronoi_polygons(collection, extend_to=window, ordered=True)
+        pieces = list(shapely.get_parts(cells))
+        if boundary == "convex_hull":
+            limit = shapely.convex_hull(collection)
+            if margin:
+                limit = limit.buffer(margin)
+        else:
+            limit = window
+        built = points.copy()
+        built[built.geometry.name] = [
+            shapely.intersection(cell, limit) for cell in pieces[: len(points)]
+        ]
+        _write(built, output_path)
+
+    # Closed form: each cell must contain its own point. A wrong join produces
+    # cells that are all valid polygons and all on the wrong row.
+    own = sum(
+        1
+        for cell, point in zip(built.geometry, points.geometry)
+        if cell is not None and not cell.is_empty and cell.covers(point)
+    )
+    outer_area = float(built.geometry.area.sum())
+    record.notes.append(
+        f"the outer cells are clipped to the points' {boundary}"
+        + (f" expanded by {margin_fraction:g} of its larger side" if margin else "")
+        + f"; total area {outer_area:.6g} is therefore partly a property of that "
+        "boundary, not of the points"
+    )
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="voronoi_polygons",
+        preconditions=pre,
+        checks_fn=lambda: [
+            verify.Check(
+                "x-mapsmith:each_cell_holds_its_own_point",
+                own == len(points),
+                f"{own}/{len(points)} cells contain the point whose attributes they "
+                "carry",
+                hint=(
+                    "The cells and the rows are out of step, so every attribute is on "
+                    "the wrong polygon. The output is geometrically valid and "
+                    "semantically scrambled: do not use it."
+                )
+                if own != len(points)
+                else None,
+            )
+        ]
+        + verify.verify_vector_output(
+            output_path, expect_crs=gdf.crs, expect_count=len(points)
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "boundary": boundary,
+        "cell_count": len(built),
+        "total_area": outer_area,
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
 def validate_geometry(input_path: str, output_path: str) -> dict[str, Any]:
     """Report which geometries are invalid and why, repairing nothing.
 

@@ -190,8 +190,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "heavy_join",
         "category": "vector",
         "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
-        "summary": "Set-theoretic overlay of two layers: intersection, union, identity, "
-        "symmetric_difference, difference (CRS-aligned automatically)",
+        "summary": "Intersect, union or subtract two polygon layers: set-theoretic "
+        "overlay with intersection, union, identity, symmetric_difference and "
+        "difference (CRS-aligned automatically)",
         "description": (
             "Combine two layers set-theoretically. how: intersection (default), union, "
             "identity, symmetric_difference or difference. The overlay layer is "
@@ -2536,6 +2537,524 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
         "summary": "~900 QGIS/GRASS/SAGA algorithms via GPL-isolated subprocess sidecar",
     },
+    {   'name': 'reproject_raster',
+        'status': 'available',
+        'tool': None,
+        'workload': 'raster',
+        'category': 'raster',
+        'applicability': {'inputs': ['raster'], 'requires_projected_crs': False},
+        'summary': 'Warp a raster to another CRS; the resampling method is required and '
+                   'recorded. Requires the [raster] extra',
+        'description': 'Reproject a raster into a target CRS. The resampling method has NO '
+                       'DEFAULT on purpose: warping resamples, and an interpolating method '
+                       '(bilinear, cubic, average) derives values that lie between the '
+                       'ones present. On a continuous surface that is correct; on class '
+                       'codes it invents classes that were never in the file, and every '
+                       'later count or area for those codes is fabricated with nothing '
+                       'raising. Use nearest or mode for categorical rasters. The output '
+                       'grid is recomputed for the target CRS, so its shape and extent '
+                       'change; what is verified is that the output really is in the '
+                       'requested CRS and that an interpolating method did not add codes '
+                       'to a categorical raster (reported as a warning with the invented '
+                       'values listed). Requires: pip install mapsmith[raster].',
+        'parameters': [   {   'name': 'input_path',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Source raster (GeoTIFF); a raster with no '
+                                             'CRS is refused'},
+                          {   'name': 'output_path',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Output GeoTIFF path'},
+                          {   'name': 'target_crs',
+                              'type': 'str',
+                              'required': True,
+                              'description': "Target CRS, e.g. 'EPSG:32632'"},
+                          {   'name': 'resampling',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'nearest | bilinear | cubic | cubic_spline | '
+                                             'lanczos | average | mode | max | min | med | '
+                                             'q1 | q3 — required: interpolating methods '
+                                             'corrupt class codes silently'}],
+        'examples': [   {   'goal': 'Bring an elevation model into UTM 32N before any '
+                                    'metric analysis',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'reproject_raster',
+                                                         'arguments': {   'input_path': 'dem_wgs84.tif',
+                                                                          'output_path': 'dem_utm.tif',
+                                                                          'target_crs': 'EPSG:32632',
+                                                                          'resampling': 'bilinear'}}}},
+                        {   'goal': 'Reproject a land-cover raster without inventing new '
+                                    'classes',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'reproject_raster',
+                                                         'arguments': {   'input_path': 'landcover_utm.tif',
+                                                                          'output_path': 'landcover_wgs84.tif',
+                                                                          'target_crs': 'EPSG:4326',
+                                                                          'resampling': 'nearest'}}}}]},
+    {   'name': 'extract_band',
+        'status': 'available',
+        'tool': None,
+        'workload': 'raster',
+        'category': 'raster',
+        'applicability': {'inputs': ['raster'], 'requires_projected_crs': False},
+        'summary': 'Write one band of a multi-band raster to a single-band raster; '
+                   '1-based, out-of-range refused. Requires the [raster] extra',
+        'description': 'Extract one band of a multi-band raster into a single-band '
+                       'GeoTIFF, keeping the grid, the CRS and the band description. Bands '
+                       'are numbered FROM 1, as in GDAL and rasterio and unlike Python: '
+                       'band 0 and any band past the end are refused rather than clamped, '
+                       'because an off-by-one here produces a perfectly valid raster of '
+                       'the wrong quantity — near-infrared where red was meant — that '
+                       'nothing downstream can detect. The band that landed is verified '
+                       "against the source band's own checksum, not against the index that "
+                       'was passed. Use describe_dataset first if you do not know the band '
+                       'order. Requires: pip install mapsmith[raster].',
+        'parameters': [   {   'name': 'input_path',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Multi-band raster (GeoTIFF)'},
+                          {   'name': 'output_path',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Output single-band GeoTIFF path'},
+                          {   'name': 'band',
+                              'type': 'int',
+                              'required': True,
+                              'description': 'Band number, 1-based; out of range is '
+                                             'refused'}],
+        'examples': [   {   'goal': 'Pull the red band out of a 4-band Sentinel composite',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'extract_band',
+                                                         'arguments': {   'input_path': 'composite.tif',
+                                                                          'output_path': 'red.tif',
+                                                                          'band': 3}}}},
+                        {   'goal': 'Isolate the first band of a multi-temporal stack for '
+                                    'a single-date map',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'extract_band',
+                                                         'arguments': {   'input_path': 'stack.tif',
+                                                                          'output_path': 'date1.tif',
+                                                                          'band': 1}}}}]},
+    {   'name': 'band_statistics',
+        'status': 'available',
+        'tool': None,
+        'workload': 'raster',
+        'category': 'inspection',
+        'applicability': {'inputs': ['raster'], 'requires_projected_crs': False},
+        'summary': 'Per-band min/max/mean/std/sum over the VALID cells only, with the '
+                   'masked count. Reads, writes nothing. Requires the [raster] extra',
+        'description': 'Per-band statistics computed over the valid cells only: nodata is '
+                       'excluded and how many cells that removed travels with every '
+                       'statistic, so the caller can see what the mean is a mean OF. This '
+                       'matters more than it sounds: a mean over a raster whose nodata is '
+                       '-9999 and whose mask was ignored is the classic wrong number that '
+                       'still looks like an elevation. A band where every cell is nodata '
+                       'reports all_masked instead of a mean, because the mean of an empty '
+                       'selection is not an answer. Read-only — no output, no manifest. '
+                       'Requires: pip install mapsmith[raster].',
+        'parameters': [   {   'name': 'input_path',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Raster to inspect (GeoTIFF)'},
+                          {   'name': 'band',
+                              'type': 'int',
+                              'required': False,
+                              'description': 'One band (1-based); omit for every band'}],
+        'examples': [   {   'goal': 'Check the elevation range of a DEM before choosing '
+                                    'contour intervals',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'band_statistics',
+                                                         'arguments': {   'input_path': 'dem_utm.tif'}}}},
+                        {   'goal': 'Get the mean of band 2 alone, excluding nodata',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'band_statistics',
+                                                         'arguments': {   'input_path': 'composite.tif',
+                                                                          'band': 2}}}}]},
+    {   'name': 'curvature',
+        'status': 'available',
+        'tool': None,
+        'workload': 'raster',
+        'category': 'terrain',
+        'applicability': {'inputs': ['raster'], 'requires_projected_crs': True},
+        'summary': 'Surface curvature from a DEM; the kind is required (profile, plan, '
+                   'tangential, mean, gaussian, total). Requires the [whitebox] extra',
+        'description': 'Curvature of a terrain surface. The kind has NO DEFAULT because '
+                       "the kinds answer opposite questions about the same cell: 'profile' "
+                       'is curvature ALONG the slope, where flow accelerates and '
+                       "decelerates, and 'plan' is curvature ACROSS it, where flow "
+                       'converges and diverges — a hillslope can be convex in profile and '
+                       'concave in plan at the same time. A caller who wanted convergence '
+                       'and got acceleration receives a plausible raster of the wrong '
+                       "quantity with no way to tell, so the kind is asked for. 'mean', "
+                       "'gaussian', 'total' and 'tangential' are the standard surface "
+                       'invariants. Curvature is a second derivative in units of 1/length, '
+                       'so no range check applies; DEMs in a geographic CRS are refused, '
+                       'as for slope. Requires: pip install mapsmith[whitebox].',
+        'parameters': [   {   'name': 'dem_path',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Digital elevation model (GeoTIFF, projected '
+                                             'CRS required)'},
+                          {   'name': 'output_path',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Output GeoTIFF path'},
+                          {   'name': 'kind',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'profile | plan | tangential | mean | '
+                                             'gaussian | total — required: profile and '
+                                             'plan answer opposite questions'},
+                          {   'name': 'z_factor',
+                              'type': 'float',
+                              'required': False,
+                              'description': 'Vertical unit conversion factor (default '
+                                             '1.0)'}],
+        'examples': [   {   'goal': 'Find convergent hollows where runoff concentrates',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'curvature',
+                                                         'arguments': {   'dem_path': 'dem_utm.tif',
+                                                                          'output_path': 'plan_curv.tif',
+                                                                          'kind': 'plan'}}}},
+                        {   'goal': 'Map slope breaks where flow accelerates, for erosion '
+                                    'screening',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'curvature',
+                                                         'arguments': {   'dem_path': 'dem_utm.tif',
+                                                                          'output_path': 'profile_curv.tif',
+                                                                          'kind': 'profile'}}}}]},
+    {   'name': 'flow_direction',
+        'status': 'available',
+        'tool': None,
+        'workload': 'raster',
+        'category': 'hydrology',
+        'applicability': {'inputs': ['raster'], 'requires_projected_crs': True},
+        'summary': 'Flow-direction pointer raster (d8, rho8, dinf, fd8) whose direction '
+                   'TABLE is written into the manifest. Requires the [whitebox] extra',
+        'description': "Flow direction from a DEM. 'd8' sends all of a cell's water to its "
+                       "steepest neighbour and 'dinf' splits it between two, which is the "
+                       'difference between a drainage network that looks like a line and '
+                       "one that looks like a fan; 'rho8' is d8 with a stochastic "
+                       "tie-break and 'fd8' spreads over all downslope neighbours. A "
+                       'pointer raster is a grid of small integers whose MEANING lives '
+                       'outside the file, and the two conventions in use disagree on every '
+                       'direction: in the northeast_first table 1 is northeast, in the '
+                       'east_first table '
+                       '1 is east. Read a raster with the wrong table and every cell '
+                       'points somewhere else — the network stays connected, stays '
+                       'plausible, and drains the wrong way. So the manifest carries the '
+                       'WHOLE TABLE by direction name for the encoding used, and a '
+                       'consumer never has to guess which engine wrote the file. '
+                       "'encoding' selects the table (northeast_first, this engine's default, "
+                       'or east_first, what most desktop GIS software writes) and is '
+                       'refused for dinf and fd8, which write '
+                       'continuous values and have no table. Requires: pip install '
+                       'mapsmith[whitebox].',
+        'parameters': [   {   'name': 'dem_path',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Digital elevation model (GeoTIFF, projected '
+                                             'CRS required)'},
+                          {   'name': 'output_path',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Output GeoTIFF path'},
+                          {   'name': 'method',
+                              'type': 'str',
+                              'required': False,
+                              'description': 'd8 (default) | rho8 | dinf | fd8'},
+                          {   'name': 'encoding',
+                              'type': 'str',
+                              'required': False,
+                              'description': 'northeast_first (default) | east_first — the '
+                                             'direction-code table, written into the '
+                                             'manifest; refused for dinf and fd8'}],
+        'examples': [   {   'goal': 'D8 pointer raster as the input to a watershed '
+                                    'delineation',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'flow_direction',
+                                                         'arguments': {   'dem_path': 'dem_filled.tif',
+                                                                          'output_path': 'd8.tif',
+                                                                          'method': 'd8'}}}},
+                        {   'goal': 'A pointer raster another team will read with the '
+                                    'east-first convention most desktop GIS uses',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'flow_direction',
+                                                         'arguments': {   'dem_path': 'dem_filled.tif',
+                                                                          'output_path': 'd8_east_first.tif',
+                                                                          'method': 'd8',
+                                                                          'encoding': 'east_first'}}}}]},
+    {   'name': 'euclidean_distance',
+        'status': 'available',
+        'tool': None,
+        'workload': 'raster',
+        'category': 'raster',
+        'applicability': {'inputs': ['raster'], 'requires_projected_crs': True},
+        'summary': "Distance from every cell to the nearest non-zero cell, in the CRS's "
+                   'own units. Requires the [whitebox] extra',
+        'description': 'A proximity surface: every cell gets its distance to the nearest '
+                       "non-zero cell, measured in the raster's own horizontal unit. A "
+                       'geographic CRS is REFUSED, because a distance in degrees is not a '
+                       'distance — a degree of longitude is 111 km at the equator and 83 '
+                       'km in Rome — and it would come back as a number that looks like '
+                       'metres. Note what counts as a source: whitebox treats the NON-ZERO '
+                       'cells as the features, so a mask of 1s on a background of 0s '
+                       'behaves as expected, while a mask whose background is nodata '
+                       'rather than 0 does not. Verified against the grid itself: no '
+                       "distance is negative, and none exceeds the grid's own diagonal. "
+                       'Requires: pip install mapsmith[whitebox].',
+        'parameters': [   {   'name': 'input_path',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Source raster (GeoTIFF, projected CRS '
+                                             'required); non-zero cells are the features '
+                                             'to measure from'},
+                          {   'name': 'output_path',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Output GeoTIFF path'}],
+        'examples': [   {   'goal': 'Distance to the nearest road cell, for an '
+                                    'accessibility surface',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'euclidean_distance',
+                                                         'arguments': {   'input_path': 'roads_mask.tif',
+                                                                          'output_path': 'dist_roads.tif'}}}},
+                        {   'goal': 'Distance from surface water, as a habitat-suitability '
+                                    'input',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'euclidean_distance',
+                                                         'arguments': {   'input_path': 'water_mask.tif',
+                                                                          'output_path': 'dist_water.tif'}}}}]},
+    {   'name': 'idw_interpolation',
+        'status': 'available',
+        'tool': None,
+        'workload': 'raster',
+        'category': 'raster',
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False},
+        'summary': 'Inverse-distance-weighted surface from a point layer; the field is '
+                   'REQUIRED. Requires the [whitebox] extra',
+        'description': 'Build a continuous surface from scattered point measurements by '
+                       "inverse-distance weighting. 'field_name' is REQUIRED here because "
+                       "of the library's default: whitebox interpolates FID when you do "
+                       'not say otherwise, which produces a smooth, plausible and '
+                       'perfectly meaningless surface of ROW NUMBERS — nothing raises and '
+                       "the raster renders. 'weight' is the distance exponent (2 by "
+                       'default; higher makes the surface flatter between points and '
+                       'peakier at them) and it is recorded, because an IDW surface '
+                       "without its exponent cannot be reproduced. 'cell_size' is read in "
+                       "the point layer's own CRS units, so check them with describe_crs "
+                       'first if the layer is geographic. Requires: pip install '
+                       'mapsmith[whitebox].',
+        'parameters': [   {   'name': 'points_path',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Point layer with the values to interpolate'},
+                          {   'name': 'output_path',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Output GeoTIFF path'},
+                          {   'name': 'field_name',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Attribute to interpolate — required: the '
+                                             'library default interpolates row numbers '
+                                             'without warning'},
+                          {   'name': 'cell_size',
+                              'type': 'float',
+                              'required': True,
+                              'description': "Output cell size, in the layer's CRS units"},
+                          {   'name': 'weight',
+                              'type': 'float',
+                              'required': False,
+                              'description': 'Distance exponent (default 2.0)'},
+                          {   'name': 'radius',
+                              'type': 'float',
+                              'required': False,
+                              'description': 'Search radius in CRS units; 0 = unlimited '
+                                             '(default)'},
+                          {   'name': 'min_points',
+                              'type': 'int',
+                              'required': False,
+                              'description': 'Minimum points per cell (default 0)'}],
+        'examples': [   {   'goal': 'Rainfall surface from gauge measurements at 100 m',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'idw_interpolation',
+                                                         'arguments': {   'points_path': 'gauges.gpkg',
+                                                                          'output_path': 'rainfall.tif',
+                                                                          'field_name': 'mm_year',
+                                                                          'cell_size': 100.0}}}},
+                        {   'goal': 'Groundwater level surface, weighting near wells '
+                                    'harder',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'idw_interpolation',
+                                                         'arguments': {   'points_path': 'wells.parquet',
+                                                                          'output_path': 'water_table.tif',
+                                                                          'field_name': 'level_m',
+                                                                          'cell_size': 50.0,
+                                                                          'weight': 3.0}}}}]},
+    {   'name': 'voronoi_polygons',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'vector',
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False},
+        'summary': 'Thiessen polygons from points, each verified to hold its own point; '
+                   'the clipping boundary is declared',
+        'description': 'Thiessen polygons: the area closer to each point than to any '
+                       "other, with each point's attributes on its own cell. Two things "
+                       'about a Voronoi diagram are easy to get wrong and impossible to '
+                       'see afterwards, so both are handled here. The JOIN: the cells come '
+                       'back in an order that is an implementation detail, so pairing them '
+                       'with the input rows positionally puts every attribute on a '
+                       "neighbour's cell — a map correct in shape and wrong in every "
+                       'value. This asks for the ordered form and then VERIFIES the join '
+                       'geometrically, cell by cell, which a declaration cannot do. The '
+                       'BOUNDARY: the outermost cells are mathematically infinite, so '
+                       'every real Voronoi layer is clipped and the clip decides their '
+                       "areas — 'boundary' says which one was used (envelope or "
+                       "convex_hull), 'margin_fraction' expands it, and both are recorded "
+                       'with a note that the outer areas are partly a property of that '
+                       'choice. Point layers only: polygons are refused rather than '
+                       'silently reduced to their vertices.',
+        'parameters': [   {   'name': 'input_path',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Point layer (at least 2 usable points)'},
+                          {   'name': 'output_path',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Output path (.parquet, .gpkg or .geojson)'},
+                          {   'name': 'boundary',
+                              'type': 'str',
+                              'required': False,
+                              'description': 'envelope (default) | convex_hull — what the '
+                                             'infinite outer cells are clipped to'},
+                          {   'name': 'margin_fraction',
+                              'type': 'float',
+                              'required': False,
+                              'description': 'Expand the boundary by this fraction of its '
+                                             'larger side (default 0.0)'}],
+        'examples': [   {   'goal': 'Catchment areas for a set of retail stores',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'voronoi_polygons',
+                                                         'arguments': {   'input_path': 'stores.gpkg',
+                                                                          'output_path': 'catchments.parquet'}}}},
+                        {   'goal': 'Service areas around weather stations, clipped to '
+                                    'their convex hull',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'voronoi_polygons',
+                                                         'arguments': {   'input_path': 'stations.parquet',
+                                                                          'output_path': 'service_areas.parquet',
+                                                                          'boundary': 'convex_hull'}}}}]},
+    {   'name': 'describe_crs',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'inspection',
+        'applicability': {'inputs': ['none'], 'requires_projected_crs': False},
+        'summary': 'What a CRS actually declares: axis order, unit and its factor to the '
+                   'metre, datum, ellipsoid, area of use. Reads no data',
+        'description': 'Everything about a coordinate reference system that changes the '
+                       "meaning of a number computed in it. Accepts 'EPSG:4326', the bare "
+                       'code 4326, a PROJ string or WKT. Four fields are worth reading '
+                       'before anything else, because each one turns a plausible number '
+                       "into a wrong one on its own. 'axis_order' is 'lat,lon' or "
+                       "'lon,lat': EPSG:4326 declares LATITUDE first while most software "
+                       'and every GeoJSON put longitude first, and this reports what the '
+                       "CRS declares rather than the habit. 'unit' and 'unit_to_metre': a "
+                       'length in EPSG:2263 comes out in US survey feet, and '
+                       '0.30480060960121924 is not 0.3048 — over a state plane that '
+                       "difference is centimetres per kilometre. 'kind' says geographic or "
+                       'projected, and any distance or area computed in a geographic CRS '
+                       'is in degrees, which is not a length at any latitude. '
+                       "'area_of_use': outside it a projected CRS still returns numbers "
+                       'and a datum transformation may fall back to a ballpark one. '
+                       "'is_deprecated' is reported too, because a superseded EPSG code "
+                       'keeps working and keeps giving the answer its superseded '
+                       'definition implies. Read-only: no dataset is touched, no manifest '
+                       'is written.',
+        'parameters': [   {   'name': 'crs',
+                              'type': 'str',
+                              'required': True,
+                              'description': "CRS in any form pyproj accepts: 'EPSG:4326', "
+                                             '4326, a PROJ string, or WKT'}],
+        'examples': [   {   'goal': "Check whether a layer's CRS is metric before "
+                                    'measuring anything in it',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'describe_crs',
+                                                         'arguments': {   'crs': 'EPSG:2263'}}}},
+                        {   'goal': 'Find out which axis comes first in the CRS a file '
+                                    'declares',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'describe_crs',
+                                                         'arguments': {   'crs': 'EPSG:4326'}}}}]},
+    {   'name': 'geodetic_distance',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'inspection',
+        'applicability': {'inputs': ['none'], 'requires_projected_crs': False},
+        'summary': 'Distance and azimuths between two lon/lat points measured on the '
+                   'ellipsoid — no projection involved. Reads no data',
+        'description': 'The distance between two places, measured along the ellipsoid, '
+                       'which is the answer no projection can spoil. A distance computed '
+                       "in a projected CRS is a distance on that projection's plane, and "
+                       'the two differ by a factor that grows with latitude — at 42 '
+                       'degrees Web Mercator is off by about 1.8x and returns a number in '
+                       "metres that looks correct. Here there is no plane: Karney's "
+                       'algorithm measures along the ellipsoid, accurate to nanometres '
+                       'anywhere on Earth. Coordinates are LONGITUDE FIRST, which is in '
+                       'the parameter names because the swap is the commonest error in '
+                       'this signature and it returns a valid distance between the wrong '
+                       'two places; latitudes outside +-90 are refused for the same '
+                       'reason. Returns metres plus the forward and back azimuths in '
+                       'degrees clockwise from north — the forward azimuth is the bearing '
+                       'at the start, not for the whole way, since on a geodesic it '
+                       'changes continuously except along the equator and the meridians. '
+                       "'ellipsoid' is a fixed list, not free text: a name silently "
+                       'falling back to WGS84 would move a legacy answer by hundreds of '
+                       'metres. Read-only: no dataset, no manifest.',
+        'parameters': [   {   'name': 'from_lon',
+                              'type': 'float',
+                              'required': True,
+                              'description': 'Start longitude in degrees, [-180, 180]'},
+                          {   'name': 'from_lat',
+                              'type': 'float',
+                              'required': True,
+                              'description': 'Start latitude in degrees, [-90, 90]'},
+                          {   'name': 'to_lon',
+                              'type': 'float',
+                              'required': True,
+                              'description': 'End longitude in degrees, [-180, 180]'},
+                          {   'name': 'to_lat',
+                              'type': 'float',
+                              'required': True,
+                              'description': 'End latitude in degrees, [-90, 90]'},
+                          {   'name': 'ellipsoid',
+                              'type': 'str',
+                              'required': False,
+                              'description': 'WGS84 (default) | GRS80 | WGS72 | intl | '
+                                             'clrk66 | airy | bessel — for reproducing a '
+                                             'legacy number on its own ellipsoid'}],
+        'examples': [   {   'goal': 'True ground distance between two cities, without '
+                                    'choosing a projection',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'geodetic_distance',
+                                                         'arguments': {   'from_lon': 12.4964,
+                                                                          'from_lat': 41.9028,
+                                                                          'to_lon': 9.19,
+                                                                          'to_lat': 45.4642}}}},
+                        {   'goal': 'Reproduce a historical distance computed on the '
+                                    'International 1924 ellipsoid',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'geodetic_distance',
+                                                         'arguments': {   'from_lon': 12.4964,
+                                                                          'from_lat': 41.9028,
+                                                                          'to_lon': 9.19,
+                                                                          'to_lat': 45.4642,
+                                                                          'ellipsoid': 'intl'}}}}]},
 ]
 
 # --- Okapi BM25 over the catalog (deterministic, no dependencies) ---------
@@ -2544,9 +3063,47 @@ _K1 = 1.5  # term-frequency saturation
 _B = 0.75  # document-length normalization
 _TOKEN = re.compile(r"[a-z0-9]+")
 
+# English function words, dropped from both documents and queries before BM25.
+#
+# Measured on 27/08/2026, and the reason is not tidiness: BM25 weights a term by
+# how RARE it is, so a word that carries no information about which operation to
+# call still scores when few entries happen to use it. On the query "how many
+# features and what extent does this layer have", `band_statistics` came SECOND
+# on the strength of 'how', 'many', 'what', 'this' and 'and' alone -- it matched
+# not one content word -- while `describe_dataset`, which matched 'extent' twice
+# and 'layer' six times, came fourth and out of the top three the test checks.
+#
+# Only closed-class words are here: no domain word, no verb, nothing a caller
+# could be using to mean something. 'to' and 'from' are deliberately KEPT: in
+# this catalog they carry direction ("reproject to", "distance from"), which is
+# exactly the information a query about a conversion is built on.
+_STOPWORDS = frozenset({
+    "a", "an", "the", "this", "that", "these", "those",
+    "and", "or", "but", "if", "then", "than", "so",
+    "of", "in", "on", "at", "by", "for", "with", "without", "into", "onto", "over", "under",
+    "is", "are", "was", "were", "be", "been", "being", "am",
+    "do", "does", "did", "done", "doing",
+    "have", "has", "had", "having",
+    "it", "its", "they", "them", "their", "there", "here",
+    "i", "you", "he", "she", "we", "us", "our", "your",
+    "what", "which", "who", "whom", "whose", "how", "why", "when", "where",
+    "all", "any", "both", "each", "more", "most", "other", "some", "such",
+    "no", "nor", "not", "only", "own", "same", "too", "very",
+    "can", "will", "just", "should", "now",
+})
+
 
 def _tokenize(text: str) -> list[str]:
-    return _TOKEN.findall(text.lower())
+    """Tokens that can distinguish one operation from another.
+
+    A text of nothing but function words tokenizes to the EMPTY list, and that is
+    the honest outcome rather than a fallback to the raw words: the documents no
+    longer contain those words either, so a fallback would match nothing while
+    looking like it had a plan. :func:`search` reads the empty result for what it
+    is -- a query carrying no signal about which operation to call -- and lists
+    the catalog, which is what it already does for an empty string.
+    """
+    return [t for t in _TOKEN.findall(text.lower()) if t not in _STOPWORDS]
 
 
 def _document(op: dict[str, Any]) -> list[str]:
@@ -2627,6 +3184,13 @@ def applicable(input_kind: str | None = None, projected: bool | None = None) -> 
     (entries accepting any ``dataset`` match vector and raster); ``projected=False``
     drops entries that require a projected CRS — the ones that would refuse the
     data anyway.
+
+    An entry declaring ``none`` takes no dataset (``describe_crs`` answers about a
+    CRS, ``geodetic_distance`` about two coordinates) and is kept for every kind.
+    That is not a special case for convenience: ``describe_crs`` is exactly what
+    you call to find out whether the raster in hand is geographic, so filtering
+    it out when the input is a geographic raster would hide the answer at the one
+    moment it is needed.
     """
     if input_kind is not None and input_kind not in APPLICABILITY_KINDS:
         raise ValueError(
@@ -2638,7 +3202,7 @@ def applicable(input_kind: str | None = None, projected: bool | None = None) -> 
         if input_kind is not None:
             accepted = set(block["inputs"])
             widened = accepted | ({"vector", "raster"} if "dataset" in accepted else set())
-            if input_kind not in widened and not (
+            if "none" not in accepted and input_kind not in widened and not (
                 input_kind == "dataset" and accepted & {"vector", "raster", "dataset"}
             ):
                 continue
@@ -2661,8 +3225,10 @@ def search(
 ) -> list[dict[str, Any]]:
     """Search the catalog. Compact entries by default; detail=True adds parameters/examples.
 
-    Empty query lists the whole catalog (roadmap included). With a query, results
-    carry a ``score`` and an ``engine`` field. ``input_kind``/``projected``
+    Empty query lists the whole catalog (roadmap included), and so does a query
+    of nothing but function words ("how is it"), which carries no more signal
+    than an empty one. With a query, results carry a ``score`` and an ``engine``
+    field. ``input_kind``/``projected``
     narrow the candidates deterministically BEFORE ranking, whichever engine
     ranks them (see :func:`applicable`).
 
@@ -2676,7 +3242,10 @@ def search(
     if engine not in SEARCH_ENGINES:
         raise ValueError(f"engine must be one of {list(SEARCH_ENGINES)}, got {engine!r}")
     candidates = applicable(input_kind, projected)
-    if not query.strip():
+    # `_tokenize` is what decides whether there is a query at all: a string of
+    # function words scores nothing against every entry, and returning the
+    # catalog says "ask me better" more usefully than returning nothing.
+    if not query.strip() or not _tokenize(query):
         return [dict(op) if detail else _compact(op) for op in candidates]
 
     used = engine

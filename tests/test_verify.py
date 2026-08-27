@@ -318,6 +318,12 @@ def _spec_fixtures(tmp_path):
     gpd.GeoDataFrame(
         {"n": [1, 2]}, geometry=[Point(10, 10), Point(90, 90)], crs=crs
     ).to_parquet(points)
+    quad = tmp_path / "quad.parquet"
+    gpd.GeoDataFrame(
+        {"n": [1, 2, 3, 4], "v": [7.0, 7.0, 7.0, 7.0]},
+        geometry=[Point(0, 0), Point(100, 0), Point(0, 100), Point(100, 100)],
+        crs=crs,
+    ).to_parquet(quad)
 
     def out(name: str) -> str:
         return str(tmp_path / name)
@@ -391,6 +397,10 @@ def _spec_fixtures(tmp_path):
         "count_in_polygons": lambda: vector.count_in_polygons(
             str(points), str(layer), out("counts.parquet")
         ),
+        # Four points, because two collinear ones give two cells and no corner.
+        "voronoi_polygons": lambda: vector.voronoi_polygons(
+            str(quad), out("vor.parquet")
+        ),
     })
 
     try:
@@ -430,6 +440,10 @@ def _spec_fixtures(tmp_path):
         "zonal_statistics": lambda: raster.zonal_statistics(
             str(grid), str(layer), out("zs.parquet"), stats=["mean"]
         ),
+        "reproject_raster": lambda: raster.reproject_raster(
+            str(grid), out("repr.tif"), "EPSG:4326", "nearest"
+        ),
+        "extract_band": lambda: raster.extract_band(str(grid), out("band2.tif"), 2),
     })
 
     try:
@@ -452,6 +466,14 @@ def _spec_fixtures(tmp_path):
     gpd.GeoDataFrame(
         {"id": [1]}, geometry=[Point(5.0, 5.0)], crs=crs
     ).to_parquet(pour)
+    mask = tmp_path / "mask.tif"
+    features = np.zeros((rows, cols), dtype="float32")
+    features[rows // 2, cols // 2] = 1.0
+    with rasterio.open(
+        mask, "w", driver="GTiff", height=rows, width=cols, count=1, dtype="float32",
+        crs=crs, transform=from_origin(0, rows * 10.0, 10, 10), nodata=-9999.0,
+    ) as ds:
+        ds.write(features, 1)
     fixtures.update({
         "hillshade": lambda: whitebox_engine.hillshade(str(dem), out("hs.tif")),
         "slope": lambda: whitebox_engine.slope(str(dem), out("slope.tif")),
@@ -470,6 +492,20 @@ def _spec_fixtures(tmp_path):
             and out("facc_for_streams.tif"),
             out("streams.tif"),
             threshold=5.0,
+        ),
+        "curvature": lambda: whitebox_engine.curvature(
+            str(dem), out("curv.tif"), kind="profile"
+        ),
+        "flow_direction": lambda: whitebox_engine.flow_direction(
+            str(dem), out("d8.tif"), method="d8"
+        ),
+        # A mask, not the DEM: euclidean_distance measures from the NON-ZERO
+        # cells, and every cell of the DEM is non-zero, so it would be all zeros.
+        "euclidean_distance": lambda: whitebox_engine.euclidean_distance(
+            str(mask), out("dist.tif")
+        ),
+        "idw_interpolation": lambda: whitebox_engine.idw_interpolation(
+            str(quad), out("idw.tif"), field_name="v", cell_size=10.0
         ),
     })
     return fixtures

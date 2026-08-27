@@ -357,8 +357,15 @@ def _derivative(
     parameters: dict[str, Any],
     call: Any,
     value_range: tuple[float, float] | None,
+    extra_checks: Any = None,
 ) -> dict[str, Any]:
-    """Shared body of the local terrain derivatives (slope, aspect)."""
+    """Shared body of the local terrain derivatives (slope, aspect, curvature, flow direction).
+
+    `extra_checks` receives the written output path and returns more checks. It
+    exists for `flow_direction`, whose codes are a fixed SET rather than a range:
+    a value of 3 in a D8 pointer is not out of bounds, it is not a direction at
+    all, and a range check would pass it.
+    """
     wb = _require()
     wbe = wb.WbEnvironment()
     wbe.verbose = False
@@ -394,6 +401,8 @@ def _derivative(
             expect_shape=(meta.rows, meta.columns),
             value_range=value_range,
         )
+        if extra_checks is not None:
+            checks.extend(extra_checks(output_path))
         if input_note:
             record.notes.append(input_note)
         manifest = record.add_verification(checks).finish().write_for(output_path)
@@ -728,6 +737,356 @@ def extract_streams(
             "output": str(output_path),
             "threshold": threshold,
             "zero_background": zero_background,
+            "provenance": str(manifest),
+            "verified": True,
+        }
+
+
+# The sixteen curvature tools whitebox-workflows exposes, of which these six are
+# the ones with an established meaning in terrain analysis. Verified against the
+# installed package rather than the documentation (D-048).
+#
+# Call them through the CATEGORY path with keyword arguments, never through the
+# flat `wbe.<tool>(...)` name -- and not because the flat form is deprecated: on
+# this build it is disabled for SOME tools and works for others. `wbe.slope(dem)`
+# runs; `wbe.d8_pointer(dem)` raises "Flat WbEnvironment tool methods are
+# disabled in this build"; `dir(wbe)` lists both identically. A per-tool
+# inconsistency cannot be learned once and reapplied, so the rule here is the
+# category path everywhere, which worked for every tool measured. The category
+# form also refuses positional arguments, hence `input=` (`points=` for IDW).
+#
+# One operation with a `kind`, not six tools: two tools that both apply to a DEM
+# and return different numbers for the same question are exactly what invariant 6
+# is about.
+CURVATURE_KINDS = {
+    "profile": "profile_curvature",
+    "plan": "plan_curvature",
+    "tangential": "tangential_curvature",
+    "mean": "mean_curvature",
+    "gaussian": "gaussian_curvature",
+    "total": "total_curvature",
+}
+
+# D8 and Rho8 encode directions as powers of two; a value outside the set is not
+# a direction. Dinf and Fd8 write continuous aspect-like values instead, so the
+# set check does not apply to them.
+FLOW_DIRECTION_METHODS = {"d8": "d8_pointer", "rho8": "rho8_pointer",
+                          "dinf": "dinf_pointer", "fd8": "fd8_pointer"}
+_POINTER_CODES = {0.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0}
+
+# The two direction tables a pointer raster can hold, named after what they ARE
+# rather than after who uses them -- which is also the more useful name, since a
+# consumer needs the table and not the brand.
+#
+# Both were MEASURED on whitebox-workflows 2.0.6, one direction at a time: a 5x5
+# grid at 200 with the centre at 100 and exactly one neighbour at 0, so the code
+# the centre receives names that neighbour and nothing else.
+#
+# `northeast_first` is what the engine writes by default, and it is NOT the table
+# the WhiteboxTools manual documents for its own default. The manual says east=1,
+# northeast=2, north=4 -- counter-clockwise from east. The engine writes
+# northeast=1, east=2, southeast=4 -- clockwise from northeast. The two agree on
+# no direction at all, so reading a default pointer with the documented table
+# mirrors the whole drainage network about the NE-SW axis. Nothing raises, and a
+# mirrored network still looks like a drainage network.
+#
+# `east_first` is the table most desktop GIS software uses, and the engine's
+# alternate mode reproduces it exactly as that software documents it -- so the
+# mismatch above is a defect in whitebox's documentation of its own default, not
+# in its code. It is the second measured whitebox doc/behaviour mismatch after
+# the TIFF predictor bug (issue #32), hence D-048: on this library the installed
+# object is the source, never the manual.
+POINTER_ENCODINGS = {
+    "northeast_first": {
+        "northeast": 1, "east": 2, "southeast": 4, "south": 8,
+        "southwest": 16, "west": 32, "northwest": 64, "north": 128,
+    },
+    "east_first": {
+        "east": 1, "southeast": 2, "south": 4, "southwest": 8,
+        "west": 16, "northwest": 32, "north": 64, "northeast": 128,
+    },
+}
+
+
+def curvature(
+    dem_path: str,
+    output_path: str,
+    kind: str,
+    z_factor: float = 1.0,
+) -> dict[str, Any]:
+    """Surface curvature from a DEM. The kind is REQUIRED: they mean different things.
+
+    `profile` is curvature along the slope (where flow accelerates), `plan` is
+    curvature across it (where flow converges), and they answer opposite
+    questions about the same cell — a hillslope can be convex in profile and
+    concave in plan at once. `mean`, `gaussian`, `total` and `tangential` are
+    the standard invariants. There is no default because a caller who wanted
+    convergence and got acceleration receives a plausible raster of the wrong
+    quantity, with no way to tell.
+
+    Geographic-CRS DEMs are refused, for the same reason as `slope`: degree cells
+    with metre elevations make the second derivative wrong everywhere.
+    """
+    if kind not in CURVATURE_KINDS:
+        raise ValueError(
+            f"kind must be one of {sorted(CURVATURE_KINDS)}, got {kind!r}. There is no "
+            "default: profile curvature is along the slope and plan curvature is across "
+            "it, and they answer opposite questions about the same cell."
+        )
+    tool = CURVATURE_KINDS[kind]
+    return _derivative(
+        "curvature",
+        dem_path,
+        output_path,
+        parameters={"kind": kind, "z_factor": z_factor, "tool": tool},
+        call=lambda wbe, dem: getattr(wbe.terrain.derivatives, tool)(
+            input=dem, z_factor=z_factor
+        ),
+        # Curvature is a second derivative in units of 1/length: unbounded, and
+        # a range check would either pass everything or reject real terrain.
+        value_range=None,
+    )
+
+
+def flow_direction(
+    dem_path: str,
+    output_path: str,
+    method: str = "d8",
+    encoding: str = "northeast_first",
+) -> dict[str, Any]:
+    """Flow direction from a DEM, as a pointer raster with its direction table.
+
+    `d8` sends all of a cell's water to its steepest neighbour and `dinf`
+    splits it between two, which is the difference between a drainage network
+    that looks like a line and one that looks like a fan. `rho8` is D8 with a
+    stochastic tie-break; `fd8` spreads over all downslope neighbours.
+
+    A pointer raster is a grid of small integers whose MEANING lives outside the
+    file, and the two conventions in use disagree on every direction: in
+    `northeast_first` (this engine's default) 1 is northeast, in `east_first`
+    (what most desktop GIS software writes) 1 is east. Read a raster with the
+    wrong table and every cell points somewhere else -- the network stays
+    connected, stays plausible, and drains the wrong way. Nothing in a GeoTIFF
+    says which table it holds, so the manifest carries the whole table, by
+    direction name, for the encoding actually used: a consumer never has to know
+    which engine wrote the file, and never has to trust a manual. This engine's
+    own manual documents its default table backwards (see POINTER_ENCODINGS).
+
+    `dinf` and `fd8` do not use the table at all, so for those it is not
+    recorded and `encoding` is refused rather than ignored.
+    """
+    if method not in FLOW_DIRECTION_METHODS:
+        raise ValueError(
+            f"method must be one of {sorted(FLOW_DIRECTION_METHODS)}, got {method!r}"
+        )
+    if encoding not in POINTER_ENCODINGS:
+        raise ValueError(
+            f"encoding must be one of {sorted(POINTER_ENCODINGS)}, got {encoding!r}"
+        )
+    tool = FLOW_DIRECTION_METHODS[method]
+    coded = method in ("d8", "rho8")
+    if encoding != "northeast_first" and not coded:
+        raise ValueError(
+            f"encoding={encoding!r} is meaningless for method={method!r}: {method} writes "
+            "continuous aspect-like values, not direction codes, so there is no table to "
+            "choose. Use method='d8' or 'rho8', or leave the default encoding."
+        )
+
+    def codes_are_directions(written: str) -> list[verify.Check]:
+        if not coded:
+            return []
+        wb = _require()
+        wbe = wb.WbEnvironment()
+        wbe.verbose = False
+        out = wbe.read_raster(str(written))
+        meta = out.metadata()
+        arr = out.to_numpy(dtype="float64")
+        if math.isnan(meta.nodata):
+            valid = arr[~np.isnan(arr)]
+        else:
+            valid = arr[(arr != meta.nodata) & ~np.isnan(arr)]
+        seen = {float(v) for v in np.unique(valid)}
+        stray = sorted(seen - _POINTER_CODES)
+        return [
+            verify.Check(
+                # A range check would pass a 3: it is between 0 and 128 and it is
+                # not a direction. The valid codes are a SET.
+                "values_in_expected_range",
+                not stray,
+                f"codes {sorted(seen)} are powers of two" if not stray
+                else f"{stray} are not D8 direction codes",
+            )
+        ]
+
+    parameters: dict[str, Any] = {"method": method, "tool": tool}
+    if coded:
+        # The table itself, not its name: a name is a pointer into documentation
+        # that may be wrong, and on this engine it demonstrably is.
+        parameters["encoding"] = encoding
+        parameters["direction_codes"] = dict(POINTER_ENCODINGS[encoding])
+
+    def esegui(wbe, dem):
+        tool_fn = getattr(wbe.hydrology.flow_routing, tool)
+        if coded:
+            # The engine's own flag name is its vendor's; the value is what matters.
+            return tool_fn(input=dem, esri_pntr=(encoding == "east_first"))
+        return tool_fn(input=dem)
+
+    return _derivative(
+        "flow_direction",
+        dem_path,
+        output_path,
+        parameters=parameters,
+        call=esegui,
+        value_range=None,
+        extra_checks=codes_are_directions,
+    )
+
+
+def euclidean_distance(input_path: str, output_path: str) -> dict[str, Any]:
+    """Distance from every cell to the nearest non-zero cell, in the CRS's units.
+
+    The unit is the raster's own horizontal unit, which is why a geographic CRS
+    is refused: a distance in degrees is not a distance, it varies with latitude,
+    and it comes back as a number that looks like metres.
+
+    Whitebox treats the NON-ZERO cells as the sources, so a mask where features
+    are 1 and background is 0 behaves as expected. A mask whose background is
+    nodata rather than 0 does not, and that is worth knowing before reading the
+    output as a proximity surface.
+    """
+    wb = _require()
+    wbe = wb.WbEnvironment()
+    wbe.verbose = False
+    with _read_dem(wbe, input_path) as (source, crs, geographic, input_note):
+        if geographic:
+            raise ValueError(
+                "euclidean_distance on a geographic CRS would measure in degrees, which "
+                "is not a length: a degree of longitude is 111 km at the equator and "
+                "83 km in Rome. Reproject to a projected CRS first."
+            )
+        record = ProvenanceRecord(
+            operation="euclidean_distance",
+            parameters={"source_cells": "non-zero"},
+            inputs=[InputRecord.from_path(input_path, crs=crs)],
+            engine=_engine_info(),
+        )
+        record.crs_decisions = {
+            "analysis_crs": crs,
+            "reason": "distance is measured in the raster's own projected units; a "
+            "geographic CRS is refused because degrees are not a length",
+        }
+        meta = source.metadata()
+        result = wbe.raster.distance_cost.euclidean_distance(input=source)
+        wbe.write_raster(result, str(output_path))
+        checks = _raster_checks(
+            wbe,
+            output_path,
+            expect_epsg=source.crs_epsg(),
+            expect_shape=(meta.rows, meta.columns),
+            # Both ends are closed form from the grid: a distance cannot be
+            # negative, and nothing in the raster can be farther from a source
+            # than the grid's own diagonal.
+            value_range=(
+                0.0,
+                math.hypot(
+                    meta.rows * abs(meta.resolution_y),
+                    meta.columns * abs(meta.resolution_x),
+                ),
+            ),
+        )
+        if input_note:
+            record.notes.append(input_note)
+        manifest = record.add_verification(checks).finish().write_for(output_path)
+        verify.enforce(checks, "euclidean_distance")
+        return {
+            "output": str(output_path),
+            "units": "the raster's own horizontal units",
+            "provenance": str(manifest),
+            "verified": True,
+        }
+
+
+def idw_interpolation(
+    points_path: str,
+    output_path: str,
+    field_name: str,
+    cell_size: float,
+    weight: float = 2.0,
+    radius: float = 0.0,
+    min_points: int = 0,
+) -> dict[str, Any]:
+    """Inverse-distance-weighted surface from a point layer. The field is REQUIRED.
+
+    `field_name` has no default here because of the library's default: whitebox
+    interpolates FID when you do not say otherwise, which produces a smooth,
+    plausible and perfectly meaningless surface of ROW NUMBERS. Nothing raises,
+    the raster renders, and a caller who forgot the argument gets a map of the
+    order the points happened to be stored in.
+
+    `weight` is the distance exponent: 2 is the usual choice, and higher values
+    make the surface flatter between points and peakier at them. It is recorded,
+    because an IDW surface without its exponent cannot be reproduced.
+    """
+    wb = _require()
+    if cell_size <= 0:
+        raise ValueError(f"cell_size must be positive, got {cell_size}")
+    if not field_name or not str(field_name).strip():
+        raise ValueError(
+            "field_name is required: whitebox interpolates FID by default, which "
+            "produces a smooth and meaningless surface of row numbers, with no warning."
+        )
+    wbe = wb.WbEnvironment()
+    wbe.verbose = False
+    plain = _needs_plain_copy(points_path)
+    with tempfile.TemporaryDirectory(prefix="mapsmith-idw-") as scratch:
+        source = _plain_copy(points_path, Path(scratch)) if plain else points_path
+        points = wbe.read_vector(str(source))
+        record = ProvenanceRecord(
+            operation="idw_interpolation",
+            parameters={
+                "field_name": field_name,
+                "cell_size": cell_size,
+                "weight": weight,
+                "radius": radius,
+                "min_points": min_points,
+            },
+            inputs=[InputRecord.from_path(points_path)],
+            engine=_engine_info(),
+        )
+        if plain:
+            record.notes.append(_plain_copy_note(plain))
+        result = wbe.raster.general.idw_interpolation(
+            points=points,
+            field_name=field_name,
+            weight=weight,
+            radius=radius,
+            min_points=min_points,
+            cell_size=cell_size,
+        )
+        wbe.write_raster(result, str(output_path))
+        meta = result.metadata()
+        epsg = result.crs_epsg()
+        record.crs_decisions = {
+            "analysis_crs": f"EPSG:{epsg}" if epsg else "unknown",
+            "reason": "the surface is built in the point layer's own CRS, and the cell "
+            "size is read in that CRS's units",
+        }
+        checks = _raster_checks(
+            wbe,
+            output_path,
+            expect_epsg=epsg,
+            expect_shape=(meta.rows, meta.columns),
+            value_range=None,
+        )
+        manifest = record.add_verification(checks).finish().write_for(output_path)
+        verify.enforce(checks, "idw_interpolation")
+        return {
+            "output": str(output_path),
+            "field_name": field_name,
+            "cell_size": cell_size,
+            "weight": weight,
+            "shape": [meta.rows, meta.columns],
             "provenance": str(manifest),
             "verified": True,
         }

@@ -475,7 +475,12 @@ def test_an_illustrative_url_is_never_rendered_as_a_link(page: Path):
 # they are identifiers GDAL itself emits, and the deny-list test that keeps new
 # drivers from arriving unreviewed cannot spell them any other way.
 VENDOR_SILENCE = re.compile(r"esri|arcgis|arcpy|arcmap", re.IGNORECASE)
-DRIVER_IDENTIFIERS = ("ESRI Shapefile", "ESRIJSON")
+# Identifiers that belong to somebody else's API, not mentions of a vendor: two
+# GDAL driver names and one keyword argument of whitebox-workflows. A rule about
+# what the project SAYS cannot forbid the spelling of a function parameter it has
+# to pass -- but the list stays short and explicit, so a new entry is a decision
+# rather than a hole.
+DRIVER_IDENTIFIERS = ("ESRI Shapefile", "ESRIJSON", "esri_pntr")
 
 
 def _tracked_text_files() -> list[Path]:
@@ -652,4 +657,34 @@ def test_every_argleton_number_quoted_here_matches_the_vendored_citation():
     assert checked, (
         "no page states a trap count any more — if the claim moved, move this check with it "
         "rather than leaving it passing over nothing"
+    )
+
+
+def test_the_readme_catalog_counts_are_the_real_ones():
+    """Two numbers in the discovery section, both hand-typed, both already wrong.
+
+    The sentence read "41 today, and 28 of them have no tool of their own" on
+    27/08/2026 with 51 entries and 26 without a tool -- and the 28 was not a
+    stale count of anything, it was the count of exposed TOOLS from a paragraph
+    further up, reused for a different claim. The site build computes the first
+    number from the catalog; the README states it in prose, so it needs this.
+    """
+    import re
+
+    from mapsmith import catalog
+
+    text = README.read_text(encoding="utf-8")
+    match = re.search(
+        r"operation MapSmith can perform — (\d+) today, and (\d+) of them have no "
+        r"tool of their own",
+        text,
+    )
+    assert match, (
+        "the sentence carrying the catalog counts has been reworded; update this "
+        "test with it rather than deleting it"
+    )
+    stated_total, stated_toolless = int(match.group(1)), int(match.group(2))
+    assert stated_total == len(catalog.OPERATIONS)
+    assert stated_toolless == sum(
+        1 for entry in catalog.OPERATIONS if entry.get("tool") is None
     )

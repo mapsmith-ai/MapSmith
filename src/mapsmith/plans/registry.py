@@ -239,6 +239,66 @@ def _watershed() -> Callable[..., dict[str, Any]]:
     return whitebox_engine.watershed
 
 
+def _reproject_raster() -> Callable[..., dict[str, Any]]:
+    from ..engines import raster
+
+    return raster.reproject_raster
+
+
+def _extract_band() -> Callable[..., dict[str, Any]]:
+    from ..engines import raster
+
+    return raster.extract_band
+
+
+def _band_statistics() -> Callable[..., dict[str, Any]]:
+    from ..engines import raster
+
+    return raster.band_statistics
+
+
+def _curvature() -> Callable[..., dict[str, Any]]:
+    from ..engines import whitebox_engine
+
+    return whitebox_engine.curvature
+
+
+def _flow_direction() -> Callable[..., dict[str, Any]]:
+    from ..engines import whitebox_engine
+
+    return whitebox_engine.flow_direction
+
+
+def _euclidean_distance() -> Callable[..., dict[str, Any]]:
+    from ..engines import whitebox_engine
+
+    return whitebox_engine.euclidean_distance
+
+
+def _idw_interpolation() -> Callable[..., dict[str, Any]]:
+    from ..engines import whitebox_engine
+
+    return whitebox_engine.idw_interpolation
+
+
+def _voronoi_polygons() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.voronoi_polygons
+
+
+def _describe_crs() -> Callable[..., dict[str, Any]]:
+    from ..engines import geodesy
+
+    return geodesy.describe_crs
+
+
+def _geodetic_distance() -> Callable[..., dict[str, Any]]:
+    from ..engines import geodesy
+
+    return geodesy.geodetic_distance
+
+
 def _get_provenance() -> Callable[..., dict[str, Any]]:
     from ..provenance import read_provenance
 
@@ -453,6 +513,63 @@ BINDINGS: dict[str, Binding] = {
         ("same_as", "dem_path"),
         "raster",
     ),
+    "reproject_raster": Binding(
+        _reproject_raster,
+        ("input_path",),
+        "output_path",
+        "raster",
+        ("target", "target_crs"),
+        "raster",
+    ),
+    "extract_band": Binding(
+        _extract_band,
+        ("input_path",),
+        "output_path",
+        "raster",
+        ("same_as", "input_path"),
+        "raster",
+    ),
+    # Reads only: no output_arg, so no manifest and nothing to place in a workspace.
+    "band_statistics": Binding(_band_statistics, ("input_path",), None, "raster", None),
+    "curvature": Binding(
+        _curvature, ("dem_path",), "output_path", "whitebox", ("same_as", "dem_path"), "raster"
+    ),
+    "flow_direction": Binding(
+        _flow_direction,
+        ("dem_path",),
+        "output_path",
+        "whitebox",
+        ("same_as", "dem_path"),
+        "raster",
+    ),
+    "euclidean_distance": Binding(
+        _euclidean_distance,
+        ("input_path",),
+        "output_path",
+        "whitebox",
+        ("same_as", "input_path"),
+        "raster",
+    ),
+    "idw_interpolation": Binding(
+        _idw_interpolation,
+        ("points_path",),
+        "output_path",
+        "whitebox",
+        ("same_as", "points_path"),
+        "raster",
+    ),
+    "voronoi_polygons": Binding(
+        _voronoi_polygons,
+        ("input_path",),
+        "output_path",
+        None,
+        ("same_as", "input_path"),
+        "vector",
+    ),
+    # Neither of these two touches a dataset: they answer a question about a CRS
+    # or about two coordinates, so there are no path arguments at all.
+    "describe_crs": Binding(_describe_crs, (), None, None, None),
+    "geodetic_distance": Binding(_geodetic_distance, (), None, None, None),
     "get_provenance": Binding(_get_provenance, ("output_path",), None, None, None),
 }
 

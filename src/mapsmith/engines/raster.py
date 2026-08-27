@@ -784,3 +784,316 @@ def band_math(input_path: str, output_path: str, expression: str) -> dict[str, A
     if advisories:
         result["warnings"] = advisories
     return result
+
+
+def reproject_raster(
+    input_path: str,
+    output_path: str,
+    target_crs: str,
+    resampling: str,
+    resolution: float | None = None,
+) -> dict[str, Any]:
+    """Reproject a raster to another CRS. The method is REQUIRED, by design.
+
+    The same reason `resample_raster` has no default: warping resamples, and an
+    interpolating method on class codes invents classes that were never in the
+    file. Nothing raises, the output looks like land cover, and every area and
+    count for the invented codes is fabricated.
+
+    Reprojection also changes the grid — a warped raster has a new shape, a new
+    transform and, at the edges, cells that were outside the source. That is why
+    the shape is not checked against the input's: what is checked is that the
+    output really is in the CRS that was asked for, and that an interpolating
+    method did not put new codes into a categorical raster.
+    """
+    rasterio = _require_rasterio()
+    from rasterio.enums import Resampling
+    from rasterio.transform import from_bounds
+    from rasterio.warp import reproject as warp
+    from rasterio.warp import transform_bounds
+
+    valid = INTERPOLATING_RESAMPLING | CATEGORICAL_RESAMPLING | WARP_ONLY_RESAMPLING
+    if resampling not in valid:
+        raise ValueError(
+            f"resampling must be one of {sorted(valid)}, got {resampling!r}. "
+            "There is no default on purpose: interpolating methods (bilinear, cubic, "
+            "average) derive values between the ones present, which is right for a "
+            "continuous surface and wrong for class codes — use nearest or mode there."
+        )
+    method = getattr(Resampling, resampling)
+
+    with rasterio.open(input_path) as src:
+        if src.crs is None:
+            raise ValueError(
+                f"{input_path} declares no CRS, so it cannot be reprojected. Assign one "
+                "first: a raster without a CRS has coordinates that mean nothing."
+            )
+        source_values, categorical = _distinct_values(src)
+        # The target grid is computed here rather than by
+        # `rasterio.warp.calculate_default_transform`, and the reason is worth
+        # knowing: that helper builds an in-memory VRT dataset and opens it, and
+        # this package disables the VRT driver at the GDAL level on purpose --
+        # a `.vrt` is a local path whose contents name remote sources, which is
+        # the hole the audit found INSIDE the fix for issue #21. So the helper
+        # cannot run here, and computing the grid ourselves is the better answer
+        # anyway: the shape is derived before the engine runs and then verified.
+        #
+        # The pixel count is preserved in each dimension and the cell size
+        # follows from the reprojected extent, which is deterministic and
+        # explainable. A caller who needs a specific cell size passes one.
+        left, bottom, right, top = transform_bounds(
+            src.crs, target_crs, *src.bounds, densify_pts=21
+        )
+        if resolution is not None:
+            if resolution <= 0:
+                raise ValueError(f"resolution must be positive, got {resolution}")
+            width = max(1, round((right - left) / resolution))
+            height = max(1, round((top - bottom) / resolution))
+        else:
+            width, height = src.width, src.height
+        transform = from_bounds(left, bottom, right, top, width, height)
+        record = ProvenanceRecord(
+            operation="reproject_raster",
+            parameters={
+                "target_crs": target_crs,
+                "resampling": resampling,
+                "resolution": resolution,
+                "target_shape": [height, width],
+            },
+            inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(src.crs))],
+            engine={"name": "rasterio", "version": rasterio.__version__},
+        )
+        record.crs_decisions = {
+            "analysis_crs": str(target_crs),
+            "reason": "the caller asked for this CRS; the grid was recomputed for it with "
+            f"the '{resampling}' method, which the caller also chose",
+            "source_crs": verify.crs_label(src.crs),
+            "target_crs": str(target_crs),
+        }
+        profile = src.profile.copy()
+        profile.update(crs=target_crs, transform=transform, width=width, height=height)
+        for key in ("blockxsize", "blockysize", "tiled"):
+            profile.pop(key, None)
+        with rasterio.open(output_path, "w", **profile) as dst:
+            for band in range(1, src.count + 1):
+                warp(
+                    source=rasterio.band(src, band),
+                    destination=rasterio.band(dst, band),
+                    src_transform=src.transform,
+                    src_crs=src.crs,
+                    dst_transform=transform,
+                    dst_crs=target_crs,
+                    resampling=method,
+                )
+
+    checks: list[verify.Check] = []
+    with rasterio.open(output_path) as out:
+        checks.append(
+            verify.Check(
+                "crs_matches",
+                verify.same_crs(out.crs, target_crs),
+                f"{verify.crs_label(out.crs)}",
+            )
+        )
+        checks.append(
+            verify.Check(
+                "result_not_empty",
+                out.width > 0 and out.height > 0,
+                f"{out.height}x{out.width}",
+            )
+        )
+        result_values, _ = _distinct_values(out)
+
+    # Reprojection rotates the grid, so the output covers cells the source never
+    # had, and warp fills them. With a declared nodata they are marked as
+    # missing; WITHOUT one they are filled with 0 and are indistinguishable from
+    # a real zero — a land-cover class 0, an elevation at sea level, a count of
+    # none. Found by testing this operation rather than by reading about it: the
+    # first run reported 0.0 as an invented class code, which it is not.
+    fill = profile.get("nodata")
+    checks.append(
+        verify.Check(
+            "x-mapsmith:fill_is_distinguishable",
+            fill is not None,
+            f"nodata is {fill}" if fill is not None
+            else "the source declares no nodata, so cells outside its extent are 0",
+            critical=False,
+            hint=None if fill is not None else (
+                "Reprojection rotates the grid, so the output has cells the source did "
+                "not cover. With no nodata declared they are filled with 0, which no "
+                "consumer can tell from a real 0 — a class code, a sea-level elevation, "
+                "a count of none. Declare a nodata value on the source before "
+                "reprojecting, or treat the border of this output as unknown."
+            ),
+        )
+    )
+
+    invented: list[float] = []
+    if categorical and resampling in INTERPOLATING_RESAMPLING and result_values is not None:
+        # The fill is not an invented class: it is the absence of one, and
+        # counting it as invented would cry wolf on every reprojection.
+        allowed = set(source_values) | {float(fill) if fill is not None else 0.0}
+        invented = sorted(result_values - allowed)
+        checks.append(
+            verify.Check(
+                "x-mapsmith:no_invented_class_codes",
+                not invented,
+                f"{resampling} introduced codes absent from the input: {invented}"
+                if invented
+                else "output codes are a subset of the input codes",
+                critical=False,
+                hint=(
+                    "This raster looks categorical and was warped with "
+                    f"'{resampling}', which averages neighbours. The codes {invented} "
+                    "exist in the result and not in the source: every downstream count "
+                    "and area for them is fabricated. Use nearest or mode for class codes."
+                )
+                if invented
+                else None,
+            )
+        )
+
+    manifest = record.add_verification(checks).finish().write_for(output_path)
+    verify.enforce(checks, "reproject_raster")
+    result = {
+        "output": str(output_path),
+        "crs": str(target_crs),
+        "resampling": resampling,
+        "shape": [height, width],
+        "resolution": resolution,
+        "provenance": str(manifest),
+        "verified": True,
+    }
+    hinted = verify.advisories(checks)
+    if hinted:
+        result["warnings"] = hinted
+    if invented:
+        result["invented_values"] = invented
+    return result
+
+
+def extract_band(input_path: str, output_path: str, band: int) -> dict[str, Any]:
+    """Write one band of a multi-band raster to a single-band raster.
+
+    Bands are numbered from 1, as they are everywhere in GDAL and rasterio and
+    nowhere in Python. Asking for band 0 or for a band past the end is refused
+    rather than clamped: an off-by-one here produces a perfectly valid raster of
+    the wrong quantity — near-infrared where red was meant — and nothing
+    downstream can tell, which is the whole reason this refuses instead of
+    guessing.
+    """
+    rasterio = _require_rasterio()
+
+    with rasterio.open(input_path) as src:
+        if not 1 <= band <= src.count:
+            raise ValueError(
+                f"band must be between 1 and {src.count} for {input_path}, got {band}. "
+                "Bands are 1-based: band 1 is the first. Reading the wrong band returns a "
+                "valid raster of the wrong quantity, so this is refused rather than clamped."
+            )
+        record = ProvenanceRecord(
+            operation="extract_band",
+            parameters={"band": band, "source_band_count": src.count},
+            inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(src.crs))],
+            engine={"name": "rasterio", "version": rasterio.__version__},
+        )
+        record.crs_decisions = {
+            "analysis_crs": verify.crs_label(src.crs),
+            "reason": "extracting a band changes neither the grid nor the coordinate system",
+        }
+        data = src.read(band)
+        profile = src.profile.copy()
+        profile.update(count=1)
+        descriptions = src.descriptions
+        label = descriptions[band - 1] if descriptions else None
+        if label:
+            record.notes.append(f"band {band} is described in the source as {label!r}")
+        checksum = src.checksum(band)
+
+    with rasterio.open(output_path, "w", **profile) as dst:
+        dst.write(data, 1)
+        if label:
+            dst.set_band_description(1, label)
+
+    with rasterio.open(output_path) as out:
+        checks = [
+            verify.Check(
+                "shape_preserved",
+                (out.height, out.width) == data.shape,
+                f"{out.height}x{out.width}",
+            ),
+            verify.Check(
+                "crs_matches",
+                verify.same_crs(out.crs, record.inputs[0].crs),
+                f"{verify.crs_label(out.crs)}",
+            ),
+            verify.Check(
+                # The band that landed is the band that was asked for, compared
+                # by the source's own checksum rather than by trusting the index
+                # we passed: an off-by-one is exactly what this operation exists
+                # not to make, so it is the one thing worth verifying.
+                "x-mapsmith:band_content_matches_source",
+                out.checksum(1) == checksum,
+                f"checksum {out.checksum(1)} against source band {band}'s {checksum}",
+            ),
+        ]
+
+    manifest = record.add_verification(checks).finish().write_for(output_path)
+    verify.enforce(checks, "extract_band")
+    return {
+        "output": str(output_path),
+        "band": band,
+        "description": label,
+        "provenance": str(manifest),
+        "verified": True,
+    }
+
+
+def band_statistics(input_path: str, band: int | None = None) -> dict[str, Any]:
+    """Per-band statistics, computed over the valid cells only. Reads, writes nothing.
+
+    Nodata is excluded, and how many cells that removed is part of the answer:
+    a mean over a raster whose nodata is `-9999` and whose mask was ignored is
+    the classic wrong number that looks like an elevation. The count of valid
+    cells travels with every statistic so the caller can see what it is a mean
+    OF.
+    """
+    rasterio = _require_rasterio()
+
+    with rasterio.open(input_path) as src:
+        if band is not None and not 1 <= band <= src.count:
+            raise ValueError(
+                f"band must be between 1 and {src.count} for {input_path}, got {band}"
+            )
+        wanted = [band] if band is not None else list(range(1, src.count + 1))
+        bands = []
+        for index in wanted:
+            values = src.read(index, masked=True)
+            valid = int(values.count())
+            row: dict[str, Any] = {
+                "band": index,
+                "valid_cells": valid,
+                "masked_cells": int(values.size - valid),
+                "nodata": src.nodatavals[index - 1],
+            }
+            if valid:
+                row.update(
+                    min=float(values.min()),
+                    max=float(values.max()),
+                    mean=float(values.mean()),
+                    std=float(values.std()),
+                    sum=float(values.sum()),
+                )
+            else:
+                # Every cell is nodata. Saying so is the answer; a mean of an
+                # empty selection is not, and numpy would hand back a warning
+                # and a nan that reads like a value.
+                row["all_masked"] = True
+            bands.append(row)
+        return {
+            "path": str(input_path),
+            "crs": verify.crs_label(src.crs),
+            "band_count": src.count,
+            "shape": [src.height, src.width],
+            "bands": bands,
+        }

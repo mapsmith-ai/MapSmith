@@ -171,7 +171,7 @@ had to repair. `get_provenance` returns it for any output.
 ### Finding the right operation
 
 Those are the tools an agent chooses between. Behind them the **catalog** holds every
-operation MapSmith can perform — 41 today, and 28 of them have no tool of their own — and
+operation MapSmith can perform — 51 today, and 26 of them have no tool of their own — and
 it is built to hold thousands: tool-selection accuracy
 degrades past a few dozen *exposed* tools, while capability count has no such ceiling. That
 makes reaching scale a retrieval problem, so it is treated as one — and measured like one.
@@ -509,7 +509,7 @@ Next, in the order we intend to do it. The linked items carry a written spec —
 - [ ] Authenticated remote mode (OAuth on the existing Streamable HTTP transport) and [long-job progress via MCP Tasks](https://github.com/mapsmith-ai/MapSmith/issues/8). This is the item that closes the one limitation [SECURITY.md](SECURITY.md) declares outright: the HTTP transport has no authentication today
 - [x] Slope and aspect (Whitebox, closed-form tested; geographic-CRS DEMs refused)
 - [x] Stream network extraction (Whitebox, from a flow-accumulation grid; the threshold and its unit recorded in the manifest)
-- [ ] More terrain & hydrology: curvature
+- [x] More terrain & hydrology: curvature (six kinds, the kind required because profile and plan answer opposite questions), flow direction (d8/rho8/dinf/fd8, with the direction-code **table** written into the manifest — the engine's own manual documents its default table backwards, so a name would not have been enough), Euclidean distance and IDW interpolation
 - [ ] Map panel: MapLibre vector rendering, and an export of the panel as a self-contained HTML file you host yourself (raster OSM tiles already ship). No hosted viewer — MapSmith runs on your machine and we would rather not own your maps
 - [ ] [Sandboxed code-execution tool](https://github.com/mapsmith-ai/MapSmith/issues/7) for the long tail
 - [ ] QGIS Processing sidecar (subprocess-isolated): ~900 algorithms. By far the largest item on this list — parameter mapping and error handling for an external process, not an afternoon

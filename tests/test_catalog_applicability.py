@@ -13,7 +13,12 @@ import pytest
 
 from mapsmith import catalog
 
-ALLOWED_INPUTS = {"vector", "raster", "dataset", "plan"}
+# "none" is not an empty list: it says the operation takes no dataset at all
+# (describe_crs answers about a CRS, geodetic_distance about two coordinates).
+# The distinction matters to the filter — an operation that needs no data is
+# applicable whatever data you hold, while an empty list would read as "applies
+# to nothing" and quietly drop it from every result.
+ALLOWED_INPUTS = {"vector", "raster", "dataset", "plan", "none"}
 
 
 @pytest.mark.parametrize("op", catalog.OPERATIONS, ids=lambda op: op["name"])
@@ -27,13 +32,27 @@ def test_every_entry_declares_its_applicability(op):
 
 
 def test_the_projected_crs_requirement_matches_the_engines_that_refuse():
-    """slope and aspect refuse geographic-CRS DEMs at the engine level; the
-    catalog must say so, or the filter would offer them anyway."""
+    """The operations that refuse a geographic CRS at the engine level, and only
+    those, must declare it — or the filter offers an operation that will raise.
+
+    The list is written out rather than derived from the source, because deriving
+    it from the source is what went wrong once: grepping for "geographic" near a
+    `raise` reported five more operations than actually refuse, since the word
+    also appears in notes and warnings. The executable version of this check
+    lives in test_whitebox_geographic_refusal.py, which runs each one on a
+    geographic DEM and compares the outcome with this declaration.
+    """
     demanding = {
         op["name"] for op in catalog.OPERATIONS
         if op["applicability"]["requires_projected_crs"]
     }
-    assert demanding == {"slope", "aspect"}
+    assert demanding == {
+        "slope",
+        "aspect",
+        "curvature",
+        "flow_direction",
+        "euclidean_distance",
+    }
 
 
 def test_the_filter_narrows_before_ranking_deterministically():
@@ -50,6 +69,14 @@ def test_the_filter_narrows_before_ranking_deterministically():
     vector_names = {op["name"] for op in catalog.applicable("vector")}
     assert {"buffer_layer", "overlay_layers", "dissolve_layer", "run_sql"} <= vector_names
     assert "hillshade" not in vector_names
+
+    # An operation that needs no dataset is applicable to every kind, including a
+    # geographic raster: describe_crs is precisely what you call to find out that
+    # the raster is geographic.
+    dataless = {"describe_crs", "geodetic_distance"}
+    assert dataless <= names
+    assert dataless <= projected_raster
+    assert dataless <= vector_names
 
     with pytest.raises(ValueError, match="input_kind must be"):
         catalog.applicable("tabular")
