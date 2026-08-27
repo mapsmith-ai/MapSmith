@@ -602,3 +602,54 @@ def test_every_test_fixture_is_tracked_by_git():
         "CI checks out the repository, not this machine: add them, or the suite "
         "passes here and fails there."
     )
+
+def test_every_argleton_number_quoted_here_matches_the_vendored_citation():
+    """Argleton's numbers are the ones this repo cannot count for itself.
+
+    Tool, test and catalogue counts come from this source tree, so the build
+    computes them and they cannot drift. Argleton is a separate repository in a
+    separate organisation — on purpose — so its numbers arrive as prose, and
+    prose ages: the trap count was hand-typed and went stale three times in four
+    days (eight families, then eighteen, then twenty traps).
+
+    `docs/argleton-run.json` is the single vendored citation, written by the
+    publish script when a run is published. Everything quoted here must agree
+    with it, and the site template must not hand-type the count at all.
+    """
+    import json
+
+    citation = json.loads((ROOT / "docs" / "argleton-run.json").read_text(encoding="utf-8"))
+    traps = citation["traps_run"]
+    spelled = {
+        18: "eighteen", 19: "nineteen", 20: "twenty", 21: "twenty-one",
+        22: "twenty-two", 23: "twenty-three", 24: "twenty-four", 25: "twenty-five",
+    }
+
+    template = (ROOT / "site" / "index.template.html").read_text(encoding="utf-8")
+    assert "{{TRAP_COUNT}}" in template, (
+        "the site template no longer reads the trap count from the citation"
+    )
+    for wrong in (v for k, v in spelled.items() if k != traps):
+        assert f"{wrong} traps" not in template.lower(), (
+            f"the template hand-types {wrong!r} traps; the published run has {traps}"
+        )
+
+    # Markdown is prose and cannot hold a placeholder, so it is checked instead:
+    # any trap count it states must be the published one. README and docs/, which
+    # are the pages a reader arrives at.
+    pages = [ROOT / "README.md", *sorted((ROOT / "docs").glob("*.md"))]
+    checked = 0
+    for page in pages:
+        text = page.read_text(encoding="utf-8").lower()
+        for number, word in spelled.items():
+            for phrase in (f"{word} traps", f"over {number} traps", f"on {number} traps"):
+                if phrase in text:
+                    checked += 1
+                    assert number == traps, (
+                        f"{page.name} says {phrase!r}; the published run "
+                        f"({citation['run']}) has {traps} traps"
+                    )
+    assert checked, (
+        "no page states a trap count any more — if the claim moved, move this check with it "
+        "rather than leaving it passing over nothing"
+    )

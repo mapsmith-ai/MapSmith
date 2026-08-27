@@ -261,6 +261,14 @@ def main(destination: Path) -> int:
     from mapsmith import catalog
 
     catalog_count = len(catalog.OPERATIONS)
+    # Argleton's numbers cannot be counted from this checkout: it is a separate
+    # repository in a separate organisation, on purpose. So they are vendored in
+    # `docs/argleton-run.json`, written by the publish script as one step of
+    # publishing a run, and the page reads them from there rather than carrying
+    # them as prose. Hand-typed, this one aged three times in four days.
+    argleton = json.loads(
+        (ROOT / "docs" / "argleton-run.json").read_text(encoding="utf-8")
+    )
 
     page = (Path(__file__).parent / "index.template.html").read_text(encoding="utf-8")
     for placeholder, value in {
@@ -269,6 +277,7 @@ def main(destination: Path) -> int:
         "{{TOOL_COUNT}}": str(tool_count),
         "{{CATALOG_COUNT}}": str(catalog_count),
         "{{TEST_COUNT}}": str(test_count),
+        "{{TRAP_COUNT}}": str(argleton["traps_run"]),
         "{{COMMIT}}": _git("rev-parse", "--short", "HEAD") or "unknown",
         "{{BUILT}}": manifest["finished_at"][:10],
     }.items():
