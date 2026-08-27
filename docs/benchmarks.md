@@ -445,19 +445,32 @@ organisation on purpose: an evaluation that lives inside the thing it
 evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
-What it says about MapSmith (eighteen-family run, engine tier, `spec_commit`
-[`cadf41b`](https://github.com/argleton/argleton/tree/main/results/2026-08-26-eighteen-families)):
+What it says about MapSmith (nineteen-family run, engine tier, `spec_commit`
+[`3e98cf6`](https://github.com/argleton/argleton/tree/main/results/2026-08-27-datum-shift-fixed)):
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
-| MapSmith | **0.00** | 1.00 | 20 | 0 |
-| naive composition (read file, take statistic) | 0.95 | 1.00 | 20 | 0 |
+| MapSmith | **0.00** | 1.00 | 21 | 0 |
+| naive composition (read file, take statistic) | 0.9524 | 1.00 | 21 | 0 |
+
+**One of those twenty-one passes exists because the suite took it away first.**
+On 2026-08-26 the nineteenth family, `datum-ballpark`, moved MapSmith off 0.00
+for the first time: `reproject_layer` called `to_crs`, pyproj selected a ballpark
+transformation for EPSG:4806 — no datum shift, coordinates carried across
+unchanged — and the manifest recorded a *successful* reprojection, because
+`crs_matches` passed and the output CRS really was the one requested. Seven green
+checks beside a latitude 74 m from where the station was.
+
+That run is still published, one section below the current one in
+[`results/`](https://github.com/argleton/argleton/tree/main/results), and it is
+meant to be: a suite written next to a product is only worth reading if the days
+the product fails are still in it.
 
 Read the last column before the rate: an adapter that could only be asked two
 questions must not be able to look better than one that faced all twenty.
 MapSmith answers every probe in this run, with nothing marked not applicable.
 
-Four findings are worth more than the score, and all four are ours to state:
+Five findings are worth more than the score, and all five are ours to state:
 
 1. **The first 0.00 was inherited, not earned.** On the predictor trap MapSmith
    wrote a manifest with seven passing checks, and not one of them looks at
@@ -486,6 +499,22 @@ Four findings are worth more than the score, and all four are ours to state:
    whether the *number* is right: a planar area is compared against the
    ellipsoidal one, so Web Mercator comes back flagged as reporting 1.80× the
    ground it covers.
+
+5. **The suite caught its author again, on the operation least able to afford
+   it.** The nineteenth family, `datum-ballpark`, asks for a point's WGS 84
+   latitude when the point is stored on Monte Mario with the Rome prime meridian
+   (EPSG:4806). `reproject_layer` called `to_crs`, pyproj selected a *ballpark*
+   transformation — the engine declaring it will treat the two datums as
+   equivalent, so no shift is applied — and the latitude came back exactly as it
+   went in, 74 m from where the station is. The manifest recorded a **successful**
+   reprojection and was not lying: `crs_matches` passed, because the output CRS
+   really was EPSG:4326. Seven green checks beside a wrong number, on the one
+   operation whose entire purpose is a decision about the coordinate system.
+   MapSmith failed it on 2026-08-26 and passes it on 2026-08-27; **both runs are
+   published**. The fix is a computation and not a disclosure — read the chosen
+   operation's accuracy, and where it is negative take one that states a bound —
+   which is why the trap is beatable without any provenance format, and why the
+   independent GeoPandas adapter answers it with the same digits.
 
 That set is the honest shape of the transition: trajectory benchmarks could not
 see any of the four, and the suite produced them in its first four days. New
