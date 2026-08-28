@@ -17,6 +17,21 @@ one of the two is wrong — and the first time this test ran, it was the example
 polygon, which is Argleton trap 014, so advertising it for labels was our own
 catalogue recommending the defect our suite measures. The example changed, not
 the ranking.
+
+WHAT THIS FILE ASSERTS CHANGED ON 2026-08-28, and the reason is worth keeping.
+
+It used to require each operation to rank in the top 3 for its own example. That
+looks like a discovery contract and is really a ranking contract, with one bad
+property: the only way to repair a failure is to reword the example until the
+ranker likes it. Fifty entries tuned that way score well on the examples we wrote
+and nineteen points worse on requests written by anyone else -- measured, on 155
+of them. A test whose repair procedure is "fit the text to the scorer"
+manufactures the number it then reports.
+
+So the gate moved to the part that is deterministic and ours: the facets an entry
+declares must never drop that entry, and the entry must reach the caller. Rank
+INSIDE the delivered set is still measured, because it is useful, but it does not
+fail a build -- an ordering is a hint, and hints are not contracts.
 """
 
 from __future__ import annotations
@@ -47,33 +62,55 @@ def _facets(op: dict) -> dict:
 
 
 @pytest.mark.parametrize("op", AVAILABLE, ids=lambda op: op["name"])
-def test_each_operation_is_findable_by_the_example_it_advertises(op):
-    """With its facets declared, an operation must be in the top 3 for its own goal.
+def test_the_facets_an_entry_declares_never_drop_that_entry(op):
+    """The one hard contract, because it is the one with no model in it.
 
-    The facets are the point. Without them this passes for 45 of 49 entries;
-    with them, 48 of 49 — and the three it rescues are the ones crowded out by
-    near neighbours, which is the failure that grows with the catalogue.
+    The filter is built from the entry's OWN declarations. If it then removes the
+    entry, a caller who describes their data correctly can never reach the
+    operation — no error, no empty result, just an operation that has quietly
+    stopped existing.
+    """
+    survivors = {o["name"] for o in catalog.applicable(**_facets(op))}
+    assert op["name"] in survivors, (
+        f"{op['name']} is filtered out by facets taken from its own entry "
+        f"({_facets(op)}). Whatever it declares does not match what `applicable` "
+        "reads, so nobody who declares correctly can find it."
+    )
+
+
+@pytest.mark.parametrize("op", AVAILABLE, ids=lambda op: op["name"])
+def test_each_operation_reaches_the_caller_for_the_goal_it_advertises(op):
+    """It has to be IN the answer. Where in the answer is the caller's business.
+
+    Under `status: "choose"` the whole surviving set is delivered, so this is a
+    weaker claim than the top-3 gate it replaced — deliberately. The strong claim
+    was measuring our ranker against text we had tuned for our ranker.
     """
     goal = op["examples"][0]["goal"]
-    hits = catalog.search(goal, limit=3, **_facets(op))
-    assert hits, f"{op['name']}: its own example goal returns nothing at all"
-    if hits[0].get("status") == "unsure":
+    answer = catalog.search(goal, limit=3, **_facets(op))
+    assert answer, f"{op['name']}: its own example goal returns nothing at all"
+    if answer[0].get("status") == "unsure":
         pytest.fail(
             f"{op['name']}: the two engines agree on nothing for the goal this entry "
-            f"advertises — {goal!r}. Either the goal describes a different operation, "
-            "or the entry's own words are too far from it."
+            f"advertises — {goal!r}, and the set was too large to hand over. Either "
+            "the goal describes a different operation, or the entry's own words are "
+            "too far from it."
         )
-    names = [hit["name"] for hit in hits]
-    assert op["name"] in names, (
-        f"{op['name']} is not in the top 3 for the goal it advertises — {goal!r} "
-        f"returned {names}. Before adjusting the wording, check the ranking is not "
-        "right: an entry that loses to a neighbour may be advertising the neighbour's "
-        "job, which is how the centroid/label-point defect was found."
+    delivered = [hit["name"] for hit in catalog.entries(answer)]
+    assert op["name"] in delivered, (
+        f"{op['name']} does not reach the caller for the goal it advertises — "
+        f"{goal!r} delivered {delivered}."
     )
 
 
 def test_declaring_the_facets_is_worth_more_than_not_declaring_them():
     """The claim the whole design rests on, kept under measurement.
+
+    Measured on the entries' own examples, so the absolute numbers flatter us and
+    are published nowhere; what the comparison is good for is the SIGN. The
+    published figures (24% bare, 51% faceted) come from
+    `tests/data/discovery_queries.json`, written by two other model families that
+    never saw this catalogue.
 
     If this ever fails, the facets have stopped earning their place and the
     docstring of `list_operations` — which tells the calling model they are the
@@ -83,10 +120,10 @@ def test_declaring_the_facets_is_worth_more_than_not_declaring_them():
         total = 0
         for op in AVAILABLE:
             goal = op["examples"][0]["goal"]
-            hits = catalog.search(goal, limit=3, **(_facets(op) if with_facets else {}))
-            if hits and hits[0].get("status") == "unsure":
+            answer = catalog.search(goal, limit=3, **(_facets(op) if with_facets else {}))
+            if answer and answer[0].get("status") == "unsure":
                 continue
-            total += op["name"] in [hit["name"] for hit in hits]
+            total += op["name"] in [h["name"] for h in catalog.entries(answer)[:3]]
         return total
 
     bare, faceted = found(False), found(True)
@@ -132,3 +169,91 @@ def test_produces_agrees_with_what_the_operation_actually_writes():
                 f"{op['name']} writes a {binding.output_kind} dataset but declares "
                 f"produces={declared!r}"
             )
+
+
+def test_the_delivered_set_is_a_choice_and_says_so():
+    """The response shape a caller has to handle, pinned.
+
+    Three things separate handing over a set from dumping one: the answer says it
+    is a choice, nothing is truncated, and every candidate carries what separates
+    it from its neighbours where the entry has that text.
+    """
+    answer = catalog.search(
+        "the coastline has far too many points",
+        limit=3, input_kind="vector", produces="dataset:vector", category="vector",
+    )
+    assert len(answer) == 1 and answer[0]["status"] == "choose"
+    candidates = answer[0]["candidates"]
+    # Compared WITHOUT category, because search does not filter on it: the family
+    # is an ordering there, so every operation that takes a vector layer and
+    # returns one is still in the set.
+    survivors = catalog.applicable(input_kind="vector", produces="dataset:vector")
+    assert {c["name"] for c in candidates} == {o["name"] for o in survivors}, (
+        "the choice was truncated or padded: `limit` governs a ranking, and there "
+        "is no ranking here to truncate"
+    )
+    with_text = [c for c in candidates if c.get("distinguishes")]
+    assert len(with_text) >= len(candidates) // 2, (
+        "most candidates arrive without the field written to be read against the "
+        "others, which is the field the choice is made on"
+    )
+
+
+def test_a_query_far_from_the_catalog_warns_even_when_it_is_a_choice():
+    """The disagreement signal survived the change from refusal to note.
+
+    Below the threshold the search no longer refuses — it is not deciding, so it
+    has nothing to refuse — but the evidence that the request is out of place
+    must not be discarded. It moves to `order_is_weak`.
+    """
+    pytest.importorskip("model2vec")
+    answer = catalog.search(
+        "book me a flight to Lisbon on Tuesday",
+        input_kind="vector", produces="dataset:vector", category="vector",
+    )
+    assert answer[0]["status"] == "choose"
+    assert "order_is_weak" in answer[0], (
+        "an obviously out-of-domain request produced a confidently ordered set "
+        "with no warning attached"
+    )
+
+
+def test_the_declared_family_orders_the_set_and_does_not_cut_it():
+    """The facet a caller has to GUESS must never delete the answer.
+
+    `input_kind` and `projected` are facts about the data in hand and `produces`
+    is what the caller wants back; all three are safe to filter on. `category` is
+    a guess about our taxonomy, and on the independent query set every request
+    has 4.4 plausible families — so a hard filter on it removes the right
+    operation most of the time it is wrong, with no error and a confident answer
+    made of neighbours. That is the silent-failure class Argleton measures in
+    other people's systems.
+
+    So it sorts. Declaring the family puts it first; declaring the WRONG family
+    costs positions and nothing else.
+    """
+    facts = {"input_kind": "vector", "produces": "dataset:vector"}
+    query = "which parcels fall inside the flood zone"
+
+    plain = catalog.entries(catalog.search(query, **facts))
+    # `sql` is one operation in a set of twenty-six, which is what makes it a
+    # good probe: if declaring it does not lift that one entry to the front,
+    # the ordering is doing nothing.
+    guided = catalog.entries(catalog.search(query, category="sql", **facts))
+    assert {o["name"] for o in plain} == {o["name"] for o in guided}, (
+        "declaring a family changed WHICH operations came back; it is only "
+        "allowed to change the order"
+    )
+
+    how_many = sum(1 for o in guided if o["category"] == "sql")
+    leading = [o["category"] for o in guided[:how_many]]
+    assert leading and set(leading) == {"sql"}, (
+        "the declared family did not come first, so declaring it bought nothing"
+    )
+
+    # And the wrong guess: the operation this query really wants is still there.
+    wrong = catalog.entries(catalog.search(query, category="network", **facts))
+    assert "clip_layer" in {o["name"] for o in wrong}, (
+        "a wrong family guess removed an operation, which is the failure this "
+        "design exists to avoid"
+    )

@@ -83,10 +83,16 @@ def test_the_filter_narrows_before_ranking_deterministically():
 
 
 def test_search_applies_the_filter_before_bm25():
-    hits = catalog.search("slope in degrees", input_kind="raster", projected=False)
-    assert all(entry["name"] != "slope" for entry in hits)
-    hits_projected = catalog.search("slope in degrees", input_kind="raster", projected=True)
-    assert hits_projected and hits_projected[0]["name"] == "slope"
+    # Read through `entries`: with the facets declared, few enough operations
+    # survive that the search hands over the set instead of ranking it, and a
+    # test that indexed `hits[0]` would be asserting on the response envelope.
+    hits = catalog.entries(catalog.search("slope in degrees", input_kind="raster",
+                                          projected=False))
+    assert hits and all(entry["name"] != "slope" for entry in hits)
+    projected = catalog.entries(
+        catalog.search("slope in degrees", input_kind="raster", projected=True)
+    )
+    assert projected and projected[0]["name"] == "slope"
 
 
 def test_search_names_its_engine_and_refuses_an_unknown_one():
@@ -123,14 +129,19 @@ def test_the_vector_engine_also_narrows_before_it_ranks():
     """The applicability filter is not a property of BM25: it runs first for
     both engines, or the guarantee is only true of the default one."""
     pytest.importorskip("model2vec")
-    hits = catalog.search(
+    answer = catalog.search(
         "slope in degrees", input_kind="raster", projected=False, engine="vector"
     )
+    hits = catalog.entries(answer)
     assert hits and all(entry["name"] not in ("slope", "aspect") for entry in hits)
-    assert all(entry["engine"] == "vector" for entry in hits)
-    projected = catalog.search(
-        "steepness of the terrain", input_kind="raster", projected=True, engine="vector"
+    # The engine is named once on the envelope when the answer is a choice, and
+    # on every row when it is a ranking. Either way the caller can read it.
+    assert answer[0].get("engine") == "vector" or all(
+        entry["engine"] == "vector" for entry in hits
     )
+    projected = catalog.entries(catalog.search(
+        "steepness of the terrain", input_kind="raster", projected=True, engine="vector"
+    ))
     assert {"slope", "aspect"} & {entry["name"] for entry in projected}
 
 

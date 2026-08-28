@@ -8,7 +8,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "simplify_layer"
+      "label_claude": "simplify_layer",
+      "label_gemini": "simplify_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I need to identify all residential structures that sit within fifty feet of the proposed industrial zone edge, as we have to send mandatory notification letters to those parcel owners.",
@@ -16,7 +18,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "locked",
       "label": null,
-      "label_claude": "buffer_layer"
+      "label_claude": "buffer_layer",
+      "label_gemini": "nearest_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Look, the mayor is going to ask me about houses cut in half by this line. Give me a list of every single property where the new zone cuts right through a building footprint, because if even a corner of someone's porch is in the new commercial zone, I need to know before tonight's council meeting!",
@@ -24,7 +28,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "spatial_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I'm looking at the south precinct, and I'm not really sure how to handle this... some of these large commercial lots are partly inside the new overlay and partly outside. I guess I need to figure out which ones have more than half their actual building area inside the new zone so we know which regulations apply?",
@@ -32,7 +38,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "overlay_layers",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Okay so I was cross-referencing our official building footprint layer with the new zoning draft and honestly it looks like a bunch of new developments out on the east side aren't even showing up as structures on my map, like there are just blank fields where I know for a fact three apartment complexes were built last year, so can you compare our tax assessor building list against what's actually inside the boundary line and highlight where we're missing structures?",
@@ -40,7 +48,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "spatial_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Look, the eagles are flying up to 3 kilometers out from the nest trees to hunt, and I need to see what kind of tree cover is actually available within that daily hunting distance for each pair.",
@@ -48,7 +58,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "zonal_statistics"
+      "label_claude": "zonal_statistics",
+      "label_gemini": "zonal_statistics",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I need to isolate the exact areas where the breeding territories of adjacent osprey pairs overlap so we can identify potential intra-specific competition hotspots.",
@@ -56,7 +68,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "overlay_layers",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "The shoreline outlines we got from the field tech have way too much detail—it's like every single clump of reeds is its own point and my map viewer keeps freezing up whenever I try to load the marsh feeding zones around site B.",
@@ -64,7 +78,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "simplify_layer"
+      "label_claude": "simplify_layer",
+      "label_gemini": "simplify_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Some of these warbler nests keep failing and I'm not really sure what's driving it... can you help me combine the steepness of the slopes, how far they are from the hiking trails, and the density of the canopy into some kind of overall score so I can see if the failed sites share common traits?",
@@ -72,7 +88,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "locked",
       "label": null,
-      "label_claude": "band_math"
+      "label_claude": "band_math",
+      "label_gemini": "band_math",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Give me the average canopy height surrounding each active owl nest so I can compare fledgling survival against forest maturity.",
@@ -80,7 +98,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "zonal_statistics"
+      "label_claude": "zonal_statistics",
+      "label_gemini": "zonal_statistics",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Look, I shot the iron pin at the southwest corner and it's sitting five feet inside what the county claims is parcel 204. Can you figure out how far off the existing fence line is from the deed description across that whole southern boundary? It’s a mess.",
@@ -88,7 +108,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "nearest_join"
+      "label_claude": "nearest_join",
+      "label_gemini": "nearest_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "My total station elevations along the centerline of Oak Street are consistently two tenths higher than the city's surface data. Flag any spot where the difference between my shots and their map is greater than half a foot.",
@@ -96,7 +118,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "none",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I've got a bunch of edge-of-pavement shots from today, but the old plat from 1978 just says '50-foot right-of-way' without clear control points. I don't know, can you show me where the dedicated road line is supposed to land relative to where the asphalt actually is right now?",
@@ -104,7 +128,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "buffer_layer"
+      "label_claude": "buffer_layer",
+      "label_gemini": "preview_map",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "My boundary traverse from this morning is sitting way out in the middle of the river on your map. Get all my shot points aligned so they sit on top of the physical property corners shown in the aerial.",
@@ -112,7 +138,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "none",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "The tax map claims this lot is exactly 5.00 acres, but my closed loop around the boundary pins only gives me 4.78. Show me which specific edge of the property is causing the biggest area loss compared to the deed lines.",
@@ -120,7 +148,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "overlay_layers",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Every time I try to open the property lines along Route 9, the map grinds to a halt because those parcel borders have millions of tiny bend points. Can you make those outline shapes way lighter so my browser stops crashing while I'm panning?",
@@ -128,7 +158,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "simplify_layer"
+      "label_claude": "simplify_layer",
+      "label_gemini": "simplify_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Find me the cheapest path to lay underground line from Substation 4 to the new data center that avoids steep slopes and private land.",
@@ -136,7 +168,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "none",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "So we're looking at hanging fiber on the existing distribution poles along Highway 12, but I'm worried about swampy ground where the digger derricks might sink. I need to know which of our poles are sitting in places where the soil stays wet most of the year, plus a little safety margin around those spots so the crew knows where to bring track machines.",
@@ -144,7 +178,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "spatial_join"
+      "label_claude": "spatial_join",
+      "label_gemini": "buffer_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I have a preliminary alignment drawn for the 115kV trench. Give me a list of all the property owners whose land gets crossed by this draft line, along with how many feet of trench fall on each parcel so we can start estimating right-of-way costs.",
@@ -152,7 +188,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "overlay_layers",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I'm not really sure how to narrow this down... we need a spot for a heavy transformer vault somewhere near Elm Street, but it can't be in a flood plain, needs to be within 50 feet of a paved road for the crane, and away from existing overhead lines. Can you see if there are any open spaces left around there that fit all those constraints?",
@@ -160,7 +198,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "run_sql",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I have 500 line-list patient addresses from this morning's outbreak report and I need to figure out how many fall into each health district so we can route vaccine shipments.",
@@ -168,7 +208,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "count_in_polygons",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Look, the district outlines are so bloated my map won't even render, and on top of that, these tiny rural sectors look like massive hotspots just because they have two cases in a population of twenty—I need this presentable for the minister by 9 AM!",
@@ -176,7 +218,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "simplify_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I'm looking at our dengue surveillance data and I'm not really sure what I'm seeing... the high-count villages seem grouped around the river, but how do I tell if that's a real transmission hotspot or just random noise?",
@@ -184,7 +228,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "locked",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "none",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "So the ethics review board is worried about patient privacy because some of our census blocks only have one or two active TB cases, so I need to combine those small neighborhood areas into the larger health zones so no individual gets re-identified, but without losing the total counts.",
@@ -192,7 +238,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "dissolve_layer"
+      "label_claude": "dissolve_layer",
+      "label_gemini": "dissolve_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I need to calculate per-capita measles incidence rates across the province, but my case data is reported by hospital catchment boundaries while my population denominator data uses municipal administrative units that don't match up.",
@@ -200,7 +248,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "aggregate_weighted",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Look, I've got yield monitor points from the combine scattered all over Block 4, but the sensor dropped out every few minutes. I need to see what the harvest looks like across those missing gaps so I can write a fertilizer plan, but I'm really not sure how we should estimate what happened between the points.",
@@ -208,7 +258,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "idw_interpolation"
+      "label_claude": "idw_interpolation",
+      "label_gemini": "idw_interpolation",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "The driver left the monitor running while turning around on the headlands and driving down the county road, so I've got yield data floating in the ditch. Strip out all those readings that aren't actually inside the crop boundary.",
@@ -216,7 +268,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "locked",
       "label": null,
-      "label_claude": "clip_layer"
+      "label_claude": "clip_layer",
+      "label_gemini": "clip_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Group the multi-year corn yield readings into three distinct high, average, and low productivity management zones so I can generate a variable-rate seeding map.",
@@ -224,7 +278,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "locked",
       "label": null,
-      "label_claude": "reclassify_raster"
+      "label_claude": "reclassify_raster",
+      "label_gemini": "reclassify_raster",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Match every low-yielding spot from this harvest to its closest soil probe so we can check if those dips correlate with dry soil.",
@@ -232,7 +288,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "locked",
       "label": null,
-      "label_claude": "nearest_join"
+      "label_claude": "nearest_join",
+      "label_gemini": "nearest_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "This raw harvest file logged data every second and has over a million dots, so the map completely freezes when I try to load it. Can you make it light enough to display smoothly without washing out the high and low yield trends?",
@@ -240,7 +298,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "none",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I need to know which residential blocks are further than a 10-minute walk from any primary care clinic using the actual street network, not straight-line distance.",
@@ -248,7 +308,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "none",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Look, the census tract boundaries we loaded are completely locking up my dashboard because every coastline squiggle has thousands of extra points—can we clean up the edges so it draws faster without ruining the shapes?",
@@ -256,7 +318,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "simplify_layer"
+      "label_claude": "simplify_layer",
+      "label_gemini": "simplify_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "We're looking at bus stop rationalization on Route 4, but I'm not really sure how to figure out which stops are practically right on top of each other and serving the exact same ridership area.",
@@ -264,7 +328,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "nearest_join"
+      "label_claude": "nearest_join",
+      "label_gemini": "nearest_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Attach the low-income population numbers to our 15-minute transit travel sheds so I can see which equity priority neighborhoods have the worst job access.",
@@ -272,7 +338,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "spatial_join"
+      "label_claude": "spatial_join",
+      "label_gemini": "spatial_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "For every public high school in the county, calculate how many students living in rural areas face a transit commute longer than 45 minutes to arrive by 8:00 AM.",
@@ -280,7 +348,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "none",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Give me all the natural overland routes where rainwater gathers on the east ridge before hitting Highway 9.",
@@ -288,7 +358,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "extract_streams"
+      "label_claude": "extract_streams",
+      "label_gemini": "extract_streams",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I need to show the mayor which residential properties will actually get wet if the main channel crests at 14 meters, but I'm not really sure if we should look at just the main stem or include the backing up into the storm drains too... what makes the most sense to map first?",
@@ -296,7 +368,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "ambiguous",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "The bank along the south bend is eroding again and the draft file is so bogged down with fine elevation details that my computer crashes every time I try to draw the riverbed—can you fix the terrain layer so it loads fast without losing the major steep drop-offs?",
@@ -304,7 +378,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "resample_raster"
+      "label_claude": "resample_raster",
+      "label_gemini": "resample_raster",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Calculate the total acreage of non-porous surfaces like asphalt and roofs within the Upper Mill Creek basin so I can plug the runoff percentage into my hydrograph model.",
@@ -312,7 +388,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "zonal_statistics"
+      "label_claude": "zonal_statistics",
+      "label_gemini": "clip_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Okay so for section 4 of the report, we need to know what essential facilities—you know like emergency services, power stations, water treatment—were sitting inside the high water footprint from the 2011 spring flood, because the board wants a list of critical assets that were drowned back then.",
@@ -320,7 +398,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "locked",
       "label": null,
-      "label_claude": "clip_layer"
+      "label_claude": "clip_layer",
+      "label_gemini": "spatial_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Give me a list of all addresses where the proposed commercial district line cuts straight through an existing building.",
@@ -328,7 +408,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "locked",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "spatial_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "The building outlines in the North Ward have way too many tiny points and details, so the public presentation map keeps crashing. Fix the files so they actually load on screen.",
@@ -336,7 +418,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "simplify_layer"
+      "label_claude": "simplify_layer",
+      "label_gemini": "simplify_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I'm not really sure how we usually measure this, but we need to flag any homes sitting within 300 feet outside the new zone line so we can mail out public hearing notices.",
@@ -344,7 +428,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "buffer_layer"
+      "label_claude": "buffer_layer",
+      "label_gemini": "buffer_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Flag every parcel where the primary structure sits inside the new rezoning footprint, but an accessory building like a shed or garage spills over the boundary line.",
@@ -352,7 +438,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "locked",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "spatial_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Look, the riverfront data is a complete mess with multiple overlapping building footprints stacked on top of each other, and I just need one clean count of how many actual properties are inside the proposed flood overlay.",
@@ -360,7 +448,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "dissolve_layer"
+      "label_claude": "dissolve_layer",
+      "label_gemini": "dissolve_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I need to know how far each owl nest is from the nearest paved road.",
@@ -368,7 +458,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "locked",
       "label": null,
-      "label_claude": "nearest_join"
+      "label_claude": "nearest_join",
+      "label_gemini": "nearest_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Ugh, these flight corridor outlines I downloaded are choking my laptop! There are way too many jagged nodes in the shapes and it takes ten minutes just to zoom in. Can you make these files lighter so the map actually loads?",
@@ -376,7 +468,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "simplify_layer"
+      "label_claude": "simplify_layer",
+      "label_gemini": "simplify_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I'm trying to figure out where else these falcons could nest. We know they like steep cliffs above 500 meters, but only if there's mature pine forest nearby and no wind turbines within a few miles. I have all those datasets, but I'm honestly not sure how to put them together to highlight the best candidate spots on a map.",
@@ -384,7 +478,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "locked",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "overlay_layers",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "For each of the 12 tracked eagle pairs, I need the exact acreage of old-growth timber that burned down inside their home range during last year's wildfire.",
@@ -392,7 +488,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "overlay_layers",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "So, the forestry service wants to clear-cut section 4, but we have active harrier nests along that ridge line. We usually enforce a quiet zone around each nest—like a half-mile protective boundary where heavy machinery isn't allowed during hatching. Can you draw those circular exclusion zones for all 18 active nests so I can hand the map to the logging foreman before Monday?",
@@ -400,7 +498,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "buffer_layer"
+      "label_claude": "buffer_layer",
+      "label_gemini": "buffer_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Found the iron pin on the NW corner, but the map shows the line sitting four feet into the driveway. Figure out why my total station shots aren't lining up with the property lines on screen.",
@@ -408,7 +508,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "describe_crs"
+      "label_claude": "describe_crs",
+      "label_gemini": "describe_dataset",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Look, I've been out in the brush all morning, and when I load my points, the whole subdivision is shifted southwest by thirty feet. Did someone mess up the original grid reference or is the map using the wrong control points? Find out why everything is sitting in the wrong spot.",
@@ -416,7 +518,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "locked",
       "label": null,
-      "label_claude": "describe_crs"
+      "label_claude": "describe_crs",
+      "label_gemini": "describe_crs",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I shot the fence line along the northern boundary of Lot 4. Calculate the shortest distance from each of my field points to the recorded easement line so I can verify the encroachment.",
@@ -424,7 +528,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "nearest_join"
+      "label_claude": "nearest_join",
+      "label_gemini": "nearest_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "My field traverse closes at 5.2 acres, but the old record plat says 4.8. I'm staring at my pins and the drawing, and something isn't adding up near the creek bend. I'm not sure what's wrong—can you compare the two shapes and show me where they don't match?",
@@ -432,7 +538,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "overlay_layers",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "The distance I measured on the ground along this ridge is 450 feet, but the map says the lot line is only 410 feet. Calculate how much the ground slope is affecting the flat distance shown on the plat.",
@@ -440,7 +548,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "measure_length"
+      "label_claude": "measure_length",
+      "label_gemini": "slope",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Find me a route for the new underground line along 5th Avenue that keeps us at least 15 feet away from the existing gas main.",
@@ -448,7 +558,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "buffer_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Look, the drilling rig can't handle these steep slopes on the north ridge. Show me where the grade is too high so we can route the trench around those hills.",
@@ -456,7 +568,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "slope"
+      "label_claude": "slope",
+      "label_gemini": "slope",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "So we're planning this medium-voltage feeder extension through the industrial park, but it's a mess with property lines, and I really need to know every single landowner whose parcel we're going to cross so we can start reaching out for ROW permissions.",
@@ -464,7 +578,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "spatial_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I'm not really sure how to handle this river crossing—we need to get the cable across, but I don't know where the existing bridge conduits are full and where there's still room to attach our line.",
@@ -472,7 +588,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "none",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Flag any sections of our proposed overhead route that fall inside protected wetland areas so we can prepare the permit filings.",
@@ -480,7 +598,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "spatial_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I have 4,000 line-list patient records with GPS coordinates from yesterday's cholera outbreak, but I need them grouped into our official health sub-district boundaries so I can calculate incidence rates per 100k.",
@@ -668,7 +788,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "locked",
       "label": null,
-      "label_claude": "simplify_layer"
+      "label_claude": "simplify_layer",
+      "label_gemini": "simplify_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I'm working on the 1:20M continent spread and honestly there are just way too many tiny blue dots everywhere, like every little puddle in Canada is trying to print and it looks messy, so can we just get rid of anything that wouldn't even cover a millimetre of ink on the physical page?",
@@ -676,7 +798,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "run_sql",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "At this scale, the divided highways are printing so close together that the ink bridges into giant dark bars. I need each set of parallel lanes represented as a single stroke down the middle so the road hierarchy stays legible.",
@@ -684,7 +808,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "none",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I don't know, something is wrong with the shorelines on the draft—they've got millions of tiny zig-zags that make the plotter choke and the printed line looks fuzzy and overly dark. What can we do to make the outlines smoother for this scale without losing the overall shape of the bays?",
@@ -692,7 +818,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "simplify_layer"
+      "label_claude": "simplify_layer",
+      "label_gemini": "simplify_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "The city names across Central Europe are a total mess of overlapping text on this layout. Drop the smaller towns and space out the rest so a reader can actually tell which name goes with which dot.",
@@ -700,7 +828,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "none",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Look, our underwriters are panicking about the recent storm. I have a list of policy addresses in Florida and I need to know which ones are sitting within a five-minute walk of the rising water markers—just give me the flagged policy numbers as fast as you can.",
@@ -708,7 +838,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "buffer_layer"
+      "label_claude": "buffer_layer",
+      "label_gemini": "nearest_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "The detailed wildfire boundary shape is completely choking up my dashboard presentation. I just need a cleaner, smoother outline of the high-risk area so the leadership team can actually load the map.",
@@ -716,7 +848,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "simplify_layer"
+      "label_claude": "simplify_layer",
+      "label_gemini": "simplify_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I need to calculate our total financial exposure for the coastal surge zone. Take our active commercial portfolio and sum up the total insured value of all properties that fall inside that red hazard footprint.",
@@ -724,7 +858,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "locked",
       "label": null,
-      "label_claude": "spatial_join"
+      "label_claude": "spatial_join",
+      "label_gemini": "spatial_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I'm not really sure how to set this up, but we're trying to re-price policies based on how close homes are to the brush. Is there a way to measure the gap between each roof and where the vegetation starts for the whole county?",
@@ -732,7 +868,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "nearest_join"
+      "label_claude": "nearest_join",
+      "label_gemini": "nearest_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Okay so claims sent over this spreadsheet of locations from the severe hail event, but it's just raw street addresses and a bunch of them have missing unit numbers or weird formatting, so we can't tell which ones actually got hit by the storm track until we can pin them all down on the map accurately.",
@@ -740,7 +878,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "none",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I need to know where the pine canopy is open versus thick in Compartment 4 so I can place my regeneration survey plots.",
@@ -748,7 +888,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "reclassify_raster"
+      "label_claude": "reclassify_raster",
+      "label_gemini": "reclassify_raster",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Look, I walked the east boundary of the Johnson tract with my handheld GPS, but the track is a total squiggly mess from tree cover and my tablet crashes when I open it—clean up the line so it actually follows the fence line we flagged without all the tiny jitters.",
@@ -756,7 +898,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "simplify_layer"
+      "label_claude": "simplify_layer",
+      "label_gemini": "simplify_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Flag any ground in Block B that’s steeper than 35 percent because our wheeled skidders can’t safely operate on those hillsides.",
@@ -764,7 +908,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "slope"
+      "label_claude": "slope",
+      "label_gemini": "slope",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Uh, so the landowner wants to know how much merchantable pine he's actually allowed to cut on the West 40... there’s a creek running through it and state forestry rules say we can't harvest near the water, but I'm not sure how much acreage that strips out of our total timber estimate.",
@@ -772,7 +918,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "buffer_layer"
+      "label_claude": "buffer_layer",
+      "label_gemini": "overlay_layers",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Find all the stands in the north unit where the trees died off since last summer so we can send the salvage logging crew in before the wood rots.",
@@ -780,7 +928,9 @@
       "generated_by": "gemini/gemini-3.6-flash",
       "split": "tune",
       "label": null,
-      "label_claude": "band_math"
+      "label_claude": "band_math",
+      "label_gemini": "zonal_statistics",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I've got 40 years of daily gridded temperature data and I need the mean and the hottest day for each county in the study area, but I genuinely don't know if I should just average whatever grid cells touch a county or do something more careful.",
@@ -788,7 +938,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "zonal_statistics"
+      "label_claude": "zonal_statistics",
+      "label_gemini": "zonal_statistics",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Need area-weighted rainfall totals per river basin for the whole record, exported as a table I can drop into the report.",
@@ -796,7 +948,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "zonal_statistics"
+      "label_claude": "zonal_statistics",
+      "label_gemini": "zonal_statistics",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "the grid cells near the coast are getting weird values when I split them by region, some regions come back with barely any data, what is going on",
@@ -804,7 +958,9 @@
       "generated_by": "claude/sonnet",
       "split": "locked",
       "label": null,
-      "label_claude": "zonal_statistics"
+      "label_claude": "zonal_statistics",
+      "label_gemini": "describe_dataset",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Precipitation anomaly per province, mm/month, using only the cells whose centre falls inside the boundary.",
@@ -812,7 +968,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "zonal_statistics"
+      "label_claude": "zonal_statistics",
+      "label_gemini": "zonal_statistics",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "can you get me the population-weighted heat index by district for last summer, deadline is friday and this is the third time I've tried",
@@ -820,7 +978,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "zonal_statistics"
+      "label_claude": "zonal_statistics",
+      "label_gemini": "aggregate_weighted",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "how many grid cells actually fall inside this tiny island nation, I suspect zero and that would explain the blank column",
@@ -828,7 +988,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "count_in_polygons"
+      "label_claude": "count_in_polygons",
+      "label_gemini": "zonal_statistics",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "Two of our leases seem to clash with a neighbouring concession, can you find every place our boundary overlaps theirs and how many hectares are affected?",
@@ -836,7 +998,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "overlay_layers",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "list all concession pairs in this file that overlap at all, I don't need the geometry back just the pairs and the acreage",
@@ -844,7 +1008,9 @@
       "generated_by": "claude/sonnet",
       "split": "locked",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "overlay_layers",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "overlap check, our block vs the new tenement grant, hectares please",
@@ -852,7 +1018,9 @@
       "generated_by": "claude/sonnet",
       "split": "locked",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "overlay_layers",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "the regulator says our polygon overlaps a protected buffer but I can't see where, is there actually an overlap or is their map wrong",
@@ -860,7 +1028,9 @@
       "generated_by": "claude/sonnet",
       "split": "locked",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "overlay_layers",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "we've got about 200 concession polygons from different survey years and I think some overlap each other, can you tell me which and by how much before I go back to legal",
@@ -868,7 +1038,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "overlay_layers",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "need the exact sliver where our license boundary crosses the river reserve, just that piece on its own",
@@ -876,7 +1048,9 @@
       "generated_by": "claude/sonnet",
       "split": "locked",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "overlay_layers",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "need the steepest section of this alignment, expressed as a percentage grade, with the chainage where it happens",
@@ -884,7 +1058,9 @@
       "generated_by": "claude/sonnet",
       "split": "locked",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "slope",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "can you give me elevation at every 20 metres along the centreline so I can plot the profile",
@@ -892,7 +1068,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "none",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "max grade over any 100m stretch on this line",
@@ -900,7 +1078,9 @@
       "generated_by": "claude/sonnet",
       "split": "locked",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "slope",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "the vertical profile looks impossible, there's a cliff in the middle of a flat stretch, something's wrong with the terrain under this bit",
@@ -908,7 +1088,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "curvature"
+      "label_claude": "curvature",
+      "label_gemini": "slope",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "not sure how to check this but I need to know if any part of the route exceeds a 2.5% gradient, the alignment is a single line file",
@@ -916,7 +1098,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "slope",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "compare the gradient profile of the two route options between the same two stations, which one climbs less overall",
@@ -924,7 +1108,9 @@
       "generated_by": "claude/sonnet",
       "split": "locked",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "slope",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I've got hundreds of dive survey points, need the distance of each one from the shoreline so I can check how many are within the intertidal zone",
@@ -932,7 +1118,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "nearest_join"
+      "label_claude": "nearest_join",
+      "label_gemini": "nearest_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "a lot of these sighting points are probably the same event logged twice from slightly different GPS fixes, can you group anything within about half a km of another point so I get a real count of distinct sightings",
@@ -940,7 +1128,9 @@
       "generated_by": "claude/sonnet",
       "split": "locked",
       "label": null,
-      "label_claude": "nearest_join"
+      "label_claude": "nearest_join",
+      "label_gemini": "buffer_layer",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "some of my GPS points from the boat ended up on land, can you tell me which ones and by how far they're off",
@@ -948,7 +1138,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "spatial_join"
+      "label_claude": "spatial_join",
+      "label_gemini": "nearest_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "so we've been recording coral cover at points along about 40km of coast over three years and I want to see if the points sit near river mouths, is there a way to check the distance from each point to the nearest river outlet without me doing it one by one in a spreadsheet",
@@ -956,7 +1148,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "nearest_join"
+      "label_claude": "nearest_join",
+      "label_gemini": "nearest_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "for each of this year's transect points, how far is it from the closest point we recorded last year, trying to tell if we resurveyed the same spots",
@@ -964,7 +1158,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "nearest_join"
+      "label_claude": "nearest_join",
+      "label_gemini": "nearest_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "give me the count of survey points that fall within each marine protected zone, some zones might have zero and that's fine, I need real numbers",
@@ -972,7 +1168,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "count_in_polygons"
+      "label_claude": "count_in_polygons",
+      "label_gemini": "count_in_polygons",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "how many registered businesses fall in each ward, straightforward count please",
@@ -980,7 +1178,9 @@
       "generated_by": "claude/sonnet",
       "split": "locked",
       "label": null,
-      "label_claude": "count_in_polygons"
+      "label_claude": "count_in_polygons",
+      "label_gemini": "count_in_polygons",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "population density by neighbourhood, current boundaries",
@@ -988,7 +1188,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "measure_area"
+      "label_claude": "measure_area",
+      "label_gemini": "aggregate_weighted",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I ran this before and the numbers per district didn't add up to the citywide total, something is dropping addresses",
@@ -996,7 +1198,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "count_in_polygons"
+      "label_claude": "count_in_polygons",
+      "label_gemini": "count_in_polygons",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "council wants a one-pager with a stat per neighbourhood, not sure whether to use the old boundaries or the ones from last year's redistricting, can you compute both so I can compare",
@@ -1004,7 +1208,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "ambiguous"
+      "label_claude": "ambiguous",
+      "label_gemini": "execute_plan",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "average response time for service requests, grouped by neighbourhood, from the incident points we've logged",
@@ -1012,7 +1218,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "spatial_join"
+      "label_claude": "spatial_join",
+      "label_gemini": "spatial_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "which neighbourhoods have no parks at all within their boundary, need this for the budget meeting",
@@ -1020,7 +1228,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "count_in_polygons"
+      "label_claude": "count_in_polygons",
+      "label_gemini": "spatial_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "need a clean channel network from this DEM before I can even start building the model, right now it's got pits everywhere",
@@ -1028,7 +1238,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "extract_streams"
+      "label_claude": "extract_streams",
+      "label_gemini": "flow_accumulation",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "what's the area draining to this gauge point, I need the full catchment boundary above it",
@@ -1036,7 +1248,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "watershed"
+      "label_claude": "watershed",
+      "label_gemini": "watershed",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "the cross-sections I cut across the river keep missing the actual channel, is my centreline off or is the terrain bad",
@@ -1044,7 +1258,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "extract_streams"
+      "label_claude": "extract_streams",
+      "label_gemini": "describe_dataset",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I'm trying to set up boundary conditions for about 15 sub-catchments and I need the outlet points and contributing areas for each, this is taking forever by hand and I keep getting different totals every time",
@@ -1052,7 +1268,9 @@
       "generated_by": "claude/sonnet",
       "split": "locked",
       "label": null,
-      "label_claude": "watershed"
+      "label_claude": "watershed",
+      "label_gemini": "watershed",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "what's the right way to get roughness values onto my model mesh from a land cover raster, I've got categories but need numbers",
@@ -1060,7 +1278,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "reclassify_raster"
+      "label_claude": "reclassify_raster",
+      "label_gemini": "reclassify_raster",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "check whether my model boundary actually closes, I think there's a gap somewhere and water is leaking out of the domain in the results",
@@ -1068,7 +1288,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "validate_geometry"
+      "label_claude": "validate_geometry",
+      "label_gemini": "validate_geometry",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "the two counties use different parcel schemas, I need price per square foot for every parcel matched up somehow so I can compare fairly",
@@ -1076,7 +1298,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "measure_area"
+      "label_claude": "measure_area",
+      "label_gemini": "measure_area",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "count of parcels by zoning type, both counties, side by side",
@@ -1084,7 +1308,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "run_sql"
+      "label_claude": "run_sql",
+      "label_gemini": "merge_layers",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "how do these two counties even line up geographically, I need to know where county A's high-value cluster sits relative to county B's before I present this",
@@ -1092,7 +1318,9 @@
       "generated_by": "claude/sonnet",
       "split": "locked",
       "label": null,
-      "label_claude": "preview_map"
+      "label_claude": "preview_map",
+      "label_gemini": "preview_map",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "the acreage figures I'm calculating don't match what's on the county assessor site and I don't know which one to trust",
@@ -1100,7 +1328,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "measure_area"
+      "label_claude": "measure_area",
+      "label_gemini": "measure_area",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I've got parcel boundaries from two different sources and years, not sure if I can even compare them directly or if I need to fix something first",
@@ -1108,7 +1338,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "describe_crs"
+      "label_claude": "describe_crs",
+      "label_gemini": "validate_geometry",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "flag any parcel in county B that's within a quarter mile of the interstate, need that for the highway-adjacency discount",
@@ -1116,7 +1348,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "buffer_layer"
+      "label_claude": "buffer_layer",
+      "label_gemini": "nearest_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "need slope and aspect off this DEM before I can run anything else",
@@ -1124,7 +1358,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "slope"
+      "label_claude": "slope",
+      "label_gemini": "slope",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "fuel load total inside this fire perimeter",
@@ -1132,7 +1368,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "zonal_statistics"
+      "label_claude": "zonal_statistics",
+      "label_gemini": "zonal_statistics",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "the fire behaviour numbers look off on the north-facing slopes, wondering if the aspect layer is even right",
@@ -1140,7 +1378,9 @@
       "generated_by": "claude/sonnet",
       "split": "locked",
       "label": null,
-      "label_claude": "aspect"
+      "label_claude": "aspect",
+      "label_gemini": "describe_dataset",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I'm trying to figure out which ridgelines would actually slow a fire down given the current fuel map and slope, and I don't really know how to combine those two things into one answer",
@@ -1148,7 +1388,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "band_math"
+      "label_claude": "band_math",
+      "label_gemini": "run_sql",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "what's a reasonable way to get a single defensibility score per parcel near the wildland interface, combining slope and vegetation, I've never done this before",
@@ -1156,7 +1398,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "band_math"
+      "label_claude": "band_math",
+      "label_gemini": "run_sql",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "how much of the fuel break actually sits on slopes over 30 percent, that changes how we plan the crew work",
@@ -1164,7 +1408,9 @@
       "generated_by": "claude/sonnet",
       "split": "locked",
       "label": null,
-      "label_claude": "slope"
+      "label_claude": "slope",
+      "label_gemini": "zonal_statistics",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "need the area within 5km of each candidate mast site that isn't already covered by an existing tower",
@@ -1172,7 +1418,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "overlay_layers"
+      "label_claude": "overlay_layers",
+      "label_gemini": "overlay_layers",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "line of sight check, this site to that site, is the ridge blocking it",
@@ -1180,7 +1428,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "none",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "two of these proposed sites are basically on top of each other and I didn't catch it until now, can you check the whole candidate list for near-duplicates",
@@ -1188,7 +1438,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "nearest_join"
+      "label_claude": "nearest_join",
+      "label_gemini": "nearest_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "the coverage circles I drew don't account for the hills at all and the client is going to ask why there's a dead zone in the valley",
@@ -1196,7 +1448,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "none",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I've got population data and a terrain model and I need to figure out where the best next mast site is, not sure how to even start combining those",
@@ -1204,7 +1458,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "ambiguous",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "how many households currently sit outside a 3km radius of any existing site, need the number for the funding application",
@@ -1212,7 +1468,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "buffer_layer"
+      "label_claude": "buffer_layer",
+      "label_gemini": "count_in_polygons",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "I've only got thirty-odd pit results and want a map of estimated organic carbon across the whole field, not just dots at the sample points",
@@ -1220,7 +1478,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "idw_interpolation"
+      "label_claude": "idw_interpolation",
+      "label_gemini": "idw_interpolation",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "average pH by field block",
@@ -1228,7 +1488,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "run_sql"
+      "label_claude": "run_sql",
+      "label_gemini": "zonal_statistics",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "a couple of these pit locations look like they're sitting in the wrong field entirely, can you check the coordinates against the field boundaries",
@@ -1236,7 +1498,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "spatial_join"
+      "label_claude": "spatial_join",
+      "label_gemini": "spatial_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "so I've got lab results from sample pits dug over two seasons and I want to see if there's a pattern in the phosphorus levels relative to distance from the old barn site, not sure if that's even something you can check",
@@ -1244,7 +1508,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "nearest_join"
+      "label_claude": "nearest_join",
+      "label_gemini": "nearest_join",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "what's the best way to turn these point samples into something I can hand the agronomist, I've got maybe 40 points over 200 hectares",
@@ -1252,7 +1518,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "idw_interpolation"
+      "label_claude": "idw_interpolation",
+      "label_gemini": "idw_interpolation",
+      "label_gemini_model": "gemini-3-flash-preview"
     },
     {
       "query": "flag any pit where the reported depth doesn't make sense given the slope at that location",
@@ -1260,7 +1528,9 @@
       "generated_by": "claude/sonnet",
       "split": "tune",
       "label": null,
-      "label_claude": "none"
+      "label_claude": "none",
+      "label_gemini": "slope",
+      "label_gemini_model": "gemini-3-flash-preview"
     }
   ]
 }

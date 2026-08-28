@@ -47,7 +47,12 @@ def test_scores_are_present_and_descending():
 def test_empty_query_lists_whole_catalog_compact():
     results = catalog.search()
     assert len(results) == len(catalog.OPERATIONS)
-    assert all(set(r) == {"name", "status", "category", "summary"} for r in results)
+    # `distinguishes` rides along where an entry has one, because the compact
+    # form is what a caller CHOOSES from and that field is the only one written
+    # to be read against the neighbours. Everything else is fixed.
+    for r in results:
+        assert {"name", "status", "category", "summary"} <= set(r)
+        assert set(r) <= {"name", "status", "category", "summary", "distinguishes"}
 
 
 def test_no_match_returns_empty():

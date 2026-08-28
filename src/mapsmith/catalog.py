@@ -3385,7 +3385,31 @@ def rank(query: str, limit: int = 10) -> list[tuple[dict[str, Any], float]]:
 
 
 def _compact(op: dict[str, Any]) -> dict[str, Any]:
-    return {k: op[k] for k in ("name", "status", "category", "summary")}
+    entry = {k: op[k] for k in ("name", "status", "category", "summary")}
+    # What separates this from its neighbours travels with it, because the
+    # caller is the one choosing. Measured: a model reading name + summary +
+    # this picks the right operation 69% of the time, against 51% for our own
+    # ranking putting it in the top three — and it is the only field written to
+    # be read against the other candidates rather than on its own.
+    if op.get("distinguishes"):
+        entry["distinguishes"] = op["distinguishes"]
+    return entry
+
+
+# Above this many survivors the result is a ranked shortlist; at or below it,
+# the whole set comes back and the caller chooses.
+#
+# 30, and the number is measured rather than chosen. With the facets a caller can
+# actually know — input kind and desired output — the surviving set over 118
+# independent requests has a median of 26 and never exceeded 26. A threshold of 25
+# sat one candidate below that and turned the normal case into the exception: 33%
+# of requests got a shortlist instead of the set, for no reason but the rounding.
+# At 26 candidates the payload is about 2,100 tokens, which is less than one wrong
+# operation costs to run and undo.
+#
+# It is a presentation choice, not a quality threshold: nothing is hidden either
+# way, and `limit` still governs the ranked case.
+CHOOSABLE = 30
 
 
 APPLICABILITY_KINDS = {"vector", "raster", "dataset", "plan"}
@@ -3407,22 +3431,32 @@ def applicable(
     drops entries that require a projected CRS — the ones that would refuse the
     data anyway.
 
-    ``produces`` and ``category`` narrow the same way, and they are the two that
-    matter most as the catalog grows. Measured on 2026-08-28 against 800 real GIS
-    operations, with queries in a caller's own words:
+    ``produces`` narrows the same way. Measured on 2026-08-28 over 118 requests
+    written by other model families, none of which had seen this catalog:
 
     ==========================================  ==========  ==========
     facets declared                             candidates  found@3
     ==========================================  ==========  ==========
-    none                                               800         20%
-    input kind                                         259         40%
-    input kind + produces                              132         55%
-    input kind + produces + category                    16         70%
+    none                                                51         25%
+    input kind                                          33         27%
+    input kind + produces                               21         44%
+    input kind + produces + category                    15         56%
     ==========================================  ==========  ==========
 
-    Twenty per cent to seventy, with no model in the loop. No ranker buys that,
-    which is why the facets are the primary mechanism and ranking is what breaks
-    the tie inside what survives.
+    **``category`` is a hard filter here and** :func:`search` **deliberately does
+    not use it as one.** The difference is who knows the answer. ``input_kind``
+    and ``projected`` are facts about the data in hand; ``produces`` is what the
+    caller wants back. ``category`` is a guess about OUR taxonomy, and the table
+    shows what it buys: six candidates out of twenty-one. What it costs, when the
+    guess is wrong, is the right operation, removed with no error and replaced by
+    a confident answer made of neighbours. On this sample every request has 4.4
+    plausible families, so that is not a corner case. A discovery layer that
+    silently deletes the answer is the failure this product exists to measure in
+    other people's systems.
+
+    So the hard cut stays available on this function, where a caller asking for
+    it means it, and :func:`search` treats the declared family as an ordering
+    instead. Six candidates are not worth a silent drop.
 
     An entry declaring ``none`` takes no dataset (``describe_crs`` answers about a
     CRS, ``geodetic_distance`` about two coordinates) and is kept for every kind.
@@ -3560,8 +3594,18 @@ def search(
 
     ``input_kind``, ``produces``, ``category`` and ``projected`` narrow the
     candidates deterministically BEFORE ranking, whichever engine ranks them, and
-    **they are the part that scales**: at 800 operations they move found@3 from
-    20% to 70% while no ranker comes close. See :func:`applicable` for the table.
+    **they are the part that scales**. See :func:`applicable` for the table.
+
+    **When few enough survive, this returns a choice rather than a verdict.** At
+    or below :data:`CHOOSABLE` candidates the result is a single entry with
+    ``status: "choose"`` carrying all of them, ordered by relevance and each with
+    the text that separates it from its neighbours. Measured on 92 requests
+    written by other models: our ranking puts the right operation in the top
+    three 51% of the time; a model handed the same candidates and asked to choose
+    gets its FIRST pick right 69% of the time. Two independent expert labellers
+    agree with each other 68% of the time, so 69% is the ceiling of the task and
+    not a score to improve — past that point the honest move is to show the
+    alternatives, to the agent and through it to the person who asked.
 
     ``engine``: ``auto`` (default) prefers the embedding engine and falls back to
     BM25 when the model cannot be loaded — no network, no cache, air-gapped
@@ -3584,7 +3628,11 @@ def search(
     """
     if engine not in SEARCH_ENGINES:
         raise ValueError(f"engine must be one of {list(SEARCH_ENGINES)}, got {engine!r}")
-    candidates = applicable(input_kind, projected, produces, category)
+    # `category` is NOT passed. It orders the survivors further down instead of
+    # removing them: it is the one facet the caller has to guess about our own
+    # taxonomy, and a wrong guess would delete the right answer in silence. See
+    # `applicable` for the measurement behind that.
+    candidates = applicable(input_kind, projected, produces)
     # `_tokenize` is what decides whether there is a query at all: a string of
     # function words scores nothing against every entry, and returning the
     # catalog says "ask me better" more usefully than returning nothing.
@@ -3597,7 +3645,13 @@ def search(
         try:
             from . import retrieval
 
-            ranked = retrieval.rank(query, limit=limit, candidates=candidates)
+            # Rank enough of them to hand the whole set over in order. The
+            # embedding ranker truncates to `limit`, and a set delivered with
+            # ten ordered entries followed by sixteen in catalog order is not
+            # an ordered set.
+            ranked = retrieval.rank(
+                query, limit=max(limit, CHOOSABLE), candidates=candidates
+            )
             used = "vector"
         except Exception:
             # Broad on purpose, and it was NARROW and wrong until 2026-08-28.
@@ -3625,6 +3679,9 @@ def search(
     # The two engines are asked to agree before either is believed. The second
     # ranking is cheap next to the first: BM25 over a few dozen documents is
     # microseconds, and the embedding index is already in memory.
+    top_vector: list[str] = []
+    top_lexical: list[str] = []
+    agreed = True
     if used == "vector" and ranked:
         query_tokens = _tokenize(query)
         scores = bm25_scores(query_tokens, [_document(op) for op in candidates])
@@ -3634,8 +3691,74 @@ def search(
         )
         top_vector = [op["name"] for op, _ in ranked[:3]]
         top_lexical = [op["name"] for op, _ in other[:3]]
-        if len(set(top_vector) & set(top_lexical)) < AGREEMENT_FLOOR:
-            return [_clarification(query, top_lexical, top_vector, candidates)]
+        agreed = len(set(top_vector) & set(top_lexical)) >= AGREEMENT_FLOOR
+
+    # THE SHORTLIST IS NOT THE ANSWER when there are few enough to read.
+    #
+    # Measured on 92 requests written by other models: our ranking puts the right
+    # operation in the top three 51% of the time, while a model handed the same
+    # candidates and asked to CHOOSE gets its first pick right 69% of the time —
+    # and 69% is where two independent expert labellers agree with each other, so
+    # it is the ceiling of the task rather than a score to beat.
+    #
+    # The caller knows things no ranking can: which file is actually open, what
+    # was run a minute ago, what the person in front of them meant. So when the
+    # facets have narrowed the catalog to something readable, hand over the set
+    # and say that it is a choice. Below, `ranked` still orders it — an ordering
+    # is a useful hint and a truncation is not.
+    # The declared family lifts its own members to the front of whatever the
+    # ranker produced and leaves the rest reachable below. Stable, so the ranking
+    # survives inside each group. A wrong guess now costs positions; the hard
+    # filter it replaced cost the answer.
+    #
+    # After the agreement check on purpose: the two engines are compared on what
+    # they actually think, not on an order one of them did not produce.
+    if category is not None:
+        ranked = sorted(ranked, key=lambda pair: pair[0]["category"] != category)
+
+    if len(candidates) <= CHOOSABLE and query.strip():
+        # Disagreement stops being a refusal here. It was one because we were
+        # deciding; handing over the set is not deciding, so the signal becomes
+        # a warning about the ORDER — which is the only thing it was ever
+        # evidence about. Above the threshold it still refuses, below.
+        # Ordered ones first, then whatever the ranker scored at zero — a
+        # candidate BM25 never saw is still a candidate. Compared by name
+        # because a catalog entry is a dict and dicts do not hash.
+        scored = {op["name"] for op, _ in ranked}
+        chosen = [op for op, _ in ranked] + [
+            op for op in candidates if op["name"] not in scored
+        ]
+        return [
+            {
+                "status": "choose",
+                "query": query,
+                "reason": (
+                    f"{len(chosen)} operations survive what you declared, which is few "
+                    "enough to read. They are ordered by relevance, but the order is a "
+                    "hint: pick by what they say, and ask the person who made the "
+                    "request if two of them would both be defensible."
+                ),
+                "engine": used,
+                "candidates": [dict(op) if detail else _compact(op) for op in chosen],
+                **(
+                    {}
+                    if agreed
+                    else {
+                        "order_is_weak": (
+                            "The two rankers share nothing in their top three "
+                            f"({', '.join(top_lexical[:3])} against "
+                            f"{', '.join(top_vector[:3])}), which usually means the "
+                            "request does not match this catalog well. Read the "
+                            "candidates rather than trusting the order, and say so "
+                            "to the person who asked if none of them fits."
+                        )
+                    }
+                ),
+            }
+        ]
+
+    if not agreed:
+        return [_clarification(query, top_lexical, top_vector, candidates)]
 
     results = []
     for op, score in ranked[:limit]:
@@ -3644,6 +3767,20 @@ def search(
         entry["engine"] = used
         results.append(entry)
     return results
+
+
+def entries(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The operations in a `search` result, whichever shape it came back in.
+
+    `search` answers in three shapes — a ranked list, one `choose` entry holding
+    every survivor, one `unsure` entry holding none — and a caller that reads
+    `results[0]["name"]` is right two times in three, which is the worst kind of
+    right. This flattens them: the operations to read, in order, or empty when
+    the search declined to place the query.
+    """
+    if len(results) == 1 and results[0].get("status") in ("choose", "unsure"):
+        return list(results[0].get("candidates", []))
+    return list(results)
 
 
 def describe_operation(name: str) -> dict[str, Any]:
