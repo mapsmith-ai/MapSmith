@@ -176,42 +176,76 @@ it is built to hold thousands: tool-selection accuracy
 degrades past a few dozen *exposed* tools, while capability count has no such ceiling. That
 makes reaching scale a retrieval problem, so it is treated as one — and measured like one.
 
-**First it narrows, deterministically, and that is the part that carries the weight.** Every
-entry declares four things a caller already knows: what data it takes (`vector`, `raster`,
-`dataset`, `plan`, `none`), what it hands back (`dataset:vector`, `dataset:raster`, `answer`,
-`description`), which family it belongs to, and whether it demands a projected CRS.
+**First it narrows, deterministically, on things the caller already knows.** Every entry
+declares what data it takes (`vector`, `raster`, `dataset`, `plan`, `none`), what it hands back
+(`dataset:vector`, `dataset:raster`, `answer`, `description`), whether it demands a projected
+CRS, and which family it belongs to.
 
-Measured on 92 answerable requests written by two other model families from job scenarios — a
+Measured over 118 answerable requests written by two other model families from job scenarios — a
 hydrologist with a flood report, a surveyor arguing with a field measurement — neither of which
 was shown this catalog, because a model handed the entry writes a paraphrase of the entry:
 
-| what the caller declares | found@1 | found@3 | says "unsure" | silently wrong |
-|---|---|---|---|---|
-| nothing — words alone | 12% | 24% | 33 of 92 | 37 of 92 |
-| **input kind, output kind, family** | **33%** | **51%** | 21 of 92 | 24 of 92 |
+| what the caller declares | candidates left | our ranking, found@3 | **right answer in what comes back** |
+|---|---|---|---|
+| nothing — words alone | 51 | 25% | 25% |
+| what data I have | 33 | 29% | 43% |
+| **+ what I want back** | **21** | 48% | **100%** |
 
-**Half.** That is the honest state of tool discovery here, and it is nineteen points below what
-this page said for one day — that number came from twenty queries we wrote ourselves, and writing
-your own benchmark flatters you by about that much. The independent set is in the repository at
-[`tests/data/discovery_queries.json`](tests/data/discovery_queries.json), so it can be checked
-rather than believed.
+The last column is the one that matters, and it is not an accuracy figure — it is a property.
+Once the two facts a caller genuinely knows have narrowed the catalog to something readable,
+**every survivor is handed over**, so the right operation is in the answer for all 118 requests
+by construction rather than by ranking. Ranking decides the order. It does not decide membership.
 
-The facets are also what makes catalog SIZE stop mattering: at 800 operations they leave sixteen
-candidates, the same sixteen they leave at 200, so growing the catalog does not make anything
-harder to find. What is hard is the residue — sixteen operations of one family, all taking a
-layer and returning a layer — and ranking inside it is close to random. Half the time it lands, a
-quarter of the time the search says it is unsure, and a quarter of the time it is confidently
-wrong. That last quarter is the open problem, and it is stated here rather than rounded away.
+The independent set is in the repository at
+[`tests/data/discovery_queries.json`](tests/data/discovery_queries.json), so the numbers can be
+checked rather than believed.
+
+**So it hands over the set instead of picking for you.** Below thirty survivors `list_operations`
+answers with `status: "choose"`: every candidate, ordered as a hint that says it is a hint, each
+carrying the sentence that separates it from its neighbours. The threshold is 30 because the
+surviving set over those 118 requests has a median of 26 and never exceeded it; the payload is
+about 2,100 tokens, less than one wrong operation costs to run and undo.
+
+Three measurements say this is the right shape, and the third is the one that settles it:
+
+| | |
+|---|---|
+| our ranking puts the answer in the top three | **48%** |
+| a model handed the same candidates and asked to *choose* gets its first pick right | **69%** |
+| two independent expert labellers agree **with each other** | **68%** |
+
+The last row is a ceiling, not a baseline. When two competent labellers disagree a third of the
+time about which operation answers a request, "the right one" is not a single value to rank
+toward, and a system scoring above that is fitting one annotator rather than getting better. Two
+GIS analysts with thirty years each do the same job with different tools and neither is wrong.
+
+That is why the answer is a set and why its `reason` field says, in words, that the order is a
+hint and that **two defensible candidates are a question for the person who made the request**.
+The caller — an agent with the conversation in context — knows things no ranking can. Where it
+does not, the human does.
+
+The remaining honesty: the ceiling was measured between two language models. Whether human GIS
+analysts agree with each other more, less, or about the same is unmeasured, and until it is, these
+numbers are reported as *agreement with model-written labels* and never as accuracy.
+
+**The family is the one facet that orders instead of filtering, and that is a correction.** It
+used to be a hard filter like the others. It is not like the others: input kind and projected-CRS
+are facts about the data in hand and output kind is what the caller wants, but *family* is a guess
+about our taxonomy, which the caller cannot see. Measured, it removed six candidates out of
+twenty-one — and when the guess was wrong it removed the right operation, with no error, leaving a
+confident answer assembled from neighbours. Every request in the independent set has 4.4 plausible
+families. That is the silent-failure class [Argleton](https://argleton.org) measures in other
+people's systems, sitting in our own discovery layer, so it now sorts: declaring the family lifts
+it to the front and costs positions when wrong, never the answer. The hard cut stays available on
+`catalog.applicable`, where asking for it means it.
 
 **We do not need a model to extract those facets, because the caller is one.** An MCP client is an
 LLM with the context we lack — it knows what file it is holding and what it is trying to produce.
 So `list_operations` asks for them in its schema, and its description leads with why. This is the
 same shape as LlamaIndex's Auto-Retrieval or LangChain's Self-Querying, minus the model those have
-to host: here it is already on the other end of the protocol.
-
-A
-geographic raster is never offered `slope`, because `slope` refuses one — and that filter
-is a property of the data checked in code, with no model in the loop.
+to host: here it is already on the other end of the protocol. A geographic raster is never offered
+`slope`, because `slope` refuses one — a property of the data, checked in code, no model in the
+loop.
 
 **Then it ranks, with two engines that both always run.** `list_operations` takes `engine`:
 `auto` (the default), `lexical`, or `vector`. Every result carries the engine that produced it,
@@ -256,11 +290,25 @@ reverses and the embedding engine degrades **faster**:
 Embeddings blur near neighbours; an exact term either matches or does not. The two
 measurements answer different questions and both are kept: which engine suits the catalog we
 have (the embedding one, and it is the default), and which survives the catalog we plan
-(neither). At 800 entries the better engine is wrong two times in three, so **scale will not
-be bought by choosing a better ranker**. It has to come from narrowing before ranking — the
-applicability filter already does that deterministically — from facets, and from the
-clarification path below. `test_retrieval_at_scale.py` keeps the projection under measurement
-rather than under opinion.
+(neither). At 800 entries the better engine is wrong two times in three, so **scale will not be
+bought by choosing a better ranker**. `test_retrieval_at_scale.py` keeps the projection under
+measurement rather than under opinion.
+
+**And the narrowing does not scale on its own either — this page claimed otherwise and was
+wrong.** It said the facets leave sixteen candidates at 800 operations just as they do at 200. The
+sixteen is real and it is produced almost entirely by *family*: those 803 operations are all
+raster-in, raster-out, so input kind and output kind cut nothing at all, and only the taxonomy
+does — a choice among 43 families that the caller has to guess. Which is exactly the facet that
+must not filter.
+
+So the open problem has a sharper shape than "ranking is hard". What is needed at a thousand
+operations is **more facts a caller can state without knowing our taxonomy** — how many inputs an
+operation takes, whether it changes geometry or only attributes, whether the output has the same
+number of features as the input. Those are structural properties of the operation, they are
+checkable against the code rather than declared by hand, and they separate the pairs a bag of
+words cannot: `spatial_join` from `overlay_layers`, `flow_accumulation` from `extract_streams`.
+That work is not done, and until it is, the honest claim is the measured one: the guarantee above
+holds at fifty-one operations, not at eight hundred.
 
 **How an entry has to be written is a published specification**, not a convention:
 [`docs/catalog-entry-spec.md`](docs/catalog-entry-spec.md), with a normative
@@ -270,14 +318,24 @@ documented as such, because a spec that only reports what worked is an advertise
 
 **And discoverability is a contract per operation, not an average.** A catalog-wide 90% found@3
 over fifty entries means five are invisible and the average will not say which. So every available
-entry is probed with its own first worked example, with its own facets declared, and must come back
-in the top three — `test_discovery_contract.py`, parameterised over the catalog, so a new operation
-is under contract the moment it is added.
+entry is probed with its own first worked example, with its own facets declared
+(`test_discovery_contract.py`, parameterised over the catalog, so a new operation is under
+contract the moment it is added). Two things are required of it: the facets the entry declares
+must never drop that entry, and the entry must reach the caller.
 
-That test earned its place the first time it ran. `centroid_layer` advertised *“label points for a
-polygon layer”* and ranked below `point_on_surface`. The ranking was right: a centroid can fall
-outside its own polygon, which is [Argleton](https://argleton.org) trap 014 — our catalog was
-recommending the defect our own suite measures. The example changed, not the score.
+**Its rank is no longer one of them, and removing that is the point.** The contract used to demand
+the top three. That looks like a discovery contract and is a ranking contract, with one bad
+property: the only way to repair a failure is to reword the entry until the ranker likes it. Fifty
+entries tuned that way score nineteen points better on examples we wrote than on requests written
+by anyone else — that gap is measured, and it is where a published 70% on this page turned into
+51% overnight. A test whose repair procedure is *fit the text to the scorer* manufactures the
+number it reports. What remains under contract is the part that is deterministic and ours; rank
+inside the delivered set is still measured, and no longer fails a build.
+
+The old form still earned its place the first time it ran. `centroid_layer` advertised *“label
+points for a polygon layer”* and ranked below `point_on_surface`. The ranking was right: a centroid
+can fall outside its own polygon, which is [Argleton](https://argleton.org) trap 014 — our catalog
+was recommending the defect our own suite measures. The example changed, not the score.
 
 **And when the two engines agree on nothing, the search says so instead of answering.** This is
 the failure that measurement turned up in our own product: asked *"send an email to my
@@ -289,6 +347,11 @@ sixteen of twenty genuine queries. What does separate them is the two rankers la
 not. So a query the catalog cannot place comes back as `status: "unsure"`, carrying both
 engines' guesses and the question that narrows the catalog deterministically: what kind of data
 do you have. It fires on 9 of 11 unanswerable queries and suppresses 1 correct answer in 20.
+
+Below the choose threshold it stops refusing and becomes a warning instead — `order_is_weak` on
+the delivered set. Refusing made sense while the search was deciding; handing over every candidate
+is not deciding, so the disagreement reverts to being evidence about the *order*, which is the only
+thing it was ever evidence about.
 
 The applicability filter above runs first for **both** engines — otherwise the guarantee would
 only be true of one of them, and there is a test that says so.

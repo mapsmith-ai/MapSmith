@@ -720,13 +720,20 @@ def test_the_retrieval_numbers_agree_between_the_readme_and_the_site():
 
     # The product's own numbers, and the ones the clarification path rests on.
     # If one surface is edited and the other is not, this is what catches it.
+    # This list has been rewritten twice in two days, and both times because a
+    # published number was wrong rather than because a surface drifted. 70% came
+    # from twenty queries we wrote ourselves; 51% replaced it from the independent
+    # set; 48% is the same measurement over the larger set, and it stopped being
+    # the headline when the answer became a delivered SET rather than a ranking.
+    # Whichever numbers are current have to be on both surfaces, which is the
+    # whole job of this test.
     shared = [
-        ("16", "candidates after the facets"),
-        # 70% was the number for one day and it came from twenty queries we wrote
-        # ourselves. The independent set says 51%. Whichever number is current has
-        # to be on both surfaces, which is the whole job of this test.
-        ("51%", "found@3 as shipped, on queries we did not write"),
-        ("24%", "found@3 with no facets declared"),
+        ("118", "independent requests the retrieval numbers come from"),
+        ("48%", "our ranking, found@3, on requests we did not write"),
+        ("69%", "a model choosing from the delivered candidates"),
+        ("68%", "where two independent labellers agree with each other"),
+        ("4.4", "plausible families per request, why family cannot filter"),
+        ("43", "families a caller would have to guess among at 800 operations"),
         ("0.90", "top-3 agreement when an answer exists"),
         ("0.18", "top-3 agreement when it does not"),
         ("9 of 11", "unanswerable queries the clarification catches"),

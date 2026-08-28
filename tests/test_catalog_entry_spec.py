@@ -71,7 +71,11 @@ def test_the_spec_states_the_measurement_that_justifies_the_facets():
     exactly what a spec is supposed to replace.
     """
     prose = SPEC_PATH.read_text(encoding="utf-8")
-    for number in ("800", "20%", "70%", "16"):
+    # These moved once, on 2026-08-28, when the numbers turned out to have been
+    # measured on queries we wrote ourselves. The list is the current measurement,
+    # and it includes the ceiling: a spec that states an accuracy without stating
+    # what the accuracy is bounded by invites tuning past the point of meaning.
+    for number in ("118", "48%", "69%", "68%", "4.4"):
         assert number in prose, (
             f"the specification no longer states {number}, so the facets it requires "
             "have lost the measurement that justifies them"
@@ -80,6 +84,15 @@ def test_the_spec_states_the_measurement_that_justifies_the_facets():
         "the null result on `phrasings` has been dropped from the spec. It is the "
         "part that makes the other numbers believable: a document that only reports "
         "what worked is an advertisement."
+    )
+    # And the two limits. Dropping either would turn a measurement into a claim.
+    assert "not accuracy" in prose or "and not accuracy" in prose, (
+        "the spec no longer says these are agreement figures rather than accuracy, "
+        "which is the difference between a measured number and an advertised one"
+    )
+    assert "MUST NOT use `category` to exclude" in prose, (
+        "the normative rule that the family orders instead of filtering is gone. It "
+        "is the one rule here that prevents a silent wrong answer."
     )
 
 

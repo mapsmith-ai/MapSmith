@@ -294,36 +294,48 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     phrased the way somebody with a problem phrases them.
   </p>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1.5rem;margin:2rem 0 1.5rem">
-    <div class="stat"><b>51%</b><span>FOUND IN THE TOP 3</span></div>
-    <div class="stat"><b>24%</b><span>WITHOUT THE FACETS</span></div>
-    <div class="stat"><b>155</b><span>QUERIES WE DID NOT WRITE</span></div>
-    <div class="stat"><b>0</b><span>CHANGE FROM 200 TO 800</span></div>
+    <div class="stat"><b>118</b><span>REQUESTS WE DID NOT WRITE</span></div>
+    <div class="stat"><b>48%</b><span>OUR RANKING, FOUND@3</span></div>
+    <div class="stat"><b>69%</b><span>A MODEL <em>CHOOSING</em> FROM THE SET</span></div>
+    <div class="stat"><b>68%</b><span>WHERE TWO EXPERTS AGREE WITH EACH OTHER</span></div>
   </div>
   <p class="pull">
-    Half. That is the honest state of tool discovery here, and it is nineteen points below the
-    number this page carried for a day.<br>
-    <em>Writing your own benchmark flatters you by about that much.</em>
+    Ranking is the wrong verb.<br>
+    <em>When two competent labellers disagree a third of the time, there is no single right answer
+    to rank toward — so the search hands over the set and says the order is a hint.</em>
   </p>
   <p>
-    Those are measured on 155 requests written by two other model families from job scenarios —
+    Those are measured on 118 requests written by two other model families from job scenarios —
     a hydrologist with a flood report, a surveyor arguing with a field measurement — and neither
     generator was shown this catalogue, because a model handed the entry writes a paraphrase of the
-    entry. The set is in the repository, so the number can be checked rather than believed.
+    entry. The set is in the repository, so the numbers can be checked rather than believed.
   </p>
   <p>
-    <strong>It narrows first, deterministically.</strong> Every entry declares four things a caller
-    already knows — what data it takes, what it hands back, which family it belongs to, whether it
-    demands a projected CRS — and declaring them takes found@3 from 24% to 51%. It is also what
-    makes catalogue SIZE stop mattering: at 800 operations the facets leave sixteen candidates, the
-    same sixteen they leave at 200. A geographic raster is never offered <code>slope</code>, because
-    <code>slope</code> refuses one — a property of the data, checked in code, with no model in that
-    loop.
+    <strong>It narrows first, deterministically, on facts the caller already has.</strong> What data
+    is in hand, and what should come back. Declaring those two takes the candidates from 51 to 21 —
+    and below thirty survivors the search stops choosing for you: it returns
+    <code>status: "choose"</code> with every candidate, ordered as a hint that says so, each carrying
+    the sentence that separates it from its neighbours. On all 118 requests the right operation is in
+    what comes back. Not as an accuracy figure — as a property, because nothing was dropped.
   </p>
   <p>
-    What is left is hard and we have not solved it: sixteen operations of the same family, all
-    taking a layer and returning a layer, and ranking inside that residue is close to random. Half
-    the time it lands. A quarter of the time the search says it is unsure. A quarter of the time it
-    is confidently wrong, and that last quarter is the number we are working on.
+    <strong>The family orders instead of filtering, and that is a correction.</strong> It used to be
+    a hard filter like the others, and it is not like the others: input kind is a fact about your
+    data, family is a guess about our taxonomy that you cannot see. It removed six candidates out of
+    twenty-one — and when the guess was wrong it removed <em>the right operation</em>, silently,
+    leaving a confident answer built from neighbours. Every request here has 4.4 plausible families.
+    That is the failure <a href="https://argleton.org">Argleton</a> measures in other people's
+    systems, found in our own discovery layer.
+  </p>
+  <p>
+    <strong>What we have not solved is scale, and this page claimed we had.</strong> It said the
+    facets leave sixteen candidates at 800 operations as they do at 200. The sixteen is real and
+    <em>the family produces almost all of it</em> — those 800 are all raster in, raster out, so the
+    honest facets cut nothing and only the taxonomy does, a guess among 43. What is needed is more
+    facts a caller can state without knowing our vocabulary: how many inputs an operation takes,
+    whether it changes geometry or only attributes, whether the output has as many features as the
+    input. Structural, checkable against the code. Not built yet. The guarantee above holds at
+    fifty-one operations and not at eight hundred, and we would rather say so than round it.
   </p>
   <p>
     <strong>And no model is needed to extract those facets, because the caller is one.</strong> An
@@ -347,11 +359,19 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     queries. What separates them is the two rankers landing on nothing in common, 0.90 of 3 in
     domain against 0.18 out. Below that the answer is <code>status: "unsure"</code>, carrying both
     guesses and the question that narrows the catalogue. It fires on 9 of 11 unanswerable queries and
-    costs one suppressed correct answer in 20.
+    costs one suppressed correct answer in 20. Below the choose threshold it stops refusing and warns
+    instead: refusing made sense while the search was deciding, and handing over every candidate is
+    not deciding.
   </p>
   <p class="pull">
     A discovery layer that always answers is one that sometimes lies.<br>
     <em>This one can ask instead — the same rule the operations follow when a number would be wrong.</em>
+  </p>
+  <p>
+    One caveat we will not bury: that 68% ceiling was measured between two language models. Whether
+    human GIS analysts agree with each other more, less or about the same is unknown, and two
+    analysts with thirty years each routinely do the same job with different tools. Until people
+    have tried it, these are reported as agreement with model-written labels — never as accuracy.
   </p>
 
   <h3 style="margin-top:2.5rem">How we know, including the parts that caught us</h3>
@@ -362,9 +382,11 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   <table class="tools" style="margin-top:1.25rem">
     <tr>
       <td>ablation</td>
-      <td>Each facet is worth measuring alone. Of 800 candidates: none → 20% found@3; what data I
-      have → 259 candidates, 40%; + what I want back → 132, 55%; + which family → 16,
-      <strong>70%</strong>. The last row is what ships; the others are why.</td>
+      <td>Each facet is worth measuring alone, over the 118 independent requests: nothing declared
+      → 51 candidates, 25% found@3; what data I have → 33, 29%; + what I want back → 21, 48% ranked
+      and <strong>100% delivered</strong>. The last row is what ships, and the jump in the last
+      column is not the ranker getting better — it is the set becoming small enough to hand over
+      whole.</td>
     </tr>
     <tr>
       <td>the default</td>
@@ -385,8 +407,11 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
       <td>per operation</td>
       <td>A catalogue-wide average hides the entry nobody can reach: 90% found@3 over fifty means
       five are invisible and the average will not say which. So every entry is probed with the
-      worked example it advertises and must return in the top three — parameterised over the
-      catalogue, so a new operation is under contract the moment somebody adds it.</td>
+      worked example it advertises. It used to have to rank in the top three; that gate is gone, and
+      removing it is the point — the only way to repair such a failure is to reword the entry until
+      the ranker likes it, which is how a 70% on this page became 51% overnight. What stays under
+      contract is what is ours and deterministic: the facets an entry declares must never drop it,
+      and it must reach the caller.</td>
     </tr>
     <tr>
       <td>and it bit us</td>

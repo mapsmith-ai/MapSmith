@@ -741,17 +741,20 @@ def list_operations(
 ) -> list[dict[str, Any]]:
     """Find the operation you need. **Say what you have and what you want** — it matters more than the words you search with.
 
-    Ranking alone does not scale, and this is measured rather than assumed: over
-    800 GIS operations, searching by words alone finds the right one in the top 3
-    about a third of the time. Declaring what you already know takes it to seven
-    times in ten, with no model involved — the catalog simply drops what cannot
-    apply before ranking anything.
+    Ranking alone does not scale, and this is measured rather than assumed. Over
+    118 requests written by other models against this catalog, searching by words
+    alone finds the right operation in the top 3 a quarter of the time. Declaring
+    what you already know does not make the ranking better — it makes the ranking
+    unnecessary, because few enough operations survive that you get all of them:
 
-        facets you declare                    candidates left    found@3
-        (none)                                            800        20%
-        input_kind                                        259        40%
-        input_kind + produces                             132        55%
-        input_kind + produces + category                   16        70%
+        facets you declare              candidates left   ranked@3   in the answer
+        (none)                                       51        25%             25%
+        input_kind                                   33        29%             43%
+        input_kind + produces                        21        48%            100%
+
+    That last column is not an accuracy figure. It is what happens when nothing is
+    dropped: the right operation was in the answer for all 118 requests, by
+    construction rather than by ranking.
 
     So fill these in whenever you know them, and you usually do:
 
@@ -762,7 +765,9 @@ def list_operations(
       rather than a computation over it), 'plan_result'.
     - **category** — the family, when you know it: vector, raster, terrain,
       hydrology, inspection, sql, network, planning, provenance, visualization,
-      bridge.
+      bridge. Unlike the others this one only ORDERS the results — a wrong guess
+      about our families costs you positions, never the answer, so guessing is
+      safe.
     - **projected** — pass False if your data is in a geographic CRS (degrees),
       and every operation that would refuse it disappears from the results.
 
@@ -771,10 +776,27 @@ def list_operations(
     "the coastline has too many vertices and the browser dies" works as well as
     the name of the tool, and better when you do not know the name.
 
-    **If the answer comes back with `status: "unsure"`, it means the two ranking
-    engines agreed on nothing** — usually the request was not understood rather
-    than impossible. It carries both engines' guesses and a question; answering
-    the question with the facets above is the fastest way through.
+    **If the answer comes back as a single entry with `status: "choose"`, that is
+    the normal case and it is asking you to pick.** It carries every operation
+    that survived, in relevance order, each with the sentence saying what it is
+    NOT for. The order is a hint and nothing else: our ranking puts the right
+    operation in the top three 48% of the time, while a model reading the same
+    candidates and choosing gets its first pick right 69% — and 69% is where two
+    independent expert labellers agree with each other, so there is often no
+    single right answer to rank toward. You have context no ranking has: which
+    file is open, what ran a minute ago, what the person actually asked for. Use
+    it. **And if two candidates would both be defensible, ask them** — that is a
+    better move than picking one silently, and it is what a GIS analyst would do.
+
+    A `order_is_weak` field means the two rankers shared nothing in their top
+    three, which usually means the request does not match this catalog well: read
+    the candidates instead of trusting the order, and say so if none of them fits.
+
+    **If the answer comes back with `status: "unsure"`, the two ranking engines
+    agreed on nothing and the set was too large to hand over** — usually the
+    request was not understood rather than impossible. It carries both engines'
+    guesses and a question; answering the question with the facets above is the
+    fastest way through.
 
     `detail=True` adds parameters and worked example calls: use it on the exact
     operation name before calling an unfamiliar tool. An empty `query` lists

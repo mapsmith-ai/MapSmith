@@ -12,22 +12,42 @@ turned out to be worth nothing.
 
 ## The measurement everything rests on
 
-Eight hundred real GIS operations — ours plus a library that ships hundreds with
-their own descriptions — queried the way somebody with a problem asks, not the way
-a catalogue is written. *"The coastline is 400 000 nodes and the browser dies"*,
-not *"simplify the geometry"*.
+118 requests written by two other model families from job scenarios — a hydrologist
+with a flood report, a surveyor arguing with a field measurement — against a
+catalogue neither of them was shown, because a model handed the entry writes a
+paraphrase of the entry. Phrased the way somebody with a problem asks, not the way a
+catalogue is written: *"the coastline is 400 000 nodes and the browser dies"*, not
+*"simplify the geometry"*.
 
-| what the caller declares | candidates left | found@3 |
-|---|---|---|
-| nothing — words alone | 800 | 20% |
-| the input kind | 259 | 40% |
-| + what it should produce | 132 | 55% |
-| + which family | **16** | **70%** |
+| what the caller declares | candidates left | ranked, found@3 | **in what comes back** |
+|---|---|---|---|
+| nothing — words alone | 51 | 25% | 25% |
+| the input kind | 33 | 29% | 43% |
+| + what it should produce | **21** | 48% | **100%** |
 
-**Ranking is not the mechanism; narrowing is.** No ranker recovers 20% to 70%, and
-the same numbers hold at 200 operations and at 800 — declaring the facets makes the
-size of the catalogue stop mattering. So the specification is mostly about what an
-entry *declares*, and only then about how it is written.
+**Ranking is not the mechanism; narrowing is** — and the last column is why. Once
+the two facts a caller genuinely knows have cut the catalogue to something readable,
+every survivor is handed over, so the right operation is in the answer for all 118
+requests *by construction*. That is not an accuracy figure. Ranking decides the
+order; it does not decide membership.
+
+Three more numbers say why the answer is a set rather than a pick:
+
+| | |
+|---|---|
+| the ranker puts the answer in the top three | 48% |
+| a model handed the same candidates and asked to **choose** | **69%** |
+| two independent labellers agreeing **with each other** | **68%** |
+
+The last is a ceiling, not a baseline. Where two competent labellers disagree a third
+of the time about which operation answers a request, "the right one" is not a single
+value to rank toward — so a discovery layer built to this specification should return
+the surviving set with the text that separates its members, and say that the order is
+a hint. Two GIS analysts with thirty years each do the same job with different tools
+and neither is wrong.
+
+So the specification is mostly about what an entry *declares*, and only then about
+how it is written.
 
 ## 1. Facets — the fields a filter reads
 
@@ -62,11 +82,30 @@ something they already have. Check it against what the code actually writes — 
 declaration that disagrees makes the operation unreachable for the caller who
 filters correctly.
 
-### `category` — the family
+### `category` — the family, and the one facet that MUST NOT filter
 
-Measured the single most informative facet: on its own it cuts 800 candidates to
-23 and reaches the same 70%. Keep the vocabulary small and stable; a family with
-one member in it is a filter nobody will guess.
+Measured the single most informative facet — and that is exactly why it is
+dangerous. It is the only one the caller cannot read off their own situation: input
+kind and projected-CRS are facts about the data in hand, `produces` is what they
+want back, but the family is a guess about *your* taxonomy, which they cannot see.
+
+Measured on the same set: as a hard filter it removes six candidates out of
+twenty-one, and when the guess is wrong it removes **the right operation**, with no
+error, leaving a confident answer assembled from neighbours. Every request in the
+set has 4.4 plausible families. At 800 operations the guess is among 43.
+
+> **Normative.** An implementation MUST NOT use `category` to exclude candidates from
+> a search a caller did not explicitly scope. It SHOULD use it to order them, so that
+> a declared family comes first and a wrong guess costs positions rather than the
+> answer. A hard cut MAY be offered as a separate, explicit operation.
+
+This is a correction to an earlier version of this document, which called the family
+the strongest facet and left it at that. The strength was real and the failure mode
+was worse: a discovery layer that silently deletes the answer is the defect this
+project exists to measure in other systems.
+
+Keep the vocabulary small and stable; a family with one member in it is an ordering
+nobody will guess.
 
 ## 2. Text — the fields a ranker reads
 
@@ -128,10 +167,13 @@ operation DOES differently, not around a list of names.
 
 **So why is the field here at all.** Two reasons that are not retrieval:
 
-1. **It is read at selection time, not at search time.** The search returns three
-   candidates; the agent then reads them and picks. Three entries that all say "one
-   point per polygon" give it nothing to choose on. `distinguishes` is the only field
-   written to be read against its neighbours, and that is the moment it pays.
+1. **It is read at selection time, not at search time — and selection is where the
+   accuracy is.** A model handed the surviving candidates and asked to choose gets
+   its first pick right 69% of the time, against 48% for the ranker putting it in the
+   top three. Entries that all say "one point per polygon" give it nothing to choose
+   on. `distinguishes` is the only field written to be read *against its neighbours*,
+   and that is the moment it pays. Measured against retrieval it is worth nothing;
+   measured at the point of choice it is the field the choice is made on.
 2. **Writing it catches catalogue defects.** Forcing an author to name the neighbour
    is what surfaced that `centroid_layer` was advertising `point_on_surface`'s job —
    and recommending a defect our own correctness suite measures as a trap.
@@ -154,12 +196,23 @@ description only of `available`.
 ## 3. `examples` — the discoverability contract
 
 At least two, and **the first is a test probe, not decoration**. The contract runs a
-search with that goal and the entry's own facets, and requires the entry in the top
-three. Write the *goal a caller has*, not the invocation.
+search with that goal and the entry's own facets. Write the *goal a caller has*, not
+the invocation.
 
 A catalogue-wide average will not do here: 90% found@3 over fifty entries means five
 are unreachable and the average does not say which. The contract is per entry, so a
 new operation is under it the moment it is added.
+
+**What the contract requires is not a rank.** Two things: the facets an entry declares
+must never drop that entry, and the entry must reach the caller. Rank inside the
+delivered set is measured and reported; it does not fail a build.
+
+> **Normative.** A conformance test for this specification MUST NOT gate on ranking
+> position. The reason is mechanical, not philosophical: the only way to repair such a
+> failure is to reword the entry until the ranker likes it, and a suite whose repair
+> procedure is *fit the text to the scorer* manufactures the number it reports. Ours
+> did — entries tuned that way scored nineteen points better on examples we wrote than
+> on requests written by anyone else.
 
 **It found a real defect on its first run.** `centroid_layer` advertised *"label
 points for a polygon layer"* and ranked below `point_on_surface`. The ranking was
@@ -177,10 +230,25 @@ parameter of the existing operation instead.
 
 ## What this specification does not claim
 
-It is measured on one catalogue, in one domain, with queries written by the people
-who wrote the catalogue and then deliberately re-written to avoid its vocabulary.
-The mechanism generalises — facets narrow, contrastive text separates neighbours,
-one probe per entry beats an average — but the exact percentages are ours.
+It is measured on one catalogue, in one domain, against requests written by language
+models rather than by the people who will make them. The mechanism generalises —
+facets narrow, contrastive text separates neighbours, one probe per entry beats an
+average — but the exact percentages are ours.
+
+**Two limits stated rather than buried.**
+
+The 68% ceiling was measured between two language models. Whether working GIS analysts
+agree with each other more, less or about the same is unmeasured. Until people have
+tried it, every number here is agreement with model-written labels and not accuracy,
+and this document uses the word "agreement" deliberately.
+
+And the narrowing does not yet scale on its own. At 800 operations the honest facets
+leave hundreds of candidates — the 800 we tested against are all raster-in,
+raster-out, so only the family cuts, and the family must not. What that catalogue
+needs is more facts a caller can state without knowing the taxonomy: how many inputs
+an operation takes, whether it changes geometry or only attributes, whether the output
+has as many features as the input. Structural, checkable against the code. Not in this
+version of the specification, because it is not built and not measured.
 
 The measurements live in `tests/test_retrieval_degradation.py`,
 `tests/test_retrieval_at_scale.py` and `tests/test_discovery_contract.py`, and they
