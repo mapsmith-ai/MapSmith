@@ -183,6 +183,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <a href="https://pypi.org/project/mapsmith/">PyPI</a>
     <a href="https://github.com/mapsmith-ai/MapSmith/blob/main/docs/benchmarks.md">Benchmarks</a>
     <a href="#evidence">Evidence</a>
+    <a href="#does">Discovery</a>
     <a href="#install">Install</a>
   </nav>
 </div></header>
@@ -260,6 +261,12 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
         Works with Claude Desktop, Claude Code, Cursor and VS Code over stdio. Docker is the other
         supported path; both are documented in the README.
       </p>
+      <p style="font-size:0.94rem;color:var(--ink-soft)">
+        <strong>This installs the latest release; this page describes <code>main</code></strong>,
+        which is ahead of it by ten tools, the full catalogue and the discovery behaviour above.
+        The difference is itemised in the changelog. We would rather say so here than have you
+        find out by calling a tool that is not in the artifact yet.
+      </p>
     </div>
     <div>
       <pre class="block">{
@@ -297,18 +304,23 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <div class="stat"><b>118</b><span>REQUESTS WE DID NOT WRITE</span></div>
     <div class="stat"><b>48%</b><span>OUR RANKING, FOUND@3</span></div>
     <div class="stat"><b>69%</b><span>A MODEL <em>CHOOSING</em> FROM THE SET</span></div>
-    <div class="stat"><b>68%</b><span>WHERE TWO EXPERTS AGREE WITH EACH OTHER</span></div>
+    <div class="stat"><b>70%</b><span>WHERE THE TWO MODEL LABELLERS AGREE WITH EACH OTHER</span></div>
   </div>
   <p class="pull">
     Ranking is the wrong verb.<br>
-    <em>When two competent labellers disagree a third of the time, there is no single right answer
-    to rank toward — so the search hands over the set and says the order is a hint.</em>
+    <em>When the two labellers who wrote the ground truth disagree with each other three times in
+    ten, there is no single right answer to rank toward — so the search hands over the set and says
+    the order is a hint.</em>
   </p>
   <p>
     Those are measured on 118 requests written by two other model families from job scenarios —
     a hydrologist with a flood report, a surveyor arguing with a field measurement — and neither
     generator was shown this catalogue, because a model handed the entry writes a paraphrase of the
-    entry. The set is in the repository, so the numbers can be checked rather than believed.
+    entry. The requests, both labels and the harness that turns them into these percentages are all
+    in the repository — <code>benchmarks/discovery_report.py</code> recomputes every figure here
+    with no network and no model, and a test fails if this page and the harness disagree. All three
+    of the numbers above are over the same 118 requests; agreement measured over all 155 in the file
+    is 68%, and the difference is the pairs where both labellers agreed a request was unanswerable.
   </p>
   <p>
     <strong>It narrows first, deterministically, on facts the caller already has.</strong> What data
@@ -372,6 +384,18 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     human GIS analysts agree with each other more, less or about the same is unknown, and two
     analysts with thirty years each routinely do the same job with different tools. Until people
     have tried it, these are reported as agreement with model-written labels — never as accuracy.
+  </p>
+
+  <p>
+    <strong>How an entry has to be written is a published specification</strong>, not a house
+    convention: <a href="https://github.com/mapsmith-ai/MapSmith/blob/main/docs/catalog-entry-spec.md">catalog-entry-spec.md</a>,
+    with a <a href="https://github.com/mapsmith-ai/MapSmith/blob/main/schema/operation.schema.json">normative
+    JSON Schema</a> every entry validates against in CI. Each field is there because a measurement
+    said so — including the two that measured to nothing and are documented as such, and the
+    <code>MUST NOT</code> that stops an implementation filtering on the family. It is the second
+    specification this project publishes, after the
+    <a href="https://github.com/mapsmith-ai/manifest-spec">manifest format</a>, and both are
+    written to be implemented by somebody else.
   </p>
 
   <h3 style="margin-top:2.5rem">How we know, including the parts that caught us</h3>
@@ -473,7 +497,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
         organisation, where every probe's answer is derived on paper before any system runs. Its
         current run grades MapSmith on {{TRAP_COUNT}} traps — <strong>0.00 silent errors, nothing
         skipped</strong> — and states which of those passes were earned and which were inherited
-        from the library underneath. One of them was taken away first: on 26 August the newest
+        from the library underneath. One of them was taken away first: on 26 August a then-new
         family moved MapSmith off 0.00, and the pass is the fix. It has now sent three defects back
         here, which is what putting it outside was for.
       </p>

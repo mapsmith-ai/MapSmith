@@ -37,7 +37,10 @@ Three more numbers say why the answer is a set rather than a pick:
 |---|---|
 | the ranker puts the answer in the top three | 48% |
 | a model handed the same candidates and asked to **choose** | **69%** |
-| two independent labellers agreeing **with each other** | **68%** |
+| the two labellers who wrote the ground truth agreeing **with each other** | **70%** |
+
+All three over the same 118 requests, which is not a detail: agreement over all 155 in the file
+is 68%, and the gap is the pairs where both labellers agreed a request was unanswerable.
 
 The last is a ceiling, not a baseline. Where two competent labellers disagree a third
 of the time about which operation answers a request, "the right one" is not a single
@@ -76,7 +79,7 @@ the word "geographic" appeared in a warning rather than in a `raise`.
 
 `dataset:vector`, `dataset:raster`, `answer`, `description`, `plan_result`.
 
-Worth 15 points of found@3 on top of the input kind, and it is a facet the caller
+Worth 19 points of found@3 on top of the input kind (29% to 48%, table above), and it is a facet the caller
 always knows: they know whether they want a file, a number, or an account of
 something they already have. Check it against what the code actually writes — a
 declaration that disagrees makes the operation unreachable for the caller who
@@ -237,7 +240,8 @@ average — but the exact percentages are ours.
 
 **Two limits stated rather than buried.**
 
-The 68% ceiling was measured between two language models. Whether working GIS analysts
+The 70% ceiling was measured between two language models — 68% if the requests both of them
+called unanswerable are counted in, which is the same figure over a larger population. Whether working GIS analysts
 agree with each other more, less or about the same is unmeasured. Until people have
 tried it, every number here is agreement with model-written labels and not accuracy,
 and this document uses the word "agreement" deliberately.

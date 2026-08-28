@@ -30,9 +30,11 @@ Evidence before promises: an [A/B on GABench](docs/benchmarks.md) whose headline
 result — with the analysis that took our own positive number apart — a correctness suite in
 its own organisation, [**Argleton**](https://argleton.org), whose published run grades
 MapSmith on twenty-two traps with answers computed on paper and has already sent three defects
-back here, [notebooks](examples/) on a real USGS DEM of Mount St. Helens, and an
+back here, [notebooks](examples/) on a real USGS DEM of Mount St. Helens, an
 [in-chat map panel](#see-results-inside-the-chat) that shows the verification status of
-every layer it draws.
+every layer it draws, and a
+[measurement of our own tool discovery](#finding-the-right-operation) that retracted two numbers
+this page had already published — including the one in the bullet list below.
 
 ## Quickstart
 
@@ -74,6 +76,13 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
+
+**That installs the latest release, 0.2.2. This page describes `main`**, which is ahead of it
+by ten tools, the 51-operation catalogue and the discovery behaviour below; the difference is
+itemised in [`CHANGELOG.md`](CHANGELOG.md) under `[Unreleased]`. For `main` today, install from
+source (`pip install git+https://github.com/mapsmith-ai/MapSmith`) or wait for the next release
+— saying which artifact a page describes seems better than letting a reader find out by
+calling a tool that is not there.
 
 Then ask your agent things like:
 
@@ -127,8 +136,9 @@ had to repair. `get_provenance` returns it for any output.
 - **Semantic tools, not a tool dump — and a catalog built for thousands.** 28 goal-level
   tools plus a searchable operation catalog, because tool-selection accuracy degrades once
   a few dozen tools are exposed at once, and fastest when two of them apply to the same
-  input. Capability count has no such ceiling, so capability lives in the catalog. Two
-  search engines rank it and both are measured — see
+  input. Capability count has no such ceiling, so capability lives in the catalog. Search
+  **narrows** it on what you declare and then hands over what survives rather than ranking it
+  for you, because measurement said ranking is the wrong verb — see
   [Finding the right operation](#finding-the-right-operation).
 - **Model-agnostic infrastructure.** Claude, GPT, Qwen, Kimi, GLM — anything that speaks
   MCP, cloud or local. The leverage is better contracts (typed plans, actionable error
@@ -164,7 +174,7 @@ had to repair. `get_provenance` returns it for any output.
 | `validate_plan` | Statically validate a multi-step plan before running anything: operations, arguments, references, input files, simulated CRS flow |
 | `execute_plan` | Validate then run a plan step by step, with per-step provenance and a plan-level manifest |
 | `get_provenance` | Return the full lineage manifest of any MapSmith output |
-| `list_operations` | Catalog search: the applicability filter, then ranking by `engine` — BM25, embeddings, or auto; `detail=true` returns parameters and worked examples |
+| `list_operations` | Catalog search: narrows on what you declare, then returns the surviving set to choose from (`status: "choose"`) or a ranking by `engine` — BM25, embeddings, or auto; `detail=true` returns parameters and worked examples |
 | `run_operation` | Run any catalog operation by name, including those with no tool of their own; arguments validated against the catalog before anything runs |
 | `server_info` | Version, license, available engines |
 
@@ -196,9 +206,13 @@ Once the two facts a caller genuinely knows have narrowed the catalog to somethi
 **every survivor is handed over**, so the right operation is in the answer for all 118 requests
 by construction rather than by ranking. Ranking decides the order. It does not decide membership.
 
-The independent set is in the repository at
-[`tests/data/discovery_queries.json`](tests/data/discovery_queries.json), so the numbers can be
-checked rather than believed.
+The requests, both labels and the harness are all in the repository:
+[`tests/data/discovery_queries.json`](tests/data/discovery_queries.json) and
+[`benchmarks/discovery_report.py`](benchmarks/discovery_report.py), which recomputes every
+number above from those files with no network and no model — so they can be checked rather than
+believed, and `tests/test_discovery_report.py` fails if this page and the harness disagree. The
+one exception is the 69%: reproducing that needs the model that did the choosing, and the report
+says so where it stops.
 
 **So it hands over the set instead of picking for you.** Below thirty survivors `list_operations`
 answers with `status: "choose"`: every candidate, ordered as a hint that says it is a hint, each
@@ -212,12 +226,18 @@ Three measurements say this is the right shape, and the third is the one that se
 |---|---|
 | our ranking puts the answer in the top three | **48%** |
 | a model handed the same candidates and asked to *choose* gets its first pick right | **69%** |
-| two independent expert labellers agree **with each other** | **68%** |
+| the two labellers who wrote the ground truth agree **with each other** | **70%** |
 
-The last row is a ceiling, not a baseline. When two competent labellers disagree a third of the
-time about which operation answers a request, "the right one" is not a single value to rank
-toward, and a system scoring above that is fitting one annotator rather than getting better. Two
-GIS analysts with thirty years each do the same job with different tools and neither is wrong.
+All three are over the same 118 requests, which matters: agreement measured over all 155 requests
+in the file is 68%, and the difference is the 21 pairs where both labellers agreed a request was
+unanswerable — true, and the easy half. Quoting that 68% beside a 48% computed over the 118 would
+be comparing two populations, which this table did for half a day.
+
+**The last row is a ceiling, not a baseline**, and the second row sits at it rather than below it.
+When two competent labellers disagree three times in ten about which operation answers a request,
+"the right one" is not a single value to rank toward, and a system scoring above that is fitting
+one annotator rather than getting better. Two GIS analysts with thirty years each do the same job
+with different tools and neither is wrong.
 
 That is why the answer is a set and why its `reason` field says, in words, that the order is a
 hint and that **two defensible candidates are a question for the person who made the request**.
@@ -642,7 +662,7 @@ Next, in the order we intend to do it. The linked items carry a written spec —
   vendored.
 
   Its [published results](https://argleton.org/#results) measure MapSmith, and what they say about
-  us is why they are linked from here. On the current nineteen-family run MapSmith answers every
+  us is why they are linked from here. On the current twenty-family run MapSmith answers every
   trap correctly — **0.00 silent errors over 22 traps, nothing skipped** — and the run itself separates
   the passes it earned from the ones it did not: the mismatched-CRS join and the feet-as-metres
   unit are MapSmith's own discipline, the Web Mercator pass comes from a default (ground area is
@@ -656,10 +676,12 @@ Next, in the order we intend to do it. The linked items carry a written spec —
   was done; it does not certify that it was right, and this README used to imply otherwise by
   promising a run "with verification *disabled*". There is no such switch and we are not adding one.
 
-  Two defects have come back from it, which is the return we wanted from putting the suite outside:
-  a multi-layer container resolved silently to its default layer, answering 4 features where the
+  Three defects have come back from it, which is the return we wanted from putting the suite
+  outside: the `datum-ballpark` failure above — 74 m out with a manifest recording a successful
+  reprojection, the most serious of the three because nothing in the output looked wrong; a
+  multi-layer container resolved silently to its default layer, answering 4 features where the
   truth was 31 ([#29](https://github.com/mapsmith-ai/MapSmith/issues/29), filed before the trap was
-  published), and three probes that came back `unsupported` because MapSmith had no area operation
+  published); and three probes that came back `unsupported` because MapSmith had no area operation
   at all — `measure_area` exists because a trap said so, and it carries the first check here that
   asks whether the *number* is right rather than whether the operation ran. #25 is closed against
   Argleton rather than left open here.

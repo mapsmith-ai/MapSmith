@@ -19,7 +19,7 @@ All notable changes to MapSmith are documented here, in the format of
   using the lenient one of two implementations is worse than one that says
   nothing.
 
-- **Nine more tools, 18 → 27.** `describe_dataset` now reads rasters as well as
+- **Ten more tools, 18 → 28.** `describe_dataset` now reads rasters as well as
   vectors; `slope` and `aspect` land on the Whitebox engine (geographic-CRS DEMs
   refused rather than measured in degrees); `merge_layers`, `simplify_layer`,
   `centroid_layer` and `convert_format` cover the layer plumbing that was
@@ -62,12 +62,12 @@ All notable changes to MapSmith are documented here, in the format of
   with a tool of its own: `measure_length`, `join_table`, `aggregate_weighted`,
   `parse_coordinates`, `point_on_surface`, `hull_layer`, `validate_geometry`,
   `count_in_polygons`, `focal_statistics` and `extract_streams`. The catalogue is
-  at 41 operations (39 available, 2 planned) behind 28 tools.
+  at 51 operations (49 available, 2 planned) behind 28 tools.
 - **Overlay and dissolve declare their semantics in the manifest.** Dropped
   lower-dimension pieces from an overlay are named rather than silently absent,
   and a dissolve's aggregation is recorded with the group count verified in
   closed form.
-- **Manifests now carry `spec_version`** (`1.0.0-draft.2`). The manifest format
+- **Manifests now carry `spec_version`** (`1.0.0-draft.3`). The manifest format
   is becoming a specification of its own — schema, toolchain-free validator,
   conformance suite and a minimal emitter that does not import MapSmith — and
   MapSmith is one implementation of it rather than its definition. A CI test
@@ -75,6 +75,51 @@ All notable changes to MapSmith are documented here, in the format of
   our manifest stops conforming to our published format, the build says so.
 
 ### Changed
+
+- **`list_operations` returns a set to choose from, not a ranking — and
+  `category` no longer removes anything.** Both are behaviour changes for an
+  existing caller, and the second one changes results for anybody passing
+  `category=`.
+
+  Below thirty surviving operations the response is now a single entry with
+  `status: "choose"` carrying every candidate, each with the sentence that
+  separates it from its neighbours, plus a statement that the order is a hint.
+  Above thirty it is the ranked list it always was. Read either shape with
+  `catalog.entries(result)`; a caller that indexes `result[0]["name"]` will now
+  read the envelope instead of an operation.
+
+  Why: measured over the 118 requests in `tests/data/discovery_queries.json`,
+  written by two other model families, our ranking puts the right operation in
+  the top three 48% of the time and a model handed the same candidates and asked
+  to choose gets its first pick right 69% — while the two labellers who produced
+  the ground truth agree with each other 70%. The ceiling is the point. Where two
+  competent labellers disagree three times in ten there is no single right answer
+  to rank toward, so the honest response shows the alternatives. Both labellers
+  are language models; no GIS analyst has tried it, so these are agreement figures
+  and not accuracy, and the pages say so.
+
+  `category` was a hard filter and is now an ordering. It is the only facet a
+  caller cannot read off their own data — input kind and projected-CRS are facts
+  about what they hold, `produces` is what they want back, the family is a guess
+  about our taxonomy. As a filter it removed six candidates out of twenty-one and,
+  on a wrong guess, removed the right operation with no error at all, leaving a
+  confident answer assembled from neighbours; every request in that set has 4.4
+  plausible families. `catalog.applicable(category=...)` still cuts hard for a
+  caller who means it.
+
+  Engine disagreement below the threshold is no longer a refusal: it arrives as
+  `order_is_weak` on the delivered set. Refusing made sense while the search was
+  deciding.
+
+- **Two published discovery numbers were wrong and are corrected in place.** The
+  facet ablation and the found@3 figures had been measured on queries written by
+  whoever wrote the catalogue, which measures word overlap dressed as retrieval;
+  and "the facets leave sixteen candidates at 800 operations" was true but
+  produced almost entirely by `category`, the facet that must not filter. The
+  guarantee holds at fifty-one operations, not at eight hundred. Both corrections
+  are on the README, the site and `docs/catalog-entry-spec.md` rather than
+  removed, and `benchmarks/discovery_report.py` now recomputes every figure from
+  files in the repository so the pages can be checked instead of believed.
 
 - **The Python floor is now 3.12** (was 3.10). One reason, and it is about testing
   rather than syntax: rasterio 1.5 requires Python 3.12, so the 3.10 CI arm resolved to

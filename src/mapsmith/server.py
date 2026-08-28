@@ -781,9 +781,9 @@ def list_operations(
     that survived, in relevance order, each with the sentence saying what it is
     NOT for. The order is a hint and nothing else: our ranking puts the right
     operation in the top three 48% of the time, while a model reading the same
-    candidates and choosing gets its first pick right 69% — and 69% is where two
-    independent expert labellers agree with each other, so there is often no
-    single right answer to rank toward. You have context no ranking has: which
+    candidates and choosing gets its first pick right 69% — and 70% is where the two
+    model labellers who wrote the ground truth agree with EACH OTHER, so there is
+    often no single right answer to rank toward. You have context no ranking has: which
     file is open, what ran a minute ago, what the person actually asked for. Use
     it. **And if two candidates would both be defensible, ask them** — that is a
     better move than picking one silently, and it is what a GIS analyst would do.

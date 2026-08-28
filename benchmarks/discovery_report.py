@@ -1,0 +1,177 @@
+"""Recompute every discovery number this project publishes, from the data in the repo.
+
+Run it:
+
+    python benchmarks/discovery_report.py
+
+The pages say the numbers can be checked rather than believed. For a while that
+was not quite true: the request set was published but the harness that turned it
+into percentages was not, so a reader could inspect the queries and had to take
+the table on trust. This is that harness.
+
+What it recomputes, all of it from `tests/data/discovery_queries.json` and the
+catalog itself, with no network and no model:
+
+* how often the two independent labellers agree with each other — the ceiling;
+* how many candidates survive each facet a caller can declare;
+* how often our ranking puts the right operation in the top three;
+* how often the right operation is in the answer at all.
+
+One published number is NOT reproducible here and the report says so: the 69% for
+a model handed the candidates and asked to choose needs that model. Everything
+else is arithmetic over files in this repository.
+
+`tests/test_discovery_report.py` runs this and asserts the README agrees with it,
+so the two cannot drift.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+
+from mapsmith import catalog  # noqa: E402
+
+DATA = ROOT / "tests" / "data" / "discovery_queries.json"
+NOT_AN_OPERATION = ("none", "ambiguous")
+
+
+def load() -> list[dict[str, Any]]:
+    return json.loads(DATA.read_text(encoding="utf-8"))["queries"]
+
+
+def answerable(queries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Requests both labellers placed on an operation that still exists.
+
+    The population every percentage below is computed over, stated once so that
+    two numbers in one table can never be over two different denominators —
+    which is a mistake this table made for half a day.
+    """
+    names = {op["name"] for op in catalog.OPERATIONS}
+    return [
+        q
+        for q in queries
+        if q.get("label_claude") not in (None, *NOT_AN_OPERATION)
+        and q.get("label_gemini") not in (None, *NOT_AN_OPERATION)
+        and q["label_claude"] in names
+        and q["label_gemini"] in names
+    ]
+
+
+def agreement(queries: list[dict[str, Any]]) -> dict[str, Any]:
+    """How often the two labellers name the same operation.
+
+    Reported over two populations on purpose. Over everything, agreeing that a
+    request is unanswerable counts as agreement, which is true but easy: it
+    inflates the figure with the easy half. Over the answerable requests it is
+    the number to compare our own results against, because it is measured on the
+    same rows.
+    """
+    both = [q for q in queries if q.get("label_claude") and q.get("label_gemini")]
+    same = sum(1 for q in both if q["label_claude"] == q["label_gemini"])
+    ans = answerable(queries)
+    same_ans = sum(1 for q in ans if q["label_claude"] == q["label_gemini"])
+    return {
+        "all": (same, len(both)),
+        "answerable": (same_ans, len(ans)),
+    }
+
+
+def facets_for(name: str, declare: tuple[str, ...]) -> dict[str, Any]:
+    """What a caller who describes their own situation correctly would pass.
+
+    Taken from the true operation's entry, which is not circular: `input_kind` is
+    the kind of data they are holding and `produces` is what they want back. It
+    models a caller who says those two things accurately, not one who has been
+    told the answer.
+    """
+    op = next(o for o in catalog.OPERATIONS if o["name"] == name)
+    out: dict[str, Any] = {}
+    if "input_kind" in declare:
+        kinds = [k for k in op["applicability"]["inputs"] if k not in ("dataset", "none")]
+        if kinds:
+            out["input_kind"] = kinds[0]
+    if "produces" in declare:
+        out["produces"] = op["produces"]
+    if "category" in declare:
+        out["category"] = op["category"]
+    return out
+
+
+LEVELS: list[tuple[str, tuple[str, ...]]] = [
+    ("nothing — words alone", ()),
+    ("the input kind", ("input_kind",)),
+    ("+ what it should produce", ("input_kind", "produces")),
+    ("+ which family", ("input_kind", "produces", "category")),
+]
+
+
+def ablation(queries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One row per facet level: candidates left, ranked in the top three, delivered.
+
+    `delivered` is not an accuracy: below the choose threshold every survivor is
+    handed to the caller, so it measures whether the narrowing ever drops the
+    answer. That it does not is the property the design rests on.
+    """
+    rows = []
+    for label, declare in LEVELS:
+        left, top3, delivered = [], 0, 0
+        for q in queries:
+            truth = q["label_claude"]
+            facets = facets_for(truth, declare)
+            left.append(len(catalog.applicable(**facets)))
+            answer = catalog.search(q["query"], limit=3, **facets)
+            names = [entry["name"] for entry in catalog.entries(answer)]
+            top3 += truth in names[:3]
+            delivered += truth in names
+        n = len(queries)
+        rows.append(
+            {
+                "declared": label,
+                "candidates": round(sum(left) / n),
+                "found_at_3": round(100 * top3 / n),
+                "delivered": round(100 * delivered / n),
+            }
+        )
+    return rows
+
+
+def main() -> int:
+    queries = load()
+    ans = answerable(queries)
+    agree = agreement(queries)
+
+    print(f"source: {DATA.relative_to(ROOT)}")
+    print(f"catalog: {len(catalog.OPERATIONS)} operations\n")
+
+    same_all, n_all = agree["all"]
+    same_ans, n_ans = agree["answerable"]
+    print("THE CEILING — how often two independent labellers agree with each other")
+    print(f"  over all {n_all} requests          {same_all}/{n_all} = {100 * same_all / n_all:.0f}%")
+    print(f"  over the {n_ans} answerable ones    {same_ans}/{n_ans} = "
+          f"{100 * same_ans / n_ans:.0f}%   <- the one to compare against")
+    print("  (the first counts agreeing that a request is unanswerable, which is")
+    print("   true and easy; the second is measured on the same rows as the rest)\n")
+
+    print(f"NARROWING AND RANKING — over those {len(ans)} requests")
+    print(f"  {'what the caller declares':<28}{'candidates':>11}{'found@3':>9}{'delivered':>11}")
+    for row in ablation(ans):
+        print(f"  {row['declared']:<28}{row['candidates']:>11}"
+              f"{row['found_at_3']:>8}%{row['delivered']:>10}%")
+    print("\n  'delivered' is not an accuracy figure: below the choose threshold every")
+    print("  survivor is handed over, so it says whether narrowing ever drops the answer.")
+
+    print("\nNOT REPRODUCIBLE HERE: the 69% for a model handed the candidates and asked")
+    print("to choose needs that model. It was measured with a small hosted one against")
+    print("the labels of a different family; the script that did it is not in this")
+    print("repository because it needs an API key. Everything above is arithmetic.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -3388,7 +3388,7 @@ def _compact(op: dict[str, Any]) -> dict[str, Any]:
     entry = {k: op[k] for k in ("name", "status", "category", "summary")}
     # What separates this from its neighbours travels with it, because the
     # caller is the one choosing. Measured: a model reading name + summary +
-    # this picks the right operation 69% of the time, against 51% for our own
+    # this picks the right operation 69% of the time, against 48% for our own
     # ranking putting it in the top three — and it is the only field written to
     # be read against the other candidates rather than on its own.
     if op.get("distinguishes"):
@@ -3599,12 +3599,13 @@ def search(
     **When few enough survive, this returns a choice rather than a verdict.** At
     or below :data:`CHOOSABLE` candidates the result is a single entry with
     ``status: "choose"`` carrying all of them, ordered by relevance and each with
-    the text that separates it from its neighbours. Measured on 92 requests
-    written by other models: our ranking puts the right operation in the top
-    three 51% of the time; a model handed the same candidates and asked to choose
-    gets its FIRST pick right 69% of the time. Two independent expert labellers
-    agree with each other 68% of the time, so 69% is the ceiling of the task and
-    not a score to improve — past that point the honest move is to show the
+    the text that separates it from its neighbours. Measured over the 118 requests in
+    ``tests/data/discovery_queries.json``, written by two other model families:
+    our ranking puts the right operation in the top three 48% of the time; a model handed the same candidates and asked to choose
+    gets its FIRST pick right 69%. Over those same 118 requests the two labellers
+    who produced the ground truth agree WITH EACH OTHER 70% of the time — both are
+    language models, and no GIS analyst has tried it — so 69% is the ceiling of the
+    task and not a score to improve — past that point the honest move is to show the
     alternatives, to the agent and through it to the person who asked.
 
     ``engine``: ``auto`` (default) prefers the embedding engine and falls back to
@@ -3695,11 +3696,12 @@ def search(
 
     # THE SHORTLIST IS NOT THE ANSWER when there are few enough to read.
     #
-    # Measured on 92 requests written by other models: our ranking puts the right
-    # operation in the top three 51% of the time, while a model handed the same
-    # candidates and asked to CHOOSE gets its first pick right 69% of the time —
-    # and 69% is where two independent expert labellers agree with each other, so
-    # it is the ceiling of the task rather than a score to beat.
+    # Measured over 118 requests written by two other model families: our ranking
+    # puts the right operation in the top three 48% of the time, while a model
+    # handed the same candidates and asked to CHOOSE gets its first pick right 69% —
+    # and 70% is where the two labellers who wrote the ground truth agree with each
+    # OTHER on those same requests, so 69% is the ceiling of the task rather than a
+    # score to beat. Both labellers are language models; no analyst has tried it.
     #
     # The caller knows things no ranking can: which file is actually open, what
     # was run a minute ago, what the person in front of them meant. So when the

@@ -7,6 +7,8 @@ These checks are mechanical on purpose — taste cannot be automated, but
 reachability, dead links and stale numbers can.
 """
 
+import asyncio
+import json
 import re
 from pathlib import Path
 
@@ -618,6 +620,94 @@ def test_every_test_fixture_is_tracked_by_git():
         "CI checks out the repository, not this machine: add them, or the suite "
         "passes here and fails there."
     )
+
+NUMBER_WORDS = {
+    16: "sixteen", 17: "seventeen", 18: "eighteen", 19: "nineteen", 20: "twenty",
+    21: "twenty-one", 22: "twenty-two", 23: "twenty-three", 24: "twenty-four",
+    25: "twenty-five", 26: "twenty-six",
+}
+
+
+def test_the_changelog_unreleased_block_counts_what_is_actually_here():
+    """The counts in `[Unreleased]` age exactly like the README's, and nothing watched them.
+
+    On 2026-08-28 that block said "18 → 27" against 28 registered tools (and 18→28
+    is ten, not nine), "41 operations (39 available, 2 planned)" against 51/49/2,
+    and `spec_version 1.0.0-draft.2` against the draft.3 the code emits. Three
+    stale numbers in the file a packager reads to decide what a release contains.
+    """
+    from mapsmith import catalog, server
+
+    block = README.parent.joinpath("CHANGELOG.md").read_text(encoding="utf-8")
+    block = block.split("## [", 2)[1]
+
+    tools = len(asyncio.run(server.mcp.list_tools()))
+    total = len(catalog.OPERATIONS)
+    available = sum(1 for op in catalog.OPERATIONS if op["status"] == "available")
+    planned = total - available
+
+    wrong = []
+    # Anchored on the sentence that states the shipped shape. Loose patterns match
+    # prose about the 800-operation scale projection, which is a different number
+    # about a different catalogue.
+    for pattern, actual, what in (
+        (r"18 → (\d+)\.\*\*", tools, "tools"),
+        (r"catalogue is\s+at (\d+) operations", total, "catalogue operations"),
+        (r"operations \((\d+) available", available, "available operations"),
+        (r"available, (\d+) planned\)", planned, "planned operations"),
+    ):
+        for found in re.findall(pattern, block):
+            if int(found) != actual:
+                wrong.append(f"{what}: CHANGELOG says {found}, there are {actual}")
+    assert not wrong, (
+        "the [Unreleased] block describes a different product from the one in this "
+        f"tree: {wrong}"
+    )
+
+    from mapsmith import provenance
+
+    emitted = provenance.SPEC_VERSION
+    for found in re.findall(r"`(1\.0\.0-draft\.\d+)`", block):
+        assert found == emitted, (
+            f"the CHANGELOG announces spec_version {found} and the writers emit "
+            f"{emitted}"
+        )
+
+
+def test_no_page_cites_an_argleton_run_other_than_the_vendored_one():
+    """The citation guards the numbers; this guards the pointer beside them.
+
+    A run folder and a `spec_commit` are what a reader clicks to check a number,
+    and they aged separately from the number itself: on 2026-08-28 the table in
+    `docs/benchmarks.md` carried the right figures under a link to the previous
+    day's run, which happened to have the same ones. A stale link under a correct
+    number is worse than a stale number, because it looks verified.
+
+    The same applies to the family count written as a word. "Nineteen-family run"
+    survived a family being added because no test reads English numerals.
+    """
+    citation = json.loads((ROOT / "docs" / "argleton-run.json").read_text(encoding="utf-8"))
+    run, commit, families = citation["run"], citation["spec_commit"], citation["families"]
+
+    pages = [README, SITE_TEMPLATE, *(ROOT / "docs").glob("*.md")]
+    wrong = []
+    for page in pages:
+        prose = page.read_text(encoding="utf-8")
+        for stale in re.findall(r"results/(20\d\d-\d\d-\d\d[a-z0-9-]*)", prose):
+            if stale != run:
+                wrong.append(f"{page.name}: links results/{stale}, citation says {run}")
+        if f"`{commit}`" not in prose and f"results/{run}" in prose:
+            wrong.append(f"{page.name}: links the run but does not quote spec_commit {commit}")
+        for n, word in NUMBER_WORDS.items():
+            if f"{word}-family" in prose.lower() and n != families:
+                wrong.append(
+                    f"{page.name}: says '{word}-family' where the citation has {families}"
+                )
+    assert not wrong, (
+        "these pages point at an Argleton run that is not the published one, so a "
+        f"reader checking a number lands on the wrong folder: {wrong}"
+    )
+
 
 def test_every_argleton_number_quoted_here_matches_the_vendored_citation():
     """Argleton's numbers are the ones this repo cannot count for itself.

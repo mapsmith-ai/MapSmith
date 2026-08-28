@@ -445,8 +445,8 @@ organisation on purpose: an evaluation that lives inside the thing it
 evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
-What it says about MapSmith (nineteen-family run, engine tier, `spec_commit`
-[`3e98cf6`](https://github.com/argleton/argleton/tree/main/results/2026-08-27-datum-shift-fixed)):
+What it says about MapSmith (twenty-family run, engine tier, `spec_commit`
+[`4a6dbac`](https://github.com/argleton/argleton/tree/main/results/2026-08-28-timings)):
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
