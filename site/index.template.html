@@ -286,144 +286,111 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     searchable catalogue rather than in the tool list. What is exposed is what an agent has to
     choose between.
   </p>
-  <h3 style="margin-top:2rem">Two search engines over one catalogue</h3>
+  <h3 style="margin-top:2rem">Finding the right operation among hundreds</h3>
   <p>
     {{TOOL_COUNT}} tools are exposed; the catalogue behind them holds {{CATALOG_COUNT}} operations
-    today and is built for thousands. Reaching that scale is a retrieval problem, so it is treated
-    as one — and measured like one, rather than assumed away.
+    and is built for thousands. That makes reaching scale a retrieval problem, so it is treated as
+    one — and measured like one, against <strong>800 real GIS operations</strong> with queries
+    phrased the way somebody with a problem phrases them.
+  </p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1.5rem;margin:2rem 0 1.5rem">
+    <div class="stat"><b>800</b><span>OPERATIONS IN THE CATALOGUE</span></div>
+    <div class="stat"><b>16</b><span>CANDIDATES A CLIENT RANKS</span></div>
+    <div class="stat"><b>70%</b><span>FOUND IN THE TOP 3</span></div>
+    <div class="stat"><b>0</b><span>CHANGE FROM 200 TO 800</span></div>
+  </div>
+  <p class="pull">
+    Four times the catalogue, the same sixteen candidates, the same accuracy.<br>
+    <em>The size of the catalogue stops mattering — and no model is in that loop.</em>
   </p>
   <p>
-    Every operation declares four things a caller already knows — what data it takes, what it hands
-    back, which family it belongs to, and whether it demands a projected CRS — so discovery
-    <strong>narrows deterministically before it ranks</strong>. A geographic raster is never offered
-    an operation that would refuse it, and no model is in that loop: the filter is a property of the
-    data, checked in code.
+    The reason is the order of operations. <strong>It narrows first, deterministically.</strong>
+    Every entry declares four things a caller already knows — what data it takes, what it hands
+    back, which family it belongs to, whether it demands a projected CRS — and those cut 800
+    candidates to 16 before anything is ranked. A search over all 800 by words alone finds the right
+    operation 20% of the time; the same search after the facets finds it 70%, and stays there
+    however big the catalogue gets. A geographic raster is never offered <code>slope</code>, because
+    <code>slope</code> refuses one: that is a property of the data checked in code.
   </p>
   <p>
-    <strong>That filter, not the ranker, is what scales.</strong> Measured against 800 real GIS
-    operations:
-  </p>
-  <table class="tools" style="margin-top:1.25rem">
-    <tr><td><strong>facets declared</strong></td><td><strong>candidates left</strong></td><td><strong>found@3</strong></td></tr>
-    <tr><td>none — search by words alone</td><td>800</td><td>20%</td></tr>
-    <tr><td>what data I have</td><td>259</td><td>40%</td></tr>
-    <tr><td>+ what I want back</td><td>132</td><td>55%</td></tr>
-    <tr><td>+ which family</td><td>16</td><td><strong>70%</strong></td></tr>
-  </table>
-  <p>
-    Twenty per cent to seventy, with nothing learned and nothing hosted.
-    <strong>And we need no model to extract those facets, because the caller is one.</strong> An MCP
-    client is an LLM holding the context we lack: it knows what file it has open and what it is
-    trying to produce. So the tool asks for them in its schema and its description leads with why —
-    the same shape as the auto-retrieval patterns in the RAG toolkits, minus the model they have to
-    host, because ours is already on the other end of the protocol.
+    <strong>And no model is needed to extract those facets, because the caller is one.</strong> An
+    MCP client is an LLM holding the context we lack: it knows what file it has open and what it is
+    trying to produce. So the tool asks for them in its schema and its description leads with why.
+    Same shape as the auto-retrieval patterns in the RAG toolkits, minus the model they have to
+    host — ours is already on the other end of the protocol.
   </p>
   <p>
-    What survives the filter is ranked by two engines over the identical corpus: <strong>Okapi
-    BM25</strong>, forty lines with no model and no network, and a <strong>vector engine</strong>
-    whose static-embedding model is pinned to an exact revision in the source and whose vectors are
-    pinned by a golden-vector test — so a change in the model, the tokenizer or the pooling fails a
-    test instead of an analysis. Every result carries the engine that produced it, because a BM25
-    score and a cosine are not on the same scale.
-  </p>
-
-  <h3 style="margin-top:2rem">The measurement that changed the default — and caught us</h3>
-  <p>
-    BM25 was the default until August 2026, and the argument for it was good: a default that needs
-    a download is not a default. What overturned it was not a better argument but a discovery
-    about how we had been measuring.
+    <strong>Then it ranks, with two engines that both always run</strong>, and every result says
+    which one answered: BM25 over the same corpus — forty lines, no model, no network — and static
+    embeddings pinned to an exact model revision, with the vectors themselves pinned by a test, so a
+    change in the model or the tokenizer fails a test instead of an analysis.
   </p>
   <p>
-    The golden queries the default was justified on had been written by whoever wrote the catalogue
-    text. They share its vocabulary, so they measure word overlap dressed up as retrieval. On those
-    queries BM25 scores <strong>100%</strong> found@1 and the embedding engine 60% — and the finding
-    reverses the moment the query is phrased the way somebody with a problem phrases it.
-    <em>“The coastline is 400 000 nodes and the browser dies”</em>, not <em>“simplify the
-    geometry.”</em> On twenty such queries, sharing 8% of their words with the catalogue, both
-    engines degrade as it grows, and one degrades faster:
-  </p>
-  <table class="tools" style="margin-top:1.25rem">
-    <tr><td><strong>catalogue size</strong></td><td><strong>BM25 found@3</strong></td><td><strong>embeddings found@3</strong></td></tr>
-    <tr><td>10 operations</td><td>78%</td><td>83%</td></tr>
-    <tr><td>30 operations</td><td>47%</td><td>65%</td></tr>
-    <tr><td>51 operations</td><td>40%</td><td>55%</td></tr>
-  </table>
-  <p>
-    The gap widens with every entry added, so the embedding engine is now a dependency rather than
-    an optional extra, and the default is the one that degrades more slowly. Fusing the two, and
-    using one to shortlist for the other, were both tried and are both <em>worse</em> than the
-    embedding engine alone. The whole curve is a test, so growing the catalogue cannot quietly make
-    it harder to find anything.
-  </p>
-  <p>
-    <strong>That finding does not survive being scaled up, and we found out the same day we
-    published it.</strong> The distractors in the table above come from our own fifty-one entries,
-    which are spread out. Growing this catalogue means adding <em>near neighbours</em> — hundreds of
-    raster and terrain operations that resemble one another. Re-run against 800 real GIS operations
-    the ranking reverses, and the embedding engine degrades faster:
-  </p>
-  <table class="tools" style="margin-top:1.25rem">
-    <tr><td><strong>catalogue size</strong></td><td><strong>BM25 found@3</strong></td><td><strong>embeddings found@3</strong></td></tr>
-    <tr><td>51 operations</td><td>50%</td><td>40%</td></tr>
-    <tr><td>200 operations</td><td>48%</td><td>25%</td></tr>
-    <tr><td>800 operations</td><td>35%</td><td>20%</td></tr>
-  </table>
-  <p>
-    Embeddings blur near neighbours; an exact term either matches or it does not. Both measurements
-    are kept because they answer different questions: which engine suits the catalogue we have — the
-    embedding one, and it is the default — and which survives the catalogue we plan, where the
-    answer is neither. At 800 entries the better engine is wrong two times in three.
-    <strong>Scale will not be bought by picking a better ranker.</strong> It has to come from
-    narrowing before ranking, from facets, and from being willing to ask.
-  </p>
-  <p>
-    Two numbers on this page are worth reading as a correction rather than a boast. The first is
-    that 100%: it was our own measurement flattering us, and it stood for weeks. The second is what
-    happened when we added the words a caller uses to every catalogue entry — it moved found@3 from
-    40% to 100% on the queries it was written against, and from 10/20 to 10/20 on queries written
-    afterwards. The field stayed; the claim did not.
-  </p>
-
-  <h3 style="margin-top:2rem">And it says when it does not know</h3>
-  <p>
-    Asked <em>“send an email to my accountant”</em>, the embedding engine returned
-    <code>idw_interpolation</code> — with the same confidence as a real answer. That is a silent
-    error in the layer whose whole job is to prevent them, and it is ours, found by pointing our own
-    method at our own product.
-  </p>
-  <p>
-    A confidence threshold does not fix it, because there is no line to draw: <em>“convert this mp4
-    to a gif”</em> scores above sixteen of the twenty genuine queries. What does separate them is
-    the two rankers landing on <strong>nothing in common</strong> — mean top-3 overlap 0.90 of 3
-    when an answer exists, 0.18 when it does not. Below that, the search returns
-    <code>status: "unsure"</code>, carrying both engines' guesses and the question that narrows the
-    catalogue deterministically: what kind of data do you have. It fires on 9 of 11 unanswerable
-    queries and costs one suppressed correct answer in 20.
+    <strong>And when the two agree on nothing, it says so instead of answering.</strong> Asked
+    <em>“send an email to my accountant”</em>, the embedding engine returned
+    <code>idw_interpolation</code> with the confidence of a real answer — a silent error in the layer
+    whose job is to prevent them, found by pointing our own method at our own product. No confidence
+    threshold fixes it: <em>“convert this mp4 to a gif”</em> scores above sixteen of twenty genuine
+    queries. What separates them is the two rankers landing on nothing in common, 0.90 of 3 in
+    domain against 0.18 out. Below that the answer is <code>status: "unsure"</code>, carrying both
+    guesses and the question that narrows the catalogue. It fires on 9 of 11 unanswerable queries and
+    costs one suppressed correct answer in 20.
   </p>
   <p class="pull">
-    A discovery layer that always answers is a discovery layer that sometimes lies. This one can
-    ask instead — which is the same rule the operations follow when a number would be wrong.
+    A discovery layer that always answers is one that sometimes lies.<br>
+    <em>This one can ask instead — the same rule the operations follow when a number would be wrong.</em>
   </p>
-  <h3 style="margin-top:2rem">Findable is a contract, not an average</h3>
+
+  <h3 style="margin-top:2.5rem">How we know, including the parts that caught us</h3>
   <p>
-    A catalogue-wide “90% found@3” over fifty operations means five of them are invisible, and the
-    average will not say which five. So each entry is probed with the worked example it advertises,
-    with its own facets declared, and has to come back in the top three — a test parameterised over
-    the catalogue, so an operation is under contract the moment somebody adds it.
+    Three test files hold this up, and each exists because a measurement contradicted something we
+    had already written down.
   </p>
-  <p>
-    It earned its place on the first run. <code>centroid_layer</code> advertised <em>“label points
-    for a polygon layer”</em> and ranked below <code>point_on_surface</code>. The ranking was right:
-    a centroid can fall outside its own polygon — <a href="https://argleton.org">Argleton</a> trap
-    014 — so our own catalogue was recommending the defect our own suite measures. We changed the
-    example, not the score.
+  <table class="tools" style="margin-top:1.25rem">
+    <tr>
+      <td>ablation</td>
+      <td>Each facet is worth measuring alone. Of 800 candidates: none → 20% found@3; what data I
+      have → 259 candidates, 40%; + what I want back → 132, 55%; + which family → 16,
+      <strong>70%</strong>. The last row is what ships; the others are why.</td>
+    </tr>
+    <tr>
+      <td>the default</td>
+      <td>BM25 was the default until the golden queries were re-read: they had been written by
+      whoever wrote the catalogue, so they shared its vocabulary and tested word overlap dressed as
+      retrieval. On those BM25 scores 100% found@1 and embeddings 60% — and the finding reverses on
+      queries phrased like a problem rather than like a manual.</td>
+    </tr>
+    <tr>
+      <td>and reverses again</td>
+      <td>Measured against 800 <em>near neighbours</em> rather than our own spread-out entries, the
+      embedding engine degrades faster: 35% against 20% found@3. Embeddings blur near neighbours; an
+      exact term either matches or does not. Both measurements are kept, because they answer
+      different questions — and at 800 the better engine alone is wrong two times in three, which is
+      exactly why ranking is the tie-break and not the mechanism.</td>
+    </tr>
+    <tr>
+      <td>per operation</td>
+      <td>A catalogue-wide average hides the entry nobody can reach: 90% found@3 over fifty means
+      five are invisible and the average will not say which. So every entry is probed with the
+      worked example it advertises and must return in the top three — parameterised over the
+      catalogue, so a new operation is under contract the moment somebody adds it.</td>
+    </tr>
+    <tr>
+      <td>and it bit us</td>
+      <td><code>centroid_layer</code> advertised <em>“label points for a polygon layer”</em> and
+      ranked below <code>point_on_surface</code>. The ranking was right: a centroid can fall outside
+      its own polygon — <a href="https://argleton.org">Argleton</a> trap 014 — so our own catalogue
+      was recommending the defect our own suite measures. We changed the example, not the score.</td>
+    </tr>
+  </table>
+  <p style="margin-top:1.5rem">
+    Determinism is the reason for building it this way rather than reaching for a hosted embedding
+    API: that would make tool discovery a network call whose answer can change under you, and an
+    agent that finds a different tool tomorrow for the same question is not reproducible, whatever
+    its manifest says. The one network access left is the model download on first use, at the pinned
+    revision; after that it is local, and a machine that never gets it keeps BM25 and is told so.
   </p>
-  <p>
-    Determinism survives all of it. Semantic search that reaches for a hosted embedding API makes
-    tool discovery a network call whose answer can change under you; here the model revision is
-    pinned in the source, the vectors are pinned by a test, and a machine with no network still
-    gets BM25 results and is told which engine answered.
-  </p>
+
   <table class="tools" style="margin-top:1.75rem">
     <tr><td>buffer_layer · clip_layer · overlay_layers · dissolve_layer</td><td>Vector geometry, with the metric-on-geographic trap handled explicitly rather than silently</td></tr>
     <tr><td>measure_area</td><td>Ground or planar area, with the plane checked against the ellipsoid — the first check here that asks whether the <em>number</em> is right rather than whether the operation ran</td></tr>

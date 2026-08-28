@@ -272,21 +272,32 @@ def test_the_word_gis_survives_where_a_search_can_see_it():
 
 
 def test_the_site_names_only_tools_that_exist():
-    """A tool table on the published page outlives the tool it describes."""
-    from mapsmith import server
+    """A name on the published page outlives the thing it describes.
 
-    registered = {t.name for t in server.mcp._tool_manager.list_tools()}
-    table = re.search(
+    Checked against tools AND catalogue operations, because since D-037 an
+    operation is reachable without a tool of its own: `point_on_surface` has no
+    tool and is not a ghost. The guard still bites on a name that was removed or
+    never existed, which is what it is for.
+
+    Every `<table class="tools">` is checked, not the first one. It used to read
+    only the first, and the moment a second table was added above the tool table
+    the guard started checking the wrong one — reporting a real operation as a
+    ghost, which is how this was noticed.
+    """
+    from mapsmith import catalog, server
+
+    known = {t.name for t in server.mcp._tool_manager.list_tools()}
+    known |= {op["name"] for op in catalog.OPERATIONS}
+    tables = re.findall(
         r'<table class="tools".*?</table>', SITE_TEMPLATE.read_text(encoding="utf-8"), re.DOTALL
     )
-    assert table, "the site template lost its tool table"
-    named = set(re.findall(r"\b([a-z]+(?:_[a-z]+)+)\b", table.group(0)))
-    ghosts = sorted(named - registered)
+    assert tables, "the site template lost its tool table"
+    named = {n for table in tables for n in re.findall(r"\b([a-z]+(?:_[a-z]+)+)\b", table)}
+    ghosts = sorted(named - known)
     assert not ghosts, (
-        f"mapsmith.dev advertises tools that are not registered: {ghosts}. "
+        f"mapsmith.dev names things that do not exist: {ghosts}. "
         "The page is generated, so nothing else will ever notice."
     )
-
 
 def test_every_number_on_the_site_comes_from_a_placeholder_the_build_fills():
     """Both directions. A `{{NEW_COUNT}}` nobody fills breaks the build (which
@@ -691,36 +702,55 @@ def test_the_readme_catalog_counts_are_the_real_ones():
 
 
 def test_the_retrieval_numbers_agree_between_the_readme_and_the_site():
-    """The degradation curve is quoted in two places, in prose, in two formats.
+    """The same measurement is quoted on two surfaces, in prose, in two formats.
 
-    It is exactly the shape that has already rotted twice here: a hand-typed
-    number that was true when written. The build generates the tool and
-    catalogue counts, but it cannot generate these — running the measurement
-    would make every site build load an embedding model — so the guard is that
-    the two surfaces have to say the same thing, and `test_retrieval_degradation`
-    is what says whether that thing is still true.
+    Exactly the shape that has rotted twice in this repository. The build
+    generates the tool and catalogue counts, but it cannot generate these —
+    running the measurement would make every site build load an embedding model
+    and embed 850 documents — so the guard is that the two surfaces cannot
+    disagree, while `test_retrieval_at_scale` says whether what they agree on is
+    still true.
+
+    The two pages do not carry the SAME amount of detail on purpose: the README
+    is where the ablation tables live, the site compresses them. So this checks
+    the claims that appear on both, not that one is a copy of the other.
     """
+    readme = README.read_text(encoding="utf-8")
+    site = SITE_TEMPLATE.read_text(encoding="utf-8")
+
+    # The product's own numbers, and the ones the clarification path rests on.
+    # If one surface is edited and the other is not, this is what catches it.
+    shared = [
+        ("16", "candidates after the facets"),
+        ("70%", "found@3 as shipped"),
+        ("20%", "found@3 with no facets at 800"),
+        ("0.90", "top-3 agreement when an answer exists"),
+        ("0.18", "top-3 agreement when it does not"),
+        ("9 of 11", "unanswerable queries the clarification catches"),
+        ("centroid_layer", "the defect the discovery contract found"),
+    ]
+    missing = [
+        f"{value} ({what})"
+        for value, what in shared
+        if value not in readme or value not in site
+    ]
+    assert not missing, (
+        "these claims are not on both surfaces any more, so one of them has been "
+        f"edited and the other has not: {missing}"
+    )
+
+    # And a number that appears on both must appear with the same value. The
+    # ablation table lives in the README; where the site repeats one of its rows,
+    # the row has to match.
     import re
 
-    readme = README.read_text(encoding="utf-8")
-    site = (ROOT / "site" / "index.template.html").read_text(encoding="utf-8")
-
-    # (catalog size, BM25 found@3, embeddings found@3) as published in the README table.
-    rows = re.findall(r"^\| (\d+) \| (\d+)% \| (\d+)% \|$", readme, re.MULTILINE)
-    assert len(rows) >= 3, (
-        "the README no longer publishes the retrieval degradation table; if it moved, "
-        "move this test with it rather than deleting it"
-    )
+    rows = re.findall(r"^[|] (\d+) [|] (\d+)% [|] (\d+)% [|]$", readme, re.MULTILINE)
     for size, lexical, vector in rows:
-        pattern = (
-            rf"<tr><td>{size} operations</td><td>{lexical}%</td><td>{vector}%</td></tr>"
+        pattern = rf"<tr><td>{size} operations</td><td>(\d+)%</td><td>(\d+)%</td></tr>"
+        found = re.search(pattern, site)
+        if not found:
+            continue  # the site is allowed to carry less, not to carry it wrong
+        assert found.groups() == (lexical, vector), (
+            f"at {size} operations the README says {lexical}% / {vector}% and the site "
+            f"says {found.group(1)}% / {found.group(2)}%"
         )
-        assert re.search(pattern, site), (
-            f"the README says {size} operations gives {lexical}% / {vector}%, and the "
-            "site does not say the same"
-        )
-
-    # The two claims that carry the "unsure" behaviour, on both surfaces.
-    for fragment in ("0.90", "0.18", "9 of 11"):
-        assert fragment in readme, f"the README no longer states {fragment}"
-        assert fragment in site, f"the site no longer states {fragment}"

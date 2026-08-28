@@ -283,17 +283,18 @@ code. Execution goes through the same path as `execute_plan`, so an operation ca
 way alone and another way inside a plan.
 
 Both engines embed the *identical* document text (`catalog.document_text`), so a comparison
-between them measures the ranking and nothing else. Both are held to a golden query set in
-the test suite — expected operation in the top 3 — with their per-query latency recorded as
-the catalog grows. That is what turns the scaling limit into a curve you can watch rather
-than a number someone guessed.
+between them measures the ranking and nothing else. Three test files keep the rest under
+measurement rather than under opinion: the degradation curve over our own catalog, the projection
+against 800 real neighbouring operations, and a discoverability contract per entry. That is what
+turns the scaling limit into a curve you can watch rather than a number someone guessed.
 
 Determinism is the reason for building it this way rather than reaching for a hosted
 embedding API: that would make tool discovery a network call whose answer can change under
 you, and an agent that finds a different tool tomorrow for the same question is not
 reproducible, whatever its manifest says. The one network access left is the model download
 on first use, at the pinned revision; after that the vector engine is local, and an install
-that never makes it keeps BM25 — which is why BM25, not the embedding, is the default.
+that never makes it keeps BM25, and the `engine` field of every result says which one
+answered.
 
 ### Formats
 
