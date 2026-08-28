@@ -293,10 +293,30 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     as one — and measured like one, rather than assumed away.
   </p>
   <p>
-    Every operation declares what it applies to — input kind, whether it demands a projected CRS —
-    so discovery <strong>narrows deterministically before it ranks</strong>. A geographic raster is
-    never offered an operation that would refuse it, and no model is in that loop: the filter is
-    a property of the data, checked in code.
+    Every operation declares four things a caller already knows — what data it takes, what it hands
+    back, which family it belongs to, and whether it demands a projected CRS — so discovery
+    <strong>narrows deterministically before it ranks</strong>. A geographic raster is never offered
+    an operation that would refuse it, and no model is in that loop: the filter is a property of the
+    data, checked in code.
+  </p>
+  <p>
+    <strong>That filter, not the ranker, is what scales.</strong> Measured against 800 real GIS
+    operations:
+  </p>
+  <table class="tools" style="margin-top:1.25rem">
+    <tr><td><strong>facets declared</strong></td><td><strong>candidates left</strong></td><td><strong>found@3</strong></td></tr>
+    <tr><td>none — search by words alone</td><td>800</td><td>20%</td></tr>
+    <tr><td>what data I have</td><td>259</td><td>40%</td></tr>
+    <tr><td>+ what I want back</td><td>132</td><td>55%</td></tr>
+    <tr><td>+ which family</td><td>16</td><td><strong>70%</strong></td></tr>
+  </table>
+  <p>
+    Twenty per cent to seventy, with nothing learned and nothing hosted.
+    <strong>And we need no model to extract those facets, because the caller is one.</strong> An MCP
+    client is an LLM holding the context we lack: it knows what file it has open and what it is
+    trying to produce. So the tool asks for them in its schema and its description leads with why —
+    the same shape as the auto-retrieval patterns in the RAG toolkits, minus the model they have to
+    host, because ours is already on the other end of the protocol.
   </p>
   <p>
     What survives the filter is ranked by two engines over the identical corpus: <strong>Okapi
@@ -383,6 +403,20 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   <p class="pull">
     A discovery layer that always answers is a discovery layer that sometimes lies. This one can
     ask instead — which is the same rule the operations follow when a number would be wrong.
+  </p>
+  <h3 style="margin-top:2rem">Findable is a contract, not an average</h3>
+  <p>
+    A catalogue-wide “90% found@3” over fifty operations means five of them are invisible, and the
+    average will not say which five. So each entry is probed with the worked example it advertises,
+    with its own facets declared, and has to come back in the top three — a test parameterised over
+    the catalogue, so an operation is under contract the moment somebody adds it.
+  </p>
+  <p>
+    It earned its place on the first run. <code>centroid_layer</code> advertised <em>“label points
+    for a polygon layer”</em> and ranked below <code>point_on_surface</code>. The ranking was right:
+    a centroid can fall outside its own polygon — <a href="https://argleton.org">Argleton</a> trap
+    014 — so our own catalogue was recommending the defect our own suite measures. We changed the
+    example, not the score.
   </p>
   <p>
     Determinism survives all of it. Semantic search that reaches for a hosted embedding API makes

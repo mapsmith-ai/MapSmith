@@ -176,8 +176,26 @@ it is built to hold thousands: tool-selection accuracy
 degrades past a few dozen *exposed* tools, while capability count has no such ceiling. That
 makes reaching scale a retrieval problem, so it is treated as one — and measured like one.
 
-**First it narrows, deterministically.** Every catalog entry declares what it applies to:
-input kind (vector, raster, dataset, plan) and whether it demands a projected CRS. A
+**First it narrows, deterministically — and this is the part that scales.** Every catalog entry
+declares four things a caller already knows: what data it takes (`vector`, `raster`, `dataset`,
+`plan`, `none`), what it hands back (`dataset:vector`, `dataset:raster`, `answer`, `description`),
+which family it belongs to, and whether it demands a projected CRS. Declaring them cuts the
+catalog before anything is ranked, and the measurement says that is worth more than any ranker:
+
+| facets declared | candidates left of 800 | found@3 |
+|---|---|---|
+| none | 800 | 20% |
+| what data I have | 259 | 40% |
+| + what I want back | 132 | 55% |
+| + which family | **16** | **70%** |
+
+**We do not need a model to extract those facets, because the caller is one.** An MCP client is an
+LLM with the context we lack — it knows what file it is holding and what it is trying to produce.
+So `list_operations` asks for them in its schema, and its description leads with why. This is the
+same shape as LlamaIndex's Auto-Retrieval or LangChain's Self-Querying, minus the model those have
+to host: here it is already on the other end of the protocol.
+
+A
 geographic raster is never offered `slope`, because `slope` refuses one — and that filter
 is a property of the data checked in code, with no model in the loop.
 
@@ -229,6 +247,17 @@ be bought by choosing a better ranker**. It has to come from narrowing before ra
 applicability filter already does that deterministically — from facets, and from the
 clarification path below. `test_retrieval_at_scale.py` keeps the projection under measurement
 rather than under opinion.
+
+**And discoverability is a contract per operation, not an average.** A catalog-wide 90% found@3
+over fifty entries means five are invisible and the average will not say which. So every available
+entry is probed with its own first worked example, with its own facets declared, and must come back
+in the top three — `test_discovery_contract.py`, parameterised over the catalog, so a new operation
+is under contract the moment it is added.
+
+That test earned its place the first time it ran. `centroid_layer` advertised *“label points for a
+polygon layer”* and ranked below `point_on_surface`. The ranking was right: a centroid can fall
+outside its own polygon, which is [Argleton](https://argleton.org) trap 014 — our catalog was
+recommending the defect our own suite measures. The example changed, not the score.
 
 **And when the two engines agree on nothing, the search says so instead of answering.** This is
 the failure that measurement turned up in our own product: asked *"send an email to my
