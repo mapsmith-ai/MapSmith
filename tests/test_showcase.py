@@ -688,3 +688,39 @@ def test_the_readme_catalog_counts_are_the_real_ones():
     assert stated_toolless == sum(
         1 for entry in catalog.OPERATIONS if entry.get("tool") is None
     )
+
+
+def test_the_retrieval_numbers_agree_between_the_readme_and_the_site():
+    """The degradation curve is quoted in two places, in prose, in two formats.
+
+    It is exactly the shape that has already rotted twice here: a hand-typed
+    number that was true when written. The build generates the tool and
+    catalogue counts, but it cannot generate these — running the measurement
+    would make every site build load an embedding model — so the guard is that
+    the two surfaces have to say the same thing, and `test_retrieval_degradation`
+    is what says whether that thing is still true.
+    """
+    import re
+
+    readme = README.read_text(encoding="utf-8")
+    site = (ROOT / "site" / "index.template.html").read_text(encoding="utf-8")
+
+    # (catalog size, BM25 found@3, embeddings found@3) as published in the README table.
+    rows = re.findall(r"^\| (\d+) \| (\d+)% \| (\d+)% \|$", readme, re.MULTILINE)
+    assert len(rows) >= 3, (
+        "the README no longer publishes the retrieval degradation table; if it moved, "
+        "move this test with it rather than deleting it"
+    )
+    for size, lexical, vector in rows:
+        pattern = (
+            rf"<tr><td>{size} operations</td><td>{lexical}%</td><td>{vector}%</td></tr>"
+        )
+        assert re.search(pattern, site), (
+            f"the README says {size} operations gives {lexical}% / {vector}%, and the "
+            "site does not say the same"
+        )
+
+    # The two claims that carry the "unsure" behaviour, on both surfaces.
+    for fragment in ("0.90", "0.18", "9 of 11"):
+        assert fragment in readme, f"the README no longer states {fragment}"
+        assert fragment in site, f"the site no longer states {fragment}"

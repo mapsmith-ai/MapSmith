@@ -299,22 +299,75 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     a property of the data, checked in code.
   </p>
   <p>
-    What survives the filter is ranked by <strong>either of two engines, and the caller picks</strong>.
-    The default is <strong>Okapi BM25</strong> — forty lines, no dependencies, no network, identical
-    scores on every machine. Beside it, over the identical corpus, a <strong>vector engine</strong>
+    What survives the filter is ranked by two engines over the identical corpus: <strong>Okapi
+    BM25</strong>, forty lines with no model and no network, and a <strong>vector engine</strong>
     whose static-embedding model is pinned to an exact revision in the source and whose vectors are
-    pinned by a golden-vector test, so a change in the model, the tokenizer or the pooling fails a
-    test instead of an analysis. A third setting takes the vector engine where it is installed and
-    falls back where it is not, so a deployment can turn embeddings on without any caller changing.
-    Every result carries the engine that produced it, because a BM25 score and a cosine are not on
-    the same scale — and both engines are held to the same golden queries with their latency
-    recorded, so the scaling limit is a curve you can watch rather than a number someone guessed.
+    pinned by a golden-vector test — so a change in the model, the tokenizer or the pooling fails a
+    test instead of an analysis. Every result carries the engine that produced it, because a BM25
+    score and a cosine are not on the same scale.
+  </p>
+
+  <h3 style="margin-top:2rem">The measurement that changed the default — and caught us</h3>
+  <p>
+    BM25 was the default until August 2026, and the argument for it was good: a default that needs
+    a download is not a default. What overturned it was not a better argument but a discovery
+    about how we had been measuring.
+  </p>
+  <p>
+    The golden queries the default was justified on had been written by whoever wrote the catalogue
+    text. They share its vocabulary, so they measure word overlap dressed up as retrieval. On those
+    queries BM25 scores <strong>100%</strong> found@1 and the embedding engine 60% — and the finding
+    reverses the moment the query is phrased the way somebody with a problem phrases it.
+    <em>“The coastline is 400 000 nodes and the browser dies”</em>, not <em>“simplify the
+    geometry.”</em> On twenty such queries, sharing 8% of their words with the catalogue, both
+    engines degrade as it grows, and one degrades faster:
+  </p>
+  <table class="tools" style="margin-top:1.25rem">
+    <tr><td><strong>catalogue size</strong></td><td><strong>BM25 found@3</strong></td><td><strong>embeddings found@3</strong></td></tr>
+    <tr><td>10 operations</td><td>78%</td><td>83%</td></tr>
+    <tr><td>30 operations</td><td>47%</td><td>65%</td></tr>
+    <tr><td>51 operations</td><td>40%</td><td>55%</td></tr>
+  </table>
+  <p>
+    The gap widens with every entry added, so the embedding engine is now a dependency rather than
+    an optional extra, and the default is the one that degrades more slowly. Fusing the two, and
+    using one to shortlist for the other, were both tried and are both <em>worse</em> than the
+    embedding engine alone. The whole curve is a test, so growing the catalogue cannot quietly make
+    it harder to find anything.
+  </p>
+  <p>
+    Two numbers on this page are worth reading as a correction rather than a boast. The first is
+    that 100%: it was our own measurement flattering us, and it stood for weeks. The second is what
+    happened when we added the words a caller uses to every catalogue entry — it moved found@3 from
+    40% to 100% on the queries it was written against, and from 10/20 to 10/20 on queries written
+    afterwards. The field stayed; the claim did not.
+  </p>
+
+  <h3 style="margin-top:2rem">And it says when it does not know</h3>
+  <p>
+    Asked <em>“send an email to my accountant”</em>, the embedding engine returned
+    <code>idw_interpolation</code> — with the same confidence as a real answer. That is a silent
+    error in the layer whose whole job is to prevent them, and it is ours, found by pointing our own
+    method at our own product.
+  </p>
+  <p>
+    A confidence threshold does not fix it, because there is no line to draw: <em>“convert this mp4
+    to a gif”</em> scores above sixteen of the twenty genuine queries. What does separate them is
+    the two rankers landing on <strong>nothing in common</strong> — mean top-3 overlap 0.90 of 3
+    when an answer exists, 0.18 when it does not. Below that, the search returns
+    <code>status: "unsure"</code>, carrying both engines' guesses and the question that narrows the
+    catalogue deterministically: what kind of data do you have. It fires on 9 of 11 unanswerable
+    queries and costs one suppressed correct answer in 20.
   </p>
   <p class="pull">
-    Determinism is the point of doing it this way. Semantic search that reaches for a hosted
-    embedding API makes tool discovery a network call whose answer can change under you; here the
-    model revision is pinned in the source, the vectors are pinned by a test, and the default
-    engine needs no network at all.
+    A discovery layer that always answers is a discovery layer that sometimes lies. This one can
+    ask instead — which is the same rule the operations follow when a number would be wrong.
+  </p>
+  <p>
+    Determinism survives all of it. Semantic search that reaches for a hosted embedding API makes
+    tool discovery a network call whose answer can change under you; here the model revision is
+    pinned in the source, the vectors are pinned by a test, and a machine with no network still
+    gets BM25 results and is told which engine answered.
   </p>
   <table class="tools" style="margin-top:1.75rem">
     <tr><td>buffer_layer · clip_layer · overlay_layers · dissolve_layer</td><td>Vector geometry, with the metric-on-geographic trap handled explicitly rather than silently</td></tr>
