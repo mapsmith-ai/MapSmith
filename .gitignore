@@ -33,6 +33,10 @@ data/
 tests/data/*
 !tests/data/manifest_spec_validator.py
 !tests/data/manifest-v1.schema.json
+# The discovery benchmark: 95 queries written by a second model from work
+# scenarios, never from this catalog. It is tracked BECAUSE it is a dataset — an
+# evaluation set nobody can inspect is a claim, not a measurement.
+!tests/data/discovery_queries.json
 
 # Scratch databases: probing the DuckDB sandbox (ATTACH, COPY) drops these in
 # the repo root, and one of them reached a public commit before we noticed.
