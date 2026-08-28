@@ -248,3 +248,106 @@ def test_a_clip_layer_is_not_needed_for_any_of_this(two_bands, tmp_path):
     )
     assert len(unused) == 1
     assert raster.band_statistics(two_bands)["band_count"] == 2
+
+
+def test_a_requested_cell_size_is_the_cell_size_delivered(tmp_path):
+    """The number the caller named, on disk, on a grid that does not divide evenly.
+
+    A 100 m extent asked to become 30 m cells used to deliver 33.333 m —
+    `round(extent / resolution)` cells across the same ground — while the
+    manifest recorded `"resolution": 30.0` and a check called
+    `shape_matches_resolution` passed, because it compared the shape on disk to
+    the shape we had computed rather than to the resolution in its own name.
+    An 11% cell error is a 23% area error for anyone multiplying by cell size.
+
+    Chosen so the extent does NOT divide evenly: 100/30 is 3.33, so the grid has
+    to grow to 4 cells and 120 m rather than shrink the cells to fit.
+    """
+    import json
+
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    source = tmp_path / "source.tif"
+    with rasterio.open(
+        source, "w", driver="GTiff", height=10, width=10, count=1,
+        dtype="float32", crs="EPSG:32632", transform=from_origin(0, 100, 10, 10),
+    ) as dst:
+        dst.write(np.arange(100, dtype="float32").reshape(10, 10), 1)
+
+    out = tmp_path / "out.tif"
+    raster.resample(str(source), str(out), resolution=30.0, resampling="bilinear")
+
+    with rasterio.open(out) as ds:
+        assert ds.transform.a == pytest.approx(30.0, abs=1e-9)
+        assert -ds.transform.e == pytest.approx(30.0, abs=1e-9)
+        assert (ds.height, ds.width) == (4, 4), (
+            "100 m of ground at 30 m per cell is four cells, not three: rounding "
+            "down is how the cell size started bending to fit the extent"
+        )
+
+    manifest = json.loads((tmp_path / "out.tif.provenance.json").read_text(encoding="utf-8"))
+    named = {c["name"]: c["passed"] for c in manifest["verification"]}
+    assert named["x-mapsmith:cell_size_is_what_was_asked"] is True
+    assert any("does not divide evenly" in note for note in manifest.get("notes", [])), (
+        "the output covers more ground than the input and the manifest does not "
+        "say so, which is the sort of silence that turns up in someone's area total"
+    )
+
+
+def test_an_evenly_dividing_extent_gains_no_phantom_cell(tmp_path):
+    """`ceil` with no tolerance would add a column to floating-point noise.
+
+    100 m at 25 m is exactly four cells. If `(right - left) / resolution` lands
+    on 4.0000000001 the grid should still be four wide.
+    """
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    source = tmp_path / "even.tif"
+    with rasterio.open(
+        source, "w", driver="GTiff", height=10, width=10, count=1,
+        dtype="float32", crs="EPSG:32632", transform=from_origin(0, 100, 10, 10),
+    ) as dst:
+        dst.write(np.ones((10, 10), dtype="float32"), 1)
+
+    out = tmp_path / "even_out.tif"
+    raster.resample(str(source), str(out), resolution=25.0, resampling="bilinear")
+    with rasterio.open(out) as ds:
+        assert (ds.height, ds.width) == (4, 4)
+        assert ds.transform.a == pytest.approx(25.0, abs=1e-9)
+
+
+def test_reproject_with_a_resolution_delivers_square_cells_of_that_size(tmp_path):
+    """Reprojection derived the cell size from the reprojected extent, so a
+    requested 30 arrived as 33.24 by 33.47 — not even square, under a manifest
+    that said 30."""
+    import json
+
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    source = tmp_path / "src.tif"
+    with rasterio.open(
+        source, "w", driver="GTiff", height=10, width=10, count=1,
+        dtype="float32", crs="EPSG:32632", transform=from_origin(0, 100, 10, 10),
+    ) as dst:
+        dst.write(np.arange(100, dtype="float32").reshape(10, 10), 1)
+
+    out = tmp_path / "reprojected.tif"
+    raster.reproject_raster(
+        str(source), str(out), target_crs="EPSG:3857",
+        resampling="bilinear", resolution=30.0,
+    )
+    with rasterio.open(out) as ds:
+        assert ds.transform.a == pytest.approx(30.0, abs=1e-9)
+        assert -ds.transform.e == pytest.approx(30.0, abs=1e-9)
+
+    manifest = json.loads(
+        (tmp_path / "reprojected.tif.provenance.json").read_text(encoding="utf-8")
+    )
+    named = {c["name"]: c["passed"] for c in manifest["verification"]}
+    assert named["x-mapsmith:cell_size_is_what_was_asked"] is True

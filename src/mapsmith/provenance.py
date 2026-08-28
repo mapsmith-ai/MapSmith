@@ -274,6 +274,9 @@ class ProvenanceRecord:
         safe_decisions = redact_secrets(self.crs_decisions)
         safe_notes = redact_secrets(self.notes)
         safe_paths = [redact_secrets(i.path) for i in self.inputs]
+        safe_layers = [
+            redact_secrets(i.layer) if i.layer is not None else None for i in self.inputs
+        ]
         safe_verification = redact_secrets(self.verification)
         safe_repairs = redact_secrets(self.repairs)
         changed = (
@@ -281,6 +284,7 @@ class ProvenanceRecord:
             or safe_decisions != self.crs_decisions
             or safe_notes != self.notes
             or safe_paths != [i.path for i in self.inputs]
+            or safe_layers != [i.layer for i in self.inputs]
             or safe_verification != self.verification
             or safe_repairs != self.repairs
         )
@@ -289,8 +293,9 @@ class ProvenanceRecord:
         self.notes = safe_notes
         self.verification = safe_verification
         self.repairs = safe_repairs
-        for record, path in zip(self.inputs, safe_paths):
+        for record, path, layer in zip(self.inputs, safe_paths, safe_layers, strict=True):
             record.path = path
+            record.layer = layer
         if changed:
             self.parameters_redacted = True
 

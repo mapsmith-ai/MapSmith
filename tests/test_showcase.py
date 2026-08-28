@@ -628,7 +628,7 @@ NUMBER_WORDS = {
 }
 
 
-def test_the_changelog_unreleased_block_counts_what_is_actually_here():
+def test_the_changelog_block_for_this_version_counts_what_is_actually_here():
     """The counts in `[Unreleased]` age exactly like the README's, and nothing watched them.
 
     On 2026-08-28 that block said "18 → 27" against 28 registered tools (and 18→28
@@ -636,10 +636,22 @@ def test_the_changelog_unreleased_block_counts_what_is_actually_here():
     and `spec_version 1.0.0-draft.2` against the draft.3 the code emits. Three
     stale numbers in the file a packager reads to decide what a release contains.
     """
-    from mapsmith import catalog, server
+    from mapsmith import __version__, catalog, server
 
-    block = README.parent.joinpath("CHANGELOG.md").read_text(encoding="utf-8")
-    block = block.split("## [", 2)[1]
+    # The block for the version in the tree, not simply the first one. Cutting
+    # the 0.3.0 release moved these counts out of `[Unreleased]` and into a
+    # dated section, and a test anchored on "the first block" would have gone on
+    # passing over an empty one — which is worse than failing.
+    changelog = README.parent.joinpath("CHANGELOG.md").read_text(encoding="utf-8")
+    blocks = changelog.split("## [")
+    block = next(
+        (b for b in blocks if b.startswith(f"{__version__}]")),
+        next((b for b in blocks if b.startswith("Unreleased]")), ""),
+    )
+    assert block.strip(), (
+        f"the changelog has no section for {__version__} and no [Unreleased] one, "
+        "so nothing here is checking the counts a packager reads"
+    )
 
     tools = len(asyncio.run(server.mcp.list_tools()))
     total = len(catalog.OPERATIONS)

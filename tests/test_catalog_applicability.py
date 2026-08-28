@@ -52,6 +52,14 @@ def test_the_projected_crs_requirement_matches_the_engines_that_refuse():
         "curvature",
         "flow_direction",
         "euclidean_distance",
+        # Added 2026-08-29, and the reason belongs here rather than in a commit:
+        # it declared False and did not refuse, so the executable check in
+        # test_whitebox_geographic_refusal saw the two statements agree and
+        # passed — while the operation weighted every sample by a distance in
+        # degrees. Consistency between a declaration and a behaviour says
+        # nothing about whether either is right, which is why this list is
+        # written by hand and reviewed rather than derived.
+        "idw_interpolation",
     }
 
 

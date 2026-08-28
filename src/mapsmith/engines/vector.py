@@ -1040,11 +1040,23 @@ def _geodesic_areas(gdf: gpd.GeoDataFrame) -> list[float]:
     from pyproj import Geod
     from shapely.geometry import MultiPolygon, Polygon
 
-    ellipsoid = gdf.crs.ellipsoid
-    geod = Geod(
-        a=ellipsoid.semi_major_metre, rf=ellipsoid.inverse_flattening
-    )
+    # Measure on the ellipsoid the COORDINATES are on, which after the line
+    # below is WGS 84 — not the source CRS's ellipsoid. Taking `gdf.crs.ellipsoid`
+    # and then reprojecting measured NAD27 or OSGB36 coordinates that had already
+    # become WGS 84 ones, and named the source's ellipsoid in `analysis_crs`. The
+    # magnitude is tens of parts per million, so this is a labelling defect more
+    # than a numeric one — but `analysis_crs` saying "Clarke 1866 (ellipsoidal)"
+    # about a WGS 84 computation is precisely the kind of statement a manifest
+    # exists to make true. `.ellipsoid` can also be None on an engineering CRS,
+    # which raised an AttributeError instead of saying anything.
     lonlat = gdf.to_crs("EPSG:4326") if not verify.same_crs(gdf.crs, "EPSG:4326") else gdf
+    ellipsoid = lonlat.crs.ellipsoid
+    if ellipsoid is None:  # pragma: no cover - WGS 84 always names one
+        raise ValueError(
+            f"{gdf.crs} names no ellipsoid, so a ground area cannot be computed on "
+            "one. Use method='planar' if a map-plane area is what you want."
+        )
+    geod = Geod(a=ellipsoid.semi_major_metre, rf=ellipsoid.inverse_flattening)
 
     def ring_area(ring) -> float:
         lons, lats = ring.coords.xy
@@ -1146,7 +1158,10 @@ def measure_area(
     else:
         areas = geodesic
         record.crs_decisions = {
-            "analysis_crs": f"{gdf.crs.ellipsoid.name} (ellipsoidal)",
+            # The ellipsoid the measurement actually ran on, which is WGS 84's:
+            # the coordinates are moved there first. Naming the source CRS's
+            # ellipsoid here described a computation that did not happen.
+            "analysis_crs": "WGS 84 (ellipsoidal)",
             "reason": "ground area computed on the ellipsoid the layer's CRS names; "
             "no map plane is involved, so no projection distortion enters",
         }
@@ -2027,6 +2042,28 @@ def voronoi_polygons(
             f"voronoi_polygons needs at least 2 distinct points, got {len(points)} "
             f"usable in {input_path}: with one point there is no boundary to draw."
         )
+    # DISTINCT was in the message above and never checked, which is how a caller
+    # got `GEOSException: Multiple input coordinates in cell at 0 0` — an
+    # untranslated engine error, from an operation whose every other refusal
+    # explains itself. Duplicate coordinates are ordinary in real point layers:
+    # two sensors at one address, several readings snapped to the same GPS fix.
+    # They are refused rather than de-duplicated because which of the duplicates
+    # should own the cell is the caller's question, not ours: the attributes
+    # differ even when the geometry does not.
+    coordinates = [(geom.x, geom.y) for geom in points.geometry]
+    if len(set(coordinates)) != len(coordinates):
+        seen: set[tuple[float, float]] = set()
+        repeated = sorted({c for c in coordinates if c in seen or seen.add(c)})
+        raise ValueError(
+            f"voronoi_polygons needs DISTINCT points and {input_path} repeats "
+            f"{len(repeated)} coordinate(s), the first being {repeated[0]}. A "
+            "Voronoi cell is the region closer to one point than to any other, "
+            "which is undefined for two points in the same place — the engine "
+            "raises 'Multiple input coordinates in cell'. Decide which row should "
+            "own the cell (dissolve_layer on the coordinate, or drop the "
+            "duplicates) rather than having that decided for you: the attributes "
+            "usually differ even when the geometry does not."
+        )
 
     record = ProvenanceRecord(
         operation="voronoi_polygons",
@@ -2057,6 +2094,17 @@ def voronoi_polygons(
                 limit = limit.buffer(margin)
         else:
             limit = window
+        # The positional join is legal because of `ordered=True` above; this is
+        # the assertion that says so out loud. Slicing to `len(points)` would
+        # have turned a short result into a pandas length error at the assignment
+        # — before the `each_cell_holds_its_own_point` check that exists to catch
+        # exactly this — so the count is compared first and named.
+        if len(pieces) < len(points):
+            raise ValueError(
+                f"the engine returned {len(pieces)} cells for {len(points)} points, "
+                "so the positional join between them is not valid. This should not "
+                "happen with ordered=True; do not trust the output."
+            )
         built = points.copy()
         built[built.geometry.name] = [
             shapely.intersection(cell, limit) for cell in pieces[: len(points)]

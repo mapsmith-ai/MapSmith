@@ -27,6 +27,20 @@ class Binding:
     engine_flag: str | None  # key in dispatch.available_engines(), None = core
     crs_effect: tuple[str, str] | None  # ("same_as"|"target", arg) | ("unknown","") | None
     output_kind: str | None = None  # "vector" | "raster" | None
+    #: Path arguments that arrive as a LIST of paths rather than one string.
+    #:
+    #: They need naming separately because the validator reads `input_args` and
+    #: skips anything that is not a `str`, so a list of paths was invisible to it
+    #: twice over. That is not a hypothetical: `merge_layers` declares
+    #: `input_paths` and no `input_args`, so until 2026-08-29 `run_operation`
+    #: and `execute_plan` would read a file from outside `MAPSMITH_WORKSPACE`
+    #: and write it INSIDE, where the next `describe_dataset` hands it to the
+    #: model — while the dedicated `merge_layers` tool refused the identical
+    #: call. `test_every_path_parameter_is_covered_by_its_binding` is what stops
+    #: this recurring: a hand-maintained enumeration of a growing set is wrong
+    #: somewhere between one addition and the next, and only a mechanical check
+    #: notices.
+    list_input_args: tuple[str, ...] = ()
 
 
 def _describe() -> Callable[..., dict[str, Any]]:
@@ -345,7 +359,10 @@ BINDINGS: dict[str, Binding] = {
     ),
     # merge_layers takes a LIST of input paths; static analysis tracks only
     # string path arguments, so its inputs are opaque here, like run_sql's.
-    "merge_layers": Binding(_merge, (), "output_path", None, ("unknown", ""), "vector"),
+    "merge_layers": Binding(
+        _merge, (), "output_path", None, ("unknown", ""), "vector",
+        list_input_args=("input_paths",),
+    ),
     "simplify_layer": Binding(
         _simplify, ("input_path",), "output_path", None, ("same_as", "input_path"), "vector"
     ),
@@ -579,5 +596,12 @@ PARAM_TYPES: dict[str, tuple[type, ...]] = {
     "float": (int, float),
     "int": (int,),
     "bool": (bool,),
+    # `list` alone, because a tuple of types cannot express "a list OF strings".
+    # The element type is not checked here and does not need to be: the wire
+    # contract in `models.ArgValue` refuses a list containing anything but
+    # strings before a Plan exists, and `Plan` is the only way into the
+    # validator. `test_the_wire_contract_refuses_a_list_of_non_strings` pins
+    # that, so the day the contract loosens this stops being someone else's
+    # problem.
     "list[str]": (list,),
 }

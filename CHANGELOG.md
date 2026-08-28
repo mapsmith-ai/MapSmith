@@ -6,6 +6,14 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.0] — 2026-08-29
+
+Eleven operations, a catalogue that hands over a set instead of a ranking, and a
+published specification for how an entry has to be written. Two behaviour changes
+are in `Changed` and one of them affects anybody passing `category=`.
+
 ### Added
 
 - **Manifest conformance is now checked against the normative schema too, not
@@ -43,11 +51,16 @@ All notable changes to MapSmith are documented here, in the format of
   before anything ranks — a geographic raster is never offered `slope`, because
   `slope` refuses one. What survives is ranked by either of two interchangeable
   engines the caller selects with `list_operations(engine=…)` — `lexical`,
-  `vector`, or `auto` — over the identical document text: Okapi BM25 by default (no
+  `vector`, or `auto` — over the identical document text: Okapi BM25 (no
   dependencies, no network, term-sorted accumulation because float addition is
   not associative) or static embeddings with the model revision pinned in the
-  source (`[retrieval]` extra, bit-identical vectors asserted against a golden
-  vector). Both are held to a golden query set with their per-query latency
+  source (bit-identical vectors asserted against a golden vector). **The
+  embedding engine is the default and a hard dependency now**, because the
+  measurement said so and a default behind an extra is not a default — with two
+  exceptions that keep the network promise: under `MAPSMITH_WORKSPACE` the model
+  is used only if already cached, and any machine that cannot load it falls back
+  to BM25 with `engine: "lexical"` in the answer. The container ships the
+  weights. Both are held to a golden query set with their per-query latency
   recorded, so the scaling limit is a curve rather than a number someone
   guessed.
 - **An operation no longer needs a tool of its own** (`run_operation`, the 28th
@@ -73,6 +86,77 @@ All notable changes to MapSmith are documented here, in the format of
   MapSmith is one implementation of it rather than its definition. A CI test
   validates a real writer's output against the spec's own validator, so the day
   our manifest stops conforming to our published format, the build says so.
+
+### Fixed before release
+
+The pre-release review found five defects in code that had never been published.
+They are listed because the point of reviewing before a tag is that the fixes cost
+a morning instead of an advisory, and because two of them contradicted promises
+this project makes in writing.
+
+- **A list of paths escaped the workspace jail through `run_operation` and
+  `execute_plan`.** `merge_layers` takes `input_paths`, and the plan validator
+  checked only the arguments a binding names as inputs, skipping anything that is
+  not a string — so a list of paths was invisible to it twice over. The dedicated
+  `merge_layers` tool refused a file outside `MAPSMITH_WORKSPACE`; the generic
+  path read it and wrote it INSIDE the workspace, where the next
+  `describe_dataset` hands it to the model. `validate_plan` reported that step as
+  `valid: true` with no errors, and the same gap let a `/vsicurl/` path reach the
+  network from a workspace-confined server, which `SECURITY.md` defines as a
+  vulnerability.
+
+  Neither operation exists in any published version, so no advisory is owed and
+  no released artifact is affected.
+
+  The fix is one field on the binding. What stops it recurring is
+  `tests/test_path_containment.py`: it enumerates every catalog parameter whose
+  name carries a path and fails when a binding does not cover it, then points
+  every path argument of every operation outside the workspace and at the
+  network and requires the validator to object. The defect was not the missing
+  entry — it was that a hand-maintained enumeration of a growing set is wrong
+  somewhere between one addition and the next.
+
+- **The new default catalog search reached huggingface.co from a
+  workspace-confined server.** Making the embedding engine the default put a
+  first-use model download on `list_operations`, the first tool an agent calls,
+  in the mode `SECURITY.md` promises makes no requests. Under a workspace the
+  model is now used only if it is already cached; otherwise discovery falls back
+  to BM25 and says `engine: "lexical"`. The container image ships the weights, so
+  the supported path keeps the better default, and `retrieval.warm_cache()` fills
+  the cache deliberately for anyone else.
+
+- **`resample_raster` and `reproject_raster` delivered a cell size other than the
+  one requested, and said otherwise.** Both derived the grid from the extent —
+  `round(extent / resolution)` cells across the same ground — so 30 m asked of a
+  100 m extent arrived as 33.33 m, and reprojection produced cells that were not
+  even square. The manifest recorded `"resolution": 30.0`, and a check named
+  `x-mapsmith:shape_matches_resolution` passed, because it compared the shape on
+  disk to the shape we had computed rather than to the resolution in its own
+  name. An 11% cell error is a 23% area error for anyone multiplying by cell
+  size.
+
+  The grid is now anchored to the requested cell size and the extent grows
+  outward to the next whole cell, which is what `gdalwarp -tr` does and what a
+  caller means. A new check, `x-mapsmith:cell_size_is_what_was_asked`, compares
+  the delivered transform to the request, and a note records when the output
+  covers more ground than the input. This one is worth naming plainly: a
+  well-formed, confidently reported, wrong number under a green tick is the
+  failure this project measures in other people's systems.
+
+- **`idw_interpolation` accepted a geographic CRS.** IDW weights every sample by
+  distance, so in degrees at 41°N — where a degree of longitude covers 0.75 of
+  the ground a degree of latitude does — the weighting is anisotropic by a third
+  and the surface is stretched east-west, with all checks green and nothing in
+  the output to show for it. It now refuses, names the input when the input is
+  the one without a CRS, records that CRS in the manifest, and declares
+  `requires_projected_crs: true` so the applicability filter stops offering it to
+  a caller who honestly says their data is in degrees.
+
+- **`voronoi_polygons` met duplicate points with a raw GEOS exception.** Its
+  precondition said "at least 2 distinct points" and only ever counted them.
+  Repeated coordinates are ordinary — two sensors at one address — and now get a
+  refusal that names the coordinate and says why the cell is undefined, rather
+  than `Multiple input coordinates in cell at 0 0`.
 
 ### Changed
 

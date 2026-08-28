@@ -58,9 +58,19 @@ vulnerability:
   sets `allow_persistent_secrets = false` in both modes, before locking the
   configuration.
 - **No network egress in sandbox mode** — with `MAPSMITH_WORKSPACE` set —
-  beyond the documented one-time extension install. Any way to make SQL,
-  GDAL or a tool argument reach the network from a workspace-confined server
-  is a vulnerability.
+  beyond the documented one-time extension install. Any way to make SQL, GDAL
+  or a tool argument reach the network from a workspace-confined server is a
+  vulnerability.
+
+  This is why the catalogue's embedding engine does **not** download its model
+  under a workspace. 0.3.0 made that engine the default, and the model weights
+  are a first-use fetch; left alone it would have put an outbound request on
+  the first tool an agent calls, in the mode this section says makes no
+  requests. Under a workspace the model is used only if it is already cached,
+  and otherwise discovery falls back to BM25 and reports `engine: "lexical"`.
+  To have embeddings there, warm the cache once outside sandbox mode or use the
+  container image, which ships the weights. `HF_HUB_OFFLINE=1` refuses the
+  fetch in every mode.
 
 **The HTTP transport has no authentication in this release.** Anyone who can
 reach the endpoint can run every tool against everything the process can see,

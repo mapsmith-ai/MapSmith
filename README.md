@@ -77,12 +77,9 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-**That installs the latest release, 0.2.2. This page describes `main`**, which is ahead of it
-by ten tools, the 51-operation catalogue and the discovery behaviour below; the difference is
-itemised in [`CHANGELOG.md`](CHANGELOG.md) under `[Unreleased]`. For `main` today, install from
-source (`pip install git+https://github.com/mapsmith-ai/MapSmith`) or wait for the next release
-— saying which artifact a page describes seems better than letting a reader find out by
-calling a tool that is not there.
+This page describes **0.3.0**, which is what that command installs. When `main` runs ahead of
+the published artifact this paragraph says so and names the difference — a reader should never
+have to find out by calling a tool that is not there.
 
 Then ask your agent things like:
 
@@ -108,7 +105,7 @@ for it:
 
 ```json
 {
-  "mapsmith_version": "0.2.2",
+  "mapsmith_version": "0.3.0",
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{"path": "rivers.gpkg", "sha256": "9f2c…", "crs": "EPSG:4326"}],
@@ -408,7 +405,9 @@ the verification of each step as they were actually recorded.
 Nothing in this section is drawn. `benchmarks/worked_example.py` builds fixtures whose answer can
 be worked out on paper, asks the catalogue in the words of the problem, validates and runs the
 plan, reads the manifests, and writes what follows; `tests/test_worked_example.py` fails if this
-page and that script disagree. Two things worth watching: the middle column, where the catalogue
+page and that script disagree. The position column is BM25's rather than the default engine's,
+because a published figure should not depend on whether a model download succeeded on the machine
+that built the page — the narrowing, which is the point, is identical on both. Two things worth watching: the middle column, where the catalogue
 goes from fifty-one operations to a handful the caller can read; and the CRS column, where every
 metric operation says which coordinate system it moved the data into and why.
 
@@ -438,10 +437,10 @@ flowchart TB
 | what the agent asks for | it declares | candidates | picked | at position |
 |---|---|---|---|---|
 | “everything within one and a half kilometres of the river” | vector, dataset:vector | **26** of 51 | `buffer_layer` | 2 |
-| “keep only the parcels that fall inside that strip” | vector, dataset:vector | **26** of 51 | `clip_layer` | 2 |
+| “keep only the parcels that fall inside that strip” | vector, dataset:vector | **26** of 51 | `clip_layer` | 1 |
 | “how high is the ground under each of these parcels” | raster, dataset:vector | **4** of 51 | `zonal_statistics` | 2 |
 | “how big is each one on the ground” | vector, dataset:vector | **26** of 51 | `measure_area` | 1 |
-| “drop the ones where the ground is above 120 metres” | vector, dataset:vector | **26** of 51 | `run_sql` | 12 |
+| “drop the ones where the ground is above 120 metres” | vector, dataset:vector | **26** of 51 | `run_sql` | 18 |
 
 | step | operation | arguments that mattered | CRS decision, recorded | checks |
 |---|---|---|---|---|

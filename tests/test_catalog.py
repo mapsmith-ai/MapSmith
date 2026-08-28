@@ -28,7 +28,12 @@ def test_ranking_puts_the_right_operation_first():
     queries where the embedding engine scores 60%. Pinning the engine keeps this
     a test of BM25 rather than a test of whichever default is current."""
     def first(query: str) -> str:
-        return catalog.search(query, engine="lexical")[0]["name"]
+        # Through `entries`, not `[0]`. Unfaceted these queries leave all 51
+        # operations, which is above CHOOSABLE, so the answer is a ranked list
+        # and indexing it happens to work — until this helper takes a facet or
+        # the threshold moves, at which point `[0]` reads the envelope and the
+        # failure is a KeyError rather than a wrong ranking.
+        return catalog.entries(catalog.search(query, engine="lexical"))[0]["name"]
 
     assert first("statistics of a raster inside polygons") == "zonal_statistics"
     assert first("join layers by spatial predicate") == "spatial_join"

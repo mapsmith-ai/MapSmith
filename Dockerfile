@@ -18,6 +18,17 @@ RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin mapsmith \
     && mkdir -p /data \
     && chown mapsmith:mapsmith /data
 
+# The catalogue's embedding engine is the default, and its weights are a
+# first-use download. Under a workspace MapSmith refuses that download -- this
+# image sets MAPSMITH_WORKSPACE below, and SECURITY.md promises no egress in
+# that mode -- so without the weights baked in every container would silently
+# fall back to BM25. Fetched here, at the pinned revision the source names, and
+# owned by the user that will read it.
+ENV HF_HUB_DISABLE_TELEMETRY=1
+ENV HF_HOME=/home/mapsmith/.cache/huggingface
+RUN python -c "from mapsmith import retrieval; retrieval.warm_cache()"
+RUN chown -R mapsmith:mapsmith /home/mapsmith/.cache
+
 # Workspace for datasets: mount your data here. Confined BY DEFAULT — the
 # supported path used to start unconfined unless the operator remembered `-e`,
 # which is the wrong way round for a default.

@@ -133,6 +133,7 @@ def _check_arguments(
             )
 
 
+
 def _collect_literal_outputs(plan: Plan) -> dict[str, tuple[int, str]]:
     """Canonical output path -> (step index, step id), first writer wins."""
     outputs: dict[str, tuple[int, str]] = {}
@@ -438,6 +439,22 @@ def validate(plan: Plan) -> ValidationReport:
                 crs = _check_one_input(step.id, arg, value, context, errors, warnings, notes)
                 if crs is not None:
                     input_crs[arg] = crs
+
+        # Path arguments that arrive as a list get the identical treatment,
+        # element by element. Skipping them was a containment hole: see the
+        # comment on `Binding.list_input_args`. The CRS of an element is not
+        # recorded under the argument name, because several elements share it
+        # and the operations taking a list declare `crs_effect ("unknown", "")`
+        # anyway — the containment checks are what matter here.
+        for arg in binding.list_input_args:
+            values = step.arguments.get(arg)
+            if not isinstance(values, list):
+                continue
+            for index, value in enumerate(values):
+                if isinstance(value, str) and value:
+                    _check_one_input(
+                        step.id, f"{arg}[{index}]", value, context, errors, warnings, notes
+                    )
 
         output_path = _resolve_output(
             step, binding, workspace, seen_outputs, external_inputs, errors, warnings

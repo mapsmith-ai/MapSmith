@@ -925,7 +925,7 @@ def flow_direction(
         parameters["encoding"] = encoding
         parameters["direction_codes"] = dict(POINTER_ENCODINGS[encoding])
 
-    def esegui(wbe, dem):
+    def run_tool(wbe, dem):
         tool_fn = getattr(wbe.hydrology.flow_routing, tool)
         if coded:
             # The engine's own flag name is its vendor's; the value is what matters.
@@ -937,7 +937,7 @@ def flow_direction(
         dem_path,
         output_path,
         parameters=parameters,
-        call=esegui,
+        call=run_tool,
         value_range=None,
         extra_checks=codes_are_directions,
     )
@@ -1027,6 +1027,15 @@ def idw_interpolation(
     `weight` is the distance exponent: 2 is the usual choice, and higher values
     make the surface flatter between points and peakier at them. It is recorded,
     because an IDW surface without its exponent cannot be reproduced.
+
+    A geographic CRS is refused, for the same reason `euclidean_distance`
+    refuses one and with more consequence: IDW weights every sample by its
+    distance, and in degrees at 41 degrees north a degree of longitude covers
+    0.75 of the ground a degree of latitude does. The weighting comes out
+    anisotropic by a third, the surface is stretched east-west, and nothing in
+    the output says so — it renders, it is smooth, and it is wrong in a way that
+    looks like terrain. Until 0.3.0 this ran happily on EPSG:4326 and recorded
+    "the cell size is read in that CRS's units" as though that settled it.
     """
     wb = _require()
     if cell_size <= 0:
@@ -1036,57 +1045,81 @@ def idw_interpolation(
             "field_name is required: whitebox interpolates FID by default, which "
             "produces a smooth and meaningless surface of row numbers, with no warning."
         )
+    # Checked BEFORE the engine runs, and named as the INPUT's problem. The
+    # output-side `crs_present` check does catch a CRS-less input, but only
+    # afterwards, and its message sends the caller to look at the output — the
+    # wrong artifact.
+    layer = readers.read_vector(points_path)
+    if layer.crs is None:
+        raise ValueError(
+            readers.no_crs_message(
+                layer,
+                f"{points_path} declares no CRS, so the distances IDW weights by "
+                "mean nothing.",
+            )
+        )
+    crs = layer.crs
+    if crs.is_geographic:
+        raise ValueError(
+            "idw_interpolation on a geographic CRS would weight samples by a distance "
+            "in degrees, which is not a distance: a degree of longitude is 111 km at "
+            "the equator and 83 km in Rome, so the weighting comes out anisotropic by "
+            "a third and the surface is stretched east-west with nothing to show for "
+            "it. Reproject to a projected CRS first."
+        )
+
     wbe = wb.WbEnvironment()
     wbe.verbose = False
-    plain = _needs_plain_copy(points_path)
-    with tempfile.TemporaryDirectory(prefix="mapsmith-idw-") as scratch:
-        source = _plain_copy(points_path, Path(scratch)) if plain else points_path
-        points = wbe.read_vector(str(source))
-        record = ProvenanceRecord(
-            operation="idw_interpolation",
-            parameters={
-                "field_name": field_name,
-                "cell_size": cell_size,
-                "weight": weight,
-                "radius": radius,
-                "min_points": min_points,
-            },
-            inputs=[InputRecord.from_path(points_path)],
-            engine=_engine_info(),
-        )
-        if plain:
-            record.notes.append(_plain_copy_note(plain))
-        result = wbe.raster.general.idw_interpolation(
-            points=points,
-            field_name=field_name,
-            weight=weight,
-            radius=radius,
-            min_points=min_points,
-            cell_size=cell_size,
-        )
-        wbe.write_raster(result, str(output_path))
-        meta = result.metadata()
-        epsg = result.crs_epsg()
-        record.crs_decisions = {
-            "analysis_crs": f"EPSG:{epsg}" if epsg else "unknown",
-            "reason": "the surface is built in the point layer's own CRS, and the cell "
-            "size is read in that CRS's units",
-        }
-        checks = _raster_checks(
-            wbe,
-            output_path,
-            expect_epsg=epsg,
-            expect_shape=(meta.rows, meta.columns),
-            value_range=None,
-        )
-        manifest = record.add_verification(checks).finish().write_for(output_path)
-        verify.enforce(checks, "idw_interpolation")
-        return {
-            "output": str(output_path),
+    # No `_needs_plain_copy` here, unlike the DEM path this was copied from: that
+    # helper opens a path with rasterio looking for a TIFF predictor, which on a
+    # vector layer raises and is swallowed, so the branch was permanently dead —
+    # and had it ever fired it would have written a single-band GeoTIFF in place
+    # of the point layer. Removed rather than guarded.
+    points = wbe.read_vector(str(points_path))
+    record = ProvenanceRecord(
+        operation="idw_interpolation",
+        parameters={
             "field_name": field_name,
             "cell_size": cell_size,
             "weight": weight,
-            "shape": [meta.rows, meta.columns],
-            "provenance": str(manifest),
-            "verified": True,
-        }
+            "radius": radius,
+            "min_points": min_points,
+        },
+        inputs=[InputRecord.from_path(points_path, crs=verify.crs_label(crs))],
+        engine=_engine_info(),
+    )
+    result = wbe.raster.general.idw_interpolation(
+        points=points,
+        field_name=field_name,
+        weight=weight,
+        radius=radius,
+        min_points=min_points,
+        cell_size=cell_size,
+    )
+    wbe.write_raster(result, str(output_path))
+    meta = result.metadata()
+    epsg = result.crs_epsg()
+    record.crs_decisions = {
+        "analysis_crs": f"EPSG:{epsg}" if epsg else verify.crs_label(crs),
+        "reason": "the surface is built in the point layer's own CRS, which is "
+        "projected — refused otherwise — so the cell size and the distance "
+        "weighting are both in that CRS's linear unit",
+    }
+    checks = _raster_checks(
+        wbe,
+        output_path,
+        expect_epsg=epsg,
+        expect_shape=(meta.rows, meta.columns),
+        value_range=None,
+    )
+    manifest = record.add_verification(checks).finish().write_for(output_path)
+    verify.enforce(checks, "idw_interpolation")
+    return {
+        "output": str(output_path),
+        "field_name": field_name,
+        "cell_size": cell_size,
+        "weight": weight,
+        "shape": [meta.rows, meta.columns],
+        "provenance": str(manifest),
+        "verified": True,
+    }

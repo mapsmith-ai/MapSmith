@@ -848,7 +848,13 @@ def run_operation(operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
         goal=f"single operation: {operation}",
         steps=[PlanStep(id="step", operation=operation, arguments=arguments)],
     )
-    result = executor.execute(plan)
+    # Through the ledger like every other writer. It was not, and the gap was
+    # exactly the wrong shape: operations reachable only by name are already most
+    # of the catalog and increasingly so, so the audit trail of a product that
+    # sells audit trails was thinning with every operation added. Validation
+    # failures stay outside it — nothing ran, so there is no job to record.
+    result = _run("run_operation", {"operation": operation, "arguments": arguments},
+                  executor.execute, plan)
     if not result.get("executed") and "validation" in result:
         # The plan wrapper is an implementation detail; the caller asked for one
         # operation and gets one operation's diagnosis back.
@@ -863,7 +869,14 @@ def run_operation(operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
         }
     step = result["steps"][0] if result.get("steps") else {}
     flat = {key: value for key, value in step.items() if key not in ("id", "operation")}
-    return {"ran": result.get("executed", False), "operation": operation, **flat}
+    # The job id travels with the answer: a ledger entry nobody can name is an
+    # audit trail only in principle.
+    return {
+        "ran": result.get("executed", False),
+        "operation": operation,
+        **flat,
+        **({"job_id": result["job_id"]} if result.get("job_id") else {}),
+    }
 
 
 @mcp.tool(annotations=_READONLY)

@@ -142,3 +142,41 @@ def test_the_cells_are_built_in_the_layers_own_crs(square_corners, tmp_path):
     decisions = _manifest(result)["crs_decisions"]
     assert decisions["analysis_crs"] == CRS
     assert "reprojection" in decisions["reason"]
+
+
+def test_duplicate_points_are_refused_with_a_message_and_not_a_geos_exception(tmp_path):
+    """Two sensors at one address is an ordinary layer, not a corner case.
+
+    The precondition said "at least 2 distinct points" and only ever counted
+    them, so a repeated coordinate reached GEOS and came back as
+    `Multiple input coordinates in cell at 0 0` — an untranslated engine error
+    from an operation whose every other refusal explains itself. They are
+    refused rather than de-duplicated on purpose: which row should own the cell
+    is the caller's question, since the attributes differ even when the
+    geometry does not.
+    """
+    import geopandas as gpd
+    import pytest
+    from shapely.geometry import Point
+
+    from mapsmith.engines import vector
+
+    layer = tmp_path / "twins.gpkg"
+    gpd.GeoDataFrame(
+        {"sensor": ["a", "b", "c"]},
+        geometry=[Point(0, 0), Point(0, 0), Point(10, 10)],
+        crs="EPSG:32632",
+    ).to_file(layer, layer="twins", driver="GPKG")
+
+    with pytest.raises(ValueError) as raised:
+        vector.voronoi_polygons(str(layer), str(tmp_path / "cells.parquet"))
+
+    message = str(raised.value)
+    assert "DISTINCT" in message and "(0.0, 0.0)" in message, (
+        "the refusal does not name the repeated coordinate, so the caller has to "
+        f"go and find it: {message}"
+    )
+    assert "Multiple input coordinates" in message, (
+        "the message does not quote the engine error it is replacing, so somebody "
+        "searching for that string will not land here"
+    )

@@ -15,9 +15,13 @@ golden-vector test pins the numbers themselves, so drift in any layer of the
 stack fails a test instead of an analysis. Encoding is bit-identical across
 calls in one process (measured); multiprocessing is disabled on purpose.
 
-Optional extra: ``pip install mapsmith[retrieval]``. The model file (~130 MB
-of artifacts, once) is fetched from the Hugging Face Hub on first use and
-cached; offline installs simply keep BM25.
+A hard dependency since 0.3.0, not an extra: the measurement said the embedding
+engine should be the default, and a default behind an extra is not a default. The
+model (~130 MB of artifacts, once) is fetched from the Hugging Face Hub on first
+use and cached; ``HF_HUB_OFFLINE=1``, no network, or a cold cache on an air-gapped
+machine all fall back to BM25, and the ``engine`` field of every result says which
+one answered. The repository and revision are constants in this file: no tool
+argument reaches that fetch.
 """
 
 from __future__ import annotations
@@ -62,10 +66,41 @@ def _model():
     degrades to a working answer when it cannot have it, is.
     """
     snapshot_download, StaticModel = _require()
+    # NO FETCH UNDER A WORKSPACE. `SECURITY.md` promises no network egress when
+    # `MAPSMITH_WORKSPACE` is set, and states that any way to make a
+    # workspace-confined server reach the network is a vulnerability. Making the
+    # embedding engine the default in 0.3.0 would have broken that promise on
+    # the very first tool an agent calls, on a machine whose whole point is that
+    # it does not talk to anything.
+    #
+    # So under a workspace the model is used only if it is ALREADY cached, and
+    # otherwise this raises and `catalog.search` falls back to BM25 with the
+    # `engine` field saying so. An operator who wants embeddings in sandbox mode
+    # warms the cache once outside it, or uses the container image. The promise
+    # stays testable, which was the point of writing it that way.
+    from . import workspace
+
     path = snapshot_download(
-        MODEL_ID, revision=MODEL_REVISION, allow_patterns=list(MODEL_FILES)
+        MODEL_ID,
+        revision=MODEL_REVISION,
+        allow_patterns=list(MODEL_FILES),
+        local_files_only=workspace.root() is not None,
     )
     return StaticModel.from_pretrained(path)
+
+
+def warm_cache() -> str:
+    """Fetch the model into the local cache, deliberately and outside sandbox mode.
+
+    Exists for the container build, and for an operator who wants embeddings on
+    a workspace-confined server: under a workspace `_model` refuses to download,
+    so the cache has to be filled by someone who means to fill it. Returns the
+    snapshot path so a build step can fail loudly if nothing arrived.
+    """
+    snapshot_download, _ = _require()
+    return snapshot_download(
+        MODEL_ID, revision=MODEL_REVISION, allow_patterns=list(MODEL_FILES)
+    )
 
 
 def embed(texts: list[str]):

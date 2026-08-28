@@ -121,3 +121,47 @@ def test_at_least_one_operation_in_each_group_is_covered():
     covered = set(_calls("", "", "", ""))
     assert any(declared[n] for n in covered), "no refusing operation is exercised"
     assert any(not declared[n] for n in covered), "no accepting operation is exercised"
+
+
+def test_idw_refuses_a_geographic_crs_by_name(geographic_inputs):
+    """The sweep above compares the engine to the catalog. This asserts the answer.
+
+    Consistency is not correctness, and the difference cost something: until
+    0.3.0 `idw_interpolation` declared `requires_projected_crs: False` and
+    accepted degrees, so the sweep saw agreement and passed while the operation
+    weighted every sample by a distance in degrees — anisotropic by a third at
+    41°N, a surface stretched east-west, all checks green. A test that only asks
+    two statements to match cannot notice that both are wrong.
+    """
+    directory, _dem, _pour, values = geographic_inputs
+    with pytest.raises(ValueError, match="geographic"):
+        engine.idw_interpolation(
+            values, str(directory / "idw.tif"), field_name="v", cell_size=0.001
+        )
+
+
+def test_idw_names_the_input_when_it_has_no_crs(tmp_path):
+    """And the message points at the input, not at the output.
+
+    A CRS-less layer was caught before this, but by the output-side
+    `crs_present` check after the interpolation had run — so the caller was told
+    "output failed deterministic verification" and sent to look at the wrong
+    artifact.
+    """
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    pytest.importorskip("whitebox_workflows")
+    naked = tmp_path / "no_crs.shp"
+    gpd.GeoDataFrame(
+        {"v": [1.0, 2.0]}, geometry=[Point(0, 0), Point(10, 10)], crs=None
+    ).to_file(naked)
+
+    with pytest.raises(ValueError) as raised:
+        engine.idw_interpolation(
+            str(naked), str(tmp_path / "out.tif"), field_name="v", cell_size=1.0
+        )
+    assert "no_crs" in str(raised.value), (
+        "the error does not name the input that lacks a CRS, so the caller has to "
+        "guess which of their files is the problem"
+    )

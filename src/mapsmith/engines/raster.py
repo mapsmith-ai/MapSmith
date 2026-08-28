@@ -221,7 +221,11 @@ def resample(
     Neither failure raises anything, so the choice is the caller's to state.
     """
     rasterio = _require_rasterio()
+    import math
+
     from rasterio.enums import Resampling
+    from rasterio.transform import from_origin
+    from rasterio.warp import reproject as warp
 
     if resolution <= 0:
         raise ValueError(f"resolution must be positive, got {resolution}")
@@ -248,11 +252,26 @@ def resample(
                 "interpreted. Assign a CRS first."
             )
         left, bottom, right, top = src.bounds
-        # Closed form: the new grid covers the same extent, so its shape follows
-        # from the extent and the target cell size. Computed BEFORE the engine
-        # runs, then verified against what landed on disk.
-        width = max(1, round((right - left) / resolution))
-        height = max(1, round((top - bottom) / resolution))
+        # THE CELL SIZE IS THE REQUEST, and the extent gives way to it.
+        #
+        # Until 0.3.0 this kept the extent and derived the cell size from it —
+        # `round(extent / resolution)` cells across the same ground — so asking
+        # for 30 m on a 100 m extent delivered 33.333 m, the manifest recorded
+        # `"resolution": 30.0`, and a check named `shape_matches_resolution`
+        # passed because it compared the shape on disk to the shape we had
+        # computed rather than to the resolution in its own name. An 11% cell
+        # error is a 23% area error for anyone multiplying by cell size, which
+        # is the ordinary downstream use. Well-formed, confidently reported and
+        # wrong: the exact failure this project measures in other systems.
+        #
+        # So the grid is anchored at the top-left corner with cells of exactly
+        # `resolution`, and the extent grows outward to the next whole cell —
+        # what `gdalwarp -tr` does, and what a caller means by "resample to 30 m".
+        # `ceil` with a tolerance, so an extent that already divides evenly does
+        # not gain a phantom column to floating-point noise.
+        width = max(1, math.ceil((right - left) / resolution - _GRID_EPSILON))
+        height = max(1, math.ceil((top - bottom) / resolution - _GRID_EPSILON))
+        target_transform = from_origin(left, top, resolution, resolution)
         source_values, categorical = _distinct_values(src)
         record = ProvenanceRecord(
             operation="resample_raster",
@@ -264,27 +283,40 @@ def resample(
             inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(src.crs))],
             engine={"name": "rasterio", "version": rasterio.__version__},
         )
+        grown = (
+            left + width * resolution > right + _GRID_EPSILON
+            or top - height * resolution < bottom - _GRID_EPSILON
+        )
         record.crs_decisions = {
             "analysis_crs": verify.crs_label(src.crs),
             "reason": "resampling changes the grid, not the coordinate system; "
             "the target resolution is read in the raster's own CRS units",
         }
-        data = src.read(out_shape=(src.count, height, width), resampling=method)
+        if grown:
+            record.notes.append(
+                f"the extent does not divide evenly by {resolution}, so the output "
+                f"covers slightly more ground than the input: the cell size is the "
+                f"request and the grid grew outward to the next whole cell, rather "
+                f"than the cell size bending to fit the extent"
+            )
         profile = src.profile.copy()
-        profile.update(
-            width=width,
-            height=height,
-            transform=src.transform * src.transform.scale(
-                src.width / width, src.height / height
-            ),
-        )
+        profile.update(width=width, height=height, transform=target_transform)
         # The source's tiling describes the source's grid: carried onto a
         # smaller output GDAL complains and drops it. Let the driver choose.
         for key in ("blockxsize", "blockysize", "tiled"):
             profile.pop(key, None)
 
-    with rasterio.open(output_path, "w", **profile) as dst:
-        dst.write(data)
+        with rasterio.open(output_path, "w", **profile) as dst:
+            for band in range(1, src.count + 1):
+                warp(
+                    source=rasterio.band(src, band),
+                    destination=rasterio.band(dst, band),
+                    src_transform=src.transform,
+                    src_crs=src.crs,
+                    dst_transform=target_transform,
+                    dst_crs=src.crs,
+                    resampling=method,
+                )
 
     checks: list[verify.Check] = []
     with rasterio.open(output_path) as out:
@@ -295,6 +327,7 @@ def resample(
                 f"expected {height}x{width}, got {out.height}x{out.width}",
             )
         )
+        checks.append(_cell_size_check(out, resolution))
         checks.append(
             verify.Check(
                 "crs_matches",
@@ -346,6 +379,33 @@ def resample(
     if invented:
         result["invented_values"] = invented
     return result
+
+
+#: A grid whose extent already divides evenly by the requested cell size must
+#: not gain a phantom row to floating-point noise, and one that misses by a
+#: micron must not lose a real one. Relative, because extents run from metres to
+#: millions of metres.
+_GRID_EPSILON = 1e-9
+
+
+def _cell_size_check(dataset: Any, requested: float) -> Any:
+    """Assert the delivered cell size IS the requested one.
+
+    The check this sits beside compares the shape on disk to the shape we
+    computed, which is a real check of a different thing — and its name,
+    `shape_matches_resolution`, promised this one. For half a release it passed
+    on rasters whose cells were 11% larger than the caller asked for. A check
+    whose name asserts a property it does not test is worse than no check: it
+    is a green tick in the manifest saying the number is right.
+    """
+    x = abs(dataset.transform.a)
+    y = abs(dataset.transform.e)
+    tolerance = requested * 1e-6
+    return verify.Check(
+        "x-mapsmith:cell_size_is_what_was_asked",
+        abs(x - requested) <= tolerance and abs(y - requested) <= tolerance,
+        f"asked for {requested}, delivered {x} x {y}",
+    )
 
 
 def _distinct_values(dataset: Any) -> tuple[set[float] | None, bool]:
@@ -807,8 +867,10 @@ def reproject_raster(
     method did not put new codes into a categorical raster.
     """
     rasterio = _require_rasterio()
+    import math
+
     from rasterio.enums import Resampling
-    from rasterio.transform import from_bounds
+    from rasterio.transform import from_bounds, from_origin
     from rasterio.warp import reproject as warp
     from rasterio.warp import transform_bounds
 
@@ -847,11 +909,20 @@ def reproject_raster(
         if resolution is not None:
             if resolution <= 0:
                 raise ValueError(f"resolution must be positive, got {resolution}")
-            width = max(1, round((right - left) / resolution))
-            height = max(1, round((top - bottom) / resolution))
+            # Same rule as `resample`, and for the same reason: a caller who
+            # names a cell size gets that cell size, and the extent grows
+            # outward to the next whole cell. Deriving the size from the extent
+            # instead delivered 33.24 x 33.47 for a requested 30 — not even
+            # square — under a manifest that recorded 30.
+            width = max(1, math.ceil((right - left) / resolution - _GRID_EPSILON))
+            height = max(1, math.ceil((top - bottom) / resolution - _GRID_EPSILON))
+            transform = from_origin(left, top, resolution, resolution)
         else:
+            # No cell size named: preserve the pixel count and let the size
+            # follow from the reprojected extent, which is what the caller is
+            # asking for when they say only "put this in that CRS".
             width, height = src.width, src.height
-        transform = from_bounds(left, bottom, right, top, width, height)
+            transform = from_bounds(left, bottom, right, top, width, height)
         record = ProvenanceRecord(
             operation="reproject_raster",
             parameters={
@@ -902,6 +973,8 @@ def reproject_raster(
                 f"{out.height}x{out.width}",
             )
         )
+        if resolution is not None:
+            checks.append(_cell_size_check(out, resolution))
         result_values, _ = _distinct_values(out)
 
     # Reprojection rotates the grid, so the output covers cells the source never

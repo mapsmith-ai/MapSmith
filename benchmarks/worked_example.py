@@ -181,7 +181,14 @@ def trace_discovery() -> list[dict[str, Any]]:
     out = []
     for step in STEPS:
         survivors = catalog.applicable(**step["facets"])
-        answer = catalog.search(step["ask"], limit=3, **step["facets"])
+        # BM25 pinned, not the default. The position column would otherwise
+        # depend on whether a 130 MB download succeeded on the machine that
+        # built the page, and `tests/test_worked_example.py` compares this
+        # section byte for byte — so an offline build would fail with a README
+        # diff about something else entirely. Deterministic and network-free is
+        # the right property for a published figure; the narrowing, which is the
+        # point of the table, is identical on both engines.
+        answer = catalog.search(step["ask"], limit=3, engine="lexical", **step["facets"])
         delivered = catalog.entries(answer)
         shape = answer[0].get("status") if len(answer) == 1 else "ranked"
         position = next(

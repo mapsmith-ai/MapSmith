@@ -3016,7 +3016,10 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'raster',
         'category': 'raster',
         "produces": "dataset:raster",
-        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False},
+        # True since 0.3.0, and it was a claim rather than an oversight: a caller
+        # who honestly passed projected=False was OFFERED an operation that
+        # weights samples by distance, on a CRS where distance is degrees.
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': True},
         'summary': 'Inverse-distance-weighted surface from a point layer; the field is '
                    'REQUIRED. Requires the [whitebox] extra',
         "phrasings": "a surface from scattered measurements; fill in between the gauges; interpolate the readings",
