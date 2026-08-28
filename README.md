@@ -181,19 +181,44 @@ input kind (vector, raster, dataset, plan) and whether it demands a projected CR
 geographic raster is never offered `slope`, because `slope` refuses one — and that filter
 is a property of the data checked in code, with no model in the loop.
 
-**Then it ranks, with either of two engines the caller can pick.** `list_operations` takes
-`engine`: `lexical` (the default), `vector`, or `auto` — which uses the vector engine where it
-is installed and falls back to lexical where it is not. Every result carries the engine that
-produced it, because a BM25 score of 10.03 and a cosine of 0.38 are not on the same scale. If
-a query comes back useless, the other engine is one argument away.
+**Then it ranks, with two engines that both always run.** `list_operations` takes `engine`:
+`auto` (the default), `lexical`, or `vector`. Every result carries the engine that produced it,
+because a BM25 score of 10.03 and a cosine of 0.38 are not on the same scale.
 
 | engine | what it is | what it guarantees |
 |---|---|---|
-| `lexical` — **the default** | Okapi BM25, ~40 lines, no dependencies and no network | Identical scores on every machine; term-sorted accumulation, because float addition is not associative |
-| `vector` (`[retrieval]` extra) | Static embeddings — a token lookup plus pooling, no transformer, no GPU. Model **revision pinned in the source**, 512 dimensions, ~130 MB of artifacts fetched once | Bit-identical across calls in one process (measured, multiprocessing off), with the vectors themselves pinned by a golden-vector test — so a change in the model, the tokenizer or the pooling fails a test instead of an analysis |
-| `auto` — the deployment switch | The vector engine when the extra is present, lexical otherwise | A deployment can turn embeddings on without any caller changing; a missing extra degrades to a working default rather than an error |
+| `auto` — **the default** | The embedding engine, falling back to BM25 when the model cannot be loaded | An answer on a machine with no network, and a field saying which engine gave it |
+| `lexical` — words | Okapi BM25, ~40 lines, no model and no network ever | Identical scores on every machine; term-sorted accumulation, because float addition is not associative |
+| `vector` — meaning | Static embeddings — a token lookup plus pooling, no transformer, no GPU. Model **revision pinned in the source**, 512 dimensions, ~130 MB fetched once | Bit-identical across calls in one process (measured, multiprocessing off), with the vectors pinned by a golden-vector test — so a change in the model, the tokenizer or the pooling fails a test instead of an analysis |
 
-The default stays lexical for one reason: a default that needs a download is not a default.
+**The default was lexical until the measurement said otherwise**, and the measurement is the
+interesting part. Golden queries written by whoever wrote the catalog share its vocabulary, so
+they test word overlap dressed as retrieval: on those, BM25 scores 100% found@1 and embeddings
+60%. Re-phrased the way somebody with a problem actually phrases it — *"the coastline is 400000
+nodes and the browser dies"* rather than *"simplify the geometry"* — the finding reverses and
+both engines degrade as the catalog grows:
+
+| catalog size | BM25 found@3 | embeddings found@3 |
+|---|---|---|
+| 10 | 78% | 83% |
+| 30 | 47% | 65% |
+| 51 | 40% | 55% |
+
+BM25 degrades faster and the gap widens with every entry, which is why the embedding engine is
+a dependency rather than an extra. The whole curve is a test (`test_retrieval_degradation.py`),
+so growing the catalog cannot quietly make it harder to find anything.
+
+**And when the two engines agree on nothing, the search says so instead of answering.** This is
+the failure that measurement turned up in our own product: asked *"send an email to my
+accountant"*, the embedding engine returned `idw_interpolation` with the same confidence as a
+real answer — a silent error in the layer whose job is to prevent them. A similarity threshold
+does not fix it, because there is no line to draw: *"convert this mp4 to a gif"* scores above
+sixteen of twenty genuine queries. What does separate them is the two rankers landing on
+**nothing in common** — mean top-3 overlap 0.90 of 3 when an answer exists, 0.18 when it does
+not. So a query the catalog cannot place comes back as `status: "unsure"`, carrying both
+engines' guesses and the question that narrows the catalog deterministically: what kind of data
+do you have. It fires on 9 of 11 unanswerable queries and suppresses 1 correct answer in 20.
+
 The applicability filter above runs first for **both** engines — otherwise the guarantee would
 only be true of one of them, and there is a test that says so.
 

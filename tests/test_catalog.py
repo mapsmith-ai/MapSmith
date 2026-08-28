@@ -22,13 +22,19 @@ def test_bm25_closed_form():
 
 
 def test_ranking_puts_the_right_operation_first():
-    assert catalog.search("statistics of a raster inside polygons")[0]["name"] == (
-        "zonal_statistics"
-    )
-    assert catalog.search("join layers by spatial predicate")[0]["name"] == "spatial_join"
-    assert catalog.search("sql query")[0]["name"] == "run_sql"
-    assert catalog.search("buffer distance meters")[0]["name"] == "buffer_layer"
-    assert catalog.search("lineage manifest audit")[0]["name"] == "get_provenance"
+    """BM25 specifically. These queries are written in the catalog's own words,
+    which is the case lexical ranking is best at and the embedding engine is
+    not: measured on 2026-08-28, BM25 scores 100% found@1 on catalog-vocabulary
+    queries where the embedding engine scores 60%. Pinning the engine keeps this
+    a test of BM25 rather than a test of whichever default is current."""
+    def first(query: str) -> str:
+        return catalog.search(query, engine="lexical")[0]["name"]
+
+    assert first("statistics of a raster inside polygons") == "zonal_statistics"
+    assert first("join layers by spatial predicate") == "spatial_join"
+    assert first("sql query") == "run_sql"
+    assert first("buffer distance meters") == "buffer_layer"
+    assert first("lineage manifest audit") == "get_provenance"
 
 
 def test_scores_are_present_and_descending():
@@ -45,7 +51,38 @@ def test_empty_query_lists_whole_catalog_compact():
 
 
 def test_no_match_returns_empty():
-    assert catalog.search("nonexistent-xyz") == []
+    """BM25 returns nothing when it shares no term. The embedding engine cannot:
+    every text has a cosine similarity with every other, so it always answers.
+
+    That difference is why the default engine returns a clarification instead of
+    an empty list — see `test_a_query_it_cannot_place_asks_instead_of_guessing`.
+    Here the lexical engine is pinned, because its silence is the property being
+    checked."""
+    assert catalog.search("nonexistent-xyz", engine="lexical") == []
+
+
+def test_a_query_it_cannot_place_asks_instead_of_guessing():
+    """The measured failure: on the default engine, "send an email to my
+    accountant" came back `idw_interpolation` with the same confidence as a real
+    answer. For a discovery layer feeding an agent that is a silent error of
+    exactly the kind this product exists to prevent.
+
+    A score threshold was tried first and does not exist: the similarity of
+    "convert this mp4 to a gif" is higher than that of sixteen of twenty real
+    queries. What separates the two populations is the two engines DISAGREEING —
+    mean overlap of their top-3 is 0.90 of 3 when an answer exists and 0.25 when
+    it does not."""
+    hits = catalog.search("send an email to my accountant")
+    assert len(hits) == 1
+    unsure = hits[0]
+    assert unsure["status"] == "unsure"
+    assert unsure["lexical_suggests"] != unsure["vector_suggests"]
+    assert not set(unsure["lexical_suggests"]) & set(unsure["vector_suggests"])
+    assert unsure["clarify"], "an admission with no question is just a refusal"
+    # And it must not fire on a question it can place.
+    good = catalog.search("how steep is the ground")
+    assert good[0].get("status") != "unsure"
+    assert good[0]["name"] == "slope"
 
 
 def test_limit_is_respected():

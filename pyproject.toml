@@ -49,6 +49,16 @@ dependencies = [
   # changes: without it, the first install after that release can break on its
   # own, with nothing on our side having changed.
   "duckdb>=1.5,<2",
+  # Retrieval is a dependency and no longer an extra, and the reason is a
+  # measurement rather than a preference. On queries phrased the way a caller
+  # actually phrases them -- 35% word overlap with the catalog -- BM25 alone
+  # falls from 78% found@3 at ten operations to 40% at fifty-one, while the
+  # embedding engine falls from 83% to 55%. Both degrade; BM25 degrades faster,
+  # and the gap widens with every operation added. With the catalog growing on
+  # purpose (D-031, D-037), an engine that is only present when someone
+  # remembered to install an extra is a discovery layer that is missing exactly
+  # when it matters most.
+  "model2vec>=0.9,<1",
 ]
 
 [project.optional-dependencies]
@@ -56,7 +66,9 @@ sedona = ["apache-sedona[db]>=1.9"]
 raster = ["exactextract>=0.2", "rasterio>=1.3"]
 whitebox = ["whitebox-workflows>=2.0.6,<3"]
 postgres = ["psycopg[binary]>=3.2"]
-retrieval = ["model2vec>=0.9,<1"]
+# Kept as a name so `pip install mapsmith[retrieval]` does not break for anyone
+# who has it written down; it installs nothing extra now.
+retrieval = []
 # jsonschema is here and not optional-with-a-skip: the manifest conformance
 # test validates against the NORMATIVE schema as well as the standalone
 # validator, and an importorskip would have quietly left CI checking only

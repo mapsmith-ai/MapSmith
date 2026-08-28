@@ -31,22 +31,40 @@ MODEL_ID = "minishlab/potion-retrieval-32M"
 MODEL_REVISION = "6fc8051fab2a1e0ee76689cf08c853792ac285e7"
 
 
+# Only what `StaticModel.from_pretrained` reads. Without this the snapshot also
+# pulls `model.onnx`, another 129 MB that nothing here opens -- measured on the
+# local cache, which held 520 MB for a model whose payload is 131.
+MODEL_FILES = ("*.json", "*.txt", "*.safetensors", "*.md")
+
+
 def _require():
     try:
         from huggingface_hub import snapshot_download
         from model2vec import StaticModel
-    except ImportError as exc:
+    except ImportError as exc:  # pragma: no cover - a dependency, not an extra
         raise ImportError(
-            "embedding retrieval requires the retrieval extra: "
-            "pip install mapsmith[retrieval]"
+            "model2vec is a dependency of mapsmith and appears not to be installed; "
+            "reinstall the package"
         ) from exc
     return snapshot_download, StaticModel
 
 
 @cache
 def _model():
+    """The pinned static model, fetched once and cached by huggingface_hub.
+
+    The package depends on model2vec, but the model WEIGHTS are still a download
+    on first use, and there is no honest way around that in a 30 MB wheel. So
+    the failure is handled where it happens rather than promised away: `rank`
+    raises, `catalog.search` catches, and a machine with no network still gets
+    lexical results and is told which engine answered. A default that needs a
+    download is not a default -- but a default that needs a download ONCE, and
+    degrades to a working answer when it cannot have it, is.
+    """
     snapshot_download, StaticModel = _require()
-    path = snapshot_download(MODEL_ID, revision=MODEL_REVISION)
+    path = snapshot_download(
+        MODEL_ID, revision=MODEL_REVISION, allow_patterns=list(MODEL_FILES)
+    )
     return StaticModel.from_pretrained(path)
 
 

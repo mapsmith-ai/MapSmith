@@ -93,8 +93,12 @@ def test_search_names_its_engine_and_refuses_an_unknown_one():
     """Every result says which engine ranked it: a score of 10.03 and one of
     0.38 are not comparable, and a caller reading both needs to know which
     scale it is on."""
-    hits = catalog.search("area of a parcel", limit=3)
+    hits = catalog.search("area of a parcel", limit=3, engine="lexical")
     assert hits and all(entry["engine"] == "lexical" for entry in hits)
+    # The default is `auto`, which prefers the embedding engine; the field must
+    # say so rather than the caller having to know what the default is.
+    default = catalog.search("area of a parcel", limit=3)
+    assert default and default[0].get("engine") in ("vector", "lexical")
     with pytest.raises(ValueError, match="engine must be one of"):
         catalog.search("area", engine="nonsense")
 

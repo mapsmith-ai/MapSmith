@@ -76,7 +76,9 @@ def test_clip(points_gpkg, tmp_path):
 def test_catalog_search():
     assert any(op["name"] == "buffer_layer" for op in catalog.search("buffer"))
     assert all(op["status"] in {"available", "planned"} for op in catalog.search())
-    assert catalog.search("nonexistent-xyz") == []
+    # Empty is a property of BM25, which shares no term with this; the default
+    # engine answers with a clarification instead. See test_catalog.py.
+    assert catalog.search("nonexistent-xyz", engine="lexical") == []
 
 
 def test_server_tools_carry_mcp_annotations():

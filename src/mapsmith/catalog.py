@@ -29,6 +29,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
         "summary": "Inspect a vector or raster dataset: CRS, schema/bands, extent, "
         "nodata, statistics",
+        "phrasings": "what is in this file; what am I looking at; how many features and what extent; which layers does it have; before I start",
         "description": (
             "Inspect a dataset before analysing it. Vector: coordinate reference system, "
             "geometry types, attribute schema, bounding extent and feature count. A "
@@ -70,6 +71,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Metric buffer with automatic UTM estimation on geographic CRS",
+        "phrasings": "everything within a distance of; a zone around; how far out from; catchment radius; protection zone",
         "description": (
             "Buffer every feature by a distance in meters. Inputs in a geographic CRS "
             "(degrees) are reprojected to an estimated UTM zone for the metric operation "
@@ -131,6 +133,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "vector",
         "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
         "summary": "Clip a layer with a mask layer (CRS-aligned automatically)",
+        "phrasings": "cut to the study area; keep only what falls inside the boundary; trim to the region",
         "description": (
             "Keep only the parts of the input that fall inside the mask layer's area. "
             "The mask is reprojected to the input CRS when they differ, and the decision "
@@ -193,6 +196,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "summary": "Intersect, union or subtract two polygon layers: set-theoretic "
         "overlay with intersection, union, identity, symmetric_difference and "
         "difference (CRS-aligned automatically)",
+        "phrasings": "the part where two layers overlap; what falls in both; subtract one from the other; combine two sets of polygons",
         "description": (
             "Combine two layers set-theoretically. how: intersection (default), union, "
             "identity, symmetric_difference or difference. The overlay layer is "
@@ -264,6 +268,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Merge features into one geometry per key, with the aggregation "
         "recorded in the manifest and the group count verified",
+        "phrasings": "collapse into; group by and combine; roll up smaller units into larger ones; merge by attribute",
         "description": (
             "Dissolve a layer: one output feature per distinct value of `by` (or one "
             "feature in all, with no key). aggfunc — first (default), last, sum, mean, "
@@ -334,6 +339,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
         "summary": "Nearest-neighbour join with the distance in meters in a named column "
         "(UTM-measured on geographic CRS, decision recorded)",
+        "phrasings": "which one is closest to each; find the nearest and how far; assign each to its closest",
         "description": (
             "Attach each feature's nearest neighbour from another layer, with the "
             "distance IN METERS in a named column. Geographic-CRS inputs are measured "
@@ -409,6 +415,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Split multi-part geometries into one feature per part, "
         "with the part count verified",
+        "phrasings": "one row per part instead of one per feature; split multipart; separate the islands",
         "description": (
             "Split every multi-part geometry into one feature per part, copying the "
             "attributes. The output feature count is verified against the number of "
@@ -461,6 +468,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Area per feature in square metres — ground (ellipsoidal) or "
         "planar with the CRS's own unit, with the distortion checked",
+        "phrasings": "how big is it really on the ground not on the map; true size; hectares; square metres of land",
         "description": (
             "Measure the area of every feature in square metres, written to a named "
             "column, with the total in the result. method='geodesic' (default) "
@@ -535,6 +543,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
         "summary": "Append two or more layers into one, schema union, "
         "count verified against the sum",
+        "phrasings": "put several files together into one; stack these layers; concatenate",
         "description": (
             "Append two or more vector layers into a single dataset. Attributes are "
             "aligned by column name (schema union); columns present in only some "
@@ -590,6 +599,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Simplify geometries with the drift measured: area and length "
         "before/after recorded in the manifest",
+        "phrasings": "too many vertices; the outlines are too detailed; make the file lighter; generalise the shapes",
         "description": (
             "Reduce vertex counts with Douglas-Peucker simplification, topology "
             "preserved. Simplification moves boundaries, so the manifest records "
@@ -655,6 +665,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "One point per feature: geometric centroids computed in a "
         "metric CRS, never on degrees",
+        "phrasings": "one point per polygon to label it; the middle of each shape; where to put the label",
         "description": (
             "Replace each geometry with its geometric centroid. Geographic-CRS "
             "inputs are measured in an estimated UTM zone (decision recorded in "
@@ -710,6 +721,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Convert between vector formats, re-read and verified; "
         "lossy conversions are refused with the reason",
+        "phrasings": "save it as another format instead; export to; turn this into a geopackage",
         "description": (
             "Convert a vector dataset to the format named by the output extension: "
             ".parquet (GeoParquet, canonical), .gpkg (GeoPackage) or .geojson. The "
@@ -765,6 +777,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Reproject a layer to a target CRS (EPSG code or WKT)",
+        "phrasings": "my data is in degrees and I need metres; change the coordinate system; wrong units; put two layers on the same system",
         "description": (
             "Transform a dataset to a target coordinate reference system. Use it before "
             "combining layers that must share a CRS, or to move data into a metric CRS "
@@ -826,6 +839,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
         "summary": "Join by spatial predicate (intersects/within/contains); auto-routed to "
         "SedonaDB or DuckDB for speed, GeoPandas fallback",
+        "phrasings": "give each feature the attribute of the area it sits in; tag points with their region; which district is each in",
         "description": (
             "Attach attributes from one layer to another based on a spatial relationship "
             "(intersects, within, contains). engine='auto' routes to the fastest engine "
@@ -913,6 +927,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
         "summary": "Spatial SQL (DuckDB dialect, ST_* functions) over GeoParquet and GDAL "
         "formats; materializes GeoParquet outputs with provenance",
+        "phrasings": "query it like a database; a select with a spatial predicate; join and filter in one go",
         "description": (
             "Run spatial SQL in the DuckDB dialect: read_parquet('file.parquet') for "
             "GeoParquet, ST_Read('file.gpkg') for GDAL formats, full ST_* function set. "
@@ -978,6 +993,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False},
         "summary": "Statistics of a raster within vector zones via exactextract "
         "(exact fractional pixel coverage); requires the [raster] extra",
+        "phrasings": "average value of a grid inside each polygon; summarise a raster per area; mean elevation per zone",
         "description": (
             "Compute statistics of a single-band raster inside each polygon of a zones "
             "layer, with exact fractional pixel coverage (no all-in/all-out pixel "
@@ -1048,6 +1064,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "provenance",
         "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
         "summary": "Full lineage manifest of any MapSmith output",
+        "phrasings": "where did this number come from; what was run to make this; the audit trail",
         "description": (
             "Return the complete lineage manifest of a dataset MapSmith wrote: inputs "
             "with sha256, exact parameters, CRS decisions with reasons, engine and "
@@ -1088,6 +1105,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
         "summary": "Shaded relief from a DEM (Whitebox engine, in-memory); "
         "requires the [whitebox] extra",
+        "phrasings": "make the terrain look three dimensional; relief for a map; shaded relief",
         "description": (
             "Compute a shaded-relief raster from a digital elevation model. Output "
             "values are scaled 0-32767; nodata cells are preserved. The DEM must have "
@@ -1157,6 +1175,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster"], "requires_projected_crs": True},
         "summary": "Slope gradient from a DEM in degrees, percent or radians "
         "(Whitebox engine); requires the [whitebox] extra",
+        "phrasings": "how steep is the ground; steepness; gradient of the land; where is it too steep to build",
         "description": (
             "Compute the slope gradient of a digital elevation model "
             "(Zevenbergen-Thorne). Units: degrees (default), percent or radians. "
@@ -1221,6 +1240,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster"], "requires_projected_crs": True},
         "summary": "Aspect from a DEM: downslope azimuth in degrees, 0 = north, "
         "flat cells = -1 (Whitebox engine); requires the [whitebox] extra",
+        "phrasings": "which way does the hillside face; north facing slopes; exposure",
         "description": (
             "Compute the aspect of a digital elevation model: the azimuth of the "
             "downslope direction in degrees, 0 = north, 90 = east. FLAT CELLS ARE "
@@ -1274,6 +1294,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
         "summary": "D8 flow accumulation from a DEM with automatic depression filling; "
         "requires the [whitebox] extra",
+        "phrasings": "how much water arrives at each cell; upstream area; where the channels form",
         "description": (
             "Number of upslope cells draining through each cell (D8 routing). "
             "Depressions are filled first and the preprocessing is recorded in "
@@ -1337,6 +1358,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False},
         "summary": "Watershed delineation from a DEM and pour points (Whitebox engine); "
         "requires the [whitebox] extra",
+        "phrasings": "what drains to this point; the basin above; contributing area",
         "description": (
             "Delineate the watershed draining to each pour point. Basins get 1-based "
             "IDs following the pour-point feature order; cells not draining to any "
@@ -1399,6 +1421,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["plan"], "requires_projected_crs": False},
         "summary": "Static validation of a multi-step plan before execution: operations, "
         "arguments, references, input files, simulated CRS flow",
+        "phrasings": "will this sequence work before I run it; check the steps",
         "description": (
             "Check a multi-step geoprocessing plan without running anything: every "
             "operation exists and is installed, arguments are complete and well-typed, "
@@ -1481,6 +1504,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["plan"], "requires_projected_crs": False},
         "summary": "Validate then run a multi-step plan; per-step provenance plus a "
         "plan-level manifest tying the chain together",
+        "phrasings": "run the whole sequence; do all these steps in order",
         "description": (
             "Run a validated plan step by step (an invalid plan runs nothing — "
             "validation is repeated internally). '$step_id' references resolve to "
@@ -1571,6 +1595,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
         "summary": "Interactive in-chat map of one or more datasets (MCP Apps panel) "
         "with per-layer provenance and verification status",
+        "phrasings": "let me see it; show me the layer; a quick look at the result",
         "description": (
             "Show vector datasets and GeoTIFFs on the interactive map panel rendered "
             "inside the chat (MCP Apps). Layers are previewed in EPSG:4326 with "
@@ -1620,6 +1645,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
         "summary": "Resample a raster to a target cell size; the method is required, "
         "and inventing class codes is reported",
+        "phrasings": "change the pixel size; coarser grid; finer grid; make the cells bigger",
         "description": (
             "Change a raster's cell size. The resampling method is a REQUIRED argument "
             "with no default, because both defaults are wrong half the time: nearest "
@@ -1703,6 +1729,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False},
         "summary": "Clip a raster to a vector mask, with the mask reprojected "
         "explicitly instead of assumed",
+        "phrasings": "cut the grid to the boundary; only the part over the study area",
         "description": (
             "Cut a raster down to the area of a vector mask. The mask is reprojected "
             "to the raster's CRS when they differ and the decision is recorded — "
@@ -1786,6 +1813,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
         "summary": "Map value ranges onto new codes, half-open by contract, "
         "with overlaps refused",
+        "phrasings": "bucket the values into classes; turn elevations into bands; group into categories",
         "description": (
             "Reclassify raster values into new codes. Each interval is written "
             "'low:high:new' and is HALF-OPEN — low <= value < high — which is the "
@@ -1860,6 +1888,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
         "summary": "Arithmetic across a raster's bands (NDVI and friends), with "
         "declared scale and offset applied",
+        "phrasings": "arithmetic between bands; a vegetation index; subtract one band from another",
         "description": (
             "Evaluate an arithmetic expression over a raster's bands, written with "
             "b1, b2, … and the operators + - * / and parentheses; nothing else is "
@@ -1935,6 +1964,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Join a CSV table onto a layer by key, keys read as text and fan-out measured",
+        "phrasings": "attach a spreadsheet by a shared key; bring in the csv columns; look up values by id",
         "description": (
             "Join attributes from a CSV onto a layer. Keys are read as TEXT on both sides, always: a reader that infers types turns the identifier '001' into 1, which matches nothing, and rows drop out of an inner join with no error — leading zeros are the norm in ISTAT, FIPS, INSEE and postal codes. Cardinality is measured rather than assumed: if the table has more than one row per key the join multiplies features, and any sum over the result double-counts them, so the before/after counts and the duplicate keys are reported in the manifest and in the result. Called through run_operation."
         ),
@@ -2001,6 +2031,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Length per feature in metres — geodesic, planar, or through space with the Z the geometry carries",
+        "phrasings": "how long is this line really; kilometres of road; perimeter; distance along",
         "description": (
             "Measure length. method='3d' uses the elevations the geometry carries: a pipe climbing 300 m over 400 m of ground is 500 m of pipe, and every 2D length in the stack answers 400 without mentioning it — in PostGIS the difference is the function's name, in Shapely a property that drops the coordinate. 'geodesic' (default) measures on the ellipsoid the CRS names; 'planar' measures in the CRS plane and converts by its declared unit, and is refused on a geographic CRS. When the layer has Z and a flat method was chosen, the 3D length comes back beside it as a non-critical check. Called through run_operation."
         ),
@@ -2061,6 +2092,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "A rate over an area: the ratio of totals, with the unweighted mean reported beside it",
+        "phrasings": "average that respects population; weighted mean; do not treat a village like a city",
         "description": (
             "Combine a per-feature rate into one figure for the whole area, weighted by a second column. Averaging three unemployment rates treats a town of a thousand as equal to a city of a hundred thousand: 13.67% where the area's actual rate is 1.38%. This computes sum(value * weight) / sum(weight), records both totals so the number can be checked without the data, and returns the unweighted mean beside it — when the two differ materially that difference is the finding, and hiding it would make this a black box that happens to be right. Called through run_operation."
         ),
@@ -2127,6 +2159,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "vector",
         "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
         "summary": "Point layer from a coordinate table, DMS or decimal, stated by the caller rather than guessed",
+        "phrasings": "the coordinates are text in a csv; degrees minutes seconds; latitude and longitude columns",
         "description": (
             "Build points from a CSV. The caller names the columns holding each coordinate: one for decimal degrees, three for degrees/minutes/seconds, optionally a fourth for the hemisphere. The caller says which because the file cannot: 41.5324 and 41 degrees 53 minutes 24 seconds latitudes for the same station and they are 40 km apart, so a reader that guesses is wrong quietly. The conversion and the columns used go in the manifest, and values outside the valid range are refused rather than wrapped: a latitude of 91 is a parsing failure, not a place. Called through run_operation."
         ),
@@ -2193,6 +2226,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "One point per feature, verified to lie ON the feature — unlike a centroid",
+        "phrasings": "a point guaranteed to be inside the shape; label point for an awkward polygon",
         "description": (
             "Reduce each feature to a representative point that is guaranteed to be on it. The difference from centroid_layer is the reason this exists: the centroid of an L-shaped parcel, a crescent or a ring falls outside the shape, so locating a feature by its centroid can put it in the wrong district — and a district name carries no magnitude to sanity-check. Every output point is verified against its own input feature, which is a postcondition rather than an opinion. Called through run_operation."
         ),
@@ -2241,6 +2275,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Convex hull, envelope or minimum rotated rectangle, with the inflation reported",
+        "phrasings": "the outline around these points; bounding shape; extent of the site",
         "description": (
             "Wrap each feature in a hull. The three kinds differ by how much they claim: an envelope is axis-aligned and can be several times the feature's area, an oriented rectangle follows it, a convex hull follows it more closely. Which one was used goes in the manifest along with the ratio between the hull's area and the feature's, because 'the extent of the site' is a phrase that hides all three and any count over a hull includes ground the feature does not occupy. Called through run_operation."
         ),
@@ -2295,6 +2330,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Report which geometries are invalid and why, repairing nothing",
+        "phrasings": "something is wrong with these shapes; broken polygons; self intersecting; why does the area look wrong",
         "description": (
             "Write the layer back with a validity flag and the GEOS reason per feature. Every other operation here repairs what it can and records the repair; this is the inspection that comes first, so a caller can decide what to do about a self-intersection instead of finding out afterwards that something was rewritten. An invalid ring does not crash — its area is the signed shoelace of a shape that means nothing — so knowing before measuring is the point. Called through run_operation."
         ),
@@ -2343,6 +2379,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "vector",
         "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
         "summary": "Points per polygon with the boundary rule stated, and the points that fell nowhere counted",
+        "phrasings": "tally by area; how many fall inside each; count per district; incidents per neighbourhood",
         "description": (
             "Count points in each polygon. 'intersects' (default) includes points on the boundary; 'within' excludes them — and on a partition of districts that share edges, that is the difference between counting every point and dropping the ones on the seams, silently, because a join returning fewer rows looks exactly like a join that had fewer to find. The points that fall in no polygon are counted and reported, which is the number that makes the difference visible. Called through run_operation."
         ),
@@ -2409,6 +2446,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "raster",
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
         "summary": "Moving-window statistic over a raster, window size required and checked odd",
+        "phrasings": "smooth the grid; a moving window average; local maximum",
         "description": (
             "Compute a statistic in a square window around every cell. The window size is required: Whitebox defaults to 11 x 11, which on a 1 m grid is a 5.5 m radius, so a 'local' statistic quietly stops being local and returns a perfectly ordinary-looking smoothed surface. It must be odd, because an even window has no centre cell and shifts the result half a cell against its input. For class codes use majority or diversity: mean on a land-cover map invents codes the same way an interpolating resample does, and the manifest says so. Requires the [whitebox] extra. Called through run_operation."
         ),
@@ -2469,6 +2507,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "hydrology",
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
         "summary": "Stream network from a flow-accumulation grid, threshold required and its unit recorded",
+        "phrasings": "where the rivers are on this terrain; the channel network",
         "description": (
             "Threshold a flow-accumulation grid into a stream network. The threshold is required and its unit is recorded, because that is where this goes wrong: flow accumulation is either a cell count or a specific contributing area depending on how it was produced, the two differ by orders of magnitude, and a threshold tuned for one applied to the other gives a network that is well formed, drawn on the map, and wrong. There is no defensible default — the literature says so plainly — so the caller states it and the record keeps it. Requires the [whitebox] extra. Called through run_operation."
         ),
@@ -2528,6 +2567,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "network",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Travel-time polygons (Valhalla engine)",
+        "phrasings": "how far can I get in fifteen minutes; travel time area; drive time",
     },
     {
         "name": "qgis_processing",
@@ -2536,6 +2576,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "bridge",
         "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
         "summary": "~900 QGIS/GRASS/SAGA algorithms via GPL-isolated subprocess sidecar",
+        "phrasings": "one of the qgis algorithms",
     },
     {   'name': 'reproject_raster',
         'status': 'available',
@@ -2545,6 +2586,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'applicability': {'inputs': ['raster'], 'requires_projected_crs': False},
         'summary': 'Warp a raster to another CRS; the resampling method is required and '
                    'recorded. Requires the [raster] extra',
+        "phrasings": "warp the grid to another coordinate system; my geotiff is in the wrong projection",
         'description': 'Reproject a raster into a target CRS. The resampling method has NO '
                        'DEFAULT on purpose: warping resamples, and an interpolating method '
                        '(bilinear, cubic, average) derives values that lie between the '
@@ -2601,6 +2643,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'applicability': {'inputs': ['raster'], 'requires_projected_crs': False},
         'summary': 'Write one band of a multi-band raster to a single-band raster; '
                    '1-based, out-of-range refused. Requires the [raster] extra',
+        "phrasings": "pull one band out; just the red channel; separate the layers of a composite",
         'description': 'Extract one band of a multi-band raster into a single-band '
                        'GeoTIFF, keeping the grid, the CRS and the band description. Bands '
                        'are numbered FROM 1, as in GDAL and rasterio and unlike Python: '
@@ -2645,6 +2688,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'applicability': {'inputs': ['raster'], 'requires_projected_crs': False},
         'summary': 'Per-band min/max/mean/std/sum over the VALID cells only, with the '
                    'masked count. Reads, writes nothing. Requires the [raster] extra',
+        "phrasings": "min and max of the grid; what range are these values; ignore the nodata",
         'description': 'Per-band statistics computed over the valid cells only: nodata is '
                        'excluded and how many cells that removed travels with every '
                        'statistic, so the caller can see what the mean is a mean OF. This '
@@ -2680,6 +2724,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'applicability': {'inputs': ['raster'], 'requires_projected_crs': True},
         'summary': 'Surface curvature from a DEM; the kind is required (profile, plan, '
                    'tangential, mean, gaussian, total). Requires the [whitebox] extra',
+        "phrasings": "where does the hillslope curve; convex and concave ground; hollows and ridges",
         'description': 'Curvature of a terrain surface. The kind has NO DEFAULT because '
                        "the kinds answer opposite questions about the same cell: 'profile' "
                        'is curvature ALONG the slope, where flow accelerates and '
@@ -2733,6 +2778,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'applicability': {'inputs': ['raster'], 'requires_projected_crs': True},
         'summary': 'Flow-direction pointer raster (d8, rho8, dinf, fd8) whose direction '
                    'TABLE is written into the manifest. Requires the [whitebox] extra',
+        "phrasings": "where the rain runs off; which way water leaves; drainage direction",
         'description': "Flow direction from a DEM. 'd8' sends all of a cell's water to its "
                        "steepest neighbour and 'dinf' splits it between two, which is the "
                        'difference between a drainage network that looks like a line and '
@@ -2794,6 +2840,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'applicability': {'inputs': ['raster'], 'requires_projected_crs': True},
         'summary': "Distance from every cell to the nearest non-zero cell, in the CRS's "
                    'own units. Requires the [whitebox] extra',
+        "phrasings": "how far is every place from the nearest one; proximity surface; distance to roads",
         'description': 'A proximity surface: every cell gets its distance to the nearest '
                        "non-zero cell, measured in the raster's own horizontal unit. A "
                        'geographic CRS is REFUSED, because a distance in degrees is not a '
@@ -2835,6 +2882,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'applicability': {'inputs': ['vector'], 'requires_projected_crs': False},
         'summary': 'Inverse-distance-weighted surface from a point layer; the field is '
                    'REQUIRED. Requires the [whitebox] extra',
+        "phrasings": "a surface from scattered measurements; fill in between the gauges; interpolate the readings",
         'description': 'Build a continuous surface from scattered point measurements by '
                        "inverse-distance weighting. 'field_name' is REQUIRED here because "
                        "of the library's default: whitebox interpolates FID when you do "
@@ -2902,6 +2950,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'applicability': {'inputs': ['vector'], 'requires_projected_crs': False},
         'summary': 'Thiessen polygons from points, each verified to hold its own point; '
                    'the clipping boundary is declared',
+        "phrasings": "every place goes to its closest one; catchment areas; service area per shop; Thiessen",
         'description': 'Thiessen polygons: the area closer to each point than to any '
                        "other, with each point's attributes on its own cell. Two things "
                        'about a Voronoi diagram are easy to get wrong and impossible to '
@@ -2956,6 +3005,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'applicability': {'inputs': ['none'], 'requires_projected_crs': False},
         'summary': 'What a CRS actually declares: axis order, unit and its factor to the '
                    'metre, datum, ellipsoid, area of use. Reads no data',
+        "phrasings": "is this in feet or metres; what unit; which axis comes first; is it projected or degrees",
         'description': 'Everything about a coordinate reference system that changes the '
                        "meaning of a number computed in it. Accepts 'EPSG:4326', the bare "
                        'code 4326, a PROJ string or WKT. Four fields are worth reading '
@@ -2998,6 +3048,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'applicability': {'inputs': ['none'], 'requires_projected_crs': False},
         'summary': 'Distance and azimuths between two lon/lat points measured on the '
                    'ellipsoid — no projection involved. Reads no data',
+        "phrasings": "how far apart are two places as the crow flies; true distance between coordinates; without picking a projection",
         'description': 'The distance between two places, measured along the ellipsoid, '
                        'which is the answer no projection can spoil. A distance computed '
                        "in a projected CRS is a distance on that projection's plane, and "
@@ -3110,6 +3161,14 @@ def _document(op: dict[str, Any]) -> list[str]:
     """Flatten one catalog entry into a token list (name and category weighted)."""
     parts = [op["name"]] * 3 + [op["category"]] * 2 + [op["summary"]]
     parts.append(op.get("description", ""))
+    # The words a CALLER uses, which are not the words the catalog is written
+    # in, and this is the single largest lever measured on retrieval quality:
+    # on queries phrased the way people phrase them, adding `phrasings` moved
+    # BM25 from 40% found@3 to 100% at fifty-one operations, and the embedding
+    # engine from 55% to 70%. The catalog said "simplify the geometry"; nobody
+    # asks that, they say "these outlines have far too many vertices". Both
+    # ranking engines read the same corpus, so both benefit.
+    parts.append(op.get("phrasings", ""))
     for param in op.get("parameters", []):
         parts.append(param["name"])
         parts.append(param.get("description", ""))
@@ -3212,6 +3271,68 @@ def applicable(input_kind: str | None = None, projected: bool | None = None) -> 
     return kept
 
 
+
+# Below this many shared entries between the two engines' top results, the
+# search reports that it is unsure instead of answering.
+#
+# Measured on 2026-08-28 over 20 in-domain queries phrased without the catalog's
+# vocabulary and 12 out-of-domain ones. Mean overlap of the two top-3 lists:
+# 0.90 of 3 when an answer exists, 0.25 of 3 when it does not. Requiring at
+# least ONE shared entry flags 9 of the 12 out-of-domain queries and costs a
+# single false alarm in 20.
+#
+# It is a disagreement signal and not a score threshold because a threshold was
+# tried first and does not exist: the similarity of "convert this mp4 to a gif"
+# is higher than that of sixteen of the twenty real queries. There is no line to
+# draw. Two independent rankers landing on nothing in common is a different kind
+# of evidence, and it is the only one that separated the two populations.
+AGREEMENT_FLOOR = 1
+
+
+def _clarification(query: str, lexical: list[str], vector: list[str],
+                   candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    """What to say when the two engines disagree completely.
+
+    Not an error and not an empty list. An empty list tells an agent "MapSmith
+    cannot do this", which is often false — the usual case is a real request the
+    ranking could not place. A wrong answer is worse still: this is a discovery
+    layer feeding an agent, so a confident suggestion of `idw_interpolation` for
+    "send an email" is a silent error of exactly the kind the rest of this
+    product exists to prevent.
+
+    So it returns the disagreement itself, and the one question that narrows the
+    catalog deterministically rather than by ranking: what kind of data is in
+    hand. `applicable()` cuts the candidates with no model in the loop, and on a
+    catalog of this size that is worth more than another guess.
+    """
+    return {
+        "status": "unsure",
+        "query": query,
+        "reason": (
+            "the two ranking engines returned no operation in common, which on "
+            "this catalog usually means the request was not understood rather "
+            "than that MapSmith cannot do it"
+        ),
+        "lexical_suggests": lexical,
+        "vector_suggests": vector,
+        "clarify": [
+            (
+                "What kind of data do you have — vector (points, lines, polygons), "
+                "raster (a grid, a GeoTIFF), or a table? Passing `input_kind` "
+                "narrows the catalog deterministically, before any ranking."
+            ),
+            (
+                "What should come out — a number, a new dataset, or a description "
+                "of something you already have?"
+            ),
+            (
+                "If one of the operations listed above is close, ask for it by name "
+                "with `describe_operation` and it will say what it needs."
+            ),
+        ],
+        "operations_available": len(candidates),
+    }
+
 SEARCH_ENGINES = ("lexical", "vector", "auto")
 
 
@@ -3221,7 +3342,7 @@ def search(
     detail: bool = False,
     input_kind: str | None = None,
     projected: bool | None = None,
-    engine: str = "lexical",
+    engine: str = "auto",
 ) -> list[dict[str, Any]]:
     """Search the catalog. Compact entries by default; detail=True adds parameters/examples.
 
@@ -3232,12 +3353,24 @@ def search(
     narrow the candidates deterministically BEFORE ranking, whichever engine
     ranks them (see :func:`applicable`).
 
-    ``engine``: ``lexical`` (default) is BM25 — deterministic, dependency-free,
-    no network ever. ``vector`` is the embedding engine (``[retrieval]`` extra),
-    which fetches a revision-pinned model on first use. ``auto`` prefers the
-    vector engine and falls back to lexical when the extra is absent, so a
-    deployment can turn it on without the caller knowing. The default stays
-    lexical because a default that needs a download is not a default.
+    ``engine``: ``auto`` (default) prefers the embedding engine and falls back to
+    BM25 when the model cannot be loaded — no network, no cache, air-gapped
+    machine — so a caller always gets an answer and is always told by which
+    engine. ``lexical`` forces BM25: deterministic, no model, no network ever.
+    ``vector`` forces the embedding engine and raises rather than falling back.
+
+    The default was lexical until 2026-08-28, on the argument that a default
+    needing a download is not a default. What changed is a measurement, not the
+    argument. On queries phrased the way a caller phrases them rather than the
+    way the catalog is written — 35% word overlap — BM25 falls from 78% found@3
+    at ten operations to 40% at fifty-one, while the embedding engine falls from
+    83% to 55%. Both degrade with the catalog; BM25 degrades faster and the gap
+    widens with every entry. The old default was measured on golden queries
+    written by whoever wrote the catalog text, which is a lexical-overlap test
+    dressed as a retrieval test: on those, BM25 scores 100% and the finding
+    reverses. The download objection is answered by handling it rather than
+    avoiding it — the fallback below is the answer, and `engine` in every result
+    says which one ran.
     """
     if engine not in SEARCH_ENGINES:
         raise ValueError(f"engine must be one of {list(SEARCH_ENGINES)}, got {engine!r}")
@@ -3256,7 +3389,19 @@ def search(
 
             ranked = retrieval.rank(query, limit=limit, candidates=candidates)
             used = "vector"
-        except ImportError:
+        except Exception:
+            # Broad on purpose, and it was NARROW and wrong until 2026-08-28.
+            # While the engine sat behind an extra, `ImportError` was the whole
+            # failure surface. Now that model2vec is a dependency, the way this
+            # fails is the model DOWNLOAD: no network, a proxy, a cold cache on
+            # an air-gapped machine, a corrupted blob. Those raise OSError, or
+            # whatever huggingface_hub decides to raise next release — none of
+            # them ImportError. A fallback that catches only the failure that
+            # can no longer happen is a fallback that never runs, which is worse
+            # than none because it reads like a guarantee.
+            #
+            # `engine="vector"` still raises: a caller who asked for that engine
+            # by name wants to know it did not run.
             if engine == "vector":
                 raise
             used = "lexical"
@@ -3267,6 +3412,21 @@ def search(
             ((op, s) for op, s in zip(candidates, scores, strict=True) if s > 0),
             key=lambda pair: (-pair[1], pair[0]["name"]),
         )
+    # The two engines are asked to agree before either is believed. The second
+    # ranking is cheap next to the first: BM25 over a few dozen documents is
+    # microseconds, and the embedding index is already in memory.
+    if used == "vector" and ranked:
+        query_tokens = _tokenize(query)
+        scores = bm25_scores(query_tokens, [_document(op) for op in candidates])
+        other = sorted(
+            ((op, s) for op, s in zip(candidates, scores, strict=True) if s > 0),
+            key=lambda pair: (-pair[1], pair[0]["name"]),
+        )
+        top_vector = [op["name"] for op, _ in ranked[:3]]
+        top_lexical = [op["name"] for op, _ in other[:3]]
+        if len(set(top_vector) & set(top_lexical)) < AGREEMENT_FLOOR:
+            return [_clarification(query, top_lexical, top_vector, candidates)]
+
     results = []
     for op, score in ranked[:limit]:
         entry = dict(op) if detail else _compact(op)
