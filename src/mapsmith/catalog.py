@@ -31,6 +31,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "summary": "Inspect a vector or raster dataset: CRS, schema/bands, extent, "
         "nodata, statistics",
         "phrasings": "what is in this file; what am I looking at; how many features and what extent; which layers does it have; before I start",
+        "distinguishes": "Reports what a file IS — CRS, schema, extent, bands, layers — before anything is "
+        "computed over it. Not describe_crs, which answers about a coordinate system with "
+        "no file involved.",
         "description": (
             "Inspect a dataset before analysing it. Vector: coordinate reference system, "
             "geometry types, attribute schema, bounding extent and feature count. A "
@@ -74,6 +77,8 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Metric buffer with automatic UTM estimation on geographic CRS",
         "phrasings": "everything within a distance of; a zone around; how far out from; catchment radius; protection zone",
+        "distinguishes": "Grows each feature by a fixed distance. Not voronoi_polygons, which divides all "
+        "the space between features; not hull_layer, which wraps them without a distance.",
         "description": (
             "Buffer every feature by a distance in meters. Inputs in a geographic CRS "
             "(degrees) are reprojected to an estimated UTM zone for the metric operation "
@@ -137,6 +142,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
         "summary": "Clip a layer with a mask layer (CRS-aligned automatically)",
         "phrasings": "cut to the study area; keep only what falls inside the boundary; trim to the region",
+        "distinguishes": "Cuts one layer to the shape of another and keeps the first layer's attributes. Not "
+        "overlay_layers, which combines the attributes of both; use clip when the second "
+        "layer is a boundary rather than data.",
         "description": (
             "Keep only the parts of the input that fall inside the mask layer's area. "
             "The mask is reprojected to the input CRS when they differ, and the decision "
@@ -201,6 +209,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "overlay with intersection, union, identity, symmetric_difference and "
         "difference (CRS-aligned automatically)",
         "phrasings": "the part where two layers overlap; what falls in both; subtract one from the other; combine two sets of polygons",
+        "distinguishes": "Two layers in, one out, keeping only where they coincide or differ. Not "
+        "buffer_layer, which grows a single layer; not hull_layer, which wraps one. This is "
+        "the one for what falls inside something else, or what is left after subtracting.",
         "description": (
             "Combine two layers set-theoretically. how: intersection (default), union, "
             "identity, symmetric_difference or difference. The overlay layer is "
@@ -274,6 +285,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "summary": "Merge features into one geometry per key, with the aggregation "
         "recorded in the manifest and the group count verified",
         "phrasings": "collapse into; group by and combine; roll up smaller units into larger ones; merge by attribute",
+        "distinguishes": "Merges features that share an attribute into one. Not merge_layers, which appends "
+        "different files without combining anything; not simplify_layer, which thins "
+        "vertices inside features that stay separate.",
         "description": (
             "Dissolve a layer: one output feature per distinct value of `by` (or one "
             "feature in all, with no key). aggfunc — first (default), last, sum, mean, "
@@ -346,6 +360,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "summary": "Nearest-neighbour join with the distance in meters in a named column "
         "(UTM-measured on geographic CRS, decision recorded)",
         "phrasings": "which one is closest to each; find the nearest and how far; assign each to its closest",
+        "distinguishes": "For each feature in one layer, the nearest feature in another and how far it is. "
+        "Not geodetic_distance, which takes two coordinates; not voronoi_polygons, which "
+        "draws the territories instead of naming the nearest.",
         "description": (
             "Attach each feature's nearest neighbour from another layer, with the "
             "distance IN METERS in a named column. Geographic-CRS inputs are measured "
@@ -477,6 +494,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "summary": "Area per feature in square metres — ground (ellipsoidal) or "
         "planar with the CRS's own unit, with the distortion checked",
         "phrasings": "how big is it really on the ground not on the map; true size; hectares; square metres of land",
+        "distinguishes": "Answers how large something is on the ground, in the unit its CRS actually "
+        "declares. Not count_in_polygons, which counts features rather than measuring "
+        "surface; not zonal_statistics, which summarises a raster inside the shapes.",
         "description": (
             "Measure the area of every feature in square metres, written to a named "
             "column, with the total in the result. method='geodesic' (default) "
@@ -610,6 +630,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "summary": "Simplify geometries with the drift measured: area and length "
         "before/after recorded in the manifest",
         "phrasings": "too many vertices; the outlines are too detailed; make the file lighter; generalise the shapes",
+        "distinguishes": "Removes vertices and keeps the same features. Not dissolve_layer, which removes "
+        "features and keeps the vertices; reach for this when a file is too heavy to draw, "
+        "and for dissolve when the units are too fine to reason about.",
         "description": (
             "Reduce vertex counts with Douglas-Peucker simplification, topology "
             "preserved. Simplification moves boundaries, so the manifest records "
@@ -684,6 +707,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "phrasings": "the centre of mass of each shape; reduce polygons to points for a "
         "distance calculation; one point per feature. NOT for map labels: a centroid can "
         "fall outside its own polygon, and point_on_surface is the one that cannot",
+        "distinguishes": "Collapses each feature to one point, for a distance calculation or a summary. Not "
+        "for map labels: the centroid of a concave shape falls outside it, and "
+        "point_on_surface is the one that cannot.",
         "description": (
             "Replace each geometry with its geometric centroid. Geographic-CRS "
             "inputs are measured in an estimated UTM zone (decision recorded in "
@@ -799,6 +825,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Reproject a layer to a target CRS (EPSG code or WKT)",
         "phrasings": "my data is in degrees and I need metres; change the coordinate system; wrong units; put two layers on the same system",
+        "distinguishes": "Changes the coordinate system of a layer that already has one. Not "
+        "parse_coordinates, which builds geometry from text columns that have none yet; not "
+        "convert_format, which changes the container and leaves the coordinates alone.",
         "description": (
             "Transform a dataset to a target coordinate reference system. Use it before "
             "combining layers that must share a CRS, or to move data into a metric CRS "
@@ -862,6 +891,10 @@ OPERATIONS: list[dict[str, Any]] = [
         "summary": "Join by spatial predicate (intersects/within/contains); auto-routed to "
         "SedonaDB or DuckDB for speed, GeoPandas fallback",
         "phrasings": "give each feature the attribute of the area it sits in; tag points with their region; which district is each in",
+        "distinguishes": "Copies attributes onto features from whatever area contains them, leaving the "
+        "geometry untouched. Not overlay_layers, which cuts geometry; not "
+        "count_in_polygons, which counts rather than labels; not join_table, which matches "
+        "on a shared column instead of location.",
         "description": (
             "Attach attributes from one layer to another based on a spatial relationship "
             "(intersects, within, contains). engine='auto' routes to the fastest engine "
@@ -1018,6 +1051,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "summary": "Statistics of a raster within vector zones via exactextract "
         "(exact fractional pixel coverage); requires the [raster] extra",
         "phrasings": "average value of a grid inside each polygon; summarise a raster per area; mean elevation per zone",
+        "distinguishes": "Summarises a raster inside each polygon — mean elevation per basin, rainfall per "
+        "catchment. Not count_in_polygons, which counts vector features; not "
+        "band_statistics, which summarises a whole grid with no zones at all.",
         "description": (
             "Compute statistics of a single-band raster inside each polygon of a zones "
             "layer, with exact fractional pixel coverage (no all-in/all-out pixel "
@@ -1324,6 +1360,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "summary": "D8 flow accumulation from a DEM with automatic depression filling; "
         "requires the [whitebox] extra",
         "phrasings": "how much water arrives at each cell; upstream area; where the channels form",
+        "distinguishes": "How much upslope area drains through each cell — the grid you threshold to find "
+        "channels. Not flow_direction, which is the pointer it is computed from; not "
+        "watershed, which asks what drains to one chosen outlet.",
         "description": (
             "Number of upslope cells draining through each cell (D8 routing). "
             "Depressions are filled first and the preprocessing is recorded in "
@@ -1680,6 +1719,8 @@ OPERATIONS: list[dict[str, Any]] = [
         "summary": "Resample a raster to a target cell size; the method is required, "
         "and inventing class codes is reported",
         "phrasings": "change the pixel size; coarser grid; finer grid; make the cells bigger",
+        "distinguishes": "Changes the cell size and keeps the coordinate system. Not reproject_raster, which "
+        "changes the coordinate system; both resample, so both refuse to guess the method.",
         "description": (
             "Change a raster's cell size. The resampling method is a REQUIRED argument "
             "with no default, because both defaults are wrong half the time: nearest "
@@ -1850,6 +1891,8 @@ OPERATIONS: list[dict[str, Any]] = [
         "summary": "Map value ranges onto new codes, half-open by contract, "
         "with overlaps refused",
         "phrasings": "bucket the values into classes; turn elevations into bands; group into categories",
+        "distinguishes": "Buckets continuous values into classes. Not band_math, which computes a new "
+        "continuous value; not focal_statistics, which smooths using neighbours.",
         "description": (
             "Reclassify raster values into new codes. Each interval is written "
             "'low:high:new' and is HALF-OPEN — low <= value < high — which is the "
@@ -1926,6 +1969,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "summary": "Arithmetic across a raster's bands (NDVI and friends), with "
         "declared scale and offset applied",
         "phrasings": "arithmetic between bands; a vegetation index; subtract one band from another",
+        "distinguishes": "Arithmetic between bands, for an index or a difference. Not extract_band, which "
+        "separates them; not reclassify_raster, which buckets one band's values into "
+        "classes.",
         "description": (
             "Evaluate an arithmetic expression over a raster's bands, written with "
             "b1, b2, … and the operators + - * / and parentheses; nothing else is "
@@ -2003,6 +2049,8 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Join a CSV table onto a layer by key, keys read as text and fan-out measured",
         "phrasings": "attach a spreadsheet by a shared key; bring in the csv columns; look up values by id",
+        "distinguishes": "Matches rows by a shared key column, not by location. Use spatial_join when the "
+        "relationship is where things are rather than an identifier they share.",
         "description": (
             "Join attributes from a CSV onto a layer. Keys are read as TEXT on both sides, always: a reader that infers types turns the identifier '001' into 1, which matches nothing, and rows drop out of an inner join with no error — leading zeros are the norm in ISTAT, FIPS, INSEE and postal codes. Cardinality is measured rather than assumed: if the table has more than one row per key the join multiplies features, and any sum over the result double-counts them, so the before/after counts and the duplicate keys are reported in the manifest and in the result. Called through run_operation."
         ),
@@ -2071,6 +2119,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Length per feature in metres — geodesic, planar, or through space with the Z the geometry carries",
         "phrasings": "how long is this line really; kilometres of road; perimeter; distance along",
+        "distinguishes": "How long a line is, on the ground, in three dimensions if the file has them. Not "
+        "measure_area, which is for surfaces; not geodetic_distance, which is two points "
+        "rather than a path.",
         "description": (
             "Measure length. method='3d' uses the elevations the geometry carries: a pipe climbing 300 m over 400 m of ground is 500 m of pipe, and every 2D length in the stack answers 400 without mentioning it — in PostGIS the difference is the function's name, in Shapely a property that drops the coordinate. 'geodesic' (default) measures on the ellipsoid the CRS names; 'planar' measures in the CRS plane and converts by its declared unit, and is refused on a geographic CRS. When the layer has Z and a flat method was chosen, the 3D length comes back beside it as a non-critical check. Called through run_operation."
         ),
@@ -2269,6 +2320,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "One point per feature, verified to lie ON the feature — unlike a centroid",
         "phrasings": "a point guaranteed to be inside the shape; label point for an awkward polygon",
+        "distinguishes": "One point guaranteed to lie on the feature, which is what a map label needs. Use "
+        "centroid_layer when the point must be the centre of mass rather than merely "
+        "inside.",
         "description": (
             "Reduce each feature to a representative point that is guaranteed to be on it. The difference from centroid_layer is the reason this exists: the centroid of an L-shaped parcel, a crescent or a ring falls outside the shape, so locating a feature by its centroid can put it in the wrong district — and a district name carries no magnitude to sanity-check. Every output point is verified against its own input feature, which is a postcondition rather than an opinion. Called through run_operation."
         ),
@@ -2319,6 +2373,10 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
         "summary": "Convex hull, envelope or minimum rotated rectangle, with the inflation reported",
         "phrasings": "the outline around these points; bounding shape; extent of the site",
+        "distinguishes": "Wraps features in a convex hull, bounding box or rotated rectangle — a shape that "
+        "CLAIMS more ground than the features occupy, and the inflation is reported. Not "
+        "buffer_layer, which grows by a fixed distance; not voronoi_polygons, which divides "
+        "rather than wraps.",
         "description": (
             "Wrap each feature in a hull. The three kinds differ by how much they claim: an envelope is axis-aligned and can be several times the feature's area, an oriented rectangle follows it, a convex hull follows it more closely. Which one was used goes in the manifest along with the ratio between the hull's area and the feature's, because 'the extent of the site' is a phrase that hides all three and any count over a hull includes ground the feature does not occupy. Called through run_operation."
         ),
@@ -2425,6 +2483,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
         "summary": "Points per polygon with the boundary rule stated, and the points that fell nowhere counted",
         "phrasings": "tally by area; how many fall inside each; count per district; incidents per neighbourhood",
+        "distinguishes": "Counts how many features fall inside each polygon, with the boundary rule stated. "
+        "Not spatial_join, which labels each point with its polygon instead of counting "
+        "them; not zonal_statistics, which reads a grid rather than counting features.",
         "description": (
             "Count points in each polygon. 'intersects' (default) includes points on the boundary; 'within' excludes them — and on a partition of districts that share edges, that is the difference between counting every point and dropping the ones on the seams, silently, because a join returning fewer rows looks exactly like a join that had fewer to find. The points that fall in no polygon are counted and reported, which is the number that makes the difference visible. Called through run_operation."
         ),
@@ -2493,6 +2554,9 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
         "summary": "Moving-window statistic over a raster, window size required and checked odd",
         "phrasings": "smooth the grid; a moving window average; local maximum",
+        "distinguishes": "A moving window over a grid: smoothing, local maxima. Not zonal_statistics, which "
+        "uses polygons as the zones; the window here is a fixed neighbourhood, not a shape "
+        "you supply.",
         "description": (
             "Compute a statistic in a square window around every cell. The window size is required: Whitebox defaults to 11 x 11, which on a 1 m grid is a 5.5 m radius, so a 'local' statistic quietly stops being local and returns a perfectly ordinary-looking smoothed surface. It must be odd, because an even window has no centre cell and shifts the result half a cell against its input. For class codes use majority or diversity: mean on a land-cover map invents codes the same way an interpolating resample does, and the manifest says so. Requires the [whitebox] extra. Called through run_operation."
         ),
@@ -2637,6 +2701,9 @@ OPERATIONS: list[dict[str, Any]] = [
         'summary': 'Warp a raster to another CRS; the resampling method is required and '
                    'recorded. Requires the [raster] extra',
         "phrasings": "warp the grid to another coordinate system; my geotiff is in the wrong projection",
+        "distinguishes": "Changes the coordinate system of a grid, recomputing it. Not resample_raster, "
+        "which keeps the CRS and only changes resolution; not reproject_layer, which is for "
+        "vector data.",
         'description': 'Reproject a raster into a target CRS. The resampling method has NO '
                        'DEFAULT on purpose: warping resamples, and an interpolating method '
                        '(bilinear, cubic, average) derives values that lie between the '
@@ -2695,6 +2762,8 @@ OPERATIONS: list[dict[str, Any]] = [
         'summary': 'Write one band of a multi-band raster to a single-band raster; '
                    '1-based, out-of-range refused. Requires the [raster] extra',
         "phrasings": "pull one band out; just the red channel; separate the layers of a composite",
+        "distinguishes": "Pulls one band out into its own file. Not band_math, which combines bands into a "
+        "new value; not band_statistics, which reports on them without writing anything.",
         'description': 'Extract one band of a multi-band raster into a single-band '
                        'GeoTIFF, keeping the grid, the CRS and the band description. Bands '
                        'are numbered FROM 1, as in GDAL and rasterio and unlike Python: '
@@ -2741,6 +2810,9 @@ OPERATIONS: list[dict[str, Any]] = [
         'summary': 'Per-band min/max/mean/std/sum over the VALID cells only, with the '
                    'masked count. Reads, writes nothing. Requires the [raster] extra',
         "phrasings": "min and max of the grid; what range are these values; ignore the nodata",
+        "distinguishes": "Min, max, mean of a whole grid, over the valid cells only. Not zonal_statistics, "
+        "which needs polygons to summarise within; not describe_dataset, which reports the "
+        "shape and the CRS rather than the values.",
         'description': 'Per-band statistics computed over the valid cells only: nodata is '
                        'excluded and how many cells that removed travels with every '
                        'statistic, so the caller can see what the mean is a mean OF. This '
@@ -2778,6 +2850,9 @@ OPERATIONS: list[dict[str, Any]] = [
         'summary': 'Surface curvature from a DEM; the kind is required (profile, plan, '
                    'tangential, mean, gaussian, total). Requires the [whitebox] extra',
         "phrasings": "where does the hillslope curve; convex and concave ground; hollows and ridges",
+        "distinguishes": "Second derivative of the surface: where it bends. Not slope, which is the first "
+        "derivative; profile curvature is along the slope and plan curvature across it, and "
+        "they answer opposite questions about the same cell.",
         'description': 'Curvature of a terrain surface. The kind has NO DEFAULT because '
                        "the kinds answer opposite questions about the same cell: 'profile' "
                        'is curvature ALONG the slope, where flow accelerates and '
@@ -2833,6 +2908,9 @@ OPERATIONS: list[dict[str, Any]] = [
         'summary': 'Flow-direction pointer raster (d8, rho8, dinf, fd8) whose direction '
                    'TABLE is written into the manifest. Requires the [whitebox] extra',
         "phrasings": "where the rain runs off; which way water leaves; drainage direction",
+        "distinguishes": "A pointer grid saying which way water leaves each cell, and the direction TABLE "
+        "travels with it. Not flow_accumulation, which says how much arrives; not aspect, "
+        "which is the compass direction a slope faces and has nothing to do with routing.",
         'description': "Flow direction from a DEM. 'd8' sends all of a cell's water to its "
                        "steepest neighbour and 'dinf' splits it between two, which is the "
                        'difference between a drainage network that looks like a line and '
@@ -2896,6 +2974,9 @@ OPERATIONS: list[dict[str, Any]] = [
         'summary': "Distance from every cell to the nearest non-zero cell, in the CRS's "
                    'own units. Requires the [whitebox] extra',
         "phrasings": "how far is every place from the nearest one; proximity surface; distance to roads",
+        "distinguishes": "A grid where every cell holds its distance to the nearest feature. Not "
+        "geodetic_distance, which answers about two points and writes nothing; not "
+        "buffer_layer, which draws one fixed ring instead of a continuous surface.",
         'description': 'A proximity surface: every cell gets its distance to the nearest '
                        "non-zero cell, measured in the raster's own horizontal unit. A "
                        'geographic CRS is REFUSED, because a distance in degrees is not a '
@@ -2939,6 +3020,9 @@ OPERATIONS: list[dict[str, Any]] = [
         'summary': 'Inverse-distance-weighted surface from a point layer; the field is '
                    'REQUIRED. Requires the [whitebox] extra',
         "phrasings": "a surface from scattered measurements; fill in between the gauges; interpolate the readings",
+        "distinguishes": "Builds a continuous surface from scattered point measurements. Not "
+        "voronoi_polygons, which gives each point a hard territory instead of a gradient; "
+        "not focal_statistics, which needs a grid to start from.",
         'description': 'Build a continuous surface from scattered point measurements by '
                        "inverse-distance weighting. 'field_name' is REQUIRED here because "
                        "of the library's default: whitebox interpolates FID when you do "
@@ -3008,6 +3092,9 @@ OPERATIONS: list[dict[str, Any]] = [
         'summary': 'Thiessen polygons from points, each verified to hold its own point; '
                    'the clipping boundary is declared',
         "phrasings": "every place goes to its closest one; catchment areas; service area per shop; Thiessen",
+        "distinguishes": "Partitions a region so every place belongs to its nearest point. Not buffer_layer, "
+        "whose radius is fixed and whose circles overlap; here the boundaries fall where "
+        "two points are equidistant and the cells tile the area exactly once.",
         'description': 'Thiessen polygons: the area closer to each point than to any '
                        "other, with each point's attributes on its own cell. Two things "
                        'about a Voronoi diagram are easy to get wrong and impossible to '
@@ -3064,6 +3151,9 @@ OPERATIONS: list[dict[str, Any]] = [
         'summary': 'What a CRS actually declares: axis order, unit and its factor to the '
                    'metre, datum, ellipsoid, area of use. Reads no data',
         "phrasings": "is this in feet or metres; what unit; which axis comes first; is it projected or degrees",
+        "distinguishes": "Answers about a coordinate system itself: its unit, its axis order, its datum. Not "
+        "describe_dataset, which needs a file; ask this when the question is what the "
+        "numbers in a file MEAN.",
         'description': 'Everything about a coordinate reference system that changes the '
                        "meaning of a number computed in it. Accepts 'EPSG:4326', the bare "
                        'code 4326, a PROJ string or WKT. Four fields are worth reading '
@@ -3108,6 +3198,9 @@ OPERATIONS: list[dict[str, Any]] = [
         'summary': 'Distance and azimuths between two lon/lat points measured on the '
                    'ellipsoid — no projection involved. Reads no data',
         "phrasings": "how far apart are two places as the crow flies; true distance between coordinates; without picking a projection",
+        "distinguishes": "How far apart two coordinates are on the ellipsoid, with no projection chosen and "
+        "no file read. Not euclidean_distance, which builds a raster surface; not "
+        "nearest_join, which needs two layers.",
         'description': 'The distance between two places, measured along the ellipsoid, '
                        'which is the answer no projection can spoil. A distance computed '
                        "in a projected CRS is a distance on that projection's plane, and "
@@ -3228,6 +3321,12 @@ def _document(op: dict[str, Any]) -> list[str]:
     # asks that, they say "these outlines have far too many vertices". Both
     # ranking engines read the same corpus, so both benefit.
     parts.append(op.get("phrasings", ""))
+    # What this operation is NOT, and which neighbour does that instead. After the
+    # facets have narrowed 800 candidates to about twenty of the same family,
+    # nothing in the shape of an entry separates them — they all take a layer and
+    # return a layer — and ranking inside that residue is close to random. This is
+    # the text that separates them, and it is the only field written by contrast.
+    parts.append(op.get("distinguishes", ""))
     for param in op.get("parameters", []):
         parts.append(param["name"])
         parts.append(param.get("description", ""))

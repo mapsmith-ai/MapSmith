@@ -97,7 +97,13 @@ def test_search_names_its_engine_and_refuses_an_unknown_one():
     assert hits and all(entry["engine"] == "lexical" for entry in hits)
     # The default is `auto`, which prefers the embedding engine; the field must
     # say so rather than the caller having to know what the default is.
-    default = catalog.search("area of a parcel", limit=3)
+    #
+    # A query the catalog can place, deliberately: "area of a parcel" ranks
+    # `validate_geometry` first on BM25 — it did before `distinguishes` existed
+    # too — so on the default engine the two rankers disagree and the search
+    # returns `unsure` instead. That is the clarification path working, not a
+    # regression, and it has no `engine` field to check.
+    default = catalog.search("steepness of the terrain", limit=3)
     assert default and default[0].get("engine") in ("vector", "lexical")
     with pytest.raises(ValueError, match="engine must be one of"):
         catalog.search("area", engine="nonsense")

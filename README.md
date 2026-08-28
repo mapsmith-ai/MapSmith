@@ -248,6 +248,12 @@ applicability filter already does that deterministically — from facets, and fr
 clarification path below. `test_retrieval_at_scale.py` keeps the projection under measurement
 rather than under opinion.
 
+**How an entry has to be written is a published specification**, not a convention:
+[`docs/catalog-entry-spec.md`](docs/catalog-entry-spec.md), with a normative
+[JSON Schema](schema/operation.schema.json) that every entry validates against in CI. Each field
+is there because a measurement said so — including the two that measured to nothing and are
+documented as such, because a spec that only reports what worked is an advertisement.
+
 **And discoverability is a contract per operation, not an average.** A catalog-wide 90% found@3
 over fifty entries means five are invisible and the average will not say which. So every available
 entry is probed with its own first worked example, with its own facets declared, and must come back
