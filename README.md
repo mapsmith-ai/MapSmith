@@ -426,7 +426,7 @@ flowchart TB
   BUFFER --> NEAR
   HEIGHT["<b>zonal_statistics</b><br/>51 operations &rarr; 4 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
   NEAR --> HEIGHT
-  AREA["<b>measure_area</b><br/>51 operations &rarr; 26 candidates &rarr; chosen<br/>CRS WGS 84 (ellipsoidal)<br/>9/9 checks"]
+  AREA["<b>measure_area</b><br/>51 operations &rarr; 26 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>9/9 checks"]
   HEIGHT --> AREA
   FILTER["<b>run_sql</b><br/>51 operations &rarr; 26 candidates &rarr; chosen<br/>outside the plan"]
   AREA --> FILTER

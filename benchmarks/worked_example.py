@@ -286,6 +286,23 @@ START = "<!-- worked-example:start -->"
 END = "<!-- worked-example:end -->"
 
 
+def _label(text: str) -> str:
+    """Node text safe for a mermaid label.
+
+    Parentheses and square brackets terminate a node shape in some mermaid
+    versions even inside quotes, and a diagram that fails to compile shows a red
+    error box at the top of the README rather than degrading quietly. Entities
+    render identically and cannot be mistaken for syntax.
+    """
+    return (
+        text.replace("(", "&#40;")
+        .replace(")", "&#41;")
+        .replace("[", "&#91;")
+        .replace("]", "&#93;")
+        .replace('"', "&quot;")
+    )
+
+
 def _mermaid(trace: dict[str, Any]) -> str:
     """The sequence as a diagram, with the numbers that made each choice.
 
@@ -295,12 +312,12 @@ def _mermaid(trace: dict[str, Any]) -> str:
     lines = [
         "```mermaid",
         "flowchart TB",
-        f'  ASK["<b>{trace["goal"]}</b>"]',
+        f'  ASK["<b>{_label(trace["goal"])}</b>"]',
         '  ASK --> PLAN{{"plan validated<br/>before anything runs"}}',
     ]
     for error in trace["rejected_plan"]["errors"]:
         lines.append(
-            f'  PLAN -. "rejected: {error["code"]}" .-> BAD["{error["message"]}"]'
+            f'  PLAN -. "rejected: {error["code"]}" .-> BAD["{_label(error["message"])}"]'
         )
     lines.append("  BAD:::bad")
 
@@ -319,7 +336,7 @@ def _mermaid(trace: dict[str, Any]) -> str:
         if run:
             crs = run["crs_decisions"].get("analysis_crs")
             if crs:
-                parts.append(f"CRS {crs}")
+                parts.append(f"CRS {_label(crs)}")
             parts.append(f'{run["checks_passed"]}/{run["checks_total"]} checks')
         else:
             parts.append("outside the plan")
