@@ -450,10 +450,10 @@ What it says about MapSmith (nineteen-family run, engine tier, `spec_commit`
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
-| MapSmith | **0.00** | 1.00 | 21 | 0 |
-| naive composition (read file, take statistic) | 0.9524 | 1.00 | 21 | 0 |
+| MapSmith | **0.00** | 1.00 | 22 | 0 |
+| naive composition (read file, take statistic) | 0.9545 | 1.00 | 22 | 0 |
 
-**One of those twenty-one passes exists because the suite took it away first.**
+**One of those twenty-two passes exists because the suite took it away first.**
 On 2026-08-26 the nineteenth family, `datum-ballpark`, moved MapSmith off 0.00
 for the first time: `reproject_layer` called `to_crs`, pyproj selected a ballpark
 transformation for EPSG:4806 — no datum shift, coordinates carried across
