@@ -722,8 +722,11 @@ def test_the_retrieval_numbers_agree_between_the_readme_and_the_site():
     # If one surface is edited and the other is not, this is what catches it.
     shared = [
         ("16", "candidates after the facets"),
-        ("70%", "found@3 as shipped"),
-        ("20%", "found@3 with no facets at 800"),
+        # 70% was the number for one day and it came from twenty queries we wrote
+        # ourselves. The independent set says 51%. Whichever number is current has
+        # to be on both surfaces, which is the whole job of this test.
+        ("51%", "found@3 as shipped, on queries we did not write"),
+        ("24%", "found@3 with no facets declared"),
         ("0.90", "top-3 agreement when an answer exists"),
         ("0.18", "top-3 agreement when it does not"),
         ("9 of 11", "unanswerable queries the clarification catches"),

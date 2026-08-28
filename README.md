@@ -176,18 +176,32 @@ it is built to hold thousands: tool-selection accuracy
 degrades past a few dozen *exposed* tools, while capability count has no such ceiling. That
 makes reaching scale a retrieval problem, so it is treated as one — and measured like one.
 
-**First it narrows, deterministically — and this is the part that scales.** Every catalog entry
-declares four things a caller already knows: what data it takes (`vector`, `raster`, `dataset`,
-`plan`, `none`), what it hands back (`dataset:vector`, `dataset:raster`, `answer`, `description`),
-which family it belongs to, and whether it demands a projected CRS. Declaring them cuts the
-catalog before anything is ranked, and the measurement says that is worth more than any ranker:
+**First it narrows, deterministically, and that is the part that carries the weight.** Every
+entry declares four things a caller already knows: what data it takes (`vector`, `raster`,
+`dataset`, `plan`, `none`), what it hands back (`dataset:vector`, `dataset:raster`, `answer`,
+`description`), which family it belongs to, and whether it demands a projected CRS.
 
-| facets declared | candidates left of 800 | found@3 |
-|---|---|---|
-| none | 800 | 20% |
-| what data I have | 259 | 40% |
-| + what I want back | 132 | 55% |
-| + which family | **16** | **70%** |
+Measured on 92 answerable requests written by two other model families from job scenarios — a
+hydrologist with a flood report, a surveyor arguing with a field measurement — neither of which
+was shown this catalog, because a model handed the entry writes a paraphrase of the entry:
+
+| what the caller declares | found@1 | found@3 | says "unsure" | silently wrong |
+|---|---|---|---|---|
+| nothing — words alone | 12% | 24% | 33 of 92 | 37 of 92 |
+| **input kind, output kind, family** | **33%** | **51%** | 21 of 92 | 24 of 92 |
+
+**Half.** That is the honest state of tool discovery here, and it is nineteen points below what
+this page said for one day — that number came from twenty queries we wrote ourselves, and writing
+your own benchmark flatters you by about that much. The independent set is in the repository at
+[`tests/data/discovery_queries.json`](tests/data/discovery_queries.json), so it can be checked
+rather than believed.
+
+The facets are also what makes catalog SIZE stop mattering: at 800 operations they leave sixteen
+candidates, the same sixteen they leave at 200, so growing the catalog does not make anything
+harder to find. What is hard is the residue — sixteen operations of one family, all taking a
+layer and returning a layer — and ranking inside it is close to random. Half the time it lands, a
+quarter of the time the search says it is unsure, and a quarter of the time it is confidently
+wrong. That last quarter is the open problem, and it is stated here rather than rounded away.
 
 **We do not need a model to extract those facets, because the caller is one.** An MCP client is an
 LLM with the context we lack — it knows what file it is holding and what it is trying to produce.

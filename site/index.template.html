@@ -294,23 +294,36 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     phrased the way somebody with a problem phrases them.
   </p>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1.5rem;margin:2rem 0 1.5rem">
-    <div class="stat"><b>800</b><span>OPERATIONS IN THE CATALOGUE</span></div>
-    <div class="stat"><b>16</b><span>CANDIDATES A CLIENT RANKS</span></div>
-    <div class="stat"><b>70%</b><span>FOUND IN THE TOP 3</span></div>
+    <div class="stat"><b>51%</b><span>FOUND IN THE TOP 3</span></div>
+    <div class="stat"><b>24%</b><span>WITHOUT THE FACETS</span></div>
+    <div class="stat"><b>155</b><span>QUERIES WE DID NOT WRITE</span></div>
     <div class="stat"><b>0</b><span>CHANGE FROM 200 TO 800</span></div>
   </div>
   <p class="pull">
-    Four times the catalogue, the same sixteen candidates, the same accuracy.<br>
-    <em>The size of the catalogue stops mattering — and no model is in that loop.</em>
+    Half. That is the honest state of tool discovery here, and it is nineteen points below the
+    number this page carried for a day.<br>
+    <em>Writing your own benchmark flatters you by about that much.</em>
   </p>
   <p>
-    The reason is the order of operations. <strong>It narrows first, deterministically.</strong>
-    Every entry declares four things a caller already knows — what data it takes, what it hands
-    back, which family it belongs to, whether it demands a projected CRS — and those cut 800
-    candidates to 16 before anything is ranked. A search over all 800 by words alone finds the right
-    operation 20% of the time; the same search after the facets finds it 70%, and stays there
-    however big the catalogue gets. A geographic raster is never offered <code>slope</code>, because
-    <code>slope</code> refuses one: that is a property of the data checked in code.
+    Those are measured on 155 requests written by two other model families from job scenarios —
+    a hydrologist with a flood report, a surveyor arguing with a field measurement — and neither
+    generator was shown this catalogue, because a model handed the entry writes a paraphrase of the
+    entry. The set is in the repository, so the number can be checked rather than believed.
+  </p>
+  <p>
+    <strong>It narrows first, deterministically.</strong> Every entry declares four things a caller
+    already knows — what data it takes, what it hands back, which family it belongs to, whether it
+    demands a projected CRS — and declaring them takes found@3 from 24% to 51%. It is also what
+    makes catalogue SIZE stop mattering: at 800 operations the facets leave sixteen candidates, the
+    same sixteen they leave at 200. A geographic raster is never offered <code>slope</code>, because
+    <code>slope</code> refuses one — a property of the data, checked in code, with no model in that
+    loop.
+  </p>
+  <p>
+    What is left is hard and we have not solved it: sixteen operations of the same family, all
+    taking a layer and returning a layer, and ranking inside that residue is close to random. Half
+    the time it lands. A quarter of the time the search says it is unsure. A quarter of the time it
+    is confidently wrong, and that last quarter is the number we are working on.
   </p>
   <p>
     <strong>And no model is needed to extract those facets, because the caller is one.</strong> An
