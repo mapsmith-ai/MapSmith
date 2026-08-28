@@ -336,6 +336,27 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     it harder to find anything.
   </p>
   <p>
+    <strong>That finding does not survive being scaled up, and we found out the same day we
+    published it.</strong> The distractors in the table above come from our own fifty-one entries,
+    which are spread out. Growing this catalogue means adding <em>near neighbours</em> — hundreds of
+    raster and terrain operations that resemble one another. Re-run against 800 real GIS operations
+    the ranking reverses, and the embedding engine degrades faster:
+  </p>
+  <table class="tools" style="margin-top:1.25rem">
+    <tr><td><strong>catalogue size</strong></td><td><strong>BM25 found@3</strong></td><td><strong>embeddings found@3</strong></td></tr>
+    <tr><td>51 operations</td><td>50%</td><td>40%</td></tr>
+    <tr><td>200 operations</td><td>48%</td><td>25%</td></tr>
+    <tr><td>800 operations</td><td>35%</td><td>20%</td></tr>
+  </table>
+  <p>
+    Embeddings blur near neighbours; an exact term either matches or it does not. Both measurements
+    are kept because they answer different questions: which engine suits the catalogue we have — the
+    embedding one, and it is the default — and which survives the catalogue we plan, where the
+    answer is neither. At 800 entries the better engine is wrong two times in three.
+    <strong>Scale will not be bought by picking a better ranker.</strong> It has to come from
+    narrowing before ranking, from facets, and from being willing to ask.
+  </p>
+  <p>
     Two numbers on this page are worth reading as a correction rather than a boast. The first is
     that 100%: it was our own measurement flattering us, and it stood for weeks. The second is what
     happened when we added the words a caller uses to every catalogue entry — it moved found@3 from

@@ -99,6 +99,11 @@ extend-exclude = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  # Embeds ~850 documents to measure retrieval against 800 real GIS operations.
+  # It runs in CI; `-m "not slow"` skips it locally when the point is a fast loop.
+  "slow: measurement that takes tens of seconds",
+]
 
 [tool.hatch.build.targets.sdist]
 # Ship what a source build needs plus a gallery that actually runs (the

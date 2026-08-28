@@ -208,6 +208,28 @@ BM25 degrades faster and the gap widens with every entry, which is why the embed
 a dependency rather than an extra. The whole curve is a test (`test_retrieval_degradation.py`),
 so growing the catalog cannot quietly make it harder to find anything.
 
+**And that finding does not survive being scaled up — measured the same day it was
+published.** The distractors above are drawn from our own fifty-one entries, which are
+semantically spread out. Growing this catalog means adding *near neighbours*: hundreds of
+raster and terrain operations that resemble each other. Re-run against 800 real GIS
+operations, taken from a library that ships them with their own descriptions, the ranking
+reverses and the embedding engine degrades **faster**:
+
+| catalog size | BM25 found@3 | embeddings found@3 |
+|---|---|---|
+| 51 | 50% | 40% |
+| 200 | 48% | 25% |
+| 800 | **35%** | **20%** |
+
+Embeddings blur near neighbours; an exact term either matches or does not. The two
+measurements answer different questions and both are kept: which engine suits the catalog we
+have (the embedding one, and it is the default), and which survives the catalog we plan
+(neither). At 800 entries the better engine is wrong two times in three, so **scale will not
+be bought by choosing a better ranker**. It has to come from narrowing before ranking — the
+applicability filter already does that deterministically — from facets, and from the
+clarification path below. `test_retrieval_at_scale.py` keeps the projection under measurement
+rather than under opinion.
+
 **And when the two engines agree on nothing, the search says so instead of answering.** This is
 the failure that measurement turned up in our own product: asked *"send an email to my
 accountant"*, the embedding engine returned `idw_interpolation` with the same confidence as a
