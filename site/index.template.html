@@ -464,6 +464,22 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <tr><td>validate_plan · execute_plan</td><td>A typed DAG checked before anything executes: stable error codes, simulated CRS flow</td></tr>
     <tr><td>preview_map</td><td>An in-chat map panel that shows the verification status of every layer it draws</td></tr>
   </table>
+
+  <h3 style="margin-top:2.5rem">One question, end to end</h3>
+  <p>
+    Six parcels, a river and an elevation grid, and five operations picked out of
+    {{CATALOG_COUNT}}. Everything below was recorded from a run that happened while this page was
+    built — the search at each step, the arguments, the coordinate-system decision and the
+    verification. Nothing here is drawn.
+  </p>
+{{WORKED_EXAMPLE}}
+  <p style="font-size:0.94rem;color:var(--ink-soft)">
+    The rejected plan is the honest half: steps in the wrong order are the dominant failure class
+    in the agent benchmark, so the example includes one and shows what the validator says before
+    any file is touched. It earned that place while this was being written — the first version
+    passed <code>distance_m</code> where the operation declares <code>distance_meters</code>, and
+    the validator named the argument and listed the three it accepts.
+  </p>
 </div></section>
 
 <section id="evidence"><div class="wrap">

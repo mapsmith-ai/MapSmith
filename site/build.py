@@ -159,6 +159,84 @@ def render(hillshade: Path, basins: Path, destination: Path) -> tuple[int, int]:
     return width, height
 
 
+def worked_example_html() -> str:
+    """The end-to-end example, rendered from a run performed during this build.
+
+    Same source as the README section: `benchmarks/worked_example.py` builds the
+    fixtures, validates a deliberately mis-ordered plan, runs the correct one and
+    reads the manifests. Rendering it here rather than copying the markdown keeps
+    one execution behind two surfaces — the failure mode this site has already
+    had twice is a number that is true on one page and stale on the other.
+    """
+    import shutil
+    import tempfile
+
+    sys.path.insert(0, str(ROOT / "benchmarks"))
+    import worked_example as example
+
+    from mapsmith.plans import executor, models, validator
+
+    workdir = Path(tempfile.mkdtemp(prefix="mapsmith-site-example-"))
+    try:
+        paths = example.build_fixtures(workdir)
+        plan = example.build_plan(paths, workdir)
+        rejected = validator.validate(
+            models.Plan.model_validate(example.wrong_plan_first(plan))
+        )
+        result = executor.execute(models.Plan.model_validate(plan))
+
+        rows = []
+        by_id = {step["id"]: step for step in result.get("steps", [])}
+        for found, step in zip(example.STEPS, example.trace_discovery(), strict=True):
+            run = by_id.get(found["id"])
+            crs, checks = "—", "outside the plan"
+            if run:
+                output = run.get("output_path") or run.get("output")
+                manifest = Path(f"{output}.provenance.json")
+                if manifest.exists():
+                    data = json.loads(manifest.read_text(encoding="utf-8"))
+                    decisions = data.get("crs_decisions", {})
+                    crs = decisions.get("analysis_crs", "—")
+                    marks = data.get("verification", [])
+                    marks = marks if isinstance(marks, list) else marks.get("checks", [])
+                    passed = sum(1 for c in marks if c.get("passed"))
+                    checks = f"{passed}/{len(marks)}"
+            arguments = ", ".join(
+                f"{k}={v}"
+                for k, v in next(
+                    (s["arguments"] for s in plan["steps"] if s["id"] == found["id"]), {}
+                ).items()
+                if k not in ("output_path", "input_path", "raster_path")
+                and not str(v).startswith(("/", "C:", "D:"))
+            )
+            rows.append(
+                "<tr>"
+                f"<td>&ldquo;{step['ask']}&rdquo;</td>"
+                f"<td class=\"num\">{step['candidates']}</td>"
+                f"<td><code>{step['chosen']}</code>"
+                + (f"<br><small>{arguments}</small>" if arguments else "")
+                + "</td>"
+                f"<td><small>{crs}</small></td>"
+                f"<td class=\"num\">{checks}</td>"
+                "</tr>"
+            )
+
+        message = rejected.errors[0].message if rejected.errors else ""
+        return (
+            '  <table class="tools" style="margin-top:1.25rem">\n'
+            "    <thead><tr><th>what the agent asks for</th>"
+            '<th class="num">candidates</th><th>picked, and with what</th>'
+            '<th>CRS decision, recorded</th><th class="num">checks</th></tr></thead>\n'
+            "    <tbody>\n      " + "\n      ".join(rows) + "\n    </tbody>\n"
+            "  </table>\n"
+            '  <p class="pull" style="margin-top:1.5rem">'
+            "The same plan with two steps swapped never ran.<br>"
+            f"<em>{message}</em></p>\n"
+        )
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
 def highlight(value, indent: int = 0) -> str:
     """The manifest as coloured, escaped HTML — the real one, not a sample.
 
@@ -279,6 +357,7 @@ def main(destination: Path) -> int:
         "{{TEST_COUNT}}": str(test_count),
         "{{TRAP_COUNT}}": str(argleton["traps_run"]),
         "{{COMMIT}}": _git("rev-parse", "--short", "HEAD") or "unknown",
+        "{{WORKED_EXAMPLE}}": worked_example_html(),
         "{{BUILT}}": manifest["finished_at"][:10],
     }.items():
         page = page.replace(placeholder, value)

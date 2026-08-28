@@ -399,6 +399,76 @@ on first use, at the pinned revision; after that the vector engine is local, and
 that never makes it keeps BM25, and the `engine` field of every result says which one
 answered.
 
+### One question, end to end
+
+Everything above is about one step. Here is a whole question — six parcels, a river, an
+elevation grid, and five operations picked out of fifty-one — with the search, the arguments and
+the verification of each step as they were actually recorded.
+
+Nothing in this section is drawn. `benchmarks/worked_example.py` builds fixtures whose answer can
+be worked out on paper, asks the catalogue in the words of the problem, validates and runs the
+plan, reads the manifests, and writes what follows; `tests/test_worked_example.py` fails if this
+page and that script disagree. Two things worth watching: the middle column, where the catalogue
+goes from fifty-one operations to a handful the caller can read; and the CRS column, where every
+metric operation says which coordinate system it moved the data into and why.
+
+<!-- worked-example:start -->
+
+```mermaid
+flowchart TB
+  ASK["<b>Parcels within 1.5 km of the river whose ground sits below 120 m, with the elevation and the ground area of each</b>"]
+  ASK --> PLAN{{"plan validated<br/>before anything runs"}}
+  PLAN -. "rejected: FORWARD_REFERENCE" .-> BAD["'mask_path' references '$buffer' which runs later — move step 'buffer' before 'near'"]
+  BAD:::bad
+  BUFFER["<b>buffer_layer</b><br/>51 operations &rarr; 26 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
+  PLAN --> BUFFER
+  NEAR["<b>clip_layer</b><br/>51 operations &rarr; 26 candidates &rarr; chosen<br/>12/12 checks"]
+  BUFFER --> NEAR
+  HEIGHT["<b>zonal_statistics</b><br/>51 operations &rarr; 4 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
+  NEAR --> HEIGHT
+  AREA["<b>measure_area</b><br/>51 operations &rarr; 26 candidates &rarr; chosen<br/>CRS WGS 84 (ellipsoidal)<br/>9/9 checks"]
+  HEIGHT --> AREA
+  FILTER["<b>run_sql</b><br/>51 operations &rarr; 26 candidates &rarr; chosen<br/>outside the plan"]
+  AREA --> FILTER
+  OUT[["3 parcels, each with elevation and ground area"]]
+  FILTER --> OUT
+  classDef bad stroke-dasharray: 4 3
+```
+
+| what the agent asks for | it declares | candidates | picked | at position |
+|---|---|---|---|---|
+| “everything within one and a half kilometres of the river” | vector, dataset:vector | **26** of 51 | `buffer_layer` | 2 |
+| “keep only the parcels that fall inside that strip” | vector, dataset:vector | **26** of 51 | `clip_layer` | 2 |
+| “how high is the ground under each of these parcels” | raster, dataset:vector | **4** of 51 | `zonal_statistics` | 2 |
+| “how big is each one on the ground” | vector, dataset:vector | **26** of 51 | `measure_area` | 1 |
+| “drop the ones where the ground is above 120 metres” | vector, dataset:vector | **26** of 51 | `run_sql` | 12 |
+
+| step | operation | arguments that mattered | CRS decision, recorded | checks |
+|---|---|---|---|---|
+| buffer | `buffer_layer` | `distance_meters=1500` | `EPSG:32610` — estimated UTM zone for metric buffering on a geographic CRS | 9/9 |
+| near | `clip_layer` | `mask_path=$buffer` | — | 12/12 |
+| height | `zonal_statistics` | `zones_path=$near`, `stats=['mean', 'min']` | `EPSG:4326` — zones and raster share the same CRS | 7/7 |
+| area | `measure_area` | `input_path=$height`, `method=geodesic` | `WGS 84 (ellipsoidal)` — ground area computed on the ellipsoid the layer's CRS names; no map plane is involved, so no projection distortion enters | 9/9 |
+
+One step runs outside the plan — `run_sql`, 4 rows in and 3 out — and the reason is a boundary rather than a gap: `$step` references resolve only in arguments declared as dataset inputs; run_sql takes its inputs inside a SQL string, so it cannot join the plan's dataflow. Deliberate: substituting into arbitrary strings would let a planner assemble a path out of text.
+
+**The answer**, which can be worked out on paper before MapSmith sees the files: the parcels are squares of 0.0015° at 46.2°N, so each is about 119 m by 167 m, and the elevation ramps west to east across the fixture.
+
+| name | mean | min | area_m2 |
+|---|---|---|---|
+| North Field | 104.85 | 104.14 | 19303.33 |
+| Mill Meadow | 110.51 | 109.8 | 19303.33 |
+| Old Orchard | 117.58 | 116.87 | 19303.33 |
+
+<!-- worked-example:end -->
+
+The rejected plan is the honest half. Steps in the wrong order are the dominant failure class in
+the agent benchmark, so the example includes one and shows what the validator says about it,
+before any file is touched. It earned that place while this was being written: the first version
+of the plan passed `distance_m` where the operation declares `distance_meters`, and the validator
+named the argument and listed the three it accepts.
+
+
 ### Formats
 
 | Format | Read | Write |
