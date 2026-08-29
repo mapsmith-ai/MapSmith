@@ -75,6 +75,8 @@ def _read_at(dataset: Any, band: int, xs, ys, method: str) -> list[float | None]
     """
     import numpy as np
 
+    from .. import grid
+
     array = dataset.read(band, masked=True)
     # `array.mask` is the scalar `np.ma.nomask` when nothing is masked, and
     # indexing a scalar raises — so a raster with no nodata cells at all would
@@ -82,22 +84,31 @@ def _read_at(dataset: Any, band: int, xs, ys, method: str) -> list[float | None]
     # returns a full boolean array.
     mask = np.ma.getmaskarray(array)
     inverse = ~dataset.transform
+    # Where the values sit inside their cells. 0.5 on an ordinary file, 0.0 on
+    # one that declares its values are samples at grid nodes — and asking here
+    # rather than assuming is the difference between a profile along a USGS DEM
+    # and the same profile fifteen metres to the north-west.
+    shift = grid.offset(dataset)
     height, width = array.shape
     out: list[float | None] = []
 
     for x, y in zip(xs, ys, strict=True):
         column, row = inverse * (x, y)
         if method == "nearest":
-            c, r = math.floor(column), math.floor(row)
+            # Which sample is nearest, which is `floor` when samples are cell
+            # centres and `round` when they are nodes.
+            r, c = grid.sample_index(dataset, x, y)
             if not (0 <= r < height and 0 <= c < width) or mask[r, c]:
                 out.append(None)
                 continue
             out.append(float(array[r, c]))
             continue
 
-        # Bilinear over the four surrounding CELL CENTRES, which sit at
-        # (column - 0.5, row - 0.5) in array space — the half-cell offset is the
-        # part that is easy to drop and shifts every value by half a pixel.
+        # Bilinear over the four surrounding SAMPLES. On an ordinary file
+        # those are the cell centres, at (column - 0.5, row - 0.5) in array
+        # space; on a point-registered one they are the nodes, at (column, row).
+        # The offset is the part that is easy to drop, and dropping it shifts
+        # every value by half a pixel — which is what `grid` is for.
         #
         # Two different "outside" here, and conflating them was a bug. A
         # position outside the raster's EXTENT has no value and returns None.
@@ -112,7 +123,7 @@ def _read_at(dataset: Any, band: int, xs, ys, method: str) -> list[float | None]
         if not (0 <= column < width and 0 <= row < height):
             out.append(None)
             continue
-        cx, cy = column - 0.5, row - 0.5
+        cx, cy = column - shift, row - shift
         c0, r0 = math.floor(cx), math.floor(cy)
         fx, fy = cx - c0, cy - r0
         corners = []

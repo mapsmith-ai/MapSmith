@@ -26,7 +26,7 @@ from typing import Any
 import numpy as np
 from pyproj import CRS
 
-from .. import readers, verify, workspace
+from .. import grid, readers, verify, workspace
 from ..provenance import InputRecord, ProvenanceRecord
 
 HILLSHADE_MAX = 32767  # upstream scales hillshade to 0-32767 (basic_terrain_tools.rs)
@@ -1349,8 +1349,21 @@ def contour_lines(
             "outside its range."
         )
 
-    shift_x = CONTOUR_REGISTRATION_SHIFT * float(meta.resolution_x)
-    shift_y = -CONTOUR_REGISTRATION_SHIFT * float(meta.resolution_y)
+    # Measured on both registrations, because the engine reacts to the tag and
+    # reacts wrongly. On an area-registered DEM it returns the west/north EDGE
+    # of the cell, so the centre is half a cell south-east: +0.5. On a
+    # point-registered one it returns half a cell PAST the node, so the node is
+    # half a cell north-west: -0.5. Same magnitude, opposite sign, and an
+    # unconditional +0.5 puts a USGS DEM's contours a whole cell out — which is
+    # what shipped this morning until Argleton trap 024 was built.
+    import rasterio
+
+    with rasterio.open(dem_path) as probe:
+        placement = grid.registration(probe)
+        registration_note = grid.describe(probe)
+    direction = 1.0 if placement == "area" else -1.0
+    shift_x = direction * CONTOUR_REGISTRATION_SHIFT * float(meta.resolution_x)
+    shift_y = -direction * CONTOUR_REGISTRATION_SHIFT * float(meta.resolution_y)
     height_column = "HEIGHT" if "HEIGHT" in lines.columns else lines.columns[1]
     lines = lines.rename(columns={height_column: "elevation"})
     lines["geometry"] = lines.geometry.translate(xoff=shift_x, yoff=shift_y)
@@ -1371,9 +1384,11 @@ def contour_lines(
             "smoothing_filter_size": smoothing,
             "z_unit": "the DEM's own Z unit, not necessarily metres",
             "registration_correction": (
-                f"{shift_x:+g}, {shift_y:+g} — the engine returns vertices on the "
-                "cell's west/north edge rather than at its centre"
+                f"{shift_x:+g}, {shift_y:+g} — the engine places contour vertices "
+                "half a cell from where the value it names actually sits, and which "
+                f"way depends on the registration ({placement})"
             ),
+            **registration_note,
         },
         inputs=[InputRecord.from_path(dem_path, crs=crs)],
         engine=_engine_info(),

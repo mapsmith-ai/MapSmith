@@ -801,7 +801,7 @@ def least_cost_path(
     import rasterio
     from shapely.geometry import LineString, Point
 
-    from .. import readers, verify
+    from .. import grid, readers, verify
     from ..provenance import InputRecord, ProvenanceRecord
 
     def one_point(path: str, what: str):
@@ -862,7 +862,10 @@ def least_cost_path(
                     f"the {name} point ({point.x:.6g}, {point.y:.6g}) is outside the "
                     f"cost surface, which covers {tuple(round(v, 6) for v in bounds)}."
                 )
-            row, column = src.index(point.x, point.y)
+            # Through `grid`, not `src.index`: on a point-registered surface the
+            # cell a position belongs to is the nearest NODE, and the route
+            # would otherwise start and end half a cell from where it was asked.
+            row, column = grid.sample_index(src, point.x, point.y)
             return int(min(max(row, 0), src.height - 1)), int(
                 min(max(column, 0), src.width - 1)
             )
@@ -942,9 +945,12 @@ def least_cost_path(
     while path_cells[-1] != start_cell:
         path_cells.append(came_from[path_cells[-1]])
     path_cells.reverse()
-    coordinates = [
-        rasterio.transform.xy(transform, row, column) for row, column in path_cells
-    ]
+    with rasterio.open(cost_path) as src:
+        # Where each cell's value actually is. `transform.xy` answers as if
+        # every file were area-registered, which puts the whole route half a
+        # cell south-east on a DEM that says otherwise.
+        coordinates = [grid.sample_xy(src, row, column) for row, column in path_cells]
+        registration = grid.describe(src)
     line = LineString(coordinates)
 
     import geopandas as gpd
@@ -987,6 +993,7 @@ def least_cost_path(
         "reason": "the search runs on the cost surface's own grid; the endpoints are "
         "brought to it so that each one lands on the cell it occupies"
         + (f" ({'; '.join(moved)})" if moved else ""),
+        **registration,
     }
     if not diagonal:
         record.notes.append(

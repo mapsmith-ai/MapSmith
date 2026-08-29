@@ -362,6 +362,11 @@ def _voronoi_polygons() -> Callable[..., dict[str, Any]]:
     return vector.voronoi_polygons
 
 
+def _locate_extreme_cell() -> Callable[..., dict[str, Any]]:
+    from ..engines import raster
+
+    return raster.locate_extreme_cell
+
 def _summarize_field() -> Callable[..., dict[str, Any]]:
     from ..engines import summaries
 
@@ -785,6 +790,9 @@ BINDINGS: dict[str, Binding] = {
     # so is `crs_effect`: nothing is produced, so nothing carries a CRS, and a
     # plan step that tries to feed one of these into the next step is refused by
     # the validator rather than silently passing a number where a path goes.
+    "locate_extreme_cell": Binding(
+        _locate_extreme_cell, ("input_path",), None, "raster", None
+    ),
     "summarize_field": Binding(_summarize_field, ("input_path",), None, None, None),
     "spatial_autocorrelation": Binding(
         _spatial_autocorrelation, ("input_path",), None, None, None

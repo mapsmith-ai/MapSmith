@@ -18,7 +18,7 @@ from typing import Any
 import geopandas as gpd
 import pandas as pd
 
-from .. import readers, verify
+from .. import grid, readers, verify
 from ..provenance import InputRecord, ProvenanceRecord
 
 VALID_STATS = {
@@ -151,7 +151,28 @@ def zonal_statistics(
                 "analysis_crs": str(raster_crs),
                 "reason": "zones and raster share the same CRS",
             }
-        stats_df = exactextract.exact_extract(ds, zones, ops, output="pandas")
+        # exactextract takes the cell footprint from the transform and cannot
+        # be told otherwise, so on a point-registered raster it would weight
+        # every cell half a cell south-east of where its value actually sits.
+        # Moving the raster means rewriting it; moving the question is free —
+        # coverage of a polygon against a grid shifted by d is coverage of the
+        # polygon shifted by -d against the unshifted grid. The shifted copy is
+        # asked the question and thrown away; the output carries the caller's
+        # own geometry.
+        dx, dy = grid.shift_for_area_tools(ds)
+        asked = zones.translate(xoff=dx, yoff=dy) if (dx or dy) else zones.geometry
+        record.crs_decisions.update(grid.describe(ds))
+        if dx or dy:
+            record.notes.append(
+                f"the raster declares AREA_OR_POINT=Point, so each value is a sample "
+                f"at a node rather than a cell average. The zones were offset by "
+                f"({dx:+g}, {dy:+g}) for the coverage computation so that each "
+                f"cell's footprint is centred on its own sample; the output geometry "
+                f"is the caller's, unmoved."
+            )
+        stats_df = exactextract.exact_extract(
+            ds, zones.set_geometry(asked), ops, output="pandas"
+        )
 
     out = gpd.GeoDataFrame(
         pd.concat(
@@ -307,6 +328,7 @@ def resample(
             profile.pop(key, None)
 
         with rasterio.open(output_path, "w", **profile) as dst:
+            grid.preserve(src, dst)
             for band in range(1, src.count + 1):
                 warp(
                     source=rasterio.band(src, band),
@@ -500,6 +522,7 @@ def clip_raster(
             for key in ("blockxsize", "blockysize", "tiled"):
                 profile.pop(key, None)
             with rasterio.open(output_path, "w", **profile) as dst:
+                grid.preserve(src, dst)
                 dst.write(data)
         source_shape = (src.height, src.width)
 
@@ -641,6 +664,7 @@ def reclassify(
             "would mix old codes with new ones in one band"
         )
     with rasterio.open(output_path, "w", **profile) as dst:
+        grid.preserve(src, dst)
         dst.write(result_band, 1)
 
     checks: list[verify.Check] = []
@@ -788,6 +812,7 @@ def band_math(input_path: str, output_path: str, expression: str) -> dict[str, A
     for key in ("blockxsize", "blockysize", "tiled"):
         profile.pop(key, None)
     with rasterio.open(output_path, "w", **profile) as dst:
+        grid.preserve(src, dst)
         dst.write(computed.filled(nodata_out).astype("float32"), 1)
 
     checks: list[verify.Check] = []
@@ -946,6 +971,7 @@ def reproject_raster(
         for key in ("blockxsize", "blockysize", "tiled"):
             profile.pop(key, None)
         with rasterio.open(output_path, "w", **profile) as dst:
+            grid.preserve(src, dst)
             for band in range(1, src.count + 1):
                 warp(
                     source=rasterio.band(src, band),
@@ -1084,6 +1110,7 @@ def extract_band(input_path: str, output_path: str, band: int) -> dict[str, Any]
         checksum = src.checksum(band)
 
     with rasterio.open(output_path, "w", **profile) as dst:
+        grid.preserve(src, dst)
         dst.write(data, 1)
         if label:
             dst.set_band_description(1, label)
@@ -1170,3 +1197,93 @@ def band_statistics(input_path: str, band: int | None = None) -> dict[str, Any]:
             "shape": [src.height, src.width],
             "bands": bands,
         }
+
+
+def locate_extreme_cell(
+    input_path: str,
+    which: str = "min",
+    band: int = 1,
+) -> dict[str, Any]:
+    """Where the lowest or highest value of a raster is. Reads, writes nothing.
+
+    The bottom of a hollow, the summit of a hill, the hottest cell of a
+    difference grid. It answers with a coordinate rather than a value, which is
+    the question no other operation here could be asked — and the gap that made
+    MapSmith report `unsupported` twice on Argleton's `grid-registration`
+    family, where the whole point is whether a system knows where its own cells
+    are.
+
+    **The position comes from `grid`, not from `dataset.xy`.** On a raster
+    declaring `AREA_OR_POINT=Point` — every USGS elevation product — a value is
+    a sample at a grid node and its position is the tie point plus whole cells,
+    with no half added. `xy` answers as if every file were area-registered, and
+    the difference is half a cell: 15 m on a 30 m DEM, systematic, and inside
+    the error of the handheld GPS somebody would use to check it.
+
+    Nodata is excluded rather than competing: a nodata of -9999 wins every
+    search for a minimum, and the answer would be the position of a hole.
+
+    A tie is reported rather than broken silently. Two cells at the same extreme
+    value is a fact about the data — a plateau, a flat pond, a saturated sensor
+    — and picking the first in scan order and saying nothing turns it into a
+    confident single answer.
+    """
+    if which not in ("min", "max"):
+        raise ValueError(f"which must be 'min' or 'max', got {which!r}")
+    rasterio = _require_rasterio()
+
+    import numpy as np
+
+    from .. import grid
+
+    with rasterio.open(input_path) as src:
+        if not 1 <= band <= src.count:
+            raise ValueError(
+                f"band must be between 1 and {src.count} for {input_path}, got {band}"
+            )
+        if src.crs is None:
+            raise ValueError(
+                f"{input_path} has no CRS, so a position in it would be a pair of "
+                "numbers with no ground meaning."
+            )
+        values = src.read(band, masked=True)
+        if values.count() == 0:
+            raise ValueError(
+                f"every cell of band {band} in {input_path} is nodata, so there is "
+                "no lowest or highest value to locate."
+            )
+        extreme = float(values.min() if which == "min" else values.max())
+        hits = np.argwhere(np.ma.filled(values == extreme, False))
+        row, column = (int(v) for v in hits[0])
+        x, y = grid.sample_xy(src, row, column)
+        registration = grid.describe(src)
+        unit = None
+        try:
+            unit = src.crs.axis_info[0].unit_name
+        except (AttributeError, IndexError):  # pragma: no cover - exotic CRS
+            unit = "unit"
+
+    answer = {
+        "which": which,
+        "value": extreme,
+        "x": round(float(x), 6),
+        "y": round(float(y), 6),
+        "row": row,
+        "column": column,
+        "band": band,
+        "valid_cells": int(values.count()),
+        "nodata_cells": int(values.size - values.count()),
+        "crs": verify.crs_label(src.crs),
+        "unit": unit,
+        **registration,
+    }
+    if len(hits) > 1:
+        answer["tied_cells"] = len(hits)
+        answer["note"] = (
+            f"{len(hits)} cells hold the {which}imum value {extreme:g}; the first in "
+            "scan order (top-left to bottom-right) is reported. A tie usually means a "
+            "plateau, a flat surface, or a sensor at the end of its range, and any of "
+            "those makes 'the position of the extreme' a question about a region "
+            "rather than a cell."
+        )
+    return answer

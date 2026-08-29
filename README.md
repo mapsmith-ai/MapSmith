@@ -178,7 +178,7 @@ had to repair. `get_provenance` returns it for any output.
 ### Finding the right operation
 
 Those are the tools an agent chooses between. Behind them the **catalog** holds every
-operation MapSmith can perform — 71 today, and 46 of them have no tool of their own — and
+operation MapSmith can perform — 72 today, and 47 of them have no tool of their own — and
 it is built to hold thousands: tool-selection accuracy
 degrades past a few dozen *exposed* tools, while capability count has no such ceiling. That
 makes reaching scale a retrieval problem, so it is treated as one — and measured like one.

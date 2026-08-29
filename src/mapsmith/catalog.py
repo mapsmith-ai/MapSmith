@@ -3819,6 +3819,52 @@ OPERATIONS: list[dict[str, Any]] = [
                                                            'output_path': 'labels.parquet',
                                                            'min_distance': 30000.0,
                                                            'priority_field': 'population'}}}}]},
+    {   'name': 'locate_extreme_cell',
+        'status': 'available',
+        'tool': None,
+        'workload': 'raster',
+        'category': 'inspection',
+        "produces": "answer",
+        'applicability': {'inputs': ['raster'], 'requires_projected_crs': False, 'dataset_inputs': 1},
+        'summary': 'Where the lowest or highest value of a raster is, as a coordinate. '
+                   'Honours the grid registration the file declares',
+        "phrasings": "where is the lowest point of this depression; find the summit; "
+                     "which cell is hottest and where; give me the coordinates of the "
+                     "deepest cell; locate the maximum",
+        "distinguishes": "Answers WHERE, with a coordinate. Not band_statistics, which "
+                         "gives the min and max as numbers without saying where they "
+                         "are; not sample_raster_at_points, which needs the positions "
+                         "already and returns values.",
+        'description': 'Reports the coordinate, the row and column, and the value '
+                       'itself. **The position comes from the registration the file '
+                       'declares**: on a raster with AREA_OR_POINT=Point — every USGS '
+                       'elevation product — a value is a sample at a grid node and its '
+                       'position is the tie point plus whole cells, with no half added. '
+                       'The usual helper answers as if every file were area-registered, '
+                       'and the difference is half a cell: 15 m on a 30 m DEM, '
+                       'systematic, and inside the error of the GPS somebody would use '
+                       'to check it. Nodata is excluded rather than competing, because '
+                       'a nodata of -9999 wins every search for a minimum and the '
+                       'answer would be the position of a hole. A tie is REPORTED: two '
+                       'cells at the same extreme is a fact about the data — a plateau, '
+                       'a flat pond, a saturated sensor — and picking the first in scan '
+                       'order silently turns it into a confident single answer.',
+        'parameters': [{'name': 'input_path', 'type': 'str', 'required': True,
+                        'description': 'Raster with a CRS'},
+                       {'name': 'which', 'type': 'str', 'required': False,
+                        'description': "'min' (default) or 'max'"},
+                       {'name': 'band', 'type': 'int', 'required': False,
+                        'description': 'Band to search (default 1)'}],
+        'examples': [{'goal': 'Where is the bottom of this sinkhole, so the rig can be positioned',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'locate_extreme_cell',
+                                             'arguments': {'input_path': 'dem.tif',
+                                                           'which': 'min'}}}},
+                     {'goal': 'Coordinates of the hottest cell in the temperature difference grid',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'locate_extreme_cell',
+                                             'arguments': {'input_path': 'delta.tif',
+                                                           'which': 'max'}}}}]},
     {   'name': 'summarize_field',
         'status': 'available',
         'tool': None,

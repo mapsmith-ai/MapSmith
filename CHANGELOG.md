@@ -8,6 +8,15 @@ All notable changes to MapSmith are documented here, in the format of
 
 ### Added
 
+- **`locate_extreme_cell`** answers where the lowest or highest value of a
+  raster is, as a coordinate. No operation could be asked that before, which is
+  why MapSmith reported `unsupported` twice on Argleton's `grid-registration`
+  family — the one whose whole question is whether a system knows where its own
+  cells are. Nodata is excluded rather than competing for the minimum, and a tie
+  is reported rather than broken in silence: two cells at the same extreme is a
+  plateau, a flat pond or a saturated sensor, and naming one of them is a
+  confident answer to a question about a region.
+
 - **Ten more operations, and this time the gap they fill is a shape rather
   than a subject.** Of sixty-one catalogue entries, three produced an `answer`
   and none of them took a vector layer — so the commonest question in GIS, *how
@@ -127,6 +136,39 @@ All notable changes to MapSmith are documented here, in the format of
 
 ### Fixed
 
+- **MapSmith now reads `AREA_OR_POINT`, everywhere at once.** GeoTIFF records
+  which of two conventions a grid uses — `RasterPixelIsArea`, where a value
+  describes the cell it fills, and `RasterPixelIsPoint`, where it is a sample at
+  a grid node — and they differ by half a pixel. Every USGS elevation product is
+  point-registered. **No line of MapSmith read the tag.** Every place that
+  turned a cell index into a coordinate did what `rasterio.xy` does, which is to
+  answer as if the file were area-registered: half a cell, 15 m on a 30 m DEM,
+  systematic, and with nothing in any output to say so.
+
+  That is the shape of #28 again — "open a vector file" as six copies of one
+  decision, four of them missing a branch — so the fix has the same shape as its
+  fix. `mapsmith/grid.py` is now the only place that decides where a value sits,
+  a test fails if a second copy appears, and every operation that converts
+  between cells and coordinates records the registration in its manifest,
+  including the ordinary case: a manifest that mentions the convention only when
+  it is unusual leaves a reader unable to tell *area* from *nobody looked*.
+
+  What changed behind that: sampling reads at the nodes on a point-registered
+  grid, so `sample_raster_at_points`, `elevation_profile` and `line_of_sight`
+  stop being half a cell off; `least_cost_path` starts, routes and ends on the
+  right cells; `contour_lines` applies its half-cell correction in the direction
+  the registration calls for, where an unconditional one put a USGS DEM's
+  contours a **whole** cell out; `zonal_statistics` offsets the zones for the
+  coverage computation so each cell is weighted around its own sample, and hands
+  back the caller's own geometry; and every raster MapSmith writes carries the
+  input's registration forward, where `profile.copy()` had been silently
+  converting point to area on the way out.
+
+  Found by building [Argleton](https://argleton.org) trap 024, which measures
+  exactly this and which MapSmith could not attempt. It can now, and it answers
+  both halves of the pair — the trap at 412090 and its clean twin at 412105,
+  fifteen metres apart, from files that differ in one metadata tag.
+
 - **Whitebox places contour vertices half a cell from where they belong, and
   MapSmith now corrects it.** Measured on the installed 2.0.6 with a planar ramp:
   the contour for height 3 came back on the WEST EDGE of the column holding 3
@@ -241,7 +283,7 @@ are in `Changed` and one of them affects anybody passing `category=`.
   with a tool of its own: `measure_length`, `join_table`, `aggregate_weighted`,
   `parse_coordinates`, `point_on_surface`, `hull_layer`, `validate_geometry`,
   `count_in_polygons`, `focal_statistics` and `extract_streams`. The catalogue is
-  at 71 operations (69 available, 2 planned) behind 28 tools.
+  at 72 operations (70 available, 2 planned) behind 28 tools.
 - **Overlay and dissolve declare their semantics in the manifest.** Dropped
   lower-dimension pieces from an overlay are named rather than silently absent,
   and a dissolve's aggregation is recorded with the group count verified in
