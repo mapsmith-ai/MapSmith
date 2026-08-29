@@ -516,7 +516,7 @@ flowchart TB
   BUFFER --> NEAR
   HEIGHT["<b>zonal_statistics</b><br/>72 operations &rarr; 4 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
   NEAR --> HEIGHT
-  AREA["<b>measure_area</b><br/>72 operations &rarr; 27 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>9/9 checks"]
+  AREA["<b>measure_area</b><br/>72 operations &rarr; 27 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>10/10 checks"]
   HEIGHT --> AREA
   FILTER["<b>run_sql</b><br/>72 operations &rarr; 38 candidates &rarr; chosen<br/>outside the plan"]
   AREA --> FILTER
@@ -538,7 +538,7 @@ flowchart TB
 | buffer | `buffer_layer` | `distance_meters=1500` | `EPSG:32610` — estimated UTM zone for metric buffering on a geographic CRS | 9/9 |
 | near | `clip_layer` | `mask_path=$buffer` | — | 12/12 |
 | height | `zonal_statistics` | `zones_path=$near`, `stats=['mean', 'min']` | `EPSG:4326` — zones and raster share the same CRS | 7/7 |
-| area | `measure_area` | `input_path=$height`, `method=geodesic` | `WGS 84 (ellipsoidal)` — ground area computed on the ellipsoid the layer's CRS names; no map plane is involved, so no projection distortion enters | 9/9 |
+| area | `measure_area` | `input_path=$height`, `method=geodesic` | `WGS 84 (ellipsoidal)` — ground area computed on the ellipsoid the layer's CRS names; no map plane is involved, so no projection distortion enters | 10/10 |
 
 One step runs outside the plan — `run_sql`, 4 rows in and 3 out — and the reason is a boundary rather than a gap: `$step` references resolve only in arguments declared as dataset inputs; run_sql takes its inputs inside a SQL string, so it cannot join the plan's dataflow. Deliberate: substituting into arbitrary strings would let a planner assemble a path out of text.
 
