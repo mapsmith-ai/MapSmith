@@ -17,6 +17,16 @@ intent from a temporal coincidence, and the ones worth keeping are chosen by
 somebody reading them — which is also the point at which queries that name real
 places and real projects get looked at before they enter a public repository.
 
+**A recorded choice can be the caller's mistake, and the first one was.** The
+session that shook this loose asked for *"one label point per parcel"* and ran
+`centroid_layer`, which our ranking had put fourth. The ranking was right: a
+centroid can fall outside its own polygon, which is
+[Argleton](https://argleton.org) trap 014, and `point_on_surface` is the
+operation for that request. Taken as a label, that row would have taught the
+catalogue to recommend the defect our own suite measures — so a `NOT TOP-RANKED`
+flag is a question about the ranking, never a verdict on it, and the reader has
+to decide which of the two was wrong.
+
 Two flags of the output are worth more than the rows themselves:
 
 * `NOT TOP-RANKED` — the caller was shown the operation and picked one our
