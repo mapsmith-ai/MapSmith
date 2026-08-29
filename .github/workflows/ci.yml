@@ -37,6 +37,21 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install
         run: pip install -e .[test,raster,whitebox]
+      # The embedding model is a 130 MB fetch from a third party, and on
+      # 2026-08-29 that party answered 429 and turned this build red for a
+      # reason that had nothing to do with the code. The cache key is the pinned
+      # revision, so it invalidates when the model does and never serves the
+      # wrong weights. The tests skip cleanly when the model cannot be had, so
+      # this is about not wasting a run rather than about correctness.
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/.cache/huggingface
+          key: hf-potion-retrieval-32M-6fc8051
+      - name: Ask the model host once, politely
+        env:
+          HF_HUB_DISABLE_TELEMETRY: "1"
+        run: python -c "from mapsmith import retrieval; retrieval.warm_cache()"
+        continue-on-error: true
       # A green tick that does not say what it ran against cannot be read six
       # months later: the resolved versions are the other half of the result.
       - name: Record resolved versions
