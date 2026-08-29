@@ -396,6 +396,16 @@ not. So a query the catalog cannot place comes back as `status: "unsure"`, carry
 engines' guesses and the question that narrows the catalog deterministically: what kind of data
 do you have. It fires on 9 of 11 unanswerable queries and suppresses 1 correct answer in 20.
 
+**And when the facets leave nothing at all, it says which declaration did it.** Zero
+candidates used to fall through the branch above and come back as *"0 operations survive,
+which is few enough to read"* — prose that means nothing and, worse, an empty candidate
+list, which an agent reads as *MapSmith cannot do this*. It was found by the discovery log
+below on its first real session: *"how much land is in each of these parcels"* with
+`produces="answer"` left nothing, while `measure_area` computes exactly that and declares
+`dataset:vector` because it writes the areas into a column. So that case is now its own
+answer — each declaration with the number of operations that would survive without it,
+smallest first — and it is arithmetic, not ranking.
+
 Below the choose threshold it stops refusing and becomes a warning instead — `order_is_weak` on
 the delivered set. Refusing made sense while the search was deciding; handing over every candidate
 is not deciding, so the disagreement reverts to being evidence about the *order*, which is the only
@@ -426,6 +436,41 @@ reproducible, whatever its manifest says. The one network access left is the mod
 on first use, at the pinned revision; after that the vector engine is local, and an install
 that never makes it keeps BM25, and the `engine` field of every result says which one
 answered.
+
+#### Making it better with your own requests, without a model that drifts
+
+The 155 requests behind those percentages were written by two language models. They are
+the best set we could build without users, and they are not what users ask: a real request
+names the file somebody actually has and the words their field actually uses.
+
+So MapSmith can record its own. Set `MAPSMITH_DISCOVERY_LOG` to a file path and each
+search is written as one JSON line together with the operation that was run after it —
+the query, the facets declared, which engine ranked it, every candidate delivered, and
+where in that list the chosen one sat:
+
+```bash
+MAPSMITH_DISCOVERY_LOG=/data/discovery.jsonl   # then work normally for a while
+python benchmarks/log_to_cases.py /data/discovery.jsonl
+```
+
+`log_to_cases.py` prints those lines as rows shaped like `tests/data/discovery_queries.json`
+and flags the two that matter: a run the ranking did **not** put first (the answer was on
+screen and the order was wrong) and a search nothing followed (a request the catalog did
+not serve). It prints; it never writes. Which rows become test cases is a person's call.
+
+**None of this trains anything, and that is the design.** A ranker that learns from what
+callers pick learns from an ordering it produced: the operation shown first gets picked
+more, gets learned as correct, gets ranked first harder — a confident answer nothing
+contradicts, which is the exact failure this product exists to measure. The model revision
+stays pinned, held there by a golden-vector test, so the same query gets the same answer
+next year. What improves instead is the catalog text — a phrasing, a `distinguishes` that
+does not distinguish — as a diff somebody can read and revert. That loop is not the weak
+option: it is what took found@3 from 18% to 57% and delivery to 97%.
+
+The log is off unless the variable is set, holds queries and operation names and nothing
+else (no dataset paths, no arguments), is guarded by `MAPSMITH_WORKSPACE` like any other
+path MapSmith writes, and never leaves the machine — nothing reads it back. Your queries
+describe your work; treat the file that way, and delete it when you are done.
 
 ### One question, end to end
 
@@ -615,6 +660,10 @@ Set `MAPSMITH_WORKSPACE=/data` to confine the server to one directory:
   extension install and load refused, memory and temp disk capped
   (`MAPSMITH_DUCKDB_MEMORY`, default 4GB; `MAPSMITH_DUCKDB_TEMP_LIMIT`, default 8GB),
   configuration locked. SQL can name any path it likes; the engine refuses to open it.
+
+`MAPSMITH_DISCOVERY_LOG` is the one path MapSmith writes to that no tool argument names,
+so it goes through the same check: outside the workspace it is refused, and the refusal
+disables the log and says so on stderr rather than failing the search that triggered it.
 
 Without a workspace, *file* access is deliberately unconfined — fine for a local stdio
 server on your own files — and plan validation flags `run_sql` steps with a

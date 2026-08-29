@@ -413,11 +413,14 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <tr>
       <td>ablation</td>
       <td>Each facet is worth measuring alone, over the 118 independent requests: nothing declared
-      → 61 candidates, 18% found@3; what data I have → 41, 22%; + what I want back → 27, 34%;
-      + how many datasets I have → <strong>14, 57% ranked and 97% delivered</strong>. The jump in
-      the last column is not the ranker getting better — it is the set becoming small enough to
-      hand over whole, and the 3% that is not 100% is the handful of requests where it still is
-      not.</td>
+      → 61 candidates, 18% found@3 with embeddings and 28% with BM25; what data I have → 41,
+      22% and 34%; + what I want back → 27, 34% and 43%; + how many datasets I have →
+      <strong>14, 57% ranked and 97% delivered</strong>. Both engines, because this row carried one
+      unnamed column until a CI run met a rate limit from the model host, fell back to BM25 and
+      recomputed the first figure as 28% — the published number had been a measurement of what
+      the machine could download. The jump in the last column is not the ranker getting better
+      — it is the set becoming small enough to hand over whole, and the 3% that is not 100% is
+      the handful of requests where it still is not.</td>
     </tr>
     <tr>
       <td>the default</td>
@@ -458,6 +461,39 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     agent that finds a different tool tomorrow for the same question is not reproducible, whatever
     its manifest says. The one network access left is the model download on first use, at the pinned
     revision; after that it is local, and a machine that never gets it keeps BM25 and is told so.
+  </p>
+
+  <h3 style="margin-top:2.5rem">How it gets better, and what it refuses to do</h3>
+  <p>
+    Every figure above rests on 155 requests written by two language models. That is the best set
+    obtainable without users, and it is not what users ask. So MapSmith can record its own:
+    <code>MAPSMITH_DISCOVERY_LOG</code> writes one line per search — the query, the facets
+    declared, every candidate delivered, and the operation actually run afterwards, with its rank in
+    the list it was picked from. A harness in the repository turns those lines into rows shaped like
+    the benchmark and flags the two that matter: a choice the ranking did not put first, and a search
+    nothing followed.
+  </p>
+  <p>
+    <strong>It does not train anything, and that is the design.</strong> A ranker that learns from
+    what callers pick learns from an ordering it produced: what it showed first gets picked more,
+    gets learned as correct, gets shown first harder — a confident answer nothing contradicts,
+    which is the failure this whole project exists to measure. The model revision stays pinned, held
+    by a golden-vector test, so the same question gets the same answer next year. What changes is the
+    catalogue text, as a diff somebody can read and revert. That loop is not the timid option: it is
+    what took found@3 from 18% to 57% and delivery to 97%.
+  </p>
+  <p>
+    It found something on its first recorded session, which is the argument for it in one line. A
+    request for the area of each parcel, declared as wanting an answer rather than a layer, left zero
+    candidates — and zero candidates came back as <em>“0 operations survive, which is few
+    enough to read”</em>, an empty list an agent reads as <em>MapSmith cannot do this</em>. It
+    can: the operation writes the number into a column, so it declares that it produces a dataset.
+    That case now answers with which declaration excluded everything, computed rather than ranked.
+  </p>
+  <p class="quiet" style="margin-top:1rem">
+    Off unless the variable is set. It holds queries and operation names, never dataset paths or
+    arguments, is confined by the workspace like every other path MapSmith writes, and never leaves
+    the machine.
   </p>
 
   <table class="tools" style="margin-top:1.75rem">

@@ -149,6 +149,24 @@ access and nothing else. Reports about that are welcome as hardening ideas;
 reports about a server reaching the network without `MAPSMITH_ALLOW_REMOTE`, in
 either mode, are vulnerabilities.
 
+## What MapSmith records, when you ask it to
+
+MapSmith writes nothing about your usage by default and sends nothing anywhere,
+ever — there is no telemetry in this product and no endpoint to disable.
+
+One opt-in feature writes a local file: `MAPSMITH_DISCOVERY_LOG=<path>` records
+each catalog search and the operation run after it, so that a deployment can
+turn its own requests into benchmark cases (README, *Finding the right
+operation*). It holds the query text, the facets declared, and operation names.
+It does **not** hold dataset paths or operation arguments — a deliberate limit,
+because a file quietly accumulating every path a caller touched is a different
+product with a different conversation attached. The path goes through the same
+guard as a tool argument, so under `MAPSMITH_WORKSPACE` it must be inside it.
+
+The queries are your users' words and can name real projects and real places.
+The file stays where it was written; nothing in MapSmith reads it back or
+uploads it. Read it before you copy any of it anywhere.
+
 Out of scope: issues requiring a hostile local process on the same machine
 (the jail assumes a single trusted writer of the workspace filesystem —
 documented in the README), and anything reachable only by running MapSmith

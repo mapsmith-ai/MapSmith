@@ -8,6 +8,26 @@ All notable changes to MapSmith are documented here, in the format of
 
 ### Added
 
+- **MapSmith can record its own discovery cases, and deliberately does not
+  learn from them.** Set `MAPSMITH_DISCOVERY_LOG=<path>` and every catalogue
+  search is written as one JSON line together with the operation run after it:
+  the query, the facets declared, which engine ranked it, every candidate
+  delivered, and where in that list the chosen one sat.
+  `benchmarks/log_to_cases.py` turns those lines into rows shaped like the
+  discovery benchmark and flags the two worth reading — a choice the ranking did
+  not put first, and a search nothing followed.
+
+  The figures MapSmith publishes rest on 155 requests written by two language
+  models, which is the best set obtainable without users and is not what users
+  ask. This closes that gap without closing a feedback loop: a ranker trained on
+  what callers pick learns from an ordering it produced, and the pinned model
+  revision is what makes a search reproducible a year later. So the log produces
+  benchmark rows for a person to accept or discard, and the improvement lands in
+  the catalogue text as a reviewable diff. Off unless the variable is set; holds
+  queries and operation names but never dataset paths or arguments; confined by
+  `MAPSMITH_WORKSPACE` like any other path MapSmith writes; never leaves the
+  machine.
+
 - **Ten operations, chosen by measurement rather than by taste.** The discovery
   benchmark holds 155 requests written by other model families; twenty-one of
   them were marked `none` by BOTH independent labellers, meaning the catalogue
@@ -49,6 +69,20 @@ All notable changes to MapSmith are documented here, in the format of
   size. Disclosure-control aggregation that refuses rather than publishing the one
   island it could not merge. And deterministic point thinning that says in the
   manifest that it removed data.
+
+### Fixed
+
+- **A search whose facets leave nothing now says which declaration did it.**
+  Zero surviving candidates fell into the hand-over branch and came back as
+  `status: "choose"` with an empty list and the sentence "0 operations survive
+  what you declared, which is few enough to read" — nonsense as prose, and read
+  by an agent as *MapSmith cannot do this*. It was false in the case that found
+  it: "how much land is in each of these parcels" with `produces="answer"` left
+  nothing, while `measure_area` computes exactly that and declares
+  `dataset:vector` because it writes the areas into a column. That case is now
+  `status: "none_apply"`, listing each declaration with the number of operations
+  that would survive without it, smallest first. Arithmetic, not ranking. Found
+  by the discovery log above on its first recorded session.
 
 ### Changed
 

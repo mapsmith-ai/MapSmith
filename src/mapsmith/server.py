@@ -92,6 +92,13 @@ def _guard(**paths: str) -> None:
 
 def _run(operation: str, params: dict[str, Any], fn, *args) -> dict[str, Any]:
     """Execute an engine call as a durable job (no-op ledger without DATABASE_URL)."""
+    # Every writer passes through here, so one line covers the dedicated tools
+    # and `run_operation` alike. Before the call rather than after: a run that
+    # failed is still a choice the caller made, and a search that led to a
+    # failure is a case worth keeping.
+    from . import discovery_log
+
+    discovery_log.record_run(operation)
     with jobs.job(operation, params) as (job_id, res):
         result = fn(*args)
         res.update(result)
@@ -805,6 +812,14 @@ def list_operations(
     guesses and a question; answering the question with the facets above is the
     fastest way through.
 
+    **If the answer comes back with `status: "none_apply"`, nothing you declared
+    can be true at once** — no ranking ran. It lists each declaration and how many
+    operations would come back without it, smallest first, so the one that is
+    excluding everything is the first line. The common case is `produces`: several
+    operations compute the number you want and write it into a column instead of
+    returning it, so they declare `dataset:vector`. If nothing in `relax` helps,
+    MapSmith probably does not do this — say so rather than running a neighbour.
+
     `detail=True` adds parameters and worked example calls: use it on the exact
     operation name before calling an unfamiliar tool. An empty `query` lists
     everything that survives the facets, planned operations included.
@@ -815,7 +830,7 @@ def list_operations(
     forces embeddings. The default changed on measurement, not preference, and
     the facets above matter far more than this choice.
     """
-    return catalog.search(
+    answer = catalog.search(
         query,
         limit=limit,
         detail=detail,
@@ -826,6 +841,42 @@ def list_operations(
         dataset_inputs=dataset_inputs,
         engine=engine,
     )
+    # Off unless MAPSMITH_DISCOVERY_LOG names a file. What it records is the
+    # pairing between this search and whatever gets run next — the best labels
+    # available, because they come from a caller with the context we lack. It
+    # does not feed a model: see `discovery_log` for why that would be the wrong
+    # shape of learning for this product.
+    from . import discovery_log
+
+    shape = (
+        answer[0]["status"]
+        if len(answer) == 1 and answer[0].get("status") in ("choose", "unsure")
+        else "ranked"
+    )
+    # `unsure` hands over no candidates but does put two suggestion lists in
+    # front of the caller, and something run right after one of those is the
+    # most valuable row this log can hold: a query the ranker could not place,
+    # next to the answer somebody picked anyway.
+    if shape == "unsure":
+        delivered = list(
+            dict.fromkeys(answer[0]["lexical_suggests"] + answer[0]["vector_suggests"])
+        )
+    else:
+        delivered = [entry["name"] for entry in catalog.entries(answer)]
+    discovery_log.record_search(
+        query,
+        {
+            "input_kind": input_kind,
+            "produces": produces,
+            "category": category,
+            "projected": projected,
+            "dataset_inputs": dataset_inputs,
+        },
+        answer[0].get("engine") if answer else None,
+        delivered,
+        shape,
+    )
+    return answer
 
 
 @mcp.tool(annotations=_WRITER)

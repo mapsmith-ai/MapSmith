@@ -4109,6 +4109,77 @@ def applicable(
 AGREEMENT_FLOOR = 1
 
 
+def _nothing_applies(
+    query: str,
+    input_kind: str | None,
+    projected: bool | None,
+    produces: str | None,
+    dataset_inputs: int | None,
+) -> dict[str, Any]:
+    """What to say when the facets leave no operation at all.
+
+    Found by the discovery log on its first real session, which is the argument
+    for having built it: *"how much land is in each of these parcels"* with
+    `produces="answer"` left zero candidates, and zero candidates fell into the
+    `choose` branch and came back as *"0 operations survive, which is few enough
+    to read"*. Nonsense as prose, and worse as an answer — an agent reads an
+    empty candidate list as "MapSmith cannot do this", when the truth was
+    `measure_area`, which computes exactly that and declares
+    `produces="dataset:vector"` because it writes the areas to a layer.
+
+    So this returns the diagnosis instead, and it is arithmetic rather than
+    ranking: drop each declared facet in turn, and report which single one is
+    doing the excluding. A caller who declared something that cannot be true of
+    any operation learns which of its assumptions was wrong, which is the one
+    thing a ranking could never have told it.
+    """
+    declared = {
+        "input_kind": input_kind,
+        "produces": produces,
+        "projected": projected,
+        "dataset_inputs": dataset_inputs,
+    }
+    declared = {k: v for k, v in declared.items() if v is not None}
+    relax = []
+    for facet in declared:
+        without = dict(declared)
+        without.pop(facet)
+        survivors = applicable(
+            without.get("input_kind"),
+            without.get("projected"),
+            without.get("produces"),
+            dataset_inputs=without.get("dataset_inputs"),
+        )
+        if survivors:
+            relax.append(
+                {
+                    "drop": facet,
+                    "you_declared": declared[facet],
+                    "would_leave": len(survivors),
+                    "for_example": [op["name"] for op in survivors[:3]],
+                }
+            )
+    relax.sort(key=lambda item: item["would_leave"])
+    return {
+        "status": "none_apply",
+        "query": query,
+        "reason": (
+            "no operation in the catalog matches everything you declared. This is "
+            "a statement about the facets, not about the words: nothing was ranked."
+        ),
+        "declared": declared,
+        "relax": relax,
+        "hint": (
+            "Each entry above is one declaration removed. If dropping `produces` "
+            "brings back what you wanted, the operation exists and hands its answer "
+            "back in a different shape — several compute a number and write it as a "
+            "column rather than returning it. If nothing here helps, MapSmith "
+            "probably does not do this: say so rather than substituting a "
+            "neighbouring operation."
+        ),
+    }
+
+
 def _clarification(query: str, lexical: list[str], vector: list[str],
                    candidates: list[dict[str, Any]]) -> dict[str, Any]:
     """What to say when the two engines disagree completely.
@@ -4228,6 +4299,10 @@ def search(
     # taxonomy, and a wrong guess would delete the right answer in silence. See
     # `applicable` for the measurement behind that.
     candidates = applicable(input_kind, projected, produces, dataset_inputs=dataset_inputs)
+    # Before anything else, because every branch below assumes there is something
+    # to rank or to hand over, and with nothing they all lie in their own way.
+    if not candidates:
+        return [_nothing_applies(query, input_kind, projected, produces, dataset_inputs)]
     # `_tokenize` is what decides whether there is a query at all: a string of
     # function words scores nothing against every entry, and returning the
     # catalog says "ask me better" more usefully than returning nothing.
@@ -4383,7 +4458,7 @@ def entries(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     right. This flattens them: the operations to read, in order, or empty when
     the search declined to place the query.
     """
-    if len(results) == 1 and results[0].get("status") in ("choose", "unsure"):
+    if len(results) == 1 and results[0].get("status") in ("choose", "unsure", "none_apply"):
         return list(results[0].get("candidates", []))
     return list(results)
 

@@ -271,3 +271,55 @@ def test_the_declared_family_orders_the_set_and_does_not_cut_it():
         "a wrong family guess removed an operation, which is the failure this "
         "design exists to avoid"
     )
+
+
+def test_facets_that_cannot_all_be_true_get_a_diagnosis_not_an_empty_set():
+    """The fourth response shape, and the one that was silently wrong.
+
+    Zero survivors fell into the `choose` branch and came back as "0 operations
+    survive what you declared, which is few enough to read", carrying an empty
+    candidate list. An agent reads that as "MapSmith cannot do this" — which was
+    false in the case that found it: `measure_area` computes the area of every
+    parcel and declares `produces="dataset:vector"`, because it writes the number
+    into a column rather than returning it.
+
+    Found by the discovery log on its first recorded session, which is the whole
+    argument for having built it: no test asked this question because nobody
+    thought to declare that combination.
+    """
+    answer = catalog.search(
+        "how much land is in each of these parcels",
+        input_kind="vector", produces="answer", dataset_inputs=1,
+    )
+    assert len(answer) == 1 and answer[0]["status"] == "none_apply"
+    assert catalog.entries(answer) == [], "the shape must flatten to no operations"
+
+    relax = answer[0]["relax"]
+    assert relax, "nothing tells the caller which declaration excluded everything"
+    assert [item["would_leave"] for item in relax] == sorted(
+        item["would_leave"] for item in relax
+    ), "the most selective declaration must be first, it is the one to reconsider"
+
+    dropping_produces = next(item for item in relax if item["drop"] == "produces")
+    assert "measure_area" in [
+        op["name"]
+        for op in catalog.applicable(input_kind="vector", dataset_inputs=1)
+    ], "the operation this diagnosis exists for is no longer reachable by dropping produces"
+    assert dropping_produces["would_leave"] > 0
+
+
+def test_every_status_a_search_can_return_is_understood_by_entries():
+    """`entries()` is what callers use to read any shape. It must know them all.
+
+    A new status that `entries()` does not know returns the wrapper itself as if
+    it were an operation, and `results[0]["name"]` then raises a KeyError inside
+    somebody else's agent. Cheap to assert, and the failure mode is remote.
+    """
+    import inspect
+
+    source = inspect.getsource(catalog.entries)
+    for status in ("choose", "unsure", "none_apply"):
+        assert f'"{status}"' in source, (
+            f"`entries()` does not handle status {status!r}, so a search that "
+            "returns it will look like a one-operation result"
+        )
