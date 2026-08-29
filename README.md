@@ -178,7 +178,7 @@ had to repair. `get_provenance` returns it for any output.
 ### Finding the right operation
 
 Those are the tools an agent chooses between. Behind them the **catalog** holds every
-operation MapSmith can perform — 61 today, and 36 of them have no tool of their own — and
+operation MapSmith can perform — 71 today, and 46 of them have no tool of their own — and
 it is built to hold thousands: tool-selection accuracy
 degrades past a few dozen *exposed* tools, while capability count has no such ceiling. That
 makes reaching scale a retrieval problem, so it is treated as one — and measured like one.
@@ -194,10 +194,10 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 61 | 28% | 18% | 28% |
-| what data I have | 41 | 34% | 22% | 48% |
-| + what I want back | 27 | 43% | 34% | 53% |
-| **+ how many datasets I have** | **14** | **55%** | **57%** | **97%** |
+| nothing — words alone | 71 | 25% | 17% | 25% |
+| what data I have | 47 | 28% | 19% | 28% |
+| + what I want back | 30 | 40% | 32% | 49% |
+| **+ how many datasets I have** | **16** | **53%** | **47%** | **97%** |
 
 **Two ranking columns, and that is a correction.** This table used to carry one,
 computed with the default engine — which is the embedding one where its model
@@ -214,7 +214,7 @@ near neighbours have to be told apart by meaning rather than by words.
 
 The last column is not an accuracy figure — it is a property, and the 97% rather than 100% is
 worth a sentence. The narrowing never drops the right operation: that is asserted per entry and
-holds for all 61. What the column measures is whether the surviving set was small enough to hand
+holds for all 71. What the column measures is whether the surviving set was small enough to hand
 over WHOLE, and for a handful of requests it still is not, so those fall back to a ranked
 shortlist and the answer can be outside the top three. Ranking decides the order; it does not
 decide membership; and the 3% is the gap between "cannot lose the answer" and "can show you all
@@ -233,6 +233,19 @@ or two — not a guess about our vocabulary, it is derivable from each operation
 so a test can check the declaration against the code, and it takes the median surviving set from
 34 to 9. The catalogue grew by a fifth and discovery got better, but only because a facet
 arrived with it. That is the trade this design makes, stated rather than discovered later.
+
+**It happened again the next day, and this is what watching a curve is for.** On 2026-08-30 the
+catalogue went from 61 operations to 71. Every ranking figure in that table fell — 28% to 25%
+bare, 34% to 28% on the input kind — and the *delivered* column of the second row fell from 48%
+to 28%, because more requests now leave a set too large to hand over whole. The bottom row did
+not move: **97%, the same as at 61 and at 51.** Ten more operations, no new facet, and the
+guarantee held, which is the first time growth has been absorbed by the facets already there.
+
+That is the shape of the trade, and it says when the next facet is due. The figure to watch is
+not found@3 — a ranker will always get worse as the catalogue grows, and it is a hint. It is the
+median surviving set at the fullest declaration: 9 at 51 operations, 14 at 61, 16 at 71. When
+that crosses 30, delivery stops being a property and starts being a ranking again, and the
+answer is another fact the caller already knows, not a bigger threshold.
 
 The requests, both labels and the harness are all in the repository:
 [`tests/data/discovery_queries.json`](tests/data/discovery_queries.json) and
@@ -497,15 +510,15 @@ flowchart TB
   ASK --> PLAN{{"plan validated<br/>before anything runs"}}
   PLAN -. "rejected: FORWARD_REFERENCE" .-> BAD["'mask_path' references '$buffer' which runs later — move step 'buffer' before 'near'"]
   BAD:::bad
-  BUFFER["<b>buffer_layer</b><br/>61 operations &rarr; 25 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
+  BUFFER["<b>buffer_layer</b><br/>71 operations &rarr; 27 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
   PLAN --> BUFFER
-  NEAR["<b>clip_layer</b><br/>61 operations &rarr; 11 candidates &rarr; chosen<br/>12/12 checks"]
+  NEAR["<b>clip_layer</b><br/>71 operations &rarr; 14 candidates &rarr; chosen<br/>12/12 checks"]
   BUFFER --> NEAR
-  HEIGHT["<b>zonal_statistics</b><br/>61 operations &rarr; 4 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
+  HEIGHT["<b>zonal_statistics</b><br/>71 operations &rarr; 4 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
   NEAR --> HEIGHT
-  AREA["<b>measure_area</b><br/>61 operations &rarr; 25 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>9/9 checks"]
+  AREA["<b>measure_area</b><br/>71 operations &rarr; 27 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>9/9 checks"]
   HEIGHT --> AREA
-  FILTER["<b>run_sql</b><br/>61 operations &rarr; 34 candidates &rarr; chosen<br/>outside the plan"]
+  FILTER["<b>run_sql</b><br/>71 operations &rarr; 38 candidates &rarr; chosen<br/>outside the plan"]
   AREA --> FILTER
   OUT[["3 parcels, each with elevation and ground area"]]
   FILTER --> OUT
@@ -514,11 +527,11 @@ flowchart TB
 
 | what the agent asks for | it declares | candidates | picked | at position |
 |---|---|---|---|---|
-| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s) | **25** of 61 | `buffer_layer` | 2 |
-| “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s) | **11** of 61 | `clip_layer` | 1 |
-| “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s) | **4** of 61 | `zonal_statistics` | 3 |
-| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s) | **25** of 61 | `measure_area` | 1 |
-| “drop the ones where the ground is above 120 metres” | vector, dataset:vector | **34** of 61 | `run_sql` | None |
+| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s) | **27** of 71 | `buffer_layer` | 2 |
+| “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s) | **14** of 71 | `clip_layer` | 1 |
+| “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s) | **4** of 71 | `zonal_statistics` | 3 |
+| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s) | **27** of 71 | `measure_area` | 1 |
+| “drop the ones where the ground is above 120 metres” | vector, dataset:vector | **38** of 71 | `run_sql` | None |
 
 | step | operation | arguments that mattered | CRS decision, recorded | checks |
 |---|---|---|---|---|

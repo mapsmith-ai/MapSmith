@@ -71,6 +71,16 @@ def test_the_projected_crs_requirement_matches_the_engines_that_refuse():
         "elevation_profile",
         "line_of_sight",
         "viewshed",
+        # Added 2026-08-30 with the second ten. Same rule, same reason: each of
+        # these takes a length from the caller — a snapping tolerance, a spacing
+        # along a line, a contour interval against a cell size, the area a
+        # nearest-neighbour ratio is measured against, the ground distance that
+        # weights a cost — and a length in degrees is not a length.
+        "snap_layer",
+        "points_along_lines",
+        "contour_lines",
+        "least_cost_path",
+        "nearest_neighbour_index",
         "thin_points",
         # Added 2026-08-29, and the reason belongs here rather than in a commit:
         # it declared False and did not refuse, so the executable check in

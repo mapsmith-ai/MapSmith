@@ -301,7 +301,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   </p>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1.5rem;margin:2rem 0 1.5rem">
     <div class="stat"><b>118</b><span>REQUESTS WE DID NOT WRITE</span></div>
-    <div class="stat"><b>57%</b><span>OUR RANKING, FOUND@3</span></div>
+    <div class="stat"><b>53%</b><span>OUR RANKING, FOUND@3</span></div>
     <div class="stat"><b>69%</b><span>A MODEL <em>CHOOSING</em> FROM THE SET</span></div>
     <div class="stat"><b>70%</b><span>WHERE THE TWO MODEL LABELLERS AGREE WITH EACH OTHER</span></div>
   </div>
@@ -354,6 +354,21 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     median surviving set from 34 to 14. The catalogue grew by a fifth and discovery got better — but
     only because a facet arrived with it, and that is the trade rather than a free lunch. It is now
     a required field of the published entry specification, with the measurement attached.
+  </p>
+  <p>
+    <strong>Then it happened again, and that is what watching a curve is for.</strong> On 30 August
+    the catalogue went to seventy-one. Every ranking figure fell — 25% bare where it had been 28%,
+    28% on the input kind where it had been 34% — and delivery at the second facet fell from 48% to
+    28%, because more requests now leave a set too large to hand over whole. The bottom row did not
+    move: <strong>97%, the same as at 61 and at 51</strong>. Ten more operations absorbed by the
+    facets already there, for the first time.
+  </p>
+  <p>
+    So the figure to watch is not found@3. A ranker gets worse as a catalogue grows and it is a hint
+    either way. It is the median surviving set at the fullest declaration — 9 at fifty-one
+    operations, 14 at sixty-one, 16 at seventy-one. When that crosses thirty, delivery stops being a
+    property and becomes a ranking again, and the answer will be another fact the caller already
+    knows rather than a bigger threshold.
   </p>
   <p>
     <strong>And no model is needed to extract those facets, because the caller is one.</strong> An
@@ -413,9 +428,9 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <tr>
       <td>ablation</td>
       <td>Each facet is worth measuring alone, over the 118 independent requests: nothing declared
-      → 61 candidates, 18% found@3 with embeddings and 28% with BM25; what data I have → 41,
-      22% and 34%; + what I want back → 27, 34% and 43%; + how many datasets I have →
-      <strong>14, 57% ranked and 97% delivered</strong>. Both engines, because this row carried one
+      → 71 candidates, 17% found@3 with embeddings and 25% with BM25; what data I have → 47,
+      19% and 28%; + what I want back → 30, 32% and 40%; + how many datasets I have →
+      <strong>16, 53% ranked and 97% delivered</strong>. Both engines, because this row carried one
       unnamed column until a CI run met a rate limit from the model host, fell back to BM25 and
       recomputed the first figure as 28% — the published number had been a measurement of what
       the machine could download. The jump in the last column is not the ranker getting better

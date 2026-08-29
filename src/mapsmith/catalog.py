@@ -3819,6 +3819,505 @@ OPERATIONS: list[dict[str, Any]] = [
                                                            'output_path': 'labels.parquet',
                                                            'min_distance': 30000.0,
                                                            'priority_field': 'population'}}}}]},
+    {   'name': 'summarize_field',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'inspection',
+        "produces": "answer",
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1},
+        'summary': 'Totals, averages and extremes of an attribute, optionally per '
+                   'group. Returns the numbers; writes nothing',
+        "phrasings": "how much land is in these parcels altogether; what is the average "
+                     "population; how many by type; total length of pipe by material; "
+                     "which is the biggest and which the smallest",
+        "distinguishes": "Hands the number back. Not measure_area or measure_length, "
+                         "which COMPUTE a geometric quantity and write it into a column "
+                         "of a new layer; not aggregate_weighted, which combines rates "
+                         "by weight; not zonal_statistics, which summarises a raster "
+                         "inside polygons. If a column already holds the value, this "
+                         "is the operation that adds it up.",
+        'description': 'Descriptive statistics over one numeric attribute: count, sum, '
+                       'mean, median, min, max, range and sample standard deviation, '
+                       'either overall or once per value of a grouping column. '
+                       'Geometry is not read, so a layer without a CRS is accepted — '
+                       'this is arithmetic over attributes, not a measurement of the '
+                       'ground. Rows with no value are excluded AND COUNTED: a total '
+                       'over 900 of 1000 parcels is a true number about 900, and the '
+                       'answer says so rather than letting it read as a total. A '
+                       'non-numeric column is refused with the reason rather than '
+                       'summed as text.',
+        'parameters': [{'name': 'input_path', 'type': 'str', 'required': True,
+                        'description': 'Vector layer or table'},
+                       {'name': 'field', 'type': 'str', 'required': True,
+                        'description': 'Numeric column to summarise'},
+                       {'name': 'group_by', 'type': 'str', 'required': False,
+                        'description': 'Column to report one row per distinct value of'},
+                       {'name': 'statistics', 'type': 'list[str]', 'required': False,
+                        'description': 'Subset of count/sum/mean/median/min/max/stdev/range'}],
+        'examples': [{'goal': 'How much land is in these parcels altogether',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'summarize_field',
+                                             'arguments': {'input_path': 'parcels.parquet',
+                                                           'field': 'area_m2'}}}},
+                     {'goal': 'Average household income per district',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'summarize_field',
+                                             'arguments': {'input_path': 'blocks.gpkg',
+                                                           'field': 'income',
+                                                           'group_by': 'district'}}}}]},
+    {   'name': 'spatial_autocorrelation',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'inspection',
+        "produces": "answer",
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1},
+        'summary': "Global Moran's I: whether the map holds a spatial pattern at all, "
+                   "as one number with its significance",
+        "phrasings": "is there actually a pattern here or is it noise; are the high "
+                     "values grouped together; does this look random; is the clustering "
+                     "real before I map it",
+        "distinguishes": "Answers whether a pattern exists, for the map as a whole. Not "
+                         "hot_spots, which assumes one exists and shows WHERE — run "
+                         "this first, because a hot-spot map of pure noise still has "
+                         "hot spots on it.",
+        'description': "Moran's I over a neighbourhood, with the expected value under "
+                       "randomness (which is -1/(n-1), not zero), the variance, a "
+                       "z-score and a two-sided p. Around +1 neighbours resemble each "
+                       "other, around 0 there is no pattern, around -1 the map is a "
+                       "checkerboard. Neighbours are shared boundaries ('contiguity') "
+                       "or everything within a radius ('distance_band'), and the choice "
+                       "IS the statistic: features with no neighbours contribute "
+                       "nothing, so their count is reported and a majority of them is "
+                       "refused rather than answered. A layer where every value is "
+                       "identical is refused too — I is undefined there, not zero.",
+        'parameters': [{'name': 'input_path', 'type': 'str', 'required': True,
+                        'description': 'Layer to test (polygons or points)'},
+                       {'name': 'value_field', 'type': 'str', 'required': True,
+                        'description': 'Numeric column to test for spatial pattern'},
+                       {'name': 'weights', 'type': 'str', 'required': False,
+                        'description': "'contiguity' (default) or 'distance_band'"},
+                       {'name': 'distance_band', 'type': 'float', 'required': False,
+                        'description': "Radius for 'distance_band', in the CRS's unit"}],
+        'examples': [{'goal': 'Is the disease rate actually clustered, or does it just look that way',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'spatial_autocorrelation',
+                                             'arguments': {'input_path': 'districts.parquet',
+                                                           'value_field': 'rate'}}}},
+                     {'goal': 'Do nearby shops really have similar takings, within 2 km',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'spatial_autocorrelation',
+                                             'arguments': {'input_path': 'shops.parquet',
+                                                           'value_field': 'takings',
+                                                           'weights': 'distance_band',
+                                                           'distance_band': 2000.0}}}}]},
+    {   'name': 'nearest_neighbour_index',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'inspection',
+        "produces": "answer",
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': None},
+        'summary': 'Clark-Evans R: whether points are clustered, random or evenly '
+                   'spread, against an area you choose',
+        "phrasings": "are these trees clustered or scattered; is the distribution of "
+                     "cases random; are the shops evenly spread across town; how "
+                     "regular is this pattern",
+        "distinguishes": "Describes the arrangement of the points themselves, with no "
+                         "attribute involved. Not spatial_autocorrelation, which asks "
+                         "whether the VALUES on features form a pattern; not hot_spots, "
+                         "which needs a value too.",
+        'description': 'The mean distance from each point to its nearest neighbour, '
+                       'divided by what that mean would be for the same number of '
+                       'points scattered at random over the same area. Below 1 is '
+                       'clustered, 1 is random, above 1 is spread out, about 2.15 is a '
+                       'perfect lattice; a z-score and p accompany it. **R is not a '
+                       'property of the points**: it is a ratio against an area, and '
+                       'the area is a decision. Pass area_path with the boundary the '
+                       'points were sampled within; without it the convex hull of the '
+                       'points is used, which understates clustering, and the answer '
+                       'says which was used and how big it was. Needs a projected CRS. '
+                       'Points lying exactly on top of each other are counted and '
+                       'reported, because duplicated records drag R towards clustered '
+                       'whether or not the pattern is.',
+        'parameters': [{'name': 'input_path', 'type': 'str', 'required': True,
+                        'description': 'Point layer in a projected CRS'},
+                       {'name': 'area_path', 'type': 'str', 'required': False,
+                        'description': 'Polygon boundary the points were sampled within'}],
+        'examples': [{'goal': 'Are these infected trees clustered or scattered at random',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'nearest_neighbour_index',
+                                             'arguments': {'input_path': 'trees.parquet',
+                                                           'area_path': 'orchard.parquet'}}}},
+                     {'goal': 'Are the sensors evenly spread, judged against their own footprint',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'nearest_neighbour_index',
+                                             'arguments': {'input_path': 'sensors.parquet'}}}}]},
+    {   'name': 'compare_layers',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'inspection',
+        "produces": "answer",
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 2},
+        'summary': 'What changed between two versions of a layer: CRS, schema, counts, '
+                   'and per-feature what moved or was edited',
+        "phrasings": "is this new delivery actually different from what we had; what "
+                     "changed since last month; did anything move; are these two files "
+                     "the same data",
+        "distinguishes": "Compares two versions of the SAME layer and reports "
+                         "differences. Not overlay_layers, which computes a new "
+                         "geometry from two different layers; not validate_geometry, "
+                         "which judges one layer against itself.",
+        'description': 'Reports the things that make two layers the same layer: '
+                       'coordinate system, feature count, column names, extent. With '
+                       'key_field it matches features by identity and reports how many '
+                       'were added, removed, moved or had an attribute edited, with the '
+                       'largest move and up to fifty keys per category. **Without a key '
+                       'it will not guess**: matching by position reports an entire '
+                       'layer as changed because somebody sorted it, so the answer says '
+                       'the comparison was bulk-only. tolerance is a distance in the '
+                       "CRS's unit and defaults to zero, which is exact equality: a "
+                       'rewrite through another library can move a vertex by a '
+                       'nanometre, and a comparison that hides that is not one. A '
+                       'differing CRS is reported and the second layer reprojected onto '
+                       'the first, with a note that tiny differences are then the '
+                       'reprojection.',
+        'parameters': [{'name': 'input_path', 'type': 'str', 'required': True,
+                        'description': 'The layer you have (its CRS wins)'},
+                       {'name': 'other_path', 'type': 'str', 'required': True,
+                        'description': 'The layer to compare against it'},
+                       {'name': 'key_field', 'type': 'str', 'required': False,
+                        'description': 'Column identifying a feature in both layers'},
+                       {'name': 'tolerance', 'type': 'float', 'required': False,
+                        'description': 'Distance below which a move does not count (default 0)'}],
+        'examples': [{'goal': 'Did the new parcel delivery actually change anything',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'compare_layers',
+                                             'arguments': {'input_path': 'parcels_march.parquet',
+                                                           'other_path': 'parcels_april.parquet',
+                                                           'key_field': 'parcel_id'}}}},
+                     {'goal': 'Quick check: are these two exports the same data at all',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'compare_layers',
+                                             'arguments': {'input_path': 'export_a.gpkg',
+                                                           'other_path': 'export_b.gpkg'}}}}]},
+    {   'name': 'snap_layer',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'vector',
+        "produces": "dataset:vector",
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': 2},
+        'summary': 'Move vertices onto a reference layer where they are nearly there, '
+                   'and report every move',
+        "phrasings": "the parcel edges are a few centimetres off the road centreline; "
+                     "these two surveys do not quite line up; there are slivers where "
+                     "the boundaries should match; make the endpoints meet",
+        "distinguishes": "Moves vertices of one layer onto another layer's vertices. "
+                         "Not validate_geometry, which repairs a geometry against "
+                         "itself; not simplify_layer, which removes vertices; not "
+                         "transform_by_control_points, which moves EVERYTHING by one "
+                         "fitted transform rather than each vertex separately.",
+        'description': 'Every vertex within tolerance of a reference vertex is moved '
+                       'onto it exactly; everything else is untouched. The repair for '
+                       'data that is a millimetre from lining up, which is what makes '
+                       'slivers, unclosed rings and networks that will not route. '
+                       '**tolerance has no default and cannot have one**: too small and '
+                       'nothing lines up while the output looks fixed, too large and '
+                       'features are pulled onto neighbours they were never related to, '
+                       'which is worse because the result is plausible. The manifest '
+                       'carries how many vertices moved and the largest move, and a '
+                       'check refuses any move beyond the tolerance. A second check '
+                       'catches geometry that snapping made invalid — a tolerance wider '
+                       "than a sliver's own width folds it onto itself.",
+        'parameters': [{'name': 'input_path', 'type': 'str', 'required': True,
+                        'description': 'Layer whose vertices may move'},
+                       {'name': 'reference_path', 'type': 'str', 'required': True,
+                        'description': 'Layer whose vertices are the targets'},
+                       {'name': 'output_path', 'type': 'str', 'required': True,
+                        'description': 'Output path (.parquet or .gpkg)'},
+                       {'name': 'tolerance', 'type': 'float', 'required': True,
+                        'description': "Largest move allowed, in the input CRS's unit"}],
+        'examples': [{'goal': 'Parcel boundaries sit 3 cm off the road centreline; make them meet',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'snap_layer',
+                                             'arguments': {'input_path': 'parcels.parquet',
+                                                           'reference_path': 'roads.parquet',
+                                                           'output_path': 'parcels_snapped.parquet',
+                                                           'tolerance': 0.05}}}},
+                     {'goal': 'Street segments do not quite meet; pull the endpoints together',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'snap_layer',
+                                             'arguments': {'input_path': 'streets.parquet',
+                                                           'reference_path': 'junctions.parquet',
+                                                           'output_path': 'streets_snapped.parquet',
+                                                           'tolerance': 0.5}}}}]},
+    {   'name': 'points_along_lines',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'vector',
+        "produces": "dataset:vector",
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': 1},
+        'summary': 'A point every N along each line, carrying its distance along it '
+                   '(chainage, stationing)',
+        "phrasings": "a marker every 20 metres along the centreline; stationing for the "
+                     "pipeline; sample positions down this route; chainage points",
+        "distinguishes": "Produces the positions. Not elevation_profile, which produces "
+                         "positions AND reads a surface at them — use that one if the "
+                         "goal is heights; not sample_raster_at_points, which needs the "
+                         "points to exist already.",
+        'description': 'Walks each line from its start vertex and emits a point every '
+                       'spacing, each carrying line_index, part, point_number and '
+                       'distance_along. Multi-part geometries are walked part by part, '
+                       'each restarting at zero. include_endpoint (default true) adds '
+                       "the line's end even when it does not fall on the spacing, "
+                       'because a profile that stops 3 m short of the summit is a '
+                       'profile of the wrong thing; the flag is recorded so a reader '
+                       'knows whether the last interval is short. A projected CRS is '
+                       'required: a spacing of 20 in degrees is about two thousand '
+                       'kilometres. A verification check recomputes the expected point '
+                       'count from the spacing and the line lengths, so an off-by-one '
+                       'cannot pass as a map of dots.',
+        'parameters': [{'name': 'input_path', 'type': 'str', 'required': True,
+                        'description': 'Line layer in a projected CRS'},
+                       {'name': 'output_path', 'type': 'str', 'required': True,
+                        'description': 'Output point layer'},
+                       {'name': 'spacing', 'type': 'float', 'required': True,
+                        'description': "Distance between points, in the CRS's unit"},
+                       {'name': 'include_endpoint', 'type': 'bool', 'required': False,
+                        'description': "Add each line's end even off-spacing (default true)"}],
+        'examples': [{'goal': 'Chainage markers every 20 m along the pipeline centreline',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'points_along_lines',
+                                             'arguments': {'input_path': 'centreline.parquet',
+                                                           'output_path': 'stations.parquet',
+                                                           'spacing': 20.0}}}},
+                     {'goal': 'Sample positions every 100 m, stopping exactly at each line end',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'points_along_lines',
+                                             'arguments': {'input_path': 'routes.gpkg',
+                                                           'output_path': 'samples.parquet',
+                                                           'spacing': 100.0,
+                                                           'include_endpoint': True}}}}]},
+    {   'name': 'line_intersections',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'vector',
+        "produces": "dataset:vector",
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': None},
+        'summary': 'Where lines cross, as points, with the pair of lines that made each '
+                   'crossing',
+        "phrasings": "where does the pipeline cross the road; find the level crossings; "
+                     "which streets intersect; where do these two networks meet; find "
+                     "the unnoded junctions",
+        "distinguishes": "Returns the crossing POINTS between lines. Not overlay_layers, "
+                         "which is set arithmetic on polygons; not spatial_join, which "
+                         "attaches attributes without producing the meeting place.",
+        'description': 'With other_path, every crossing between the two layers — where '
+                       'the pipeline meets the road, the question that precedes every '
+                       'permit. Without it, every crossing WITHIN one layer, which is '
+                       'how a network is checked for junctions somebody forgot to node. '
+                       'Lines that merely meet end-to-end are junctions, not crossings, '
+                       'and are deliberately not reported: including them would bury '
+                       'the real ones. Collinear overlaps — one line drawn on top of '
+                       'another, a digitising error with a different fix — are reported '
+                       'by their endpoints and counted separately as kind="overlap". '
+                       'Each output point carries first_index and second_index, and a '
+                       'check confirms every reported crossing really lies on both '
+                       'parents.',
+        'parameters': [{'name': 'input_path', 'type': 'str', 'required': True,
+                        'description': 'Line layer'},
+                       {'name': 'other_path', 'type': 'str', 'required': False,
+                        'description': 'Second line layer; omit to find crossings within the first'},
+                       {'name': 'output_path', 'type': 'str', 'required': True,
+                        'description': 'Output point layer'}],
+        'examples': [{'goal': 'Where does the proposed pipeline cross existing roads',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'line_intersections',
+                                             'arguments': {'input_path': 'pipeline.parquet',
+                                                           'other_path': 'roads.parquet',
+                                                           'output_path': 'crossings.parquet'}}}},
+                     {'goal': 'Find the junctions nobody noded inside this street network',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'line_intersections',
+                                             'arguments': {'input_path': 'streets.parquet',
+                                                           'output_path': 'unnoded.parquet'}}}}]},
+    {   'name': 'transform_by_control_points',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'vector',
+        "produces": "dataset:vector",
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 2},
+        'summary': 'Put a survey on real ground by fitting a transform from points known '
+                   'in both systems, with the residuals reported',
+        "phrasings": "my traverse plots in the middle of the river; the survey is on an "
+                     "assumed grid; georeference this local site coordinate system; the "
+                     "drawing is shifted and rotated from where it should be",
+        "distinguishes": "Fits a transform from control points, for data whose CRS is "
+                         "unknown or local. Not reproject_layer, which converts between "
+                         "two KNOWN coordinate systems and needs no control points; not "
+                         "snap_layer, which nudges individual vertices.",
+        'description': 'The control layer holds points whose target coordinates are '
+                       'their geometry and whose source coordinates are two columns, '
+                       'one pair per control point. A least-squares transform is fitted '
+                       "and applied to every vertex, and the output is declared in the "
+                       "control points' CRS — the fit IS the georeferencing, so any CRS "
+                       'the input carried is discarded and that decision is recorded. '
+                       "**The fit always succeeds, and that is the danger**: two control "
+                       'points and a similarity transform reproduce both exactly '
+                       'whatever they are, including when one was typed wrong. So the '
+                       'residual per control point is the output that matters — it is '
+                       'in the result and the manifest, the worst one is named, and an '
+                       'exactly determined fit says in words that its zero residual is '
+                       "evidence of nothing. kind='similarity' (default) preserves shape "
+                       "and angles, which is right for a survey; kind='affine' allows "
+                       'shear and independent scale, right for a scanned map that '
+                       'stretched and wrong for a survey, because it absorbs the blunder '
+                       'a similarity fit would have exposed.',
+        'parameters': [{'name': 'input_path', 'type': 'str', 'required': True,
+                        'description': 'Layer in the local or shifted system'},
+                       {'name': 'control_path', 'type': 'str', 'required': True,
+                        'description': 'Point layer: geometry is the KNOWN position, columns hold the local one'},
+                       {'name': 'output_path', 'type': 'str', 'required': True,
+                        'description': 'Output path (.parquet or .gpkg)'},
+                       {'name': 'target_crs', 'type': 'str', 'required': True,
+                        'description': 'CRS to declare on the output (e.g. EPSG:32632)'},
+                       {'name': 'source_x', 'type': 'str', 'required': False,
+                        'description': "Column holding the control point's local X (default source_x)"},
+                       {'name': 'source_y', 'type': 'str', 'required': False,
+                        'description': "Column holding the control point's local Y (default source_y)"},
+                       {'name': 'kind', 'type': 'str', 'required': False,
+                        'description': "'similarity' (default, 2+ points) or 'affine' (3+)"}],
+        'examples': [{'goal': 'The boundary traverse is on an assumed grid and plots in the river',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'transform_by_control_points',
+                                             'arguments': {'input_path': 'traverse.parquet',
+                                                           'control_path': 'control.parquet',
+                                                           'output_path': 'traverse_fixed.parquet',
+                                                           'target_crs': 'EPSG:32632'}}}},
+                     {'goal': 'Georeference a digitised site plan that stretched when it was scanned',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'transform_by_control_points',
+                                             'arguments': {'input_path': 'scan.parquet',
+                                                           'control_path': 'corners.parquet',
+                                                           'output_path': 'scan_placed.parquet',
+                                                           'target_crs': 'EPSG:27700',
+                                                           'kind': 'affine'}}}}]},
+    {   'name': 'contour_lines',
+        'status': 'available',
+        'tool': None,
+        'workload': 'raster',
+        'category': 'terrain',
+        "produces": "dataset:vector",
+        'applicability': {'inputs': ['raster'], 'requires_projected_crs': True, 'dataset_inputs': 1},
+        'summary': 'Isolines of a surface at a fixed interval, each carrying the '
+                   'elevation it traces. Requires the [whitebox] extra',
+        "phrasings": "contours every 10 metres from this DEM; draw the height lines; "
+                     "isolines of the surface; a contour map for the site plan",
+        "distinguishes": "Turns a surface into lines of constant value. Not "
+                         "elevation_profile, which is a section ALONG one line; not "
+                         "hillshade, which is a picture of the terrain rather than "
+                         "measurable geometry.",
+        'description': 'Each output line carries the elevation it traces, in the DEM\'s '
+                       'own Z unit. **Two defaults here are deliberately not the '
+                       "library's.** smoothing=0 turns off a filter Whitebox applies at "
+                       'size 9 by default; that filter moves vertices to make the line '
+                       'look better, and a prettified contour no longer passes through '
+                       'the elevation it claims — smoothing is available and recorded '
+                       'when used, because a drawing and a measurement are different '
+                       'products. And the geometry is shifted half a cell from what the '
+                       'library returns, because Whitebox places vertices on a cell\'s '
+                       'west edge rather than at its centre: 15 m of error on every '
+                       'contour of a 30 m DEM. That correction is VERIFIED rather than '
+                       'trusted — the DEM is read back at the finished vertices and the '
+                       'elevation must equal the contour\'s own height, so a future '
+                       'library change fails the check instead of double-correcting in '
+                       'silence. A geographic CRS is refused.',
+        'parameters': [{'name': 'dem_path', 'type': 'str', 'required': True,
+                        'description': 'DEM in a projected CRS'},
+                       {'name': 'output_path', 'type': 'str', 'required': True,
+                        'description': 'Output line layer'},
+                       {'name': 'interval', 'type': 'float', 'required': True,
+                        'description': "Vertical spacing between contours, in the DEM's Z unit"},
+                       {'name': 'base', 'type': 'float', 'required': False,
+                        'description': 'Elevation the series is anchored to (default 0)'},
+                       {'name': 'smoothing', 'type': 'int', 'required': False,
+                        'description': 'Whitebox smoothing filter size; 0 (default) keeps the geometry honest'}],
+        'examples': [{'goal': 'Contours every 10 m for the site plan',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'contour_lines',
+                                             'arguments': {'dem_path': 'dem.tif',
+                                                           'output_path': 'contours.parquet',
+                                                           'interval': 10.0}}}},
+                     {'goal': 'Index contours every 25 m starting from mean sea level',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'contour_lines',
+                                             'arguments': {'dem_path': 'dem.tif',
+                                                           'output_path': 'index_contours.parquet',
+                                                           'interval': 25.0,
+                                                           'base': 0.0}}}}]},
+    {   'name': 'least_cost_path',
+        'status': 'available',
+        'tool': None,
+        'workload': 'raster',
+        'category': 'network',
+        "produces": "dataset:vector",
+        'applicability': {'inputs': ['raster'], 'requires_projected_crs': True, 'dataset_inputs': 3},
+        'summary': 'The cheapest route across a cost surface between two points, when '
+                   'there is no network to follow',
+        "phrasings": "cheapest way to lay the cable avoiding steep slopes; best corridor "
+                     "for the haul road; route the pipeline around the wetland; where "
+                     "should the trail go across this terrain",
+        "distinguishes": "Routes over a raster of costs, off-road. Not "
+                         "network_shortest_path, which follows existing lines; not "
+                         "euclidean_distance, which measures distance without any "
+                         "notion of cost.",
+        'description': 'The cost raster says what one unit of travel is worth — a slope '
+                       'reclassified into a penalty, a habitat score, a price per metre '
+                       '— and the route returned is the one whose total is smallest. '
+                       '**Cost is charged per unit of distance, not per cell**, and the '
+                       'difference decides the answer: a diagonal step is sqrt(2) times '
+                       'as far and costs sqrt(2) times as much, where an implementation '
+                       'charging one unit per cell finds staircase routes nobody would '
+                       'walk. Each step is charged the mean of the two cells it joins. '
+                       'Nodata is impassable rather than free; zero or negative costs '
+                       'are refused, because a zero-cost cell makes every route through '
+                       'it free and a negative one makes the cheapest route an endless '
+                       'loop, neither of which shows up in the output. Returns one line '
+                       'with the accumulated cost, its length and the straight-line '
+                       'distance beside it — a route exactly as long as the straight '
+                       'line means the surface was uniform and nothing was avoided, and '
+                       'a non-critical check says so.',
+        'parameters': [{'name': 'cost_path', 'type': 'str', 'required': True,
+                        'description': 'Raster of costs per unit distance, projected CRS'},
+                       {'name': 'start_path', 'type': 'str', 'required': True,
+                        'description': 'Layer holding exactly one start point'},
+                       {'name': 'end_path', 'type': 'str', 'required': True,
+                        'description': 'Layer holding exactly one destination point'},
+                       {'name': 'output_path', 'type': 'str', 'required': True,
+                        'description': 'Output line layer (one feature)'},
+                       {'name': 'diagonal', 'type': 'bool', 'required': False,
+                        'description': 'Allow diagonal steps (default true)'}],
+        'examples': [{'goal': 'Cheapest trench from the substation to the data centre, avoiding steep ground',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'least_cost_path',
+                                             'arguments': {'cost_path': 'slope_penalty.tif',
+                                                           'start_path': 'substation.parquet',
+                                                           'end_path': 'datacentre.parquet',
+                                                           'output_path': 'route.parquet'}}}},
+                     {'goal': 'A haul road that can only turn square corners, not diagonally',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'least_cost_path',
+                                             'arguments': {'cost_path': 'ground_cost.tif',
+                                                           'start_path': 'quarry.parquet',
+                                                           'end_path': 'plant.parquet',
+                                                           'output_path': 'haul_road.parquet',
+                                                           'diagonal': False}}}}]},
 ]
 
 # --- Okapi BM25 over the catalog (deterministic, no dependencies) ---------

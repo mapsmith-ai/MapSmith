@@ -1257,3 +1257,241 @@ def idw_interpolation(
         "provenance": str(manifest),
         "verified": True,
     }
+
+
+#: Half a cell, and where it comes from. Whitebox places a contour vertex at the
+#: WEST edge of the cell whose value it contours, not at the cell's centre —
+#: measured on the installed 2.0.6 with a planar ramp `z = column index`, origin
+#: (1000, 5000), cells of 10 m: the contour for height 3 came back at x = 1030
+#: where the centre of the column holding 3 is x = 1035. Exactly half a cell, in
+#: both axes, on every contour.
+#:
+#: Which one is right is not a matter of taste. The raster declares
+#: `AREA_OR_POINT=Area`, so each value is a sample at its cell's centre, and the
+#: isoline of a field sampled at centres passes through the centre of the cell
+#: holding that value. On a 30 m DEM the difference is 15 m of horizontal
+#: position on every contour — plausible, well-formed, and wrong, which is the
+#: third time this library's behaviour has diverged from its description here
+#: (see the TIFF predictor and the D8 pointer table).
+CONTOUR_REGISTRATION_SHIFT = 0.5
+
+
+def contour_lines(
+    dem_path: str,
+    output_path: str,
+    interval: float,
+    base: float = 0.0,
+    smoothing: int = 0,
+) -> dict[str, Any]:
+    """Isolines of a surface, at a fixed interval. Requires the [whitebox] extra.
+
+    The oldest way of drawing terrain and still the one a person reads fastest.
+    Each output line carries the elevation it traces, in the DEM's own Z unit.
+
+    **Two defaults here are deliberately not the library's.**
+
+    `smoothing=0` turns off a filter Whitebox applies by default at size 9. That
+    filter moves vertices to make the line look better, and a contour that has
+    been prettified no longer passes through the elevation it claims. Smoothing
+    is available and it is recorded in the manifest when used, because a
+    cartographic output and a measurement are different products and the reader
+    is entitled to know which one this is.
+
+    And the geometry is shifted half a cell east and south from what the library
+    returns. That is a correction, not a preference: Whitebox places contour
+    vertices on the west edge of a cell rather than at its centre, which puts
+    every contour on a 30 m DEM 15 m from where the elevation it names actually
+    occurs. The correction is verified rather than trusted — the DEM is sampled
+    at the finished vertices and the elevation read back must equal the
+    contour's own height. If a future version of the library changes its
+    registration, that check fails loudly instead of silently double-correcting.
+
+    A geographic CRS is refused: an interval is a height and the vertices are a
+    position, and a contour computed on degrees comes back stretched by the
+    latitude it happens to be at.
+    """
+    wb = _require()
+    if interval <= 0:
+        raise ValueError(f"interval must be positive, got {interval}")
+    if smoothing < 0:
+        raise ValueError(f"smoothing must be zero or positive, got {smoothing}")
+
+    wbe = wb.WbEnvironment()
+    wbe.verbose = False
+    with _read_dem(wbe, dem_path) as (dem, crs, geographic, input_note):
+        if geographic:
+            raise ValueError(
+                "contour_lines on a geographic CRS would place vertices in degrees "
+                "while the interval is a height, so the contours come back stretched "
+                "by the latitude. Reproject the DEM to a projected CRS first."
+            )
+        meta = dem.metadata()
+        result = wbe.contours_from_raster(
+            dem,
+            contour_interval=float(interval),
+            base_contour=float(base),
+            smoothing_filter_size=int(smoothing),
+        )
+        ws = workspace.root()
+        with tempfile.TemporaryDirectory(dir=str(ws) if ws else None) as tmp:
+            written = Path(tmp) / "contours.shp"
+            wbe.write_vector(result, str(written))
+            # Through the one reader, even though this file is three lines old
+            # and we wrote it ourselves. The rule is absolute on purpose: #28
+            # was "open a vector file" existing as six copies of one decision,
+            # and a seventh copy with a good excuse is still a seventh copy.
+            lines = readers.read_vector(str(written))
+
+    if lines.empty:
+        raise ValueError(
+            f"no contour crosses this DEM at an interval of {interval} from a base "
+            f"of {base}. The surface spans less than one interval, or the base is "
+            "outside its range."
+        )
+
+    shift_x = CONTOUR_REGISTRATION_SHIFT * float(meta.resolution_x)
+    shift_y = -CONTOUR_REGISTRATION_SHIFT * float(meta.resolution_y)
+    height_column = "HEIGHT" if "HEIGHT" in lines.columns else lines.columns[1]
+    lines = lines.rename(columns={height_column: "elevation"})
+    lines["geometry"] = lines.geometry.translate(xoff=shift_x, yoff=shift_y)
+    lines = lines[["elevation", "geometry"]].set_crs(crs, allow_override=True)
+    _write_vector(lines, output_path)
+
+    # The check that looks at the number: read the DEM back at the finished
+    # vertices and compare with the elevation each line claims. This is what
+    # `measure_area` does for area and what nothing did for terrain until now.
+    sampled = _sample_along(dem_path, lines)
+    worst = max((abs(value - height) for value, height in sampled), default=0.0)
+
+    record = ProvenanceRecord(
+        operation="contour_lines",
+        parameters={
+            "interval": interval,
+            "base": base,
+            "smoothing_filter_size": smoothing,
+            "z_unit": "the DEM's own Z unit, not necessarily metres",
+            "registration_correction": (
+                f"{shift_x:+g}, {shift_y:+g} — the engine returns vertices on the "
+                "cell's west/north edge rather than at its centre"
+            ),
+        },
+        inputs=[InputRecord.from_path(dem_path, crs=crs)],
+        engine=_engine_info(),
+    )
+    record.crs_decisions = {
+        "analysis_crs": crs,
+        "reason": "contours are traced in the DEM's own grid, with no reprojection, "
+        "so the vertices are in the DEM's coordinates",
+    }
+    if input_note:
+        record.notes.append(input_note)
+    if smoothing:
+        record.notes.append(
+            f"smoothing_filter_size={smoothing} was applied, so vertices have been "
+            "moved to make the lines look better. These contours are a drawing, not "
+            "a measurement: a vertex no longer sits exactly on the elevation it names."
+        )
+    record.notes.append(
+        f"the DEM read back at {len(sampled)} contour vertices differs from the "
+        f"elevation each line claims by at most {worst:.6g} (Z unit)"
+    )
+
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="contour_lines",
+        checks_fn=lambda: [
+            *verify.verify_vector_output(
+                output_path,
+                expect_crs=crs,
+                expect_geometry={"LineString", "MultiLineString"},
+                on_empty="fail",
+            ),
+            # Every contour's height must sit on the interval grid the caller
+            # asked for. An engine that quietly rounds or offsets the series
+            # produces a legible map of the wrong levels.
+            verify.Check(
+                "x-mapsmith:every_contour_sits_on_the_requested_interval",
+                all(
+                    abs(
+                        (float(height) - base) / interval
+                        - round((float(height) - base) / interval)
+                    )
+                    < 1e-6
+                    for height in lines["elevation"]
+                ),
+                f"{len(lines)} contour(s) against base {base} step {interval}",
+            ),
+            # The one that catches the registration. Smoothing moves vertices on
+            # purpose, so the tolerance opens when it is on — and the check stops
+            # being critical, because then the line IS a drawing.
+            verify.Check(
+                "x-mapsmith:the_dem_at_a_contour_vertex_is_the_contour_height",
+                worst <= (interval / 2 if smoothing else max(interval * 0.02, 1e-6)),
+                f"largest disagreement {worst:.6g} over {len(sampled)} sampled "
+                f"vertices, against an interval of {interval}",
+                critical=not smoothing,
+                hint="a disagreement of about half an interval means the engine's "
+                "grid registration changed and the half-cell correction is now "
+                "wrong; one of about a whole interval means the base is off by one",
+            ),
+        ],
+    )
+    return {
+        "output": str(output_path),
+        "contours": len(lines),
+        "levels": sorted({float(h) for h in lines["elevation"]}),
+        "interval": interval,
+        "base": base,
+        "smoothing_filter_size": smoothing,
+        "vertices_checked": len(sampled),
+        "largest_disagreement_with_the_dem": round(worst, 9),
+        "provenance": str(manifest),
+        **extras,
+    }
+
+
+def _write_vector(gdf: Any, output_path: str) -> None:
+    if str(output_path).endswith(".parquet"):
+        gdf.to_parquet(output_path)
+    else:
+        gdf.to_file(output_path)
+
+
+def _sample_along(dem_path: str, lines: Any, limit: int = 400) -> list[tuple[float, float]]:
+    """(elevation read from the DEM, elevation the contour claims) at its vertices.
+
+    Bilinear, through the sampling engine's reader rather than rasterio's own
+    `sample`, because that one hands back the nodata VALUE where there is no
+    data and -9999 compared against a contour height would fail this check for
+    the wrong reason. Capped: this is a spot check, and reading every vertex of
+    a national DEM's contours to make a point is not worth the minutes.
+    """
+    import rasterio
+
+    from .sampling import _read_at
+
+    xs: list[float] = []
+    ys: list[float] = []
+    heights: list[float] = []
+    for _, row in lines.iterrows():
+        geometry = row.geometry
+        parts = (
+            [geometry] if geometry.geom_type == "LineString" else list(geometry.geoms)
+        )
+        for part in parts:
+            for x, y, *_ in part.coords:
+                xs.append(float(x))
+                ys.append(float(y))
+                heights.append(float(row["elevation"]))
+    if len(xs) > limit:
+        step = len(xs) // limit
+        xs, ys, heights = xs[::step], ys[::step], heights[::step]
+
+    with rasterio.open(dem_path) as src:
+        values = _read_at(src, 1, xs, ys, "bilinear")
+    return [
+        (float(value), height)
+        for value, height in zip(values, heights, strict=True)
+        if value is not None
+    ]

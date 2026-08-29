@@ -278,18 +278,17 @@ def test_facets_that_cannot_all_be_true_get_a_diagnosis_not_an_empty_set():
 
     Zero survivors fell into the `choose` branch and came back as "0 operations
     survive what you declared, which is few enough to read", carrying an empty
-    candidate list. An agent reads that as "MapSmith cannot do this" — which was
-    false in the case that found it: `measure_area` computes the area of every
-    parcel and declares `produces="dataset:vector"`, because it writes the number
-    into a column rather than returning it.
+    candidate list. An agent reads that as "MapSmith cannot do this".
 
-    Found by the discovery log on its first recorded session, which is the whole
-    argument for having built it: no test asked this question because nobody
-    thought to declare that combination.
+    The combination that found it — a vector layer, an answer wanted, one
+    dataset — is no longer empty: that hole is what `summarize_field` and its
+    two neighbours were built to fill (see the test below). So the shape is
+    pinned here on a combination that is still genuinely impossible, and the
+    check that the hole stayed shut lives next door.
     """
     answer = catalog.search(
-        "how much land is in each of these parcels",
-        input_kind="vector", produces="answer", dataset_inputs=1,
+        "give me a number from these two grids",
+        input_kind="raster", produces="answer", dataset_inputs=2,
     )
     assert len(answer) == 1 and answer[0]["status"] == "none_apply"
     assert catalog.entries(answer) == [], "the shape must flatten to no operations"
@@ -299,13 +298,34 @@ def test_facets_that_cannot_all_be_true_get_a_diagnosis_not_an_empty_set():
     assert [item["would_leave"] for item in relax] == sorted(
         item["would_leave"] for item in relax
     ), "the most selective declaration must be first, it is the one to reconsider"
+    assert all(item["would_leave"] > 0 for item in relax), (
+        "a relaxation that still leaves nothing is not a suggestion"
+    )
+    assert all(item["for_example"] for item in relax), (
+        "a caller told to drop a facet needs to see what dropping it brings back"
+    )
 
-    dropping_produces = next(item for item in relax if item["drop"] == "produces")
-    assert "measure_area" in [
-        op["name"]
-        for op in catalog.applicable(input_kind="vector", dataset_inputs=1)
-    ], "the operation this diagnosis exists for is no longer reachable by dropping produces"
-    assert dropping_produces["would_leave"] > 0
+
+def test_a_vector_layer_and_a_question_have_somewhere_to_go():
+    """The hole the shape above was discovered through, kept shut.
+
+    On 2026-08-29 the catalogue had sixty-one operations and three that produced
+    an `answer`, none of which took a vector layer. So the commonest question in
+    GIS — how much, how many, what is the average — had no operation for anyone
+    holding a layer, and asking it returned an empty set. That is a gap in the
+    SHAPE of the catalogue rather than in its coverage, and it is invisible to
+    any test that checks operations one at a time.
+    """
+    candidates = catalog.applicable(
+        input_kind="vector", produces="answer", dataset_inputs=1
+    )
+    assert candidates, (
+        "nothing answers a question about a single vector layer any more. The "
+        "operation that computes it probably still exists and writes the number "
+        "into a column, which is exactly the gap that made a search for it come "
+        "back empty."
+    )
+    assert "summarize_field" in [op["name"] for op in candidates]
 
 
 def test_every_status_a_search_can_return_is_understood_by_entries():

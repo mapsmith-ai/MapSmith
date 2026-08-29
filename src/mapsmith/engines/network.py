@@ -752,3 +752,306 @@ def _substring(line, fraction: float):
         walked += step
         kept.append(current)
     return LineString(kept) if len(kept) > 1 else None
+
+
+#: Above this many cells the search is refused rather than attempted. A grid
+#: this size is 32 million edges through a Python heap: it would finish, in
+#: tens of minutes, having given no sign that it was going to. Refusing with the
+#: number and the remedy is more useful than a progress bar nobody sees.
+MAX_COST_CELLS = 4_000_000
+
+
+def least_cost_path(
+    cost_path: str,
+    start_path: str,
+    end_path: str,
+    output_path: str,
+    diagonal: bool = True,
+) -> dict[str, Any]:
+    """The cheapest route across a surface, when there is no network to follow.
+
+    `network_shortest_path` answers this where roads exist. This answers it where
+    they do not: a cable trench avoiding steep ground, a haul road, a pipeline
+    corridor, a wildlife crossing. The cost raster says what one cell of travel
+    is worth — a slope reclassified into a penalty, a habitat score, a price per
+    metre — and the route returned is the one whose total is smallest.
+
+    **Cost is per unit of distance, not per cell**, and the difference decides
+    the answer. Crossing a cell diagonally is √2 times as far as crossing it
+    square-on, so a diagonal step costs √2 times as much; an implementation that
+    charges one cell one unit finds staircase routes that a person would never
+    walk and that are genuinely cheaper under its own arithmetic. Each step here
+    is charged the mean of the two cells it joins, times the distance travelled.
+
+    Nodata is impassable, not free and not expensive: a cell with no cost is a
+    cell nothing is known about, and the route goes around it. Zero and negative
+    costs are refused — a zero-cost cell makes every route through it free, and
+    a negative one makes the shortest path infinitely cheap by going round in
+    circles, which is not an error any output would show.
+
+    The result is one line from start to end with the accumulated cost on it,
+    plus the cost, the number of steps and the straight-line distance for
+    comparison. A route far longer than the straight line is usually right; a
+    route exactly as long as the straight line usually means the cost surface is
+    uniform and nothing was avoided.
+    """
+    import heapq
+
+    import numpy as np
+    import rasterio
+    from shapely.geometry import LineString, Point
+
+    from .. import readers, verify
+    from ..provenance import InputRecord, ProvenanceRecord
+
+    def one_point(path: str, what: str):
+        frame = readers.read_vector(path)
+        if frame.crs is None:
+            raise ValueError(readers.no_crs_message(frame, f"{path} has no CRS."))
+        points = [g for g in frame.geometry if g is not None and g.geom_type == "Point"]
+        if len(points) != 1:
+            raise ValueError(
+                f"{what} ({path}) must hold exactly one point; it holds "
+                f"{len(points)}. Two starts is two questions."
+            )
+        return frame, points[0]
+
+    starts, start_point = one_point(start_path, "the start")
+    ends, end_point = one_point(end_path, "the end")
+
+    with rasterio.open(cost_path) as src:
+        if src.crs is None:
+            raise ValueError(
+                f"{cost_path} has no CRS, so the route could not be placed on the "
+                "ground or measured."
+            )
+        if src.crs.is_geographic:
+            raise ValueError(
+                "least_cost_path needs a projected CRS: on degrees a diagonal step "
+                "is not sqrt(2) cells and the distances that weight the cost are "
+                "meaningless. Reproject the cost surface first."
+            )
+        cells = src.width * src.height
+        if cells > MAX_COST_CELLS:
+            raise ValueError(
+                f"{cost_path} has {cells:,} cells, above the {MAX_COST_CELLS:,} this "
+                "search will attempt. Clip the surface to the corridor of interest "
+                "or coarsen it (resample_raster) — a least-cost route over a whole "
+                "country is almost always the wrong question anyway."
+            )
+        cost = src.read(1, masked=True)
+        crs_label = verify.crs_label(src.crs)
+        transform = src.transform
+        pixel_x = abs(transform.a)
+        pixel_y = abs(transform.e)
+        bounds = src.bounds
+
+        moved = []
+        for frame, name in ((starts, "start"), (ends, "end")):
+            if not verify.same_crs(frame.crs, src.crs):
+                moved.append(f"{name}: {verify.crs_label(frame.crs)} -> {crs_label}")
+        if not verify.same_crs(starts.crs, src.crs):
+            start_point = starts.to_crs(src.crs).geometry.iloc[0]
+        if not verify.same_crs(ends.crs, src.crs):
+            end_point = ends.to_crs(src.crs).geometry.iloc[0]
+
+        def to_cell(point, name: str) -> tuple[int, int]:
+            if not (bounds.left <= point.x <= bounds.right
+                    and bounds.bottom <= point.y <= bounds.top):
+                raise ValueError(
+                    f"the {name} point ({point.x:.6g}, {point.y:.6g}) is outside the "
+                    f"cost surface, which covers {tuple(round(v, 6) for v in bounds)}."
+                )
+            row, column = src.index(point.x, point.y)
+            return int(min(max(row, 0), src.height - 1)), int(
+                min(max(column, 0), src.width - 1)
+            )
+
+        start_cell = to_cell(start_point, "start")
+        end_cell = to_cell(end_point, "end")
+
+    values = np.ma.filled(cost.astype("float64"), np.nan)
+    finite = np.isfinite(values)
+    if not finite.any():
+        raise ValueError(f"{cost_path} has no valid cells: every one is nodata.")
+    if (values[finite] <= 0).any():
+        smallest = float(values[finite].min())
+        raise ValueError(
+            f"the cost surface holds values of {smallest:g}. A zero-cost cell makes "
+            "every route through it free and a negative one makes the cheapest route "
+            "an endless loop — neither shows up as an error in the output. Reclassify "
+            "so that the cheapest ground still costs something (reclassify_raster)."
+        )
+    for cell, name in ((start_cell, "start"), (end_cell, "end")):
+        if not finite[cell]:
+            raise ValueError(
+                f"the {name} point sits on a nodata cell, which is impassable. Move "
+                "it onto known ground, or fill the gap."
+            )
+
+    height, width = values.shape
+    steps = [(-1, 0, pixel_y), (1, 0, pixel_y), (0, -1, pixel_x), (0, 1, pixel_x)]
+    if diagonal:
+        span = math.hypot(pixel_x, pixel_y)
+        steps += [(-1, -1, span), (-1, 1, span), (1, -1, span), (1, 1, span)]
+
+    # Dijkstra with a binary heap, written here for the same reason the network
+    # module writes its own: the cost model IS the operation, and a library that
+    # charges per cell instead of per distance would be a different answer under
+    # the same name.
+    best = np.full(values.shape, np.inf)
+    came_from: dict[tuple[int, int], tuple[int, int]] = {}
+    best[start_cell] = 0.0
+    queue = [(0.0, start_cell)]
+    settled = np.zeros(values.shape, dtype=bool)
+    visited = 0
+    while queue:
+        accumulated, cell = heapq.heappop(queue)
+        if settled[cell]:
+            continue
+        settled[cell] = True
+        visited += 1
+        if cell == end_cell:
+            break
+        row, column = cell
+        here = values[cell]
+        for dr, dc, distance in steps:
+            neighbour = (row + dr, column + dc)
+            if not (0 <= neighbour[0] < height and 0 <= neighbour[1] < width):
+                continue
+            if settled[neighbour] or not finite[neighbour]:
+                continue
+            # Mean of the two cells times the ground distance: the step is half
+            # in one cell and half in the other, so charging either end alone
+            # makes the route prefer whichever direction it is walked.
+            step_cost = (here + values[neighbour]) / 2.0 * distance
+            candidate = accumulated + step_cost
+            if candidate < best[neighbour]:
+                best[neighbour] = candidate
+                came_from[neighbour] = cell
+                heapq.heappush(queue, (candidate, neighbour))
+
+    if not math.isfinite(best[end_cell]):
+        raise ValueError(
+            "no route exists between these points: nodata cells separate them "
+            f"completely. {int(finite.sum()):,} of {values.size:,} cells are "
+            "passable, and the two points are in different pieces."
+        )
+
+    path_cells = [end_cell]
+    while path_cells[-1] != start_cell:
+        path_cells.append(came_from[path_cells[-1]])
+    path_cells.reverse()
+    coordinates = [
+        rasterio.transform.xy(transform, row, column) for row, column in path_cells
+    ]
+    line = LineString(coordinates)
+
+    import geopandas as gpd
+
+    total_cost = float(best[end_cell])
+    straight = float(start_point.distance(end_point))
+    out = gpd.GeoDataFrame(
+        {
+            "total_cost": [round(total_cost, 9)],
+            "cells": [len(path_cells)],
+            "path_length": [round(float(line.length), 6)],
+            "straight_line": [round(straight, 6)],
+        },
+        geometry=[line],
+        crs=crs_label,
+    )
+    if str(output_path).endswith(".parquet"):
+        out.to_parquet(output_path)
+    else:
+        out.to_file(output_path)
+
+    record = ProvenanceRecord(
+        operation="least_cost_path",
+        parameters={
+            "diagonal": diagonal,
+            "cost_model": "mean of the two cells joined, times the ground distance "
+            "of the step (so a diagonal costs sqrt(2) times a square step)",
+            "nodata": "impassable",
+            "cells_settled": visited,
+        },
+        inputs=[
+            InputRecord.from_path(cost_path, crs=crs_label),
+            InputRecord.from_path(start_path, crs=verify.crs_label(starts.crs)),
+            InputRecord.from_path(end_path, crs=verify.crs_label(ends.crs)),
+        ],
+        engine=_engine_info(),
+    )
+    record.crs_decisions = {
+        "analysis_crs": crs_label,
+        "reason": "the search runs on the cost surface's own grid; the endpoints are "
+        "brought to it so that each one lands on the cell it occupies"
+        + (f" ({'; '.join(moved)})" if moved else ""),
+    }
+    if not diagonal:
+        record.notes.append(
+            "diagonal steps were disabled, so the route can only move square-on. "
+            "That makes it longer and more expensive than the true least-cost route "
+            "by up to 41%, and it is the right choice only when the movement really "
+            "is grid-bound."
+        )
+
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="least_cost_path",
+        checks_fn=lambda: [
+            *verify.verify_vector_output(
+                output_path,
+                expect_crs=crs_label,
+                expect_count=1,
+                expect_geometry={"LineString"},
+                on_empty="fail",
+            ),
+            # The route has to start where it was told and end where it was
+            # told. An off-by-one in the cell-to-coordinate conversion moves
+            # both ends half a cell and nothing else looks wrong.
+            verify.Check(
+                "x-mapsmith:the_route_joins_the_two_points_it_was_given",
+                start_point.distance(Point(coordinates[0])) <= math.hypot(pixel_x, pixel_y)
+                and end_point.distance(Point(coordinates[-1]))
+                <= math.hypot(pixel_x, pixel_y),
+                f"ends within one cell of the requested points "
+                f"({start_point.distance(Point(coordinates[0])):.6g} and "
+                f"{end_point.distance(Point(coordinates[-1])):.6g})",
+            ),
+            # A route can never be shorter than the straight line between its
+            # ends. If it is, the geometry is wrong — not the routing.
+            verify.Check(
+                "x-mapsmith:the_route_is_at_least_as_long_as_the_straight_line",
+                float(line.length) >= straight - 1e-6,
+                f"{line.length:.6g} against a straight line of {straight:.6g}",
+            ),
+            # Uniform cost surfaces are the commonest mistake: somebody feeds in
+            # the DEM instead of a reclassified penalty and gets a route that
+            # avoids nothing. Not critical — it can be legitimate — but it must
+            # be said, because the map looks identical either way.
+            verify.Check(
+                "x-mapsmith:the_route_actually_avoided_something",
+                float(line.length) > straight * 1.001,
+                f"the route is {float(line.length) / straight:.4f} times the straight "
+                "line",
+                critical=False,
+                hint="a route that is exactly the straight line means the cost "
+                "surface is effectively uniform, so nothing was avoided; check that "
+                "it is a penalty surface and not the raw DEM",
+            ),
+        ],
+    )
+    return {
+        "output": str(output_path),
+        "total_cost": round(total_cost, 9),
+        "cells": len(path_cells),
+        "path_length": round(float(line.length), 6),
+        "straight_line": round(straight, 6),
+        "detour_ratio": round(float(line.length) / straight, 6) if straight else None,
+        "cells_settled": visited,
+        "diagonal": diagonal,
+        "provenance": str(manifest),
+        **extras,
+    }

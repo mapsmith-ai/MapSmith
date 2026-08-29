@@ -8,6 +8,41 @@ All notable changes to MapSmith are documented here, in the format of
 
 ### Added
 
+- **Ten more operations, and this time the gap they fill is a shape rather
+  than a subject.** Of sixty-one catalogue entries, three produced an `answer`
+  and none of them took a vector layer — so the commonest question in GIS, *how
+  much land is there*, had no operation for anybody holding parcels, and a
+  search declaring it came back empty. Four operations close that:
+  `summarize_field` (totals, averages and extremes of an attribute, per group if
+  asked), `spatial_autocorrelation` (global Moran's I — whether the map holds a
+  pattern at all, which is the question to ask before `hot_spots` shows where),
+  `nearest_neighbour_index` (Clark-Evans R, with the study area treated as the
+  decision it is rather than taken silently from the points' own extent), and
+  `compare_layers` (what actually changed between two versions of a delivery).
+  None of them writes a file, so none carries a manifest: there is no artefact
+  to attach one to, and inventing a file to have something to sign would be
+  worse than the gap.
+
+  Three answer requests from the discovery benchmark that neither labeller could
+  place. `contour_lines` turns a surface into isolines. `least_cost_path` routes
+  across a cost raster where `network_shortest_path` needs roads — charging per
+  unit of DISTANCE, so a diagonal step costs sqrt(2) and not 1, which is the
+  difference between a route a person would walk and a staircase.
+  `transform_by_control_points` puts a survey on real ground by fitting a
+  transform from points known in both systems: *"my traverse is sitting in the
+  middle of the river"* has an answer, and the answer that matters is the
+  residual, which is in the manifest per control point with the worst one named.
+  An exactly determined fit says in words that its zero residual is evidence of
+  nothing.
+
+  And three that existed only inside other operations, which means they existed
+  only for whoever already knew where to look: `snap_layer`, `points_along_lines`
+  (chainage, what `elevation_profile` does before it reads a surface) and
+  `line_intersections`.
+
+  All ten are catalogue-only. The exposed tool list stays at 28, because that is
+  the count with a ceiling and capability is the count without one.
+
 - **MapSmith can record its own discovery cases, and deliberately does not
   learn from them.** Set `MAPSMITH_DISCOVERY_LOG=<path>` and every catalogue
   search is written as one JSON line together with the operation run after it:
@@ -91,6 +126,24 @@ All notable changes to MapSmith are documented here, in the format of
   alone, 55 in the top three once facets are declared, none unreachable.
 
 ### Fixed
+
+- **Whitebox places contour vertices half a cell from where they belong, and
+  MapSmith now corrects it.** Measured on the installed 2.0.6 with a planar ramp:
+  the contour for height 3 came back on the WEST EDGE of the column holding 3
+  rather than at its centre. On a 30 m DEM that is 15 m of horizontal error on
+  every contour — plausible, well-formed and wrong, which is the third time this
+  library's behaviour has diverged from its description here after the TIFF
+  predictor and the D8 pointer table.
+
+  The correction is verified rather than trusted: the DEM is read back at the
+  finished vertices and the elevation must equal the height each line claims, so
+  a future library version that fixes its own registration fails a critical
+  check instead of being silently double-corrected. `contour_lines` also ships
+  with Whitebox's default smoothing filter OFF, because a contour whose vertices
+  have been moved to look better no longer passes through the elevation it
+  names — smoothing is available, recorded in the manifest, and demotes that
+  check to non-critical, because then the output is a drawing rather than a
+  measurement.
 
 - **A search whose facets leave nothing now says which declaration did it.**
   Zero surviving candidates fell into the hand-over branch and came back as
@@ -188,7 +241,7 @@ are in `Changed` and one of them affects anybody passing `category=`.
   with a tool of its own: `measure_length`, `join_table`, `aggregate_weighted`,
   `parse_coordinates`, `point_on_surface`, `hull_layer`, `validate_geometry`,
   `count_in_polygons`, `focal_statistics` and `extract_streams`. The catalogue is
-  at 61 operations (59 available, 2 planned) behind 28 tools.
+  at 71 operations (69 available, 2 planned) behind 28 tools.
 - **Overlay and dissolve declare their semantics in the manifest.** Dropped
   lower-dimension pieces from an overlay are named rather than silently absent,
   and a dissolve's aggregation is recorded with the group count verified in

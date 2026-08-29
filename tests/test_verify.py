@@ -393,10 +393,32 @@ def _spec_fixtures(tmp_path):
         crs=crs,
     ).to_parquet(crowd)
 
+    # For the linework operations: a line a few centimetres off its reference,
+    # a pair that cross in a plus sign, and two control points describing a
+    # quarter turn about the origin followed by a shift.
+    nearly = tmp_path / "nearly.parquet"
+    gpd.GeoDataFrame(
+        {"id": [0]}, geometry=[LineString([(0, 0.03), (100, 0.03)])], crs=crs
+    ).to_parquet(nearly)
+    crossing = tmp_path / "crossing.parquet"
+    gpd.GeoDataFrame(
+        {"id": [0]}, geometry=[LineString([(50, -50), (50, 50)])], crs=crs
+    ).to_parquet(crossing)
+    baseline = tmp_path / "baseline.parquet"
+    gpd.GeoDataFrame(
+        {"id": [0]}, geometry=[LineString([(0, 0), (100, 0)])], crs=crs
+    ).to_parquet(baseline)
+    control = tmp_path / "control.parquet"
+    gpd.GeoDataFrame(
+        {"source_x": [0.0, 10.0], "source_y": [0.0, 0.0]},
+        geometry=[Point(100, 200), Point(100, 210)],
+        crs=crs,
+    ).to_parquet(control)
+
     def out(name: str) -> str:
         return str(tmp_path / name)
 
-    from mapsmith.engines import network, spatial_stats
+    from mapsmith.engines import linework, network, spatial_stats, whitebox_engine
 
     fixtures = {
         "network_shortest_path": lambda: network.network_shortest_path(
@@ -416,6 +438,27 @@ def _spec_fixtures(tmp_path):
         ),
         "thin_points": lambda: spatial_stats.thin_points(
             str(crowd), out("thin.parquet"), min_distance=15.0
+        ),
+        "snap_layer": lambda: linework.snap_layer(
+            str(nearly), str(baseline), out("snapped.parquet"), tolerance=0.05
+        ),
+        "points_along_lines": lambda: linework.points_along_lines(
+            str(baseline), out("chainage.parquet"), spacing=20.0
+        ),
+        "line_intersections": lambda: linework.line_intersections(
+            str(baseline), str(crossing), out("nodes.parquet")
+        ),
+        "transform_by_control_points": lambda: linework.transform_by_control_points(
+            str(baseline), str(control), out("placed.parquet"), target_crs=crs
+        ),
+        "contour_lines": lambda: whitebox_engine.contour_lines(
+            _ramp(tmp_path), out("contours.parquet"), interval=3.0
+        ),
+        "least_cost_path": lambda: network.least_cost_path(
+            _uniform_cost(tmp_path),
+            _one_point(tmp_path, "lcp_start", 0.5, 9.5),
+            _one_point(tmp_path, "lcp_end", 9.5, 9.5),
+            out("cheapest.parquet"),
         ),
         "buffer_layer": lambda: vector.buffer(str(layer), 10.0, out("buf.parquet")),
         "clip_layer": lambda: vector.clip(str(layer), str(second), out("clip.parquet")),
@@ -606,3 +649,51 @@ def _spec_fixtures(tmp_path):
         ),
     })
     return fixtures
+
+
+
+def _ramp(tmp_path) -> str:
+    """A planar DEM: z = column index, 10 m cells. Contours land on cell centres."""
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    path = tmp_path / "ramp.tif"
+    if not path.exists():
+        values = np.tile(np.arange(12, dtype="float32"), (12, 1))
+        with rasterio.open(
+            path, "w", driver="GTiff", height=12, width=12, count=1,
+            dtype="float32", crs="EPSG:32632",
+            transform=from_origin(1000.0, 5000.0, 10.0, 10.0),
+        ) as dst:
+            dst.write(values, 1)
+    return str(path)
+
+
+def _uniform_cost(tmp_path) -> str:
+    """Every cell costs 1, so the cheapest route is the straight one."""
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    path = tmp_path / "cost.tif"
+    if not path.exists():
+        with rasterio.open(
+            path, "w", driver="GTiff", height=10, width=10, count=1,
+            dtype="float32", crs="EPSG:32632",
+            transform=from_origin(0, 10, 1, 1),
+        ) as dst:
+            dst.write(np.ones((10, 10), dtype="float32"), 1)
+    return str(path)
+
+
+def _one_point(tmp_path, name: str, x: float, y: float) -> str:
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    path = tmp_path / f"{name}.parquet"
+    if not path.exists():
+        gpd.GeoDataFrame(
+            {"id": [1]}, geometry=[Point(x, y)], crs="EPSG:32632"
+        ).to_parquet(path)
+    return str(path)

@@ -362,6 +362,65 @@ def _voronoi_polygons() -> Callable[..., dict[str, Any]]:
     return vector.voronoi_polygons
 
 
+def _summarize_field() -> Callable[..., dict[str, Any]]:
+    from ..engines import summaries
+
+    return summaries.summarize_field
+
+
+def _spatial_autocorrelation() -> Callable[..., dict[str, Any]]:
+    from ..engines import summaries
+
+    return summaries.spatial_autocorrelation
+
+
+def _nearest_neighbour_index() -> Callable[..., dict[str, Any]]:
+    from ..engines import summaries
+
+    return summaries.nearest_neighbour_index
+
+
+def _compare_layers() -> Callable[..., dict[str, Any]]:
+    from ..engines import summaries
+
+    return summaries.compare_layers
+
+
+def _snap_layer() -> Callable[..., dict[str, Any]]:
+    from ..engines import linework
+
+    return linework.snap_layer
+
+
+def _points_along_lines() -> Callable[..., dict[str, Any]]:
+    from ..engines import linework
+
+    return linework.points_along_lines
+
+
+def _line_intersections() -> Callable[..., dict[str, Any]]:
+    from ..engines import linework
+
+    return linework.line_intersections
+
+
+def _transform_by_control_points() -> Callable[..., dict[str, Any]]:
+    from ..engines import linework
+
+    return linework.transform_by_control_points
+
+
+def _contour_lines() -> Callable[..., dict[str, Any]]:
+    from ..engines import whitebox_engine
+
+    return whitebox_engine.contour_lines
+
+
+def _least_cost_path() -> Callable[..., dict[str, Any]]:
+    from ..engines import network
+
+    return network.least_cost_path
+
 def _describe_crs() -> Callable[..., dict[str, Any]]:
     from ..engines import geodesy
 
@@ -722,6 +781,71 @@ BINDINGS: dict[str, Binding] = {
     # or about two coordinates, so there are no path arguments at all.
     "describe_crs": Binding(_describe_crs, (), None, None, None),
     "geodetic_distance": Binding(_geodetic_distance, (), None, None, None),
+    # Four operations that answer instead of writing. `output_arg` is None and
+    # so is `crs_effect`: nothing is produced, so nothing carries a CRS, and a
+    # plan step that tries to feed one of these into the next step is refused by
+    # the validator rather than silently passing a number where a path goes.
+    "summarize_field": Binding(_summarize_field, ("input_path",), None, None, None),
+    "spatial_autocorrelation": Binding(
+        _spatial_autocorrelation, ("input_path",), None, None, None
+    ),
+    "nearest_neighbour_index": Binding(
+        _nearest_neighbour_index, ("input_path", "area_path"), None, None, None
+    ),
+    "compare_layers": Binding(
+        _compare_layers, ("input_path", "other_path"), None, None, None
+    ),
+    "snap_layer": Binding(
+        _snap_layer,
+        ("input_path", "reference_path"),
+        "output_path",
+        None,
+        ("same_as", "input_path"),
+        "vector",
+    ),
+    "points_along_lines": Binding(
+        _points_along_lines,
+        ("input_path",),
+        "output_path",
+        None,
+        ("same_as", "input_path"),
+        "vector",
+    ),
+    "line_intersections": Binding(
+        _line_intersections,
+        ("input_path", "other_path"),
+        "output_path",
+        None,
+        ("same_as", "input_path"),
+        "vector",
+    ),
+    # The one operation whose output CRS is neither an input's nor a named
+    # target argument in the usual sense: the fit onto the control points IS the
+    # georeferencing, so the declared CRS comes from `target_crs`.
+    "transform_by_control_points": Binding(
+        _transform_by_control_points,
+        ("input_path", "control_path"),
+        "output_path",
+        None,
+        ("target", "target_crs"),
+        "vector",
+    ),
+    "contour_lines": Binding(
+        _contour_lines,
+        ("dem_path",),
+        "output_path",
+        "whitebox",
+        ("same_as", "dem_path"),
+        "vector",
+    ),
+    "least_cost_path": Binding(
+        _least_cost_path,
+        ("cost_path", "start_path", "end_path"),
+        "output_path",
+        None,
+        ("same_as", "cost_path"),
+        "vector",
+    ),
     "get_provenance": Binding(_get_provenance, ("output_path",), None, None, None),
 }
 
