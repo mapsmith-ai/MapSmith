@@ -61,3 +61,8 @@ uv.lock
 
 # The site is generated: `python site/build.py dist` rebuilds it from a real run.
 site/generated/
+
+# Written by `benchmarks/discovery_dashboard.py` and by MAPSMITH_DISCOVERY_LOG:
+# both hold the queries somebody typed, so they stay out of the repository.
+discovery_dashboard.html
+*.jsonl

@@ -17,6 +17,14 @@ All notable changes to MapSmith are documented here, in the format of
   discovery benchmark and flags the two worth reading — a choice the ranking did
   not put first, and a search nothing followed.
 
+  **`benchmarks/discovery_dashboard.py`** writes the same material as one
+  self-contained HTML page — no CDN, no fonts, works offline — where the cases
+  are answered by clicking and the percentages recompute against those answers
+  while you work. It carries a second panel the log does not produce: every
+  request where the two model labellers disagreed with each other, which is the
+  30% the published ceiling is made of and the part that needs somebody who has
+  done the job.
+
   The figures MapSmith publishes rest on 155 requests written by two language
   models, which is the best set obtainable without users and is not what users
   ask. This closes that gap without closing a feedback loop: a ranker trained on

@@ -453,6 +453,19 @@ MAPSMITH_DISCOVERY_LOG=/data/discovery.jsonl   # then work normally for a while
 python benchmarks/log_to_cases.py /data/discovery.jsonl
 ```
 
+For the part that needs eyes rather than a pipe, `benchmarks/discovery_dashboard.py`
+writes one self-contained HTML file — no CDN, no fonts, works offline — carrying the
+measurements, every recorded case with the candidate list it was chosen from, and every
+request where the two labellers disagreed with each other. You answer by clicking, the
+percentages recompute against your answers as you go, and the rows come back out as JSON.
+That last panel is the open question of D-054 made clickable: two model labellers agreeing
+70% of the time is the ceiling of a task with no single right answer, and the only way past
+it is somebody who has done the job.
+
+```bash
+python benchmarks/discovery_dashboard.py --log /data/discovery.jsonl --out dashboard.html
+```
+
 `log_to_cases.py` prints those lines as rows shaped like `tests/data/discovery_queries.json`
 and flags the two that matter: a run the ranking did **not** put first (the answer was on
 screen and the order was wrong) and a search nothing followed (a request the catalog did
