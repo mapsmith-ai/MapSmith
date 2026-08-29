@@ -445,13 +445,13 @@ organisation on purpose: an evaluation that lives inside the thing it
 evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
-What it says about MapSmith (twenty-two-family run, engine tier, `spec_commit`
-[`9322b17`](https://github.com/argleton/argleton/tree/main/results/2026-08-30-grid-registration)):
+What it says about MapSmith (twenty-three-family run, engine tier, `spec_commit`
+[`74a620f`](https://github.com/argleton/argleton/tree/main/results/2026-08-30-antimeridian)):
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
-| MapSmith | **0.00** | 1.00 | 24 | 0 |
-| naive composition (read file, take statistic) | 0.9583 | 1.00 | 24 | 0 |
+| MapSmith | **0.00** | 1.00 | 25 | 0 |
+| naive composition (read file, take statistic) | 0.96 | 1.00 | 25 | 0 |
 
 **The last column is the part of this table worth reading.** When the twenty-second family was
 published MapSmith could not attempt either of its probes: they ask where a cell is, and no
