@@ -29,7 +29,7 @@ real MapSmith output against the spec's own validator.
 Evidence before promises: an [A/B on GABench](docs/benchmarks.md) whose headline is a null
 result — with the analysis that took our own positive number apart — a correctness suite in
 its own organisation, [**Argleton**](https://argleton.org), whose published run grades
-MapSmith on twenty-two traps with answers computed on paper and has already sent three defects
+MapSmith on twenty-three traps with answers computed on paper and has already sent three defects
 back here, [notebooks](examples/) on a real USGS DEM of Mount St. Helens, an
 [in-chat map panel](#see-results-inside-the-chat) that shows the verification status of
 every layer it draws, and a
@@ -749,8 +749,8 @@ Next, in the order we intend to do it. The linked items carry a written spec —
   vendored.
 
   Its [published results](https://argleton.org/#results) measure MapSmith, and what they say about
-  us is why they are linked from here. On the current twenty-family run MapSmith answers every
-  trap correctly — **0.00 silent errors over 22 traps, nothing skipped** — and the run itself separates
+  us is why they are linked from here. On the current twenty-one-family run MapSmith answers
+  every trap correctly — **0.00 silent errors over 23 traps, nothing skipped** — and the run itself separates
   the passes it earned from the ones it did not: the mismatched-CRS join and the feet-as-metres
   unit are MapSmith's own discipline, the Web Mercator pass comes from a default (ground area is
   geodesic unless you ask for the plane) rather than from care, and the TIFF-predictor pass is
