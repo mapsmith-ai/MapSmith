@@ -27,14 +27,22 @@ sys.path.insert(0, str(ROOT / "benchmarks"))
 
 
 @pytest.fixture(scope="module")
-def report():
+def report(vector_engine):
+    """Needs both rankers, because the table publishes both.
+
+    Skips rather than fails where the embedding model cannot be had: the page
+    carries a column for each engine precisely so that neither the numbers nor
+    this check depend on what a machine could download, and a build that goes
+    red on someone else's rate limit teaches people to ignore red builds."""
+
     import discovery_report
 
     queries = discovery_report.load()
     answerable = discovery_report.answerable(queries)
     return {
         "agreement": discovery_report.agreement(queries),
-        "ablation": discovery_report.ablation(answerable),
+        "ablation": discovery_report.ablation(answerable, engine="lexical"),
+        "ablation_vector": discovery_report.ablation(answerable, engine="vector"),
         "n": len(answerable),
     }
 
@@ -43,14 +51,25 @@ def report():
 def test_the_readme_ablation_table_is_what_the_harness_computes(report):
     """Every row of the facet table, against the arithmetic that produces it."""
     prose = README.read_text(encoding="utf-8")
+    # Five cells now: candidates, BM25, embeddings, delivered. The engine is
+    # named in the table because the default picks between the two by whether a
+    # model loads, and a single column made the published figures a measurement
+    # of the machine — a CI run that met a rate limit recomputed the first row
+    # as 28% where the page said 18%.
     rows = re.findall(
-        r"^\|[^|]+\|\s*\**(\d+)\**\s*\|\s*\**(\d+)%\**\s*\|\s*\**(\d+)%\**\s*\|$",
+        r"^\|[^|]+\|\s*\**(\d+)\**\s*\|\s*\**(\d+)%\**\s*\|"
+        r"\s*\**(\d+)%\**\s*\|\s*\**(\d+)%\**\s*\|$",
         prose,
         re.MULTILINE,
     )
     computed = [
-        (str(r["candidates"]), str(r["found_at_3"]), str(r["delivered"]))
-        for r in report["ablation"]
+        (
+            str(lex["candidates"]),
+            str(lex["found_at_3"]),
+            str(vec["found_at_3"]),
+            str(lex["delivered"]),
+        )
+        for lex, vec in zip(report["ablation"], report["ablation_vector"], strict=True)
     ]
     assert rows, (
         "the facet table is no longer in the README in a shape this can read, so "

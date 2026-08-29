@@ -71,7 +71,7 @@ def test_no_match_returns_empty():
     assert catalog.search("nonexistent-xyz", engine="lexical") == []
 
 
-def test_a_query_it_cannot_place_asks_instead_of_guessing():
+def test_a_query_it_cannot_place_asks_instead_of_guessing(vector_engine):
     """The measured failure: on the default engine, "send an email to my
     accountant" came back `idw_interpolation` with the same confidence as a real
     answer. For a discovery layer feeding an agent that is a silent error of

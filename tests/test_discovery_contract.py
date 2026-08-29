@@ -207,14 +207,13 @@ def test_the_delivered_set_is_a_choice_and_says_so():
     )
 
 
-def test_a_query_far_from_the_catalog_warns_even_when_it_is_a_choice():
+def test_a_query_far_from_the_catalog_warns_even_when_it_is_a_choice(vector_engine):
     """The disagreement signal survived the change from refusal to note.
 
     Below the threshold the search no longer refuses — it is not deciding, so it
     has nothing to refuse — but the evidence that the request is out of place
     must not be discarded. It moves to `order_is_weak`.
     """
-    pytest.importorskip("model2vec")
     answer = catalog.search(
         "book me a flight to Lisbon on Tuesday",
         input_kind="vector", produces="dataset:vector", category="vector",
@@ -244,6 +243,12 @@ def test_the_declared_family_orders_the_set_and_does_not_cut_it():
     facts = {"input_kind": "vector", "produces": "dataset:vector", "dataset_inputs": 2}
     query = "which parcels fall inside the flood zone"
 
+    # BM25 pinned: the ordering under test is `category` lifting its own
+    # members, and comparing two orderings is only meaningful against a ranker
+    # that is the same on every machine. The default engine is the embedding one
+    # where the model loads and BM25 where it does not, which made this test a
+    # test of what was downloadable.
+    facts = {**facts, "engine": "lexical"}
     plain = catalog.entries(catalog.search(query, **facts))
     # `terrain` is one operation in this set of nine, which is what makes it a
     # good probe: if declaring it does not lift that one entry to the front,

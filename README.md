@@ -192,12 +192,25 @@ Measured over 118 answerable requests written by two other model families from j
 hydrologist with a flood report, a surveyor arguing with a field measurement — neither of which
 was shown this catalog, because a model handed the entry writes a paraphrase of the entry:
 
-| what the caller declares | candidates left | our ranking, found@3 | **right answer in what comes back** |
-|---|---|---|---|
-| nothing — words alone | 61 | 18% | 18% |
-| what data I have | 41 | 22% | 37% |
-| + what I want back | 27 | 34% | 45% |
-| **+ how many datasets I have** | **14** | **57%** | **97%** |
+| what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
+|---|---|---|---|---|
+| nothing — words alone | 61 | 28% | 18% | 28% |
+| what data I have | 41 | 34% | 22% | 48% |
+| + what I want back | 27 | 43% | 34% | 53% |
+| **+ how many datasets I have** | **14** | **55%** | **57%** | **97%** |
+
+**Two ranking columns, and that is a correction.** This table used to carry one,
+computed with the default engine — which is the embedding one where its model
+loads and BM25 where it does not. So the published figures were a measurement of
+what the machine could download, and a CI run that met a 429 from Hugging Face
+recomputed the first row as 28% where this page said 18%. Not a flaky test: a
+number that had never been reproducible on a machine without the model,
+published under a sentence promising it could be checked.
+
+The two also differ in a way worth seeing. BM25 is the better ranker while the
+candidate set is large — an exact term either matches or does not — and the
+embedding engine only overtakes it once the facets have narrowed, which is where
+near neighbours have to be told apart by meaning rather than by words.
 
 The last column is not an accuracy figure — it is a property, and the 97% rather than 100% is
 worth a sentence. The narrowing never drops the right operation: that is asserted per entry and

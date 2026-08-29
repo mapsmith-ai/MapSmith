@@ -118,8 +118,21 @@ LEVELS: list[tuple[str, tuple[str, ...]]] = [
 ]
 
 
-def ablation(queries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def ablation(queries: list[dict[str, Any]], engine: str = "lexical") -> list[dict[str, Any]]:
     """One row per facet level: candidates left, ranked in the top three, delivered.
+
+    `engine` is NAMED and never left to the default, and that is a correction.
+    The default is `auto`, which is the embedding engine where its model loads
+    and BM25 where it does not — so a table computed with it is a table about
+    what the machine could download. On 2026-08-29 a CI run met a 429 from
+    Hugging Face and recomputed the published row as 28% where the page said
+    18%: not a flaky test, a number that had never been reproducible on a
+    machine without the model, published under a sentence promising it could be
+    checked.
+
+    So the report gives both columns. They differ in a way worth seeing anyway:
+    BM25 is the better ranker while the candidate set is large, and the
+    embedding engine only overtakes it once the facets have narrowed.
 
     `delivered` is not an accuracy: below the choose threshold every survivor is
     handed to the caller, so it measures whether the narrowing ever drops the
@@ -132,7 +145,7 @@ def ablation(queries: list[dict[str, Any]]) -> list[dict[str, Any]]:
             truth = q["label_claude"]
             facets = facets_for(truth, declare)
             left.append(len(catalog.applicable(**facets)))
-            answer = catalog.search(q["query"], limit=3, **facets)
+            answer = catalog.search(q["query"], limit=3, engine=engine, **facets)
             names = [entry["name"] for entry in catalog.entries(answer)]
             top3 += truth in names[:3]
             delivered += truth in names
@@ -166,11 +179,21 @@ def main() -> int:
     print("   true and easy; the second is measured on the same rows as the rest)\n")
 
     print(f"NARROWING AND RANKING — over those {len(ans)} requests")
-    print(f"  {'what the caller declares':<28}{'candidates':>11}{'found@3':>9}{'delivered':>11}")
-    for row in ablation(ans):
+    lexical = ablation(ans, engine="lexical")
+    try:
+        vector = ablation(ans, engine="vector")
+    except Exception as failure:  # noqa: BLE001 - no model, no column
+        vector = None
+        print(f"  (the embedding engine could not be loaded: {failure})")
+    print(f"  {'what the caller declares':<28}{'candidates':>11}"
+          f"{'BM25 @3':>9}{'vector @3':>11}{'delivered':>11}")
+    for index, row in enumerate(lexical):
+        other = f"{vector[index]['found_at_3']:>10}%" if vector else f"{'—':>11}"
         print(f"  {row['declared']:<28}{row['candidates']:>11}"
-              f"{row['found_at_3']:>8}%{row['delivered']:>10}%")
-    print("\n  'delivered' is not an accuracy figure: below the choose threshold every")
+              f"{row['found_at_3']:>8}%{other}{row['delivered']:>10}%")
+    print("\n  Both rankers, because the shipped default picks between them by whether a")
+    print("  model loads — so a single column would be a measurement of the machine.")
+    print("  'delivered' is not an accuracy figure: below the choose threshold every")
     print("  survivor is handed over, so it says whether narrowing ever drops the answer.")
 
     print("\nNOT REPRODUCIBLE HERE: the 69% for a model handed the candidates and asked")

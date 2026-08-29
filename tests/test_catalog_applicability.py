@@ -153,10 +153,9 @@ def test_auto_engine_always_answers_whatever_is_installed():
     assert engines in ({"vector"}, {"lexical"}), engines
 
 
-def test_the_vector_engine_also_narrows_before_it_ranks():
+def test_the_vector_engine_also_narrows_before_it_ranks(vector_engine):
     """The applicability filter is not a property of BM25: it runs first for
     both engines, or the guarantee is only true of the default one."""
-    pytest.importorskip("model2vec")
     answer = catalog.search(
         "slope in degrees", input_kind="raster", projected=False, engine="vector"
     )

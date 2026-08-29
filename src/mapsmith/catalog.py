@@ -4313,6 +4313,13 @@ def search(
         ranked = sorted(ranked, key=lambda pair: pair[0]["category"] != category)
 
     if len(candidates) <= CHOOSABLE and query.strip():
+        # The promotion above only reaches operations the ranker SCORED. BM25
+        # returns nothing for a candidate that shares no term with the query, so
+        # an operation of the declared family could score zero, fall into the
+        # tail below, and never be lifted — declaring the family bought nothing
+        # for exactly the entry that needed it most, the one the words missed.
+        # Found by pinning the engine in the contract test, which had been
+        # measuring whichever ranker the machine could download.
         # Disagreement stops being a refusal here. It was one because we were
         # deciding; handing over the set is not deciding, so the signal becomes
         # a warning about the ORDER — which is the only thing it was ever
@@ -4324,6 +4331,8 @@ def search(
         chosen = [op for op, _ in ranked] + [
             op for op in candidates if op["name"] not in scored
         ]
+        if category is not None:
+            chosen = sorted(chosen, key=lambda op: op["category"] != category)
         return [
             {
                 "status": "choose",

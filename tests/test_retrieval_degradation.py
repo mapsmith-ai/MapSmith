@@ -142,7 +142,7 @@ def test_lexical_retrieval_degrades_but_stays_above_the_floor(size, capsys):
     assert at_three / trials >= 0.25, "lexical retrieval has collapsed, not merely degraded"
 
 
-def test_the_two_engines_disagree_on_what_they_cannot_place(capsys):
+def test_the_two_engines_disagree_on_what_they_cannot_place(vector_engine, capsys):
     """The signal the clarification response is built on.
 
     A similarity threshold was tried and does not exist: "convert this mp4 to a
