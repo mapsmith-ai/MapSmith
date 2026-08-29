@@ -29,7 +29,7 @@ real MapSmith output against the spec's own validator.
 Evidence before promises: an [A/B on GABench](docs/benchmarks.md) whose headline is a null
 result — with the analysis that took our own positive number apart — a correctness suite in
 its own organisation, [**Argleton**](https://argleton.org), whose published run grades
-MapSmith on twenty-three traps with answers computed on paper and has already sent three defects
+MapSmith on twenty-four traps with answers computed on paper and has already sent four defects
 back here, [notebooks](examples/) on a real USGS DEM of Mount St. Helens, an
 [in-chat map panel](#see-results-inside-the-chat) that shows the verification status of
 every layer it draws, and a
@@ -862,12 +862,12 @@ Next, in the order we intend to do it. The linked items carry a written spec —
 
   Its [published results](https://argleton.org/#results) measure MapSmith, and what they say about
   us is why they are linked from here. On the current twenty-two-family run MapSmith answers
-  every trap it can attempt correctly — **0.00 silent errors over 23 traps** — and **skips two**,
-  which is new and is the more useful half. The twenty-second family is grid registration: a DEM
-  that declares its values sit at grid nodes rather than filling cells, where the answer moves half
-  a cell if you ignore the tag. MapSmith has no operation that reports *where* a cell is, so it
-  cannot attempt the probe at all, and an `unsupported` verdict is a smaller claim than a 0.00 and
-  a true one. The run itself also separates
+  every trap correctly — **0.00 silent errors over 24 traps, nothing skipped**. The twenty-second
+  family is grid registration, and it is the one MapSmith could not attempt when it was published:
+  a DEM that declares its values sit at grid nodes rather than filling cells, where every position
+  moves half a cell if you ignore the tag. Nothing here read the tag, and no operation reported
+  *where* a cell is. Both are fixed, in one module rather than at the point of failure, because the
+  defect was in every place that turned an index into a coordinate. The run itself also separates
   the passes it earned from the ones it did not: the mismatched-CRS join and the feet-as-metres
   unit are MapSmith's own discipline, the Web Mercator pass comes from a default (ground area is
   geodesic unless you ask for the plane) rather than from care, and the TIFF-predictor pass is

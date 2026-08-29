@@ -446,26 +446,29 @@ evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
 What it says about MapSmith (twenty-two-family run, engine tier, `spec_commit`
-[`86bae60`](https://github.com/argleton/argleton/tree/main/results/2026-08-30-grid-registration)):
+[`9322b17`](https://github.com/argleton/argleton/tree/main/results/2026-08-30-grid-registration)):
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
-| MapSmith | **0.00** | 1.00 | 23 | 2 |
+| MapSmith | **0.00** | 1.00 | 24 | 0 |
 | naive composition (read file, take statistic) | 0.9583 | 1.00 | 24 | 0 |
 
-**The two in the last column are the newest thing this table says.** The twenty-second family is
-grid registration, and MapSmith cannot attempt either of its probes: they ask where a cell is, and
-MapSmith has no operation that answers that — it reads rasters, summarises them, samples them and
-derives vectors from them, and every one of those turns an index into a coordinate the same way
-rasterio does. So the convention question has never been asked in this codebase. That gap is left
-in the table rather than filled with an adjacent answer, because two `unsupported` verdicts are a
-smaller claim than a 0.00 and a true one.
+**The last column is the part of this table worth reading.** When the twenty-second family was
+published MapSmith could not attempt either of its probes: they ask where a cell is, and no
+operation here answered that — nor did any line of this codebase read `AREA_OR_POINT`, the tag
+that says whether a value sits at a cell's centre or at a grid node. Two `unsupported` verdicts
+went into the published table, because they are a smaller claim than a 0.00 and a true one.
+
+Both are fixed now, and not at the point of failure. Every place that turned a cell index into a
+coordinate had the defect — sampling, routing, contouring, zonal weighting, and every raster
+written, which was losing the tag on the way out — so the decision moved into one module that a
+test protects from being copied. MapSmith answers both halves of the pair: 412090 on the trap and
+412105 on its clean twin, fifteen metres apart, from files differing in one metadata tag.
 
 The family was found here, writing `contour_lines`: the engine placed every contour half a cell
 from where the elevation it named actually occurred. What caught it was the check that samples the
-DEM at the finished vertices and requires the elevation to match — which is why the shipped
-operation is correct on area-registered DEMs, and why on point-registered ones it refuses loudly
-instead of answering. Refusing is the right behaviour available today and not the one we want.
+DEM at the finished vertices and requires the elevation to match — a check on the number rather
+than on the shape of the output, which is the only kind that would have.
 
 **One of those twenty-two passes exists because the suite took it away first.**
 On 2026-08-26 the nineteenth family, `datum-ballpark`, moved MapSmith off 0.00

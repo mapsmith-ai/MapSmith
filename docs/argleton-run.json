@@ -1,8 +1,8 @@
 {
   "_comment": "Vendored citation of the Argleton run this repository's pages quote. Argleton is a separate repository in a separate organisation, so these numbers cannot be counted from this checkout the way the tool and test counts are -- and hand-typing them aged three times in four days. `.claude/publish_run.py` in the private workspace writes this file as one step of publishing a run; `tests/test_showcase.py` requires every number quoted in the README and on the site to match it.",
   "run": "2026-08-30-grid-registration",
-  "spec_commit": "86bae60",
-  "traps_run": 23,
+  "spec_commit": "9322b17",
+  "traps_run": 24,
   "families": 22,
   "mapsmith_silent_error_rate": 0.0,
   "mapsmith_completion_rate": 1.0,
