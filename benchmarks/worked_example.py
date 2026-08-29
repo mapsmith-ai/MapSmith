@@ -1,7 +1,7 @@
 """One real question, end to end: what gets searched, what gets chosen, what runs.
 
-    Which parcels lie within 1.5 km of the river and sit below 120 m, and how
-    large is each of them?
+    Which parcels lie within 1.5 km of the river and sit at no more than 120 m,
+    and how large is each of them?
 
 Nothing here is illustrative. The script builds fixtures whose answer can be
 worked out on paper, asks the catalog the way an agent would ask it — in the
@@ -13,7 +13,7 @@ if a step changes, the picture changes with it.
     python benchmarks/worked_example.py            # print the trace
     python benchmarks/worked_example.py --json out.json
 
-The point it exists to make is the middle column. A catalog of fifty-one
+The point it exists to make is the middle column. A catalog of dozens of
 operations, most of which take a layer and return a layer, and at each step the
 question is not "which tool is best" but "how many could plausibly apply, and how
 does the caller get from those to one". The answer is: declare two facts, read
@@ -169,19 +169,20 @@ STEPS: list[dict[str, Any]] = [
     {
         "id": "filter",
         "ask": "drop the ones where the ground is above 120 metres",
-        "facets": {"input_kind": "vector", "produces": "dataset:vector"},
-        "operation": "run_sql",
+        "facets": {
+            "input_kind": "vector", "produces": "dataset:vector", "dataset_inputs": 1
+        },
+        "operation": "select_features",
         "why": (
-            "The only step here that declares no arity, and the reason is the same "
-            "one that keeps it out of the plan: run_sql takes its inputs inside a "
-            "SQL string, so it consumes zero declared datasets. A caller who "
-            "correctly says they are holding one layer would not be offered it. "
-            "That is a real gap the arity facet creates, and it is written here "
-            "rather than hidden by declaring a number that is not true. "
-            "boundary rather than a gap: `$step` references resolve only in arguments "
-            "declared as dataset inputs, and run_sql takes its inputs inside a SQL "
-            "string. A grammar that substituted into arbitrary strings would be a "
-            "grammar where a planner can build a path out of text."
+            "This step used to run outside the plan. run_sql could answer it, but it "
+            "takes its inputs inside a SQL string, so it declares zero datasets and a "
+            "caller who correctly says they hold one layer was never offered it — a "
+            "real gap the arity facet created, and one the plan could not close, "
+            "because `$step` references resolve only in arguments declared as dataset "
+            "inputs. Substituting into arbitrary strings would be a grammar where a "
+            "planner assembles a path out of text. select_features takes a layer and "
+            "returns a layer, so the last step of the question is now inside the plan "
+            "with a manifest of its own."
         ),
     },
 ]
@@ -233,8 +234,8 @@ def build_plan(paths: dict[str, Path], workdir: Path) -> dict[str, Any]:
     """The whole thing as one plan, so the arguments are data and can be checked."""
     return {
         "goal": (
-            "Parcels within 1.5 km of the river that sit below 120 m, with the "
-            "ground area of each"
+            "Parcels within 1.5 km of the river whose mean ground elevation is at "
+            "most 120 m, with the ground area of each"
         ),
         "steps": [
             {
@@ -273,10 +274,25 @@ def build_plan(paths: dict[str, Path], workdir: Path) -> dict[str, Any]:
                 "operation": "measure_area",
                 "arguments": {
                     "input_path": "$height",
-                    "output_path": str(workdir / "answer.parquet"),
+                    "output_path": str(workdir / "measured.parquet"),
                     "method": "geodesic",
                 },
                 "comment": "Ground area, not map area.",
+            },
+            {
+                "id": "filter",
+                "operation": "select_features",
+                "arguments": {
+                    "input_path": "$area",
+                    "output_path": str(workdir / "answer.parquet"),
+                    "by": "field_between",
+                    "field": "mean",
+                    "maximum": ELEVATION_LIMIT_M,
+                },
+                "comment": (
+                    f"At most {ELEVATION_LIMIT_M} m of mean elevation. Inclusive at "
+                    "the bound, which is why the goal says 'at most' and not 'below'."
+                ),
             },
         ],
     }
@@ -359,7 +375,9 @@ def _mermaid(trace: dict[str, Any]) -> str:
                 parts.append(f"CRS {_label(crs)}")
             parts.append(f'{run["checks_passed"]}/{run["checks_total"]} checks')
         else:
-            parts.append("outside the plan")
+            # Every step of STEPS is in the plan now, so this is the shape of a
+            # step that did not run at all — not a step that ran elsewhere.
+            parts.append("did not run")
         lines.append(f'  {node}["{"<br/>".join(parts)}"]')
         lines.append(f"  {previous} --> {node}")
         previous = node
@@ -415,7 +433,7 @@ def markdown(trace: dict[str, Any]) -> str:
     body = "\n".join(
         "| " + " | ".join(str(v) for v in row.values()) + " |" for row in answer
     )
-    outside = trace["outside_the_plan"]
+    last = trace["final_filter"]
     return "\n".join(
         [
             START,
@@ -425,9 +443,10 @@ def markdown(trace: dict[str, Any]) -> str:
             _tables(trace),
             "",
             (
-                f'One step runs outside the plan — `{outside["operation"]}`, '
-                f'{outside["rows_in"]} rows in and {outside["rows_out"]} out — and the '
-                f'reason is a boundary rather than a gap: {outside["reason"]}'
+                f'Every step is inside the plan, the last one included: '
+                f'`{last["operation"]}` took {last["rows_in"]} rows and returned '
+                f'{last["rows_out"]}, with a manifest like every other write. '
+                f'{last["note"]}'
             ),
             "",
             (
@@ -445,6 +464,120 @@ def markdown(trace: dict[str, Any]) -> str:
     )
 
 
+def build_trace(workdir: Path) -> dict[str, Any]:
+    """Run the whole thing and return what happened, once.
+
+    `main()` renders this and `tests/test_worked_example.py` compares the
+    rendering with the README. The test used to rebuild this dictionary by
+    hand, which bought nothing — a mistake in here would not have been caught,
+    because the test never ran this code — and cost a false failure every time
+    the trace changed shape. One copy.
+    """
+    from mapsmith.plans import executor, models, validator
+
+    paths = build_fixtures(workdir)
+    discovery = trace_discovery()
+    plan = build_plan(paths, workdir)
+
+    rejected = validator.validate(models.Plan.model_validate(wrong_plan_first(plan)))
+    accepted = validator.validate(models.Plan.model_validate(plan))
+    result = executor.execute(models.Plan.model_validate(plan))
+
+    steps_run = []
+    for step in result.get("steps", []):
+        record: dict[str, Any] = {
+            "id": step.get("id"),
+            "operation": step.get("operation"),
+            "elapsed_ms": step.get("elapsed_ms"),
+        }
+        output = step.get("output_path") or step.get("output")
+        manifest_path = Path(f"{output}.provenance.json") if output else None
+        if manifest_path and manifest_path.exists():
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            record["crs_decisions"] = manifest.get("crs_decisions", {})
+            # `verification` is a list of checks in the emitted manifest and an
+            # object in some older records; read both rather than assume.
+            verification = manifest.get("verification", [])
+            checks = (
+                verification
+                if isinstance(verification, list)
+                else verification.get("checks", [])
+            )
+            record["checks_passed"] = sum(1 for c in checks if c.get("passed"))
+            record["checks_total"] = len(checks)
+            record["checks"] = [c.get("name") for c in checks]
+            engine = manifest.get("engine", {})
+            record["engine"] = f"{engine.get('name')} {engine.get('version')}"
+        steps_run.append(record)
+
+    import geopandas as gpd
+
+    # Every step of the question is inside the plan now, so the last output
+    # IS the answer — no reading a file some other code wrote afterwards.
+    measured = workdir / "measured.parquet"
+    final = workdir / "answer.parquet"
+    answer_before = gpd.read_parquet(measured) if measured.exists() else None
+    answer = gpd.read_parquet(final) if final.exists() else None
+
+    trace = {
+        "goal": (
+            "Parcels within 1.5 km of the river whose mean ground elevation is "
+            "at most 120 m, with the elevation and the ground area of each"
+        ),
+        "discovery": discovery,
+        "rejected_plan": {
+            "valid": rejected.valid,
+            "errors": [
+                {"code": e.code, "step_id": e.step_id, "message": e.message}
+                for e in rejected.errors
+            ],
+        },
+        "accepted_plan": {"valid": accepted.valid, "steps": len(plan["steps"])},
+        "execution": steps_run,
+        "final_filter": {
+            "operation": "select_features",
+            "rows_in": len(answer_before) if answer_before is not None else None,
+            "rows_out": len(answer) if answer is not None else None,
+            "note": (
+                "This step used to run outside the plan, because the only "
+                "operation that could answer it was run_sql — which takes its "
+                "inputs inside a SQL string, declares zero datasets, and therefore "
+                "cannot join the plan's dataflow. That boundary is deliberate and "
+                "has not moved: substituting `$step` into arbitrary strings would "
+                "be a grammar in which a planner assembles a path out of text. "
+                "What changed is that it is no longer the only way to ask."
+            ),
+        },
+        "answer": (
+            [
+                {k: (round(v, 2) if isinstance(v, float) else v)
+                 for k, v in row.items() if k != "geometry"}
+                for row in answer.drop(columns="geometry").to_dict("records")
+            ]
+            if answer is not None
+            else []
+        ),
+    }
+
+    # The arguments a reader cares about, taken from the plan rather than
+    # retyped: a diagram whose parameters are transcribed is a diagram that
+    # can disagree with the run it claims to show.
+    shown = {
+        step["id"]: ", ".join(
+            f"`{k}={v}`"
+            for k, v in step["arguments"].items()
+            if k not in ("output_path",)
+            and not (isinstance(v, str) and v.startswith("/"))
+            and not (isinstance(v, str) and ":" in v[:3])
+        )
+        for step in plan["steps"]
+    }
+    for step in trace["execution"]:
+        step["shown_arguments"] = shown.get(step["id"], "—")
+
+    return trace
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--json", type=Path, help="write the trace here")
@@ -455,118 +588,9 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    from mapsmith.plans import executor, models, validator
-
     workdir = Path(tempfile.mkdtemp(prefix="mapsmith-worked-"))
     try:
-        paths = build_fixtures(workdir)
-        discovery = trace_discovery()
-        plan = build_plan(paths, workdir)
-
-        rejected = validator.validate(models.Plan.model_validate(wrong_plan_first(plan)))
-        accepted = validator.validate(models.Plan.model_validate(plan))
-        result = executor.execute(models.Plan.model_validate(plan))
-
-        steps_run = []
-        for step in result.get("steps", []):
-            record: dict[str, Any] = {
-                "id": step.get("id"),
-                "operation": step.get("operation"),
-                "elapsed_ms": step.get("elapsed_ms"),
-            }
-            output = step.get("output_path") or step.get("output")
-            manifest_path = Path(f"{output}.provenance.json") if output else None
-            if manifest_path and manifest_path.exists():
-                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-                record["crs_decisions"] = manifest.get("crs_decisions", {})
-                # `verification` is a list of checks in the emitted manifest and an
-                # object in some older records; read both rather than assume.
-                verification = manifest.get("verification", [])
-                checks = (
-                    verification
-                    if isinstance(verification, list)
-                    else verification.get("checks", [])
-                )
-                record["checks_passed"] = sum(1 for c in checks if c.get("passed"))
-                record["checks_total"] = len(checks)
-                record["checks"] = [c.get("name") for c in checks]
-                engine = manifest.get("engine", {})
-                record["engine"] = f"{engine.get('name')} {engine.get('version')}"
-            steps_run.append(record)
-
-        # Step five, outside the plan for the reason stated in STEPS: the whole
-        # answer, then the threshold, with its own manifest like every other write.
-        from mapsmith.engines import duckdb_engine
-
-        measured = workdir / "answer.parquet"
-        filtered = workdir / "below_120m.parquet"
-        if measured.exists():
-            duckdb_engine.run_sql(
-                f"SELECT * FROM read_parquet('{measured.as_posix()}') WHERE mean < {ELEVATION_LIMIT_M}",
-                output_path=str(filtered),
-            )
-
-        import geopandas as gpd
-
-        final = filtered if filtered.exists() else workdir / "answer.parquet"
-        answer_before = gpd.read_parquet(measured) if measured.exists() else None
-        answer = gpd.read_parquet(final) if final.exists() else None
-
-        rows_out = len(answer) if answer is not None else None
-
-        trace = {
-            "goal": (
-                "Parcels within 1.5 km of the river whose ground sits below 120 m, "
-                "with the elevation and the ground area of each"
-            ),
-            "discovery": discovery,
-            "rejected_plan": {
-                "valid": rejected.valid,
-                "errors": [
-                    {"code": e.code, "step_id": e.step_id, "message": e.message}
-                    for e in rejected.errors
-                ],
-            },
-            "accepted_plan": {"valid": accepted.valid, "steps": len(plan["steps"])},
-            "execution": steps_run,
-            "outside_the_plan": {
-                "operation": "run_sql",
-                "reason": (
-                    "`$step` references resolve only in arguments declared as dataset "
-                    "inputs; run_sql takes its inputs inside a SQL string, so it cannot "
-                    "join the plan's dataflow. Deliberate: substituting into arbitrary "
-                    "strings would let a planner assemble a path out of text."
-                ),
-                "rows_in": len(answer_before) if answer_before is not None else None,
-                "rows_out": rows_out,
-            },
-            "answer": (
-                [
-                    {k: (round(v, 2) if isinstance(v, float) else v)
-                     for k, v in row.items() if k != "geometry"}
-                    for row in answer.drop(columns="geometry").to_dict("records")
-                ]
-                if answer is not None
-                else []
-            ),
-        }
-
-        # The arguments a reader cares about, taken from the plan rather than
-        # retyped: a diagram whose parameters are transcribed is a diagram that
-        # can disagree with the run it claims to show.
-        shown = {
-            step["id"]: ", ".join(
-                f"`{k}={v}`"
-                for k, v in step["arguments"].items()
-                if k not in ("output_path",)
-                and not (isinstance(v, str) and v.startswith("/"))
-                and not (isinstance(v, str) and ":" in v[:3])
-            )
-            for step in plan["steps"]
-        }
-        for step in trace["execution"]:
-            step["shown_arguments"] = shown.get(step["id"], "—")
-
+        trace = build_trace(workdir)
         if args.write_readme:
             readme = ROOT / "README.md"
             page = readme.read_text(encoding="utf-8")

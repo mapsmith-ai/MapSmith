@@ -178,7 +178,7 @@ had to repair. `get_provenance` returns it for any output.
 ### Finding the right operation
 
 Those are the tools an agent chooses between. Behind them the **catalog** holds every
-operation MapSmith can perform — 72 today, and 47 of them have no tool of their own — and
+operation MapSmith can perform — 74 today, and 49 of them have no tool of their own — and
 it is built to hold thousands: tool-selection accuracy
 degrades past a few dozen *exposed* tools, while capability count has no such ceiling. That
 makes reaching scale a retrieval problem, so it is treated as one — and measured like one.
@@ -194,10 +194,10 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 72 | 25% | 16% | 25% |
-| what data I have | 48 | 27% | 20% | 27% |
-| + what I want back | 30 | 40% | 32% | 49% |
-| **+ how many datasets I have** | **16** | **53%** | **47%** | **97%** |
+| nothing — words alone | 74 | 25% | 16% | 25% |
+| what data I have | 49 | 27% | 20% | 27% |
+| + what I want back | 31 | 40% | 32% | 49% |
+| **+ how many datasets I have** | **17** | **53%** | **46%** | **97%** |
 
 **Two ranking columns, and that is a correction.** This table used to carry one,
 computed with the default engine — which is the embedding one where its model
@@ -214,7 +214,7 @@ near neighbours have to be told apart by meaning rather than by words.
 
 The last column is not an accuracy figure — it is a property, and the 97% rather than 100% is
 worth a sentence. The narrowing never drops the right operation: that is asserted per entry and
-holds for all 72. What the column measures is whether the surviving set was small enough to hand
+holds for all 74. What the column measures is whether the surviving set was small enough to hand
 over WHOLE, and for a handful of requests it still is not, so those fall back to a ranked
 shortlist and the answer can be outside the top three. Ranking decides the order; it does not
 decide membership; and the 3% is the gap between "cannot lose the answer" and "can show you all
@@ -238,14 +238,23 @@ arrived with it. That is the trade this design makes, stated rather than discove
 catalogue went from 61 operations to 71. Every ranking figure in that table fell — 28% to 25%
 bare, 34% to 27% on the input kind — and the *delivered* column of the second row fell from 48%
 to 27%, because more requests now leave a set too large to hand over whole. The bottom row did
-not move: **97%, the same as at 61 and at 51.** Eleven more operations, no new facet, and the
-guarantee held, which is the first time growth has been absorbed by the facets already there.
+not move: **97%, the same as at 61.** Ten more operations, no new facet, and the guarantee held,
+which is the first time growth has been absorbed by the facets already there. (Not «and at 51»:
+that bottom row is the arity facet, and `dataset_inputs` did not exist at 51 operations. The 100%
+quoted above at that size is the row above it. Two different rows under one sentence is the kind
+of comparison this page exists to refuse.)
+
+**And again at 74, with two operations that a caller is unusually likely to want.** `select_features` and `extract_layer` are the remedies MapSmith's own error messages had been recommending, so they sit in the busiest corner of the facet space: the average surviving set went from 16 to 17 and the second row's *delivered* did not move. The bottom row held at 97% for the third catalogue size running. The margin to the wall is now 13.
 
 That is the shape of the trade, and it says when the next facet is due. The figure to watch is
 not found@3 — a ranker will always get worse as the catalogue grows, and it is a hint. It is the
-median surviving set at the fullest declaration: 9 at 51 operations, 14 at 61, 16 at 72. When
-that crosses 30, delivery stops being a property and starts being a ranking again, and the
-answer is another fact the caller already knows, not a bigger threshold.
+**average** surviving set at the fullest declaration, the fourth column of that table:
+9 at 51 operations, 14 at 61, 16 at 72, 17 at 74. When that crosses 30, delivery stops being a
+property and starts being a ranking again, and the answer is another fact the caller already
+knows, not a bigger threshold. (It said *median* until 2026-08-29, and published the mean:
+the median at 74 is 14. The distribution is skewed — most requests leave a small set and a few
+leave a large one — so the two numbers say different things and the mean is the pessimistic
+one, which is the right one to watch.)
 
 The requests, both labels and the harness are all in the repository:
 [`tests/data/discovery_queries.json`](tests/data/discovery_queries.json) and
@@ -257,9 +266,14 @@ says so where it stops.
 
 **So it hands over the set instead of picking for you.** Below thirty survivors `list_operations`
 answers with `status: "choose"`: every candidate, ordered as a hint that says it is a hint, each
-carrying the sentence that separates it from its neighbours. The threshold is 30 because the
-surviving set over those 118 requests has a median of 26 and never exceeded it; the payload is
-about 2,100 tokens, less than one wrong operation costs to run and undo.
+carrying the sentence that separates it from its neighbours. The threshold is 30 because that is where the
+surviving set almost always sits: over those 118 requests its median is 14 and it exceeds 30
+for three of them — which is the 97% in the table above, seen from the other side. The payload
+is about 2,100 tokens, less than one wrong operation costs to run and undo.
+
+*(That sentence used to say the set had a median of 26 and never exceeded 30. It was false
+before this catalogue reached 72 operations and nobody noticed, because the test that checks
+this page against the harness read the table and not the prose around it. It reads both now.)*
 
 Three measurements say this is the right shape, and the third is the one that settles it:
 
@@ -293,7 +307,7 @@ numbers are reported as *agreement with model-written labels* and never as accur
 used to be a hard filter like the others. It is not like the others: input kind and projected-CRS
 are facts about the data in hand and output kind is what the caller wants, but *family* is a guess
 about our taxonomy, which the caller cannot see. Measured, it removed six candidates out of
-twenty-one — and when the guess was wrong it removed the right operation, with no error, leaving a
+seventeen — and when the guess was wrong it removed the right operation, with no error, leaving a
 confident answer assembled from neighbours. Every request in the independent set has 4.4 plausible
 families. That is the silent-failure class [Argleton](https://argleton.org) measures in other
 people's systems, sitting in our own discovery layer, so it now sorts: declaring the family lifts
@@ -369,7 +383,7 @@ number of features as the input. Those are structural properties of the operatio
 checkable against the code rather than declared by hand, and they separate the pairs a bag of
 words cannot: `spatial_join` from `overlay_layers`, `flow_accumulation` from `extract_streams`.
 That work is not done, and until it is, the honest claim is the measured one: the guarantee above
-holds at fifty-one operations, not at eight hundred.
+holds at seventy-four operations, not at eight hundred.
 
 **How an entry has to be written is a published specification**, not a convention:
 [`docs/catalog-entry-spec.md`](docs/catalog-entry-spec.md), with a normative
@@ -506,19 +520,19 @@ metric operation says which coordinate system it moved the data into and why.
 
 ```mermaid
 flowchart TB
-  ASK["<b>Parcels within 1.5 km of the river whose ground sits below 120 m, with the elevation and the ground area of each</b>"]
+  ASK["<b>Parcels within 1.5 km of the river whose mean ground elevation is at most 120 m, with the elevation and the ground area of each</b>"]
   ASK --> PLAN{{"plan validated<br/>before anything runs"}}
   PLAN -. "rejected: FORWARD_REFERENCE" .-> BAD["'mask_path' references '$buffer' which runs later — move step 'buffer' before 'near'"]
   BAD:::bad
-  BUFFER["<b>buffer_layer</b><br/>72 operations &rarr; 27 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
+  BUFFER["<b>buffer_layer</b><br/>74 operations &rarr; 29 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
   PLAN --> BUFFER
-  NEAR["<b>clip_layer</b><br/>72 operations &rarr; 14 candidates &rarr; chosen<br/>12/12 checks"]
+  NEAR["<b>clip_layer</b><br/>74 operations &rarr; 14 candidates &rarr; chosen<br/>12/12 checks"]
   BUFFER --> NEAR
-  HEIGHT["<b>zonal_statistics</b><br/>72 operations &rarr; 4 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
+  HEIGHT["<b>zonal_statistics</b><br/>74 operations &rarr; 4 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
   NEAR --> HEIGHT
-  AREA["<b>measure_area</b><br/>72 operations &rarr; 27 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>10/10 checks"]
+  AREA["<b>measure_area</b><br/>74 operations &rarr; 29 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>10/10 checks"]
   HEIGHT --> AREA
-  FILTER["<b>run_sql</b><br/>72 operations &rarr; 38 candidates &rarr; chosen<br/>outside the plan"]
+  FILTER["<b>select_features</b><br/>74 operations &rarr; 29 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>10/10 checks"]
   AREA --> FILTER
   OUT[["3 parcels, each with elevation and ground area"]]
   FILTER --> OUT
@@ -527,11 +541,11 @@ flowchart TB
 
 | what the agent asks for | it declares | candidates | picked | at position |
 |---|---|---|---|---|
-| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s) | **27** of 72 | `buffer_layer` | 2 |
-| “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s) | **14** of 72 | `clip_layer` | 1 |
-| “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s) | **4** of 72 | `zonal_statistics` | 3 |
-| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s) | **27** of 72 | `measure_area` | 1 |
-| “drop the ones where the ground is above 120 metres” | vector, dataset:vector | **38** of 72 | `run_sql` | None |
+| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s) | **29** of 74 | `buffer_layer` | 2 |
+| “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s) | **14** of 74 | `clip_layer` | 1 |
+| “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s) | **4** of 74 | `zonal_statistics` | 3 |
+| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s) | **29** of 74 | `measure_area` | 1 |
+| “drop the ones where the ground is above 120 metres” | vector, dataset:vector, 1 dataset(s) | **29** of 74 | `select_features` | 2 |
 
 | step | operation | arguments that mattered | CRS decision, recorded | checks |
 |---|---|---|---|---|
@@ -539,8 +553,9 @@ flowchart TB
 | near | `clip_layer` | `mask_path=$buffer` | — | 12/12 |
 | height | `zonal_statistics` | `zones_path=$near`, `stats=['mean', 'min']` | `EPSG:4326` — zones and raster share the same CRS | 7/7 |
 | area | `measure_area` | `input_path=$height`, `method=geodesic` | `WGS 84 (ellipsoidal)` — ground area computed on the ellipsoid the layer's CRS names; no map plane is involved, so no projection distortion enters | 10/10 |
+| filter | `select_features` | `input_path=$area`, `by=field_between`, `field=mean`, `maximum=120` | `EPSG:4326` — no CRS change: selecting rows does not touch coordinates | 10/10 |
 
-One step runs outside the plan — `run_sql`, 4 rows in and 3 out — and the reason is a boundary rather than a gap: `$step` references resolve only in arguments declared as dataset inputs; run_sql takes its inputs inside a SQL string, so it cannot join the plan's dataflow. Deliberate: substituting into arbitrary strings would let a planner assemble a path out of text.
+Every step is inside the plan, the last one included: `select_features` took 4 rows and returned 3, with a manifest like every other write. This step used to run outside the plan, because the only operation that could answer it was run_sql — which takes its inputs inside a SQL string, declares zero datasets, and therefore cannot join the plan's dataflow. That boundary is deliberate and has not moved: substituting `$step` into arbitrary strings would be a grammar in which a planner assembles a path out of text. What changed is that it is no longer the only way to ask.
 
 **The answer**, which can be worked out on paper before MapSmith sees the files: the parcels are squares of 0.0015° at 46.2°N, so each is about 119 m by 167 m, and the elevation ramps west to east across the fixture.
 
@@ -601,7 +616,8 @@ An output whose geometry is *mechanically* broken — typically invalidity inher
 invalid input — is repaired deterministically: `make_valid`, at most two rounds, written
 to a temporary file and swapped in only once it is complete, and skipped rather than
 risked where a rewrite could drop data (a multi-layer GeoPackage is refused, not
-rewritten). Every attempt lands in the manifest *and* in the tool result, because a
+rewritten — `extract_layer` copies the one you mean into its own dataset, with the
+container and the layers left behind named in its manifest). Every attempt lands in the manifest *and* in the tool result, because a
 repaired output must never look like one that was right the first time. Failures that need
 judgement are never "fixed": an empty result, or geometries eroded away by a wrong
 distance, come back as warnings with hints for the agent to act on.
@@ -890,12 +906,17 @@ Next, in the order we intend to do it. The linked items carry a written spec —
   was done; it does not certify that it was right, and this README used to imply otherwise by
   promising a run "with verification *disabled*". There is no such switch and we are not adding one.
 
-  Three defects have come back from it, which is the return we wanted from putting the suite
+  Six defects have come back from it, which is the return we wanted from putting the suite
   outside: the `datum-ballpark` failure above — 74 m out with a manifest recording a successful
   reprojection, the most serious of the three because nothing in the output looked wrong; a
   multi-layer container resolved silently to its default layer, answering 4 features where the
   truth was 31 ([#29](https://github.com/mapsmith-ai/MapSmith/issues/29), filed before the trap was
-  published); and three probes that came back `unsupported` because MapSmith had no area operation
+  published — `extract_layer` is the way out of that refusal now); a south-up DEM whose
+  georeferencing was dropped on read, so a 5.71° slope came back as 45° with five green checks;
+  totals over a layer holding lines and polygons together, where a plant's fence line was added to
+  2 km of pipe in silence and every individual row stayed right; two probes answered `unsupported`
+  because nothing could say where a raster's lowest cell was; and three probes that came back
+  `unsupported` because MapSmith had no area operation
   at all — `measure_area` exists because a trap said so, and it carries the first check here that
   asks whether the *number* is right rather than whether the operation ran. #25 is closed against
   Argleton rather than left open here.

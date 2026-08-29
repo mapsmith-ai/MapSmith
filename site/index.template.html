@@ -323,17 +323,20 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   </p>
   <p>
     <strong>It narrows first, deterministically, on facts the caller already has.</strong> What data
-    is in hand, and what should come back. Declaring those two takes the candidates from 51 to 21 —
+    is in hand, and what should come back. Declaring those two takes the candidates from 74 to 31 —
     and below thirty survivors the search stops choosing for you: it returns
     <code>status: "choose"</code> with every candidate, ordered as a hint that says so, each carrying
-    the sentence that separates it from its neighbours. On all 118 requests the right operation is in
-    what comes back. Not as an accuracy figure — as a property, because nothing was dropped.
+    the sentence that separates it from its neighbours. On 115 of those 118 requests the right
+    operation is in what comes back; the other three leave a set still too large to hand over whole
+    and fall back to a ranked shortlist. Not as an accuracy figure — as a property: the narrowing
+    never drops the answer, and the 3% is the gap between «cannot lose it» and «can show you all of
+    it».
   </p>
   <p>
     <strong>The family orders instead of filtering, and that is a correction.</strong> It used to be
     a hard filter like the others, and it is not like the others: input kind is a fact about your
     data, family is a guess about our taxonomy that you cannot see. It removed six candidates out of
-    twenty-one — and when the guess was wrong it removed <em>the right operation</em>, silently,
+    seventeen — and when the guess was wrong it removed <em>the right operation</em>, silently,
     leaving a confident answer built from neighbours. Every request here has 4.4 plausible families.
     That is the failure <a href="https://argleton.org">Argleton</a> measures in other people's
     systems, found in our own discovery layer.
@@ -351,22 +354,27 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     in the table above: <em>how many datasets you are holding</em>. One layer or two. It is a fact
     about your situation rather than a guess about our vocabulary, it is derivable from each
     operation's own signature so a test checks the declaration against the code, and it takes the
-    median surviving set from 34 to 14. The catalogue grew by a fifth and discovery got better — but
+    median surviving set from 34 to 9. The catalogue grew by a fifth and discovery got better — but
     only because a facet arrived with it, and that is the trade rather than a free lunch. It is now
     a required field of the published entry specification, with the measurement attached.
   </p>
   <p>
     <strong>Then it happened again, and that is what watching a curve is for.</strong> On 30 August
-    the catalogue went to seventy-two. Every ranking figure fell — 25% bare where it had been 28%,
+    the catalogue went to seventy-one. Every ranking figure fell — 25% bare where it had been 28%,
     27% on the input kind where it had been 34% — and delivery at the second facet fell from 48% to
     27%, because more requests now leave a set too large to hand over whole. The bottom row did not
-    move: <strong>97%, the same as at 61 and at 51</strong>. Ten more operations absorbed by the
-    facets already there, for the first time.
+    move: <strong>97%, the same as at 61</strong>. Ten more operations absorbed by the
+    facets already there, for the first time. It held again at seventy-four, and those two were
+    operations a caller is unusually likely to want — the remedies MapSmith's own error messages
+    had been recommending — so they landed in the busiest corner of the facet space.
   </p>
   <p>
     So the figure to watch is not found@3. A ranker gets worse as a catalogue grows and it is a hint
-    either way. It is the median surviving set at the fullest declaration — 9 at fifty-one
-    operations, 14 at sixty-one, 16 at seventy-two. When that crosses thirty, delivery stops being a
+    either way. It is the <em>average</em> surviving set at the fullest declaration — 9 at fifty-one
+    operations, 14 at sixty-one, 16 at seventy-two, 17 at seventy-four. (This page said
+    <em>median</em> until 29 August and published the mean; the median at seventy-four is 14. The
+    distribution is skewed, so the two say different things, and the mean is the pessimistic one.)
+    When that crosses thirty, delivery stops being a
     property and becomes a ranking again, and the answer will be another fact the caller already
     knows rather than a bigger threshold.
   </p>
@@ -428,9 +436,9 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <tr>
       <td>ablation</td>
       <td>Each facet is worth measuring alone, over the 118 independent requests: nothing declared
-      → 72 candidates, 16% found@3 with embeddings and 25% with BM25; what data I have → 48,
-      20% and 27%; + what I want back → 30, 32% and 40%; + how many datasets I have →
-      <strong>16, 53% ranked and 97% delivered</strong>. Both engines, because this row carried one
+      → 74 candidates, 16% found@3 with embeddings and 25% with BM25; what data I have → 49,
+      20% and 27%; + what I want back → 31, 32% and 40%; + how many datasets I have →
+      <strong>17, 53% ranked and 97% delivered</strong>. Both engines, because this row carried one
       unnamed column until a CI run met a rate limit from the model host, fell back to BM25 and
       recomputed the first figure as 28% — the published number had been a measurement of what
       the machine could download. The jump in the last column is not the ranker getting better

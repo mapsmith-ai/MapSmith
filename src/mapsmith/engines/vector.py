@@ -9,6 +9,7 @@ Design rules:
 from __future__ import annotations
 
 import itertools
+import math
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +17,7 @@ import geopandas as gpd
 import pandas as pd
 import shapely
 
-from .. import readers, verify
+from .. import antimeridian, readers, verify
 from ..provenance import InputRecord, ProvenanceRecord
 
 
@@ -59,13 +60,13 @@ def describe(path: str) -> dict[str, Any]:
             "layers": described,
             "hint": (
                 "this container holds more than one layer, and operations need a "
-                "single-layer dataset: extract the one you mean first — e.g. "
-                "run_sql: SELECT * FROM ST_Read(path, layer='<name>') with an "
-                "output_path"
+                "single-layer dataset: extract the one you mean first — "
+                "run_operation(operation='extract_layer', arguments={'input_path': "
+                "..., 'layer': ..., 'output_path': ...}). The layer names are "
+                "listed above."
             ),
         }
     gdf = _read(path)
-    bounds = gdf.total_bounds
     return {
         "path": str(path),
         "kind": "vector",
@@ -73,12 +74,10 @@ def describe(path: str) -> dict[str, Any]:
         "feature_count": len(gdf),
         "geometry_types": sorted(gdf.geom_type.dropna().unique().tolist()),
         "fields": {c: str(t) for c, t in gdf.dtypes.items() if c != gdf.geometry.name},
-        "extent": {
-            "minx": float(bounds[0]),
-            "miny": float(bounds[1]),
-            "maxx": float(bounds[2]),
-            "maxy": float(bounds[3]),
-        },
+        # Through `antimeridian`, because a bounding box of (-180, ..., 180, ...)
+        # is arithmetically right and is the wrong answer to the question
+        # anybody asked. On ordinary data this is the same dict it always was.
+        "extent": antimeridian.describe_extent(gdf),
     }
 
 
@@ -1504,8 +1503,9 @@ def _mixed_geometry_check(gdf: Any, operation: str, quantity: str) -> Any:
         hint=f"a polygon's length is its perimeter and a line's area is zero, so "
         f"{operation} over a mixed layer adds quantities that answer different "
         "questions. Every individual row is still right, which is why a spot "
-        "check will not show it. Select the features the question is about "
-        "first — with run_sql, or by filtering the layer.",
+        "check will not show it. Keep the features the question is about first: "
+        "run_operation(operation='select_features', arguments={'by': "
+        "'geometry_type', 'value': 'line'|'polygon'|'point', ...}).",
     )
 
 
@@ -2416,3 +2416,467 @@ def _read_output_crs(path: str) -> Any:
         return readers.read_vector_or_table(path).crs
     except Exception:  # noqa: BLE001 — the check reports absence, it does not diagnose
         return None
+
+
+#: What `select_features` can filter on, and nothing else. A general expression
+#: language here would be `run_sql` with extra steps and a smaller vocabulary;
+#: what is missing from the catalogue is the narrow, safe version of the two
+#: questions MapSmith's own hints already tell callers to ask.
+SELECT_BY = ("geometry_type", "field_equals", "field_in", "field_between")
+
+#: The families a geometry type belongs to. `Multi` variants answer the same
+#: question as their singular form — a MultiLineString is line-shaped — so
+#: selecting "line" keeps both, which is what somebody asking for the pipes
+#: means.
+#: `LinearRing` is deliberately NOT in the line family: `linework` refuses it,
+#: so selecting "line" and getting one back would produce a layer the very
+#: operation this hint sends people to still rejects. It is reported by
+#: `_uncovered_kinds` instead, which is the honest answer — we saw it and did
+#: not take it.
+GEOMETRY_FAMILIES = {
+    "point": {"Point", "MultiPoint"},
+    "line": {"LineString", "MultiLineString"},
+    "polygon": {"Polygon", "MultiPolygon"},
+}
+
+#: Every type any family names. What a layer holds beyond this — a
+#: GeometryCollection, a LinearRing, a null geometry — is dropped by a family
+#: selection, and dropped silently unless something says so.
+COVERED_KINDS = {kind for family in GEOMETRY_FAMILIES.values() for kind in family}
+
+
+def _uncovered_kinds(gdf: Any) -> dict[str, int]:
+    """Features a family selection cannot keep, counted by type.
+
+    A GeometryCollection holding a polygon is a polygon to everybody except
+    `geom_type`, which answers "GeometryCollection" and so falls outside every
+    family. Dropping it is the silent undercount this operation's own docstring
+    argues against when it explains why the Multi variants are kept — the same
+    argument, applied to the case that is easier to miss. Null geometries go the
+    same way: `geom_type` is None and `isin` is false.
+    """
+    counts: dict[str, int] = {}
+    kinds = gdf.geom_type
+    missing = int(kinds.isna().sum())
+    if missing:
+        counts["null geometry"] = missing
+    for kind, count in kinds.dropna().value_counts().items():
+        if str(kind) not in COVERED_KINDS:
+            counts[str(kind)] = int(count)
+    return counts
+
+
+def _as_column_type(
+    column: Any, value: Any, field: str
+) -> tuple[Any, str | None]:
+    """A filter value converted to the type of the column it is compared with,
+    and a sentence saying so when it happened.
+
+    The wire contract (`plans.models.ArgValue`) carries scalars as str, bool,
+    int or float, and lists as strings only. So a filter on a numeric column
+    receives "3" and compares it with 3, which matches nothing — and an empty
+    output reads as a finding rather than as a type mismatch. Argleton has a
+    family for exactly this shape.
+
+    Conversion is attempted only when the types disagree, and the caller puts
+    the returned sentence in the manifest — the second half of the tuple is
+    there so that recording it is the easy path rather than a thing to
+    remember. It REFUSES rather than falling back to a string comparison:
+    "high" against an integer column is a question with no answer, and pretending
+    otherwise produces the empty result this exists to prevent.
+    """
+    if value is None or not pd.api.types.is_numeric_dtype(column):
+        return value, None
+    if isinstance(value, bool) or not isinstance(value, str):
+        return value, None
+
+    text = value.strip()
+    # `int` FIRST, and this is the whole reason the function is not one line.
+    # `float("9007199254740993")` is 9007199254740992.0, so going through float
+    # would hand back a filter for the row NEXT TO the one asked for — one
+    # feature kept, every check green, and the manifest naming a number the
+    # caller never typed. OSM ids, BIGINT keys and cadastral references all
+    # live past 2^53.
+    try:
+        return int(text), _read_as(value, int(text), field)
+    except ValueError:
+        pass
+    try:
+        number = float(text)
+    except ValueError:
+        raise ValueError(
+            f"{field} holds numbers and the filter value is {value!r}. Comparing "
+            "them as text would match nothing and return an empty dataset, which "
+            "reads as an answer. Pass a number."
+        ) from None
+    # `float()` accepts three strings that are not quantities. `nan` is the
+    # dangerous one: it raises nothing and compares false against everything,
+    # so `field == nan` is an empty output with a full manifest — and somebody
+    # writing "nan" means "the rows with no value", which is a different
+    # question this operation does not answer.
+    if math.isnan(number):
+        raise ValueError(
+            f"{value!r} is not a value {field} can equal: a null is never equal to "
+            "anything, including itself, so this filter would return an empty "
+            "dataset and read as an answer. Missing values are not selectable with "
+            "these four modes — use run_sql with IS NULL."
+        )
+    if math.isinf(number):
+        raise ValueError(
+            f"{value!r} is not a number {field} can hold. If the intent was 'no upper "
+            "bound', leave `maximum` out instead."
+        )
+    if pd.api.types.is_integer_dtype(column) and not number.is_integer():
+        raise ValueError(
+            f"{field} holds whole numbers and the filter value is {value!r}. "
+            "Comparing it would match nothing exactly, which returns an empty "
+            "dataset that reads as an answer. Use field_between for a range."
+        )
+    number = int(number) if number.is_integer() else number
+    return number, _read_as(value, number, field)
+
+
+def _read_as(typed: Any, used: Any, field: str) -> str:
+    return f"{typed!r} read as {used!r} for {field}"
+
+
+def select_features(
+    input_path: str,
+    output_path: str,
+    by: str,
+    value: Any = None,
+    field: str | None = None,
+    values: list[Any] | None = None,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> dict[str, Any]:
+    """Keep the features a question is about, by geometry type or by attribute.
+
+    MapSmith has been telling callers to do this for a while without offering
+    it. The mixed-geometry check says *select the features the question is about
+    — with run_sql, or by filtering the layer*; the line-only guard says
+    *convert or select the line geometry first*. Both were pointing at an
+    operation that did not exist, so the remedy was "write SQL" for something
+    that is a filter.
+
+    Four ways to ask, and deliberately no fifth:
+
+    * ``by="geometry_type"`` with ``value="line"`` (or ``point``/``polygon``, or
+      an exact type like ``"MultiPolygon"``). A family keeps its Multi variant
+      too, because a MultiLineString is line-shaped and somebody asking for the
+      pipes means both.
+    * ``by="field_equals"`` with ``field`` and ``value``.
+    * ``by="field_in"`` with ``field`` and ``values``.
+    * ``by="field_between"`` with ``field`` and ``minimum``/``maximum``,
+      inclusive at both ends.
+
+    There is no expression language on purpose. That would be `run_sql` with
+    extra steps and a smaller vocabulary, and it would need its own parser,
+    its own injection story and its own way of going wrong. What was missing
+    from the catalogue is the narrow version, which is also the one whose
+    manifest can say exactly what it kept.
+
+    **Selecting nothing is allowed and is reported, not refused.** An empty
+    result is a legitimate answer to a filter — nothing matched — and the
+    manifest carries a non-critical check saying so, because a zero that reads
+    as a finding is the failure mode this suite has a whole family for.
+    """
+    if by not in SELECT_BY:
+        raise ValueError(f"by must be one of {list(SELECT_BY)}, got {by!r}")
+
+    gdf = _read(input_path)
+    before = len(gdf)
+    coercions: list[str] = []
+    # Only a selection BY FAMILY can drop a type no family names; an
+    # attribute filter keeps whatever geometry the matching rows carry.
+    uncovered: dict[str, int] = {}
+
+    if by == "geometry_type":
+        if not isinstance(value, str):
+            raise ValueError(
+                "by='geometry_type' needs value: a family ('point', 'line', "
+                "'polygon') or an exact type such as 'MultiPolygon'."
+            )
+        wanted = GEOMETRY_FAMILIES.get(value.lower())
+        if wanted is None:
+            present = sorted(gdf.geom_type.dropna().unique().tolist())
+            if value not in present and value not in {
+                t for family in GEOMETRY_FAMILIES.values() for t in family
+            }:
+                raise ValueError(
+                    f"{value!r} is neither a geometry family "
+                    f"({sorted(GEOMETRY_FAMILIES)}) nor a geometry type. This layer "
+                    f"holds {present}."
+                )
+            wanted = {value}
+        keep = gdf.geom_type.isin(sorted(wanted))
+        description = f"geometry type in {sorted(wanted)}"
+        uncovered = _uncovered_kinds(gdf)
+    else:
+        if not field:
+            raise ValueError(f"by={by!r} needs a field name.")
+        if field not in gdf.columns:
+            raise ValueError(
+                f"{input_path} has no column {field!r}. Columns: "
+                f"{sorted(c for c in gdf.columns if c != gdf.geometry.name)}"
+            )
+        if by == "field_equals":
+            if value is None:
+                raise ValueError(
+                    "by='field_equals' needs a value. Without one the comparison is "
+                    "against null, which is false for every row: the output would be "
+                    "an empty dataset with a complete manifest, and an empty dataset "
+                    "reads as an answer."
+                )
+            value, said = _as_column_type(gdf[field], value, field)
+            coercions += [said] if said else []
+            keep = gdf[field] == value
+            description = f"{field} == {value!r}"
+        elif by == "field_in":
+            if not values:
+                raise ValueError("by='field_in' needs a non-empty `values` list.")
+            converted = [_as_column_type(gdf[field], v, field) for v in values]
+            values = [v for v, _ in converted]
+            coercions += [said for _, said in converted if said]
+            keep = gdf[field].isin(values)
+            description = f"{field} in {values!r}"
+        else:
+            if minimum is None and maximum is None:
+                raise ValueError(
+                    "by='field_between' needs `minimum`, `maximum`, or both."
+                )
+            if not (
+                pd.api.types.is_numeric_dtype(gdf[field])
+                or pd.api.types.is_datetime64_any_dtype(gdf[field])
+            ):
+                raise ValueError(
+                    f"field_between needs a field that can be ordered, and {field} "
+                    f"holds {gdf[field].dtype}. Comparing it with a bound raises "
+                    "inside pandas before MapSmith can write a manifest. Use "
+                    "field_equals or field_in for this column."
+                )
+            minimum, said_min = _as_column_type(gdf[field], minimum, field)
+            maximum, said_max = _as_column_type(gdf[field], maximum, field)
+            coercions += [s for s in (said_min, said_max) if s]
+            if minimum is not None and maximum is not None and minimum > maximum:
+                raise ValueError(
+                    f"field_between was given minimum={minimum!r} above "
+                    f"maximum={maximum!r}, so no value can satisfy it. The output "
+                    "would be empty by construction, and the criterion written in "
+                    "the manifest would read like a legitimate range."
+                )
+            keep = gdf[field].notna()
+            if minimum is not None:
+                keep &= gdf[field] >= minimum
+            if maximum is not None:
+                keep &= gdf[field] <= maximum
+            description = (
+                f"{field} between {minimum if minimum is not None else '-inf'} and "
+                f"{maximum if maximum is not None else '+inf'}, inclusive"
+            )
+
+    out = gdf[keep].copy()
+    kept = len(out)
+
+    # The arguments the engine ran with, one key each. `criterion` is the same
+    # thing in a sentence and stays because it reads well — but it cannot be the
+    # only record: re-running from it would mean parsing English with a Python
+    # repr inside, which is what the spec faults other formats for. The values
+    # are the ones USED, after any coercion.
+    arguments: dict[str, Any] = {"by": by, "criterion": description}
+    if by == "geometry_type":
+        arguments["value"] = value
+    else:
+        arguments["field"] = field
+        if by == "field_equals":
+            arguments["value"] = value
+        elif by == "field_in":
+            arguments["values"] = values
+        else:
+            arguments["minimum"], arguments["maximum"] = minimum, maximum
+    # `features_before` is an observation of the input, like `source_band_count`
+    # elsewhere. `features_kept` is an OUTCOME, and outcomes live in the
+    # verification and in the notes, not among the parameters.
+    arguments["features_before"] = before
+
+    record = ProvenanceRecord(
+        operation="select_features",
+        parameters=arguments,
+        inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))],
+        engine=_engine_info(),
+    )
+    record.crs_decisions = {
+        "analysis_crs": verify.crs_label(gdf.crs),
+        "reason": "no CRS change: selecting rows does not touch coordinates",
+    }
+    if kept < before:
+        record.notes.append(
+            f"{before - kept} of {before} feature(s) were removed. This output is a "
+            "SUBSET: any total computed from it is a total of what survived the "
+            f"filter ({description}), not of the source."
+        )
+    if coercions:
+        # Said out loud because it changes what was compared. A value arriving
+        # as text against a numeric column is the ordinary case over the wire,
+        # and silently comparing them as text would match nothing.
+        record.notes.append(
+            "filter value(s) converted to the column's type before comparing: "
+            + "; ".join(coercions)
+        )
+
+    pre = verify.verify_loaded_inputs("select_features", input_path=gdf)
+    if verify.has_critical_failure(pre):
+        record.add_verification(pre).finish().write_for(output_path)
+        verify.enforce(pre, "select_features")
+    with verify.audit_on_failure(record, output_path, pre):
+        _write(out, output_path)
+
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="select_features",
+        preconditions=pre,
+        # Both properties this operation needs are ones the spec already names,
+        # so they use the core names and are computed FROM THE FILE. The first
+        # version of this asked them under `x-mapsmith:` names and answered from
+        # numbers already in memory — two checks that could not fail, one of
+        # them critical, sitting in an audit trail as if they had.
+        checks_fn=lambda: [
+            *verify.verify_vector_output(
+            output_path,
+            expect_crs=verify.crs_label(gdf.crs),
+            expect_count=kept,
+            # A filter can only remove: more rows out than in means the
+            # predicate was applied to the wrong frame, which is silent.
+            max_count=before,
+            # Nothing matched is a legitimate answer, and it is also what a
+            # misspelled value looks like. Warn, and say which is which.
+            on_empty="warn" if before else "ignore",
+            empty_hint="an empty selection is a valid answer to a filter, and it is "
+            f"also what a misspelled value or the wrong case looks like ({description}). "
+            "describe_dataset lists the geometry types and the fields actually present.",
+            ),
+            # A family selection cannot keep what no family names, and dropping
+            # it without a word is the undercount this operation was built to
+            # prevent for the Multi variants. Not critical: the selection may be
+            # exactly what was wanted. Said, so it cannot be assumed.
+            verify.Check(
+                "x-mapsmith:every_feature_was_considered",
+                not uncovered,
+                ", ".join(f"{count} {kind}" for kind, count in uncovered.items())
+                if uncovered
+                else "every feature belongs to a geometry family",
+                critical=False,
+                hint=None if not uncovered else
+                "these features belong to no geometry family, so a selection by "
+                "family drops them whatever family is asked for — a "
+                "GeometryCollection holding a polygon is a polygon to everybody "
+                "except its type name. Use explode first, or select by exact type.",
+            ),
+        ],
+    )
+    return {
+        "output": str(output_path),
+        "features_before": before,
+        "features_kept": kept,
+        "features_removed": before - kept,
+        "criterion": description,
+        "provenance": str(manifest),
+        **extras,
+    }
+
+
+def extract_layer(input_path: str, layer: str, output_path: str) -> dict[str, Any]:
+    """Take one layer out of a multi-layer container, into a dataset of its own.
+
+    MapSmith refuses a container with more than one layer, because the format's
+    default is the first layer and a manifest could not honestly say which data
+    produced the numbers (issue #29, and Argleton trap 006 measured the old
+    behaviour). The refusal has always told the caller what to do instead —
+    *extract the layer you mean into its own dataset* — and then handed them a
+    `run_sql` incantation, because there was no operation for it.
+
+    This is that operation. It is the natural next step after
+    `describe_dataset`, which lists a container's layers precisely so that one
+    can be chosen.
+
+    An unknown layer name is refused with the list of real ones rather than an
+    empty result, because a typo and an empty layer are different problems and
+    only one of them is the caller's data.
+
+    A layer with no CRS is refused too, by the shared precondition, and that is
+    worth knowing before it happens: it makes this a dead end for the one case
+    somebody most wants it for — pulling a broken layer out of a container in
+    order to fix it. The refusal is deliberate (invariant 4, and
+    `convert_format` refuses the same input), but the way out today is `run_sql`
+    rather than this operation. Recorded as a decision to take, not a gap to
+    discover.
+    """
+    available = readers.gpkg_layers(input_path)
+    # Both the refusals and the read itself live in `readers`, which is the one
+    # place that decides how a vector dataset is opened. Writing them here would
+    # be the seventh copy of that decision, and #28 was the first six.
+    gdf = readers.read_named_layer(input_path, layer)
+
+    record = ProvenanceRecord(
+        operation="extract_layer",
+        parameters={
+            "layer": layer,
+            "layers_in_container": sorted(available),
+            "container_layer_count": len(available),
+        },
+        # `layer` on the INPUT record, which is the field the spec defines for
+        # exactly this: an auditor holding a five-layer container and this
+        # record has to be able to tell which layer produced the numbers.
+        # Recording it only under `parameters` would be MapSmith answering in
+        # its own vocabulary a question the format already asks.
+        inputs=[
+            InputRecord.from_path(
+                input_path, crs=verify.crs_label(gdf.crs), layer=layer
+            )
+        ],
+        engine=_engine_info(),
+    )
+    record.crs_decisions = {
+        "analysis_crs": verify.crs_label(gdf.crs),
+        "reason": "no CRS change: the layer is copied out as it is stored",
+    }
+    record.notes.append(
+        f"{layer!r} of {len(available)} layer(s) in the container "
+        f"({', '.join(sorted(available))}). The others are untouched and are not in "
+        "this output — which is the point: an operation downstream can now say "
+        "which data produced its numbers."
+    )
+
+    pre = verify.verify_loaded_inputs("extract_layer", input_path=gdf)
+    if verify.has_critical_failure(pre):
+        record.add_verification(pre).finish().write_for(output_path)
+        verify.enforce(pre, "extract_layer")
+    with verify.audit_on_failure(record, output_path, pre):
+        _write(gdf, output_path)
+
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="extract_layer",
+        preconditions=pre,
+        # Extraction copies; it does not select, so the count in the file must
+        # be the count in the container — which is what `expect_count` asks,
+        # reading the output. There was an `x-mapsmith:the_layer_came_out_whole`
+        # here that compared the input with a second read of the same input:
+        # critical, unfailable, and its detail claimed a comparison it never
+        # made. `feature_count_exact` was already doing the work.
+        checks_fn=lambda: verify.verify_vector_output(
+            output_path,
+            expect_crs=verify.crs_label(gdf.crs),
+            expect_count=len(gdf),
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "layer": layer,
+        "features": len(gdf),
+        "layers_in_container": sorted(available),
+        "provenance": str(manifest),
+        **extras,
+    }

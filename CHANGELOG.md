@@ -8,6 +8,64 @@ All notable changes to MapSmith are documented here, in the format of
 
 ### Added
 
+- **`select_features` and `extract_layer`: two remedies MapSmith was already
+  recommending without offering.** The mixed-geometry warning said *select the
+  features the question is about*; the multi-layer refusal said *extract the
+  layer you mean into its own dataset*. Both then handed over a `run_sql`
+  incantation, which is a long way round for "keep the lines". Now they name an
+  operation, and the hints were rewritten to do so — an error message that
+  points at a longer route than the one that exists is a defect of its own,
+  because it is the only thing a blocked caller reads.
+  - `select_features` keeps features by geometry family (`line` keeps
+    MultiLineString too), by exact geometry type, or by an attribute condition
+    (`field_equals`, `field_in`, `field_between`, inclusive at both ends).
+    Deliberately no expression language: that is `run_sql` with extra steps and
+    its own way of going wrong. Filter values arriving as text against a numeric
+    column are **converted and recorded**, and the conversion tries `int` before
+    `float` because it has to: `float("9007199254740993")` is 9007199254740992,
+    so going through float would return **the row next to** the one asked for —
+    one feature kept, every check green, and a manifest naming a number nobody
+    typed. OSM ids, BIGINT keys and cadastral references all live past 2^53.
+    Five more inputs are refused rather than answered with an empty dataset,
+    because an empty dataset with a complete manifest reads as a finding:
+    `"high"` against an integer column, `"nan"` (which `float()` accepts and
+    which equals nothing, including itself), `"inf"`, `field_equals` with no
+    value, and a range whose minimum is above its maximum. Matching nothing for
+    a reason that is not one of those is reported as a warning, with the hint
+    that a typo and a genuinely empty result look identical.
+  - A **family selection says what it could not keep**. `line` keeps
+    MultiLineString because a MultiLineString is line-shaped — and by the same
+    argument a GeometryCollection holding a polygon is a polygon to everybody
+    except its type name, so dropping it without a word would be that care
+    applied to half the problem. Types no family covers, and null geometries,
+    are counted in a non-critical check that names them.
+  - `extract_layer` copies one named layer out of a multi-layer container. The
+    refusal it resolves (issue #29) stays exactly as strict; what changes is
+    that the way out is now one call whose manifest names the layer, the
+    container and the layers left behind.
+- **A bounding box that spans the planet for data two degrees wide** is now
+  reported with the sentence that makes it readable (`antimeridian.py`).
+  RFC 7946 §3.1.9 splits a geometry at the antimeridian, so the bounds computed
+  from its coordinates come out as the ordinary west-to-east form spanning the
+  world; §5.2 defines the crossing form as the one with west greater than east.
+  Nothing in a planar geometry library can produce the second from the first,
+  so `describe_dataset` reported `(-180, -17.5, 180, -16.5)` for a Fijian survey
+  zone — arithmetically correct, and the wrong answer to the question anybody
+  asked. The plain box is still returned unchanged; when the data crosses, a
+  `true_extent`, a width and a note saying what a filter on the plain box would
+  select come with it. Distinguishing a real crossing from a dataset that
+  genuinely covers the world needs a geometry probe, not arithmetic: a single
+  global rectangle has only ±180 as longitudes and they wrap onto one value.
+  Detection deliberately carries **no threshold on the plain span**: the first
+  version required 350° before looking further, which only ever fires on data
+  split exactly at ±180 — the well-formed case. Buoys at 170°E and 140°W span
+  310° and were reported in silence. What replaces it is a rule with a meaning:
+  a crossing layer reads narrower when the seam is treated as continuous *and*
+  occupies less than half the world going the short way, so points scattered at
+  -179, -90, 0, 90 and 179 are global data rather than a crossing. Only
+  degree-based geographic systems are considered — EPSG:4807 is geographic in
+  grads, where wrapping at 360 means nothing.
+
 - **`locate_extreme_cell`** answers where the lowest or highest value of a
   raster is, as a coordinate. No operation could be asked that before, which is
   why MapSmith reported `unsupported` twice on Argleton's `grid-registration`
@@ -320,7 +378,7 @@ are in `Changed` and one of them affects anybody passing `category=`.
   with a tool of its own: `measure_length`, `join_table`, `aggregate_weighted`,
   `parse_coordinates`, `point_on_surface`, `hull_layer`, `validate_geometry`,
   `count_in_polygons`, `focal_statistics` and `extract_streams`. The catalogue is
-  at 72 operations (70 available, 2 planned) behind 28 tools.
+  at 74 operations (72 available, 2 planned) behind 28 tools.
 - **Overlay and dissolve declare their semantics in the manifest.** Dropped
   lower-dimension pieces from an overlay are named rather than silently absent,
   and a dissolve's aggregation is recorded with the group count verified in

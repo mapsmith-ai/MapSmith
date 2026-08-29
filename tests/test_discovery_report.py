@@ -119,3 +119,99 @@ def test_the_population_is_named_wherever_a_percentage_is(report):
         f"the README no longer says how many requests these percentages are over "
         f"({report['n']}), which turns a measurement into a claim"
     )
+
+
+def test_the_prose_around_the_table_is_checked_too():
+    """The sentences, not only the numbers in the grid.
+
+    Two claims went stale unnoticed and were found on 2026-08-29 while adding
+    two operations, not by anybody checking: the page said the surviving set
+    "has a median of 26 and never exceeded it" when the median was 14 and three
+    of the 118 requests exceeded 30, and it called the curve a *median* while
+    publishing the *mean*. Both were false before the catalogue reached 72, and
+    the reason nobody noticed is that this file read the table and stopped.
+
+    A sentence asserting a property that does not hold is worse than no
+    sentence, because people stop thinking about it. So the prose is parsed for
+    the numbers it states and each one is compared with the harness.
+    """
+    import re
+    import statistics
+
+    from mapsmith import catalog
+
+    prose = README.read_text(encoding="utf-8")
+    import discovery_report
+
+    rows = discovery_report.answerable(discovery_report.load())
+    full = discovery_report.LEVELS[3][1]
+    sizes = [
+        len(catalog.applicable(**discovery_report.facets_for(r["label_claude"], full)))
+        for r in rows
+    ]
+    over = sum(1 for size in sizes if size > catalog.CHOOSABLE)
+
+    match = re.search(
+        r"its median is (\d+) and it exceeds 30\s*\n?\s*for (\w+) of them", prose
+    )
+    assert match, (
+        "the sentence stating the median surviving set and how often it exceeds "
+        "the threshold has been reworded; update this test with it rather than "
+        "deleting it — it exists because that sentence was false for two "
+        "catalogue sizes running"
+    )
+    words = {"none": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5}
+    assert int(match.group(1)) == statistics.median(sizes)
+    assert words[match.group(2)] == over
+
+    # The curve: every point must be the average the harness computes at that
+    # catalogue size. Only the last one can be recomputed here — the earlier
+    # ones are history — but the last one is the one that goes stale.
+    curve = re.search(r"9 at 51 operations, 14 at 61, 16 at 72, (\d+) at (\d+)", prose)
+    assert curve, "the scaling curve sentence has been reworded; update this test"
+    assert int(curve.group(2)) == len(catalog.OPERATIONS)
+    assert int(curve.group(1)) == round(sum(sizes) / len(sizes))
+
+
+def test_the_site_carries_the_same_facet_numbers_as_the_harness():
+    """The site is a showcase of its own, and its numbers are hand-written.
+
+    On 2026-08-29 the page said the facets take the candidates "from 51 to 21"
+    while its own table two screens down said 74 to 31; claimed the right
+    operation comes back "on all 118 requests" where the README spends a
+    paragraph explaining why it is 115; and quoted a median of 14 inside a
+    sentence about a measurement made at 61 operations, where the number was 9.
+    Three contradictions on one page, none of them reachable by the check that
+    reads the README.
+    """
+    import re
+
+    from mapsmith import catalog
+
+    template = ROOT / "site" / "index.template.html"
+    prose = template.read_text(encoding="utf-8")
+
+    import discovery_report
+
+    rows = discovery_report.answerable(discovery_report.load())
+    facets = discovery_report.LEVELS[2][1]  # input kind + produces
+    narrowed = [
+        len(catalog.applicable(**discovery_report.facets_for(r["label_claude"], facets)))
+        for r in rows
+    ]
+    full = discovery_report.LEVELS[3][1]
+    surviving = [
+        len(catalog.applicable(**discovery_report.facets_for(r["label_claude"], full)))
+        for r in rows
+    ]
+    delivered = sum(1 for size in surviving if size <= catalog.CHOOSABLE)
+
+    match = re.search(r"takes the candidates from (\d+) to (\d+)", prose)
+    assert match, "the narrowing sentence has been reworded; update this test with it"
+    assert int(match.group(1)) == len(catalog.OPERATIONS)
+    assert int(match.group(2)) == round(sum(narrowed) / len(narrowed))
+
+    match = re.search(r"On (\d+) of those (\d+) requests the right", prose)
+    assert match, "the delivery sentence has been reworded; update this test with it"
+    assert int(match.group(1)) == delivered
+    assert int(match.group(2)) == len(rows)

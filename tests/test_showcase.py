@@ -833,7 +833,11 @@ def test_the_retrieval_numbers_agree_between_the_readme_and_the_site():
     # whole job of this test.
     shared = [
         ("118", "independent requests the retrieval numbers come from"),
-        ("60%", "our ranking, found@3, once arity is declared"),
+        # Was "60%" until 2026-08-29, and it had been stale for three catalogue
+        # sizes: it passed only because that string happened to appear in two
+        # unrelated sentences on the two pages. A shared-number check that
+        # matches by coincidence is worse than one that is missing.
+        ("53%", "our ranking, found@3, once arity is declared"),
         ("69%", "a model choosing from the delivered candidates"),
         ("70%", "where the two model labellers agree with each other"),
         ("4.4", "plausible families per request, why family cannot filter"),
@@ -872,3 +876,27 @@ def test_the_retrieval_numbers_agree_between_the_readme_and_the_site():
             f"at {size} operations the README says {lexical}% / {vector}% and the site "
             f"says {found.group(1)}% / {found.group(2)}%"
         )
+
+
+def test_the_site_build_is_at_least_valid_python():
+    """The suite stayed green with a syntax error in `site/build.py`.
+
+    On 2026-08-29 a bad edit left an `if` at the wrong indentation there, and
+    1391 tests passed anyway: this file reads `build.py` as *text* — to check
+    the sentences it emits — and nothing ever compiles it. The site is one of
+    the four public surfaces, so its builder being broken is a broken showcase
+    that only shows up when somebody deploys.
+
+    Compiling is not building, and it deliberately stops short of running the
+    thing: a real build takes minutes and needs the engines. What it buys is
+    that the failure arrives from the test suite rather than from Pages.
+    """
+    import py_compile
+
+    for script in (SITE_BUILD, ROOT / "benchmarks" / "worked_example.py"):
+        try:
+            py_compile.compile(str(script), doraise=True, cfile=str(script) + "c")
+        except py_compile.PyCompileError as broken:  # pragma: no cover
+            raise AssertionError(f"{script.name} does not compile: {broken}") from None
+        finally:
+            Path(str(script) + "c").unlink(missing_ok=True)

@@ -86,7 +86,10 @@ def _lines_of(gdf: gpd.GeoDataFrame, path: str, operation: str) -> None:
     if not kinds <= {"LineString", "MultiLineString"}:
         raise ValueError(
             f"{operation} works on lines, and {path} holds {sorted(kinds)}. "
-            "Convert or select the line geometry first."
+            "Keep the line features first: run_operation(operation="
+            "'select_features', arguments={'input_path': ..., 'output_path': ..., "
+            "'by': 'geometry_type', 'value': 'line'}). Or convert the geometry, if "
+            "the shapes themselves are the wrong ones."
         )
 
 

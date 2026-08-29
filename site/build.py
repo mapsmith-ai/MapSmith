@@ -189,7 +189,10 @@ def worked_example_html() -> str:
         by_id = {step["id"]: step for step in result.get("steps", [])}
         for found, step in zip(example.STEPS, example.trace_discovery(), strict=True):
             run = by_id.get(found["id"])
-            crs, checks = "—", "outside the plan"
+            # Every step of the worked example is inside the plan now, so this
+            # is the shape of a step that did not run at all — not one that ran
+            # elsewhere. `benchmarks/worked_example.py` says the same thing.
+            crs, checks = "—", "did not run"
             if run:
                 output = run.get("output_path") or run.get("output")
                 manifest = Path(f"{output}.provenance.json")

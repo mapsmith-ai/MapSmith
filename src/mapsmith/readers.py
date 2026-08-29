@@ -195,9 +195,12 @@ def refuse_ambiguous_container(path: str) -> None:
         "MapSmith will not pick one for you: the format's default is simply the "
         "first layer, which may not be the one you mean, and the provenance "
         "manifest could not honestly say which data produced the numbers. "
-        "Inspect the container with describe_dataset, then extract the layer "
-        "you mean into its own dataset — e.g. run_sql: SELECT * FROM "
-        f"ST_Read('{path}', layer='<name>') with an output_path."
+        "Inspect the container with describe_dataset, which lists the layers, "
+        "then extract the one you mean into its own dataset: "
+        "run_operation(operation='extract_layer', arguments={'input_path': "
+        f"'{path}', 'layer': '<name>', 'output_path': ...}}). It has no tool of "
+        "its own, like most of the catalogue. For a condition on the rows as "
+        "well, run_sql can do both at once."
     )
 
 
@@ -275,6 +278,46 @@ def read_vector(path: str) -> gpd.GeoDataFrame:
         return _read_geoparquet(path, allow_no_geometry=False)
     refuse_ambiguous_container(path)
     return gpd.read_file(path)
+
+
+def read_named_layer(path: str, layer: str) -> gpd.GeoDataFrame:
+    """One named layer of a multi-layer container.
+
+    The counterpart of :func:`refuse_ambiguous_container`: that function exists
+    because nobody chose, and this one because somebody did. The ambiguity the
+    refusal protects against is gone the moment a name is given, so this is the
+    one read that is allowed past it — and it lives here, with every other
+    "open a vector dataset" decision, rather than at the call site. #28 was that
+    decision in six copies with four of them missing a branch.
+
+    An unknown name is refused with the real list rather than answered with an
+    empty frame: a typo and an empty layer are different problems, and only one
+    of them is the caller's data.
+    """
+    # Before asking OGR anything: a GeoParquet has no layers to choose between,
+    # and whether GDAL can even list it depends on whether the build has the
+    # Arrow driver. Deciding by installed driver is how the same call reads one
+    # file two ways on two machines — and `read_vector` routes .parquet away
+    # from OGR on purpose, for the 2.0 types and the CRS-declaration branch.
+    if str(path).lower().endswith(".parquet"):
+        raise ValueError(
+            f"{path} is a GeoParquet: a single dataset, with no layers to choose "
+            "between. Read it directly — there is nothing to extract."
+        )
+    available = gpkg_layers(path)
+    if not available:
+        raise ValueError(
+            f"{path} holds no listable layers. It is either a single-dataset format "
+            "— a GeoJSON, a shapefile — which needs no extraction and can be read "
+            "directly, or it is not an OGR source at all."
+        )
+    if layer not in available:
+        raise ValueError(
+            f"{path} has no layer {layer!r}. It holds: {sorted(available)}. Layer "
+            "names are case-sensitive; describe_dataset lists them with their "
+            "feature counts and geometry types."
+        )
+    return gpd.read_file(path, layer=layer)
 
 
 def read_vector_or_table(path: str) -> gpd.GeoDataFrame:

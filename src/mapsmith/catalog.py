@@ -816,6 +816,221 @@ OPERATIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        "name": "select_features",
+        "status": "available",
+        "tool": None,
+        "workload": "small_vector",
+        "category": "vector",
+        "produces": "dataset:vector",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
+        "summary": "Keep the features a question is about \u2014 by geometry type or by an "
+        "attribute condition \u2014 and record what was removed",
+        "phrasings": "keep only the lines; drop the polygons; just the features where type is X; "
+        "filter out the rest; only the ones between 10 and 20; remove everything else",
+        "distinguishes": "Removes whole features and keeps the rest unchanged. Not clip_layer, which "
+        "cuts geometry to a boundary and can return partial features; not extract_layer, which pulls "
+        "a named layer out of a multi-layer container; not run_sql, which can express any condition "
+        "but needs the query written.",
+        "description": (
+            "Keep the features that match, drop the others, and write the survivors as a "
+            "new dataset. Four ways to ask, chosen with `by`: 'geometry_type' with a "
+            "family ('point', 'line', 'polygon' \u2014 each keeps its Multi variant too) or "
+            "an exact type; 'field_equals' with a field and a value; 'field_in' with a "
+            "field and a list; 'field_between' with a field and minimum/maximum, "
+            "inclusive at both ends. Geometry is copied verbatim: coordinates, CRS and "
+            "attributes are untouched, so a total computed downstream is a total of the "
+            "survivors. Matching nothing is a valid answer and is reported as a warning "
+            "in the manifest rather than refused. For a condition these four cannot "
+            "express, use run_sql."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Vector dataset to filter (must have a CRS)",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Where the surviving features are written",
+            },
+            {
+                "name": "by",
+                "type": "str",
+                "required": True,
+                "description": "geometry_type | field_equals | field_in | field_between",
+            },
+            {
+                "name": "value",
+                "type": "str",
+                "required": False,
+                "description": "For geometry_type: 'point'/'line'/'polygon' or an exact "
+                "type such as 'MultiPolygon'. For field_equals: the value to match — "
+                "converted to the column's type when the column holds numbers, and "
+                "refused if it cannot be, because comparing text with numbers "
+                "matches nothing and an empty output reads as an answer.",
+            },
+            {
+                "name": "field",
+                "type": "str",
+                "required": False,
+                "description": "Attribute column, for the three field_* modes",
+            },
+            {
+                "name": "values",
+                "type": "list[str]",
+                "required": False,
+                "description": "For field_in: the accepted values, converted to the "
+                "column's type the same way as `value`",
+            },
+            {
+                "name": "minimum",
+                "type": "float",
+                "required": False,
+                "description": "For field_between: lower bound, inclusive",
+            },
+            {
+                "name": "maximum",
+                "type": "float",
+                "required": False,
+                "description": "For field_between: upper bound, inclusive",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "A survey file holds pipes and plots together, and the length "
+                "question is only about the pipes",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "select_features",
+                        "arguments": {
+                                "input_path": "survey.gpkg",
+                                "output_path": "pipes.parquet",
+                                "by": "geometry_type",
+                                "value": "line",
+                        },
+                    },
+                },
+            },
+            {
+                "goal": "Keep only the parcels zoned residential",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "select_features",
+                        "arguments": {
+                                "input_path": "parcels.parquet",
+                                "output_path": "residential.parquet",
+                                "by": "field_equals",
+                                "field": "zoning",
+                                "value": "residential",
+                        },
+                    },
+                },
+            },
+            {
+                "goal": "Keep the stations whose elevation is between 200 and 800 metres",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "select_features",
+                        "arguments": {
+                                "input_path": "stations.parquet",
+                                "output_path": "midrange.parquet",
+                                "by": "field_between",
+                                "field": "elevation_m",
+                                "minimum": 200,
+                                "maximum": 800,
+                        },
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "extract_layer",
+        "status": "available",
+        "tool": None,
+        "workload": "small_vector",
+        "category": "vector",
+        "produces": "dataset:vector",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
+        "summary": "Take one named layer out of a multi-layer container into a dataset "
+        "of its own, so downstream operations can say which data they used",
+        "phrasings": "the file has several layers; get the roads layer out of the geopackage; "
+        "which layer; pull one table out of the container; split the layers apart",
+        "distinguishes": "Copies one whole layer out of a container that holds several. Not "
+        "select_features, which removes features from one layer; not convert_format, which changes "
+        "the container and cannot choose among its layers.",
+        "description": (
+            "Copy one layer of a multi-layer container (GeoPackage, FileGDB, "
+            "multi-layer OGR sources) into a dataset of its own, verbatim: same "
+            "features, same CRS, same attributes. MapSmith refuses a multi-layer "
+            "container elsewhere because the format's default is the first layer and a "
+            "manifest could not honestly say which data produced the numbers; this is "
+            "the operation that resolves that refusal. describe_dataset lists the "
+            "layers with their feature counts and geometry types \u2014 run it first if "
+            "the names are not known. An unknown name is refused with the real list "
+            "rather than an empty output, because a typo and an empty layer are "
+            "different problems."
+        ),
+        "parameters": [
+            {
+                "name": "input_path",
+                "type": "str",
+                "required": True,
+                "description": "Multi-layer container (.gpkg, .gdb, any listable OGR source)",
+            },
+            {
+                "name": "layer",
+                "type": "str",
+                "required": True,
+                "description": "Layer name, case-sensitive, as describe_dataset reports it",
+            },
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": "Where the layer is written (.parquet is canonical)",
+            },
+        ],
+        "examples": [
+            {
+                "goal": "An operation refused the GeoPackage because it holds three "
+                "layers, and the question is about the roads",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "extract_layer",
+                        "arguments": {
+                                "input_path": "city.gpkg",
+                                "layer": "roads",
+                                "output_path": "roads.parquet",
+                        },
+                    },
+                },
+            },
+            {
+                "goal": "Bring one table of a delivered GeoPackage into the canonical "
+                "analytical format before analysing it",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "extract_layer",
+                        "arguments": {
+                                "input_path": "delivery.gpkg",
+                                "layer": "parcels_2026",
+                                "output_path": "parcels.parquet",
+                        },
+                    },
+                },
+            },
+        ],
+    },
+    {
         "name": "reproject_layer",
         "status": "available",
         "tool": "reproject_layer",

@@ -9,8 +9,8 @@ compares. If the catalogue changes, if an operation stops recording a CRS
 decision, if the validator's message moves, the README goes stale and the build
 says so instead of a reader finding out.
 
-Slow, because it is the real pipeline: buffer, clip, zonal statistics, area and a
-SQL filter over fixtures written to disk.
+Slow, because it is the real pipeline: buffer, clip, zonal statistics, area and
+the attribute filter, over fixtures written to disk.
 """
 
 from __future__ import annotations
@@ -29,92 +29,24 @@ pytestmark = pytest.mark.slow
 
 @pytest.fixture(scope="module")
 def section() -> str:
-    """Regenerate the README section from a real run."""
-    import json
+    """Regenerate the README section from a real run.
+
+    It calls the script's own `build_trace` rather than rebuilding the trace
+    here. This fixture used to hold a second copy of that code — same
+    execution, same dictionary, retyped — and the copy bought nothing: a
+    mistake inside `build_trace` could not be caught by a test that never ran
+    it. What it cost was a false failure every time the trace changed shape,
+    which is what happened on 2026-08-29 when the last step moved inside the
+    plan.
+    """
     import shutil
     import tempfile
 
     import worked_example as example
 
-    from mapsmith.plans import executor, models, validator
-
     workdir = Path(tempfile.mkdtemp(prefix="mapsmith-worked-test-"))
     try:
-        paths = example.build_fixtures(workdir)
-        plan = example.build_plan(paths, workdir)
-        rejected = validator.validate(
-            models.Plan.model_validate(example.wrong_plan_first(plan))
-        )
-        result = executor.execute(models.Plan.model_validate(plan))
-
-        steps = []
-        for step in result.get("steps", []):
-            record = {"id": step.get("id"), "operation": step.get("operation")}
-            manifest = Path(f"{step.get('output_path') or step.get('output')}.provenance.json")
-            if manifest.exists():
-                data = json.loads(manifest.read_text(encoding="utf-8"))
-                record["crs_decisions"] = data.get("crs_decisions", {})
-                checks = data.get("verification", [])
-                checks = checks if isinstance(checks, list) else checks.get("checks", [])
-                record["checks_passed"] = sum(1 for c in checks if c.get("passed"))
-                record["checks_total"] = len(checks)
-            record["shown_arguments"] = ", ".join(
-                f"`{k}={v}`"
-                for k, v in next(
-                    s["arguments"] for s in plan["steps"] if s["id"] == record["id"]
-                ).items()
-                if k not in ("output_path",)
-                and not (isinstance(v, str) and v.startswith("/"))
-                and not (isinstance(v, str) and ":" in v[:3])
-            )
-            steps.append(record)
-
-        from mapsmith.engines import duckdb_engine
-
-        measured = workdir / "answer.parquet"
-        filtered = workdir / "below_limit.parquet"
-        duckdb_engine.run_sql(
-            f"SELECT * FROM read_parquet('{measured.as_posix()}') "
-            f"WHERE mean < {example.ELEVATION_LIMIT_M}",
-            output_path=str(filtered),
-        )
-
-        import geopandas as gpd
-
-        before = gpd.read_parquet(measured)
-        after = gpd.read_parquet(filtered)
-        trace = {
-            "goal": (
-                "Parcels within 1.5 km of the river whose ground sits below 120 m, "
-                "with the elevation and the ground area of each"
-            ),
-            "discovery": example.trace_discovery(),
-            "rejected_plan": {
-                "valid": rejected.valid,
-                "errors": [
-                    {"code": e.code, "step_id": e.step_id, "message": e.message}
-                    for e in rejected.errors
-                ],
-            },
-            "accepted_plan": {"valid": True, "steps": len(plan["steps"])},
-            "execution": steps,
-            "outside_the_plan": {
-                "operation": "run_sql",
-                "reason": (
-                    "`$step` references resolve only in arguments declared as dataset "
-                    "inputs; run_sql takes its inputs inside a SQL string, so it cannot "
-                    "join the plan's dataflow. Deliberate: substituting into arbitrary "
-                    "strings would let a planner assemble a path out of text."
-                ),
-                "rows_in": len(before),
-                "rows_out": len(after),
-            },
-            "answer": [
-                {k: (round(v, 2) if isinstance(v, float) else v) for k, v in row.items()}
-                for row in after.drop(columns="geometry").to_dict("records")
-            ],
-        }
-        return example.markdown(trace)
+        return example.markdown(example.build_trace(workdir))
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 
@@ -157,13 +89,15 @@ def test_the_example_answer_matches_what_the_fixture_makes_it(section):
     for name, offset in example.PARCELS:
         centre = example.RIVER_LON + offset + example.PARCEL_SIDE / 2
         elevation = example.DEM_WEST_M + (centre - example.DEM_WEST_LON) / span * rise
-        if elevation < example.ELEVATION_LIMIT_M:
+        # Inclusive, because that is what `field_between` does. The strict
+        # form agreed with it only because no parcel sits exactly on 120.
+        if elevation <= example.ELEVATION_LIMIT_M:
             expected.append((name, elevation))
 
     answer_table = section.split("| name |", 1)[1] if "| name |" in section else section
     for name, elevation in expected:
         assert name in answer_table, (
-            f"{name} sits at {elevation:.0f} m, under the {example.ELEVATION_LIMIT_M} m "
+            f"{name} sits at {elevation:.0f} m, at or under the {example.ELEVATION_LIMIT_M} m "
             "threshold, and is not in the published answer"
         )
     # The exclusions are the half that matters: a filter that drops nothing looks

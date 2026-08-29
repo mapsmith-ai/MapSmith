@@ -415,6 +415,18 @@ def _spec_fixtures(tmp_path):
         crs=crs,
     ).to_parquet(control)
 
+    # A container with two layers, which nothing else here needs: extract_layer
+    # has nothing to extract without one. Written with the GPKG driver because
+    # single-dataset formats cannot hold two layers at all — which is the
+    # refusal the operation exists to resolve.
+    container = tmp_path / "container.gpkg"
+    gpd.GeoDataFrame({"k": ["x"], "v": [1]}, geometry=[square], crs=crs).to_file(
+        container, layer="parcels", driver="GPKG"
+    )
+    gpd.GeoDataFrame(
+        {"id": [0]}, geometry=[LineString([(0, 0), (100, 0)])], crs=crs
+    ).to_file(container, layer="roads", driver="GPKG")
+
     def out(name: str) -> str:
         return str(tmp_path / name)
 
@@ -476,6 +488,21 @@ def _spec_fixtures(tmp_path):
         ),
         "simplify_layer": lambda: vector.simplify(str(layer), 1.0, out("simp.parquet")),
         "centroid_layer": lambda: vector.centroid(str(layer), out("cent.parquet")),
+        # `streets` and not `layer`: the single-polygon layer kept 1 of 1, so the
+        # conformance sweep validated the manifest of a filter that filtered
+        # nothing — output bytes identical to input, no `SUBSET` note, no
+        # `feature_count_bounded` with anything to bound. Here two of three
+        # survive, so the interesting branches are the ones checked.
+        "select_features": lambda: vector.select_features(
+            str(streets),
+            out("selected.parquet"),
+            by="field_in",
+            field="id",
+            values=[0, 1],
+        ),
+        "extract_layer": lambda: vector.extract_layer(
+            str(container), "roads", out("extracted.parquet")
+        ),
         "convert_format": lambda: vector.convert(str(layer), out("conv.gpkg")),
         "reproject_layer": lambda: vector.reproject(
             str(layer), "EPSG:4326", out("rep.parquet")

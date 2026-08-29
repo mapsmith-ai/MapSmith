@@ -21,10 +21,10 @@ catalogue is written: *"the coastline is 400 000 nodes and the browser dies"*, n
 
 | what the caller declares | candidates left | ranked, found@3 | **in what comes back** |
 |---|---|---|---|
-| nothing — words alone | 61 | 18% | 18% |
-| the input kind | 39 | 23% | 37% |
-| + what it should produce | 27 | 36% | 45% |
-| **+ how many datasets** | **12** | **60%** | **100%** |
+| nothing — words alone | 74 | 25% | 25% |
+| the input kind | 49 | 27% | 27% |
+| + what it should produce | 31 | 40% | 49% |
+| **+ how many datasets** | **17** | **53%** | **97%** |
 
 **Ranking is not the mechanism; narrowing is** — and the last column is why. Once
 the two facts a caller genuinely knows have cut the catalogue to something readable,

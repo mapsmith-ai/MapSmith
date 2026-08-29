@@ -343,6 +343,7 @@ def verify_vector_output(
     within_bounds: tuple[float, float, float, float] | None = None,
     bounds_margin: float = 1e-6,
     on_empty: str = "ignore",
+    empty_hint: str | None = None,
 ) -> list[Check]:
     """Run postcondition checks on a vector output. Returns all checks (pass and fail)."""
     if on_empty not in ("ignore", "warn", "fail"):
@@ -362,7 +363,12 @@ def verify_vector_output(
                 # miss each other) — silently passing it off as success is what
                 # we refuse to do either way.
                 critical=on_empty == "fail",
-                hint=None if len(gdf) else
+                # The default hint is written for a spatial operation, where
+                # emptiness means the geometries missed each other. A filter
+                # is empty for a different reason — a value that matches
+                # nothing — so an operation may replace the sentence. It may
+                # not replace the NAME: one property, one core name (3.6).
+                hint=None if len(gdf) else empty_hint or
                 "The operation ran but matched nothing. A file exists and is valid, "
                 "so downstream steps would silently work on an empty layer: check the "
                 "inputs' extents and coordinate systems before trusting this result.",

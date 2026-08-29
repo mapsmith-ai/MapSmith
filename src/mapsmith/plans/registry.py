@@ -115,6 +115,18 @@ def _convert() -> Callable[..., dict[str, Any]]:
     return vector.convert
 
 
+def _select_features() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.select_features
+
+
+def _extract_layer() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.extract_layer
+
+
 def _reproject() -> Callable[..., dict[str, Any]]:
     from ..engines import vector
 
@@ -570,6 +582,12 @@ BINDINGS: dict[str, Binding] = {
     ),
     "convert_format": Binding(
         _convert, ("input_path",), "output_path", None, ("same_as", "input_path"), "vector"
+    ),
+    "select_features": Binding(
+        _select_features, ("input_path",), "output_path", None, ("same_as", "input_path"), "vector"
+    ),
+    "extract_layer": Binding(
+        _extract_layer, ("input_path",), "output_path", None, ("same_as", "input_path"), "vector"
     ),
     "reproject_layer": Binding(
         _reproject, ("input_path",), "output_path", None, ("target", "target_crs"), "vector"
