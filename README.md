@@ -861,8 +861,13 @@ Next, in the order we intend to do it. The linked items carry a written spec —
   vendored.
 
   Its [published results](https://argleton.org/#results) measure MapSmith, and what they say about
-  us is why they are linked from here. On the current twenty-one-family run MapSmith answers
-  every trap correctly — **0.00 silent errors over 23 traps, nothing skipped** — and the run itself separates
+  us is why they are linked from here. On the current twenty-two-family run MapSmith answers
+  every trap it can attempt correctly — **0.00 silent errors over 23 traps** — and **skips two**,
+  which is new and is the more useful half. The twenty-second family is grid registration: a DEM
+  that declares its values sit at grid nodes rather than filling cells, where the answer moves half
+  a cell if you ignore the tag. MapSmith has no operation that reports *where* a cell is, so it
+  cannot attempt the probe at all, and an `unsupported` verdict is a smaller claim than a 0.00 and
+  a true one. The run itself also separates
   the passes it earned from the ones it did not: the mismatched-CRS join and the feet-as-metres
   unit are MapSmith's own discipline, the Web Mercator pass comes from a default (ground area is
   geodesic unless you ask for the plane) rather than from care, and the TIFF-predictor pass is
