@@ -446,7 +446,7 @@ evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
 What it says about MapSmith (twenty-two-family run, engine tier, `spec_commit`
-[`b73aeb6`](https://github.com/argleton/argleton/tree/main/results/2026-08-30-grid-registration)):
+[`86bae60`](https://github.com/argleton/argleton/tree/main/results/2026-08-30-grid-registration)):
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
