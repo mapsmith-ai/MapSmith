@@ -99,6 +99,27 @@ def _needs_plain_copy(path: str) -> str | None:
         return None
     if predictor in ("2", "3"):
         return f"stored with TIFF predictor {predictor}"
+
+    # Second reason, measured on 2026-08-30 by Argleton trap 026. A GeoTIFF may
+    # store its rows south to north — a POSITIVE fifth element of the
+    # geotransform — which is legal, and which NetCDF, GRIB and HDF conversions
+    # produce as a matter of course because those formats index latitude
+    # upwards. whitebox_workflows 2.0.6 cannot express it and does not say so:
+    # it discards the georeferencing entirely and reads the grid as unit cells
+    # at the origin.
+    #
+    #     north-up file:  west=500000.0  resolution_x=10.0
+    #     south-up file:  west=0.0       resolution_x=1.0
+    #
+    # The elevations, the shape and the CRS all survive. Only the size of a cell
+    # is gone, and a slope is a rise over a run: on the trap's plane, 45 degrees
+    # where the truth is 5.71, with every postcondition green.
+    try:
+        with rasterio.open(path) as ds:
+            if ds.transform.e > 0:
+                return "stored south-up (a positive north-south pixel size)"
+    except Exception:  # noqa: BLE001 — unreadable here means whitebox will complain
+        return None
     return None
 
 
@@ -109,14 +130,41 @@ def _plain_copy(path: str, into: Path) -> str:
     predictor is dropped, so the copy stays roughly the size of the original.
     """
     import rasterio
+    from affine import Affine
+
+    from .. import grid
 
     with rasterio.open(path) as src:
         profile = src.profile
         data = src.read(1)
+        transform = src.transform
+        height = src.height
+        registration = grid.registration(src)
+
     profile.pop("predictor", None)
+    if transform.e > 0:
+        # Flip the rows and rewrite the transform to match, so the copy is the
+        # same ground read the ordinary way round. Row r of the flipped array is
+        # row (height - 1 - r) of the original, and the new origin is the north
+        # edge: f + height*e. Checked by arithmetic rather than by eye — the
+        # y-centre of every cell comes out identical under both transforms.
+        data = data[::-1]
+        profile["transform"] = Affine(
+            transform.a,
+            transform.b,
+            transform.c,
+            transform.d,
+            -transform.e,
+            transform.f + height * transform.e,
+        )
+
     plain = into / f"{Path(path).stem}.no-predictor.tif"
     with rasterio.open(plain, "w", **profile, predictor=1) as dst:
         dst.write(data, 1)
+        # `profile` does not carry tags, so the registration would be dropped
+        # here and every position derived from the copy would move half a cell.
+        if registration == "point":
+            dst.update_tags(**{grid.TAG: "Point"})
     return str(plain)
 
 
@@ -127,6 +175,48 @@ def _plain_copy_note(reason: str) -> str:
         "the TIFF predictor when decompressing (see _needs_plain_copy for the "
         "measurements)"
     )
+
+
+def _same_grid_as_gdal(dem: Any, source: str, declared_as: str) -> None:
+    """Refuse when the engine's idea of the grid is not GDAL's.
+
+    This is the check that would have caught Argleton trap 026 without the trap.
+    whitebox builds its own raster model from the file and, on a south-up grid,
+    silently built a different one — unit cells at the origin — while keeping
+    the CRS, the shape and the values. Nothing downstream could tell: a slope
+    computed on it is a plausible number, the output carries a correct-looking
+    EPSG code, and every postcondition passes.
+
+    The known cause is handled before this point by rewriting the input
+    (`_needs_plain_copy`). What remains here is the general guard: any future
+    divergence between the two readings stops the operation instead of
+    producing a number nobody can question.
+    """
+    import rasterio
+
+    meta = dem.metadata()
+    with rasterio.open(source) as ds:
+        expected = (abs(ds.transform.a), abs(ds.transform.e))
+        west, north = ds.transform.c, ds.transform.f
+    actual = (float(meta.resolution_x), float(meta.resolution_y))
+    if not all(
+        math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-9)
+        for a, b in zip(actual, expected, strict=True)
+    ) or not (
+        math.isclose(float(meta.west), west, rel_tol=1e-9, abs_tol=1e-6)
+        and math.isclose(float(meta.north), north, rel_tol=1e-9, abs_tol=1e-6)
+    ):
+        raise ValueError(
+            f"the terrain engine read {declared_as} as a grid of "
+            f"{actual[0]} x {actual[1]} cells with its north-west corner at "
+            f"({meta.west}, {meta.north}), where the file says "
+            f"{expected[0]} x {expected[1]} at ({west}, {north}). Every number "
+            "computed from it would be wrong by the ratio of those cell sizes, "
+            "and the output would carry the file's own CRS on top of it, so "
+            "nothing downstream could tell. This is refused rather than "
+            "reported: MapSmith has no way to know which of the two readings "
+            "the engine will use for the parts it does not expose."
+        )
 
 
 @contextmanager
@@ -150,6 +240,7 @@ def _read_dem(wbe: Any, dem_path: str):
         else:
             source, note = str(dem_path), None
         dem = wbe.read_raster(source)
+        _same_grid_as_gdal(dem, source, dem_path)
         epsg = dem.crs_epsg()
         wkt = dem.crs_wkt()
         if not epsg and not wkt:

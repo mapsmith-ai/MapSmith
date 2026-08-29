@@ -29,7 +29,7 @@ real MapSmith output against the spec's own validator.
 Evidence before promises: an [A/B on GABench](docs/benchmarks.md) whose headline is a null
 result — with the analysis that took our own positive number apart — a correctness suite in
 its own organisation, [**Argleton**](https://argleton.org), whose published run grades
-MapSmith on twenty-five traps with answers computed on paper and has already sent four defects
+MapSmith on twenty-nine traps with answers computed on paper and has already sent six defects
 back here, [notebooks](examples/) on a real USGS DEM of Mount St. Helens, an
 [in-chat map panel](#see-results-inside-the-chat) that shows the verification status of
 every layer it draws, and a
@@ -861,11 +861,18 @@ Next, in the order we intend to do it. The linked items carry a written spec —
   vendored.
 
   Its [published results](https://argleton.org/#results) measure MapSmith, and what they say about
-  us is why they are linked from here. On the current twenty-three-family run MapSmith answers
-  every trap correctly — **0.00 silent errors over 25 traps, nothing skipped**. The newest family is
-  the antimeridian, where a survey zone split at 180 exactly as the standard prescribes has a
-  bounding box that spans the planet, and filtering by it turns five vessels into nine. The one
-  before it is grid registration, and that is the one MapSmith could not attempt when it was
+  us is why they are linked from here. On the current twenty-seven-family run MapSmith answers
+  every trap correctly — **0.00 silent errors over 29 traps, nothing skipped** — and that family
+  list is now closed: twelve planned at the start, fifteen added from reproductions, all
+  twenty-seven with a probe pair as of 2026-08-30.
+
+  Two of the last four caught defects here, and both are fixed. A DEM whose rows run south to
+  north made a 5.7 degree slope come back as 45, with the output raster written at the origin and
+  **all five verification checks green** — the coordinate system had survived and only the
+  geotransform had not. And a pipe network with a treatment plant in the same layer totalled
+  3000 m of pipe where there are 2000, the plant's perimeter added in silence.
+
+  Before those, grid registration was the one MapSmith could not attempt at all when it was
   published:
   a DEM that declares its values sit at grid nodes rather than filling cells, where every position
   moves half a cell if you ignore the tag. Nothing here read the tag, and no operation reported

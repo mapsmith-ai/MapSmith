@@ -136,6 +136,43 @@ All notable changes to MapSmith are documented here, in the format of
 
 ### Fixed
 
+- **A DEM whose rows run south to north no longer produces a slope eight times
+  too steep.** A GeoTIFF's geotransform may have a positive fifth element,
+  meaning row 0 is the southern edge — NetCDF, GRIB and HDF index latitude
+  upwards, so a straight conversion produces one. whitebox-workflows cannot
+  express that and does not say so: it discards the georeferencing and reads the
+  grid as unit cells at the origin. MapSmith answered **45 degrees where the
+  ground is 5.71**, wrote the output raster at the origin at a tenth of the
+  site's size, and **passed all five of its own checks** — `crs_matches` among
+  them, because the coordinate system survived and only the geotransform did
+  not.
+
+  Such a file is now rewritten north-up before the engine sees it, the same
+  mechanism already used for the TIFF predictor, and the rewrite is disclosed in
+  the manifest. Behind that is the general guard: MapSmith now compares the
+  engine's idea of the grid with GDAL's and **refuses** if they differ for any
+  other reason, because a number computed on a grid nobody can reconcile carries
+  a correct-looking CRS on top of it and nothing downstream can tell.
+
+  Found by [Argleton](https://argleton.org) trap 026.
+
+- **Measuring a layer that holds more than one kind of geometry now says so.**
+  A GeoPackage layer may declare its type as GEOMETRY and hold whatever it likes;
+  only the shapefile enforced one type per file, which is why mixed layers
+  arrive exactly when data is converted out of shapefiles. `length` on a polygon
+  is its perimeter — true, and the right answer to a question nobody asked — so
+  a pipe network with a treatment plant in the same layer totalled **3000 m
+  where the pipe is 2000**.
+
+  `measure_length` and `measure_area` now carry a non-critical check naming the
+  geometry types present, with the remedy. It is not an error: measuring a mixed
+  layer is a legitimate request and MapSmith cannot know which features the
+  question was about. What it can do is refuse to let the total arrive without
+  the sentence — especially here, where **every individual row is still
+  correct**, so a spot check of the data confirms the data.
+
+  Found by Argleton trap 027.
+
 - **MapSmith now reads `AREA_OR_POINT`, everywhere at once.** GeoTIFF records
   which of two conventions a grid uses — `RasterPixelIsArea`, where a value
   describes the cell it fills, and `RasterPixelIsPoint`, where it is a sample at

@@ -445,13 +445,22 @@ organisation on purpose: an evaluation that lives inside the thing it
 evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
-What it says about MapSmith (twenty-three-family run, engine tier, `spec_commit`
-[`74a620f`](https://github.com/argleton/argleton/tree/main/results/2026-08-30-antimeridian)):
+What it says about MapSmith (twenty-seven-family run, engine tier, `spec_commit`
+[`089a34d`](https://github.com/argleton/argleton/tree/main/results/2026-08-30-all-families)):
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
-| MapSmith | **0.00** | 1.00 | 25 | 0 |
-| naive composition (read file, take statistic) | 0.96 | 1.00 | 25 | 0 |
+| MapSmith | **0.00** | 1.00 | 29 | 0 |
+| naive composition (read file, take statistic) | 0.931 | 1.00 | 29 | 0 |
+
+**The family list closed on 2026-08-30**, at twenty-seven of twenty-seven, and the last four cost
+this project two defects. A DEM whose rows run south to north — legal, and what a NetCDF or GRIB
+conversion produces — made a 5.7 degree slope come back as 45 with the output raster written at
+the origin, and **all five verification checks passed**: the coordinate system had survived and
+nothing compared the output's geotransform with the input's. A pipe network with a treatment plant
+in the same layer totalled 3000 m of pipe where there are 2000. Both are fixed, and the first is
+fixed twice — the known cause is rewritten before the engine sees it, and any other divergence
+between the engine's grid and GDAL's is now refused outright.
 
 **The last column is the part of this table worth reading.** When the twenty-second family was
 published MapSmith could not attempt either of its probes: they ask where a cell is, and no

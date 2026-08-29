@@ -1189,6 +1189,12 @@ def measure_area(
             expect_count=len(gdf),
             on_empty="fail" if len(gdf) else "ignore",
         )
+        # More than one KIND of feature is a different statement from "some of
+        # them have no area", which is what `area_is_measurable` below reports —
+        # and that one passes as soon as a single polygon is present, with the
+        # count buried in its detail. A total over a mixed layer is a total over
+        # two questions, so it gets a check that fails.
+        result.append(_mixed_geometry_check(gdf, "measure_area", "area"))
         polygonal = int(
             gdf.geom_type.isin(["Polygon", "MultiPolygon", "GeometryCollection"]).sum()
         )
@@ -1464,6 +1470,45 @@ def join_table(
 LENGTH_METHODS = {"planar", "geodesic", "3d"}
 
 
+def _mixed_geometry_check(gdf: Any, operation: str, quantity: str) -> Any:
+    """A layer holding more than one geometry type, said out loud.
+
+    A GeoPackage layer may declare its type as GEOMETRY and hold whatever it
+    likes; GeoJSON never restricted it either. Only the shapefile enforced one
+    type per file, which is why this arrives exactly when data is converted out
+    of shapefiles and the split the old format imposed is merged away.
+
+    The consequence is not an error and cannot be one. Shapely answers `length`
+    on a polygon with its perimeter, which is a real quantity and the right
+    answer to a question nobody asked; it answers `area` on a line with zero,
+    which is also true. So a total over a mixed layer is a total of two
+    different things, every individual row is still correct, and a spot check of
+    the data confirms the data.
+
+    Measured by Argleton trap 027 on 2026-08-30: five pipe runs and one
+    treatment plant in one layer, and the total length came back 3000 m where
+    the pipe is 2000 — the plant's fence line, added in silence.
+
+    Not critical. Measuring a mixed layer is a legitimate thing to ask for and
+    MapSmith cannot know which features the question was about. What it can do
+    is refuse to let the answer arrive without the sentence.
+    """
+    kinds = sorted({str(k) for k in gdf.geom_type.dropna().unique()})
+    families = {k.replace("Multi", "") for k in kinds}
+    return verify.Check(
+        "x-mapsmith:one_geometry_type_in_the_layer",
+        len(families) <= 1,
+        f"the layer holds {kinds}, so this {quantity} is a total over more than "
+        "one kind of feature",
+        critical=False,
+        hint=f"a polygon's length is its perimeter and a line's area is zero, so "
+        f"{operation} over a mixed layer adds quantities that answer different "
+        "questions. Every individual row is still right, which is why a spot "
+        "check will not show it. Select the features the question is about "
+        "first — with run_sql, or by filtering the layer.",
+    )
+
+
 def measure_length(
     input_path: str,
     output_path: str,
@@ -1548,7 +1593,9 @@ def measure_length(
     with verify.audit_on_failure(record, output_path, pre):
         _write(measured, output_path)
 
-    checks: list[verify.Check] = []
+    checks: list[verify.Check] = [
+        _mixed_geometry_check(gdf, "measure_length", "length")
+    ]
     if has_z and method != "3d":
         three_d = float(sum(_length_3d(geom) for geom in gdf.geometry))
         difference = abs(three_d - total) / three_d * 100 if three_d else 0.0
