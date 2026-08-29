@@ -453,18 +453,7 @@ MAPSMITH_DISCOVERY_LOG=/data/discovery.jsonl   # then work normally for a while
 python benchmarks/log_to_cases.py /data/discovery.jsonl
 ```
 
-For the part that needs eyes rather than a pipe, `benchmarks/discovery_dashboard.py`
-writes one self-contained HTML file — no CDN, no fonts, works offline — carrying the
-measurements, every recorded case with the candidate list it was chosen from, and every
-request where the two labellers disagreed with each other. You answer by clicking, the
-percentages recompute against your answers as you go, and the rows come back out as JSON.
-That last panel is the open question of D-054 made clickable: two model labellers agreeing
-70% of the time is the ceiling of a task with no single right answer, and the only way past
-it is somebody who has done the job.
-
-```bash
-python benchmarks/discovery_dashboard.py --log /data/discovery.jsonl --out dashboard.html
-```
+For the part that needs eyes rather than a pipe, there is a dashboard — see below.
 
 `log_to_cases.py` prints those lines as rows shaped like `tests/data/discovery_queries.json`
 and flags the two that matter: a run the ranking did **not** put first (the answer was on
@@ -703,6 +692,41 @@ environment, so on air-gapped machines pre-install it (`python -c "import duckdb
 duckdb.connect().install_extension('spatial')"`) before locking the network down; and the
 HTTP transport has no authentication in this release, so keep it on loopback or a trusted
 network. For real isolation, run the container and mount only the data you want it to see.
+
+## The dashboard
+
+Everything this project knows about itself is computed somewhere and most of it is printed
+once and lost, which is how a number ages into a claim. `benchmarks/dashboard.py` gathers it
+into one self-contained HTML file — no CDN, no fonts, no analytics, works with the network
+off:
+
+```bash
+python benchmarks/dashboard.py --log /data/discovery.jsonl --argleton ../argleton
+```
+
+* **Operations** — every entry, and whether a caller actually reaches it. Asked twice: with
+  words alone, and with the facets a caller knows. Three outcomes are kept apart — a rank, an
+  answer that did not contain the entry, and a search that *declined* because the two rankers
+  shared nothing. Collapsing the third into the second is the first thing this page got wrong
+  about itself, and it drew ten working operations as broken.
+* **Search quality** — the facet ablation for both rankers, and the degradation curve as the
+  catalog grows, which is the measurement the embedding engine became a dependency for.
+* **Traps** — [Argleton](https://argleton.org)'s families and what each engine does with them,
+  MapSmith included and not flattered. With `--argleton <path>` it reads a checkout and shows
+  the per-family detail; without one it falls back to the vendored citation and says so.
+* **Answer the open questions** — the requests where the two model labellers named different
+  operations, and the cases the discovery log recorded, answered by clicking. The percentages
+  recompute against your answers as you give them, and they come back out as JSON. This is
+  the open question the published figures rest on: two labellers agreeing 70% of the time is
+  the ceiling of a task with no single right answer, and the only way past it is somebody who
+  has done the job.
+* **Trend** — each generation appends a row beside the page, so the numbers are a series
+  rather than a snapshot. Identical consecutive rows are dropped: rebuilding five times must
+  not manufacture a trend.
+
+It *is* a snapshot — a new operation or a new trap appears when it is generated again — and
+regenerating keeps every answer already given, because answers are stored against the text of
+each question rather than its position.
 
 ## We measured whether this actually helps
 

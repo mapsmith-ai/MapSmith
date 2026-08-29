@@ -471,11 +471,13 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     declared, every candidate delivered, and the operation actually run afterwards, with its rank in
     the list it was picked from. A harness in the repository turns those lines into rows shaped like
     the benchmark and flags the two that matter: a choice the ranking did not put first, and a search
-    nothing followed. A second script writes the same material as one self-contained page —
+    nothing followed. A dashboard writes the same material, and the rest of what the project knows about itself, as one self-contained page —
     no CDN, works offline — where the cases are answered by clicking and the percentages
     recompute against those answers as you go. It carries a panel the log cannot produce:
     every request where the two model labellers disagreed with each other, which is what the
-    70% ceiling is made of and the part that needs somebody who has done the job.
+    70% ceiling is made of and the part that needs somebody who has done the job. Beside it:
+    whether every operation can actually be found, the degradation curve as the catalogue
+    grows, and what each engine does with each family of trap.
   </p>
   <p>
     <strong>It does not train anything, and that is the design.</strong> A ranker that learns from

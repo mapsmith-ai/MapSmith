@@ -17,14 +17,6 @@ All notable changes to MapSmith are documented here, in the format of
   discovery benchmark and flags the two worth reading — a choice the ranking did
   not put first, and a search nothing followed.
 
-  **`benchmarks/discovery_dashboard.py`** writes the same material as one
-  self-contained HTML page — no CDN, no fonts, works offline — where the cases
-  are answered by clicking and the percentages recompute against those answers
-  while you work. It carries a second panel the log does not produce: every
-  request where the two model labellers disagreed with each other, which is the
-  30% the published ceiling is made of and the part that needs somebody who has
-  done the job.
-
   The figures MapSmith publishes rest on 155 requests written by two language
   models, which is the best set obtainable without users and is not what users
   ask. This closes that gap without closing a feedback loop: a ranker trained on
@@ -77,6 +69,26 @@ All notable changes to MapSmith are documented here, in the format of
   size. Disclosure-control aggregation that refuses rather than publishing the one
   island it could not merge. And deterministic point thinning that says in the
   manifest that it removed data.
+
+- **A dashboard for the whole project** (`benchmarks/dashboard.py`), written
+  as one self-contained HTML file: no CDN, no fonts, no analytics, works with
+  the network off. Six panels — what exists, whether every operation can
+  actually be found, the retrieval figures and the degradation curve, Argleton's
+  traps and what each engine does with them, the open questions answered by
+  clicking, and a trend appended on each generation.
+
+  It exists because the numbers were spread across a report nobody reruns, a
+  test that prints a curve nobody reads, and a suite in another repository. The
+  tuning panel is the point: an operation nothing reaches does not exist, and
+  this says which ones, at what rank, with words alone and with the facets a
+  caller would declare.
+
+  Two things it caught immediately, both about itself. It drew ten working
+  operations as unreachable by collapsing "the search declined because the two
+  rankers shared nothing" into "not found" — three outcomes, one label. And the
+  MapSmith adapter appeared as `adapters.mapsmith:Adapter` because the label was
+  read from an import path. With those apart: 51 of 61 operations found by words
+  alone, 55 in the top three once facets are declared, none unreachable.
 
 ### Fixed
 
