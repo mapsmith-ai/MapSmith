@@ -1007,6 +1007,140 @@ def euclidean_distance(input_path: str, output_path: str) -> dict[str, Any]:
         }
 
 
+def viewshed(
+    dem_path: str,
+    stations_path: str,
+    output_path: str,
+    station_height: float,
+) -> dict[str, Any]:
+    """How many observing stations can see each cell.
+
+    **The output is a COUNT, not a yes/no**, and that sentence is here because
+    the tool's own documentation says the opposite. The Whitebox help for
+    Viewshed states "The output image will be a Boolean raster, containing 1's
+    and 0's"; measured on the installed 2.0.6 with two stations on flat ground,
+    every cell comes back `2.0`. The classic Rust source settles it — it calls
+    `output.increment(...)`, not `set_value`. A caller who trusted the manual
+    and thresholded at `> 0` would be right by accident, and one who summed the
+    raster expecting an area would be wrong by a factor of the station count.
+    This is the second place where this library's prose describes the reverse of
+    what its code does; the first was the D8 pointer table (see
+    `POINTER_ENCODINGS`), and the lesson both times was to measure.
+
+    `station_height` has no default even though the library defaults it to 2.0,
+    because **the unit is the DEM's Z unit, not metres**: on a DEM in US survey
+    feet, 2.0 is two feet, and an eye height of 0.6 m would be a silent error
+    with a plausible-looking viewshed to show for it. There is no target height
+    in this tool — only the observer is raised — so a radio mast at the far end
+    is not modelled. Use `line_of_sight` for a two-ended check.
+
+    A geographic CRS is refused: the height is in Z units while the cell size is
+    in degrees, so the vertical and horizontal are on different scales and the
+    horizon comes out at the wrong distance.
+    """
+    wb = _require()
+    if station_height < 0:
+        raise ValueError(f"station_height must be zero or positive, got {station_height}")
+
+    stations = readers.read_vector(stations_path)
+    if stations.crs is None:
+        raise ValueError(
+            readers.no_crs_message(
+                stations, f"{stations_path} has no CRS — cannot place the observing "
+                "stations on the DEM."
+            )
+        )
+    kinds = set(stations.geom_type.dropna().unique())
+    if not kinds.issubset({"Point"}):
+        raise ValueError(
+            f"observing stations must be Point geometries, got {sorted(kinds)}"
+        )
+    if stations.empty:
+        raise ValueError(
+            f"{stations_path} holds no stations, so there is nothing to see from. "
+            "The output would be a grid of zeros, which is not the same answer as "
+            "'nothing is visible'."
+        )
+
+    wbe = wb.WbEnvironment()
+    wbe.verbose = False
+    with _read_dem(wbe, dem_path) as (dem, crs, geographic, input_note):
+        if geographic:
+            raise ValueError(
+                "viewshed on a geographic CRS would compare a station height in the "
+                "DEM's Z unit against cell sizes in degrees, so the horizon lands at "
+                "the wrong distance. Reproject the DEM to a projected CRS first."
+            )
+        record = ProvenanceRecord(
+            operation="viewshed",
+            parameters={
+                "station_height": station_height,
+                "height_unit": "the DEM's Z unit, not necessarily metres",
+                "n_stations": len(stations),
+                "output_meaning": "number of stations that can see the cell",
+            },
+            inputs=[
+                InputRecord.from_path(dem_path, crs=crs),
+                InputRecord.from_path(
+                    stations_path, crs=verify.crs_label(stations.crs)
+                ),
+            ],
+            engine=_engine_info(),
+        )
+        if not verify.same_crs(stations.crs, crs):
+            stations = stations.to_crs(crs)
+            record.crs_decisions = {
+                "analysis_crs": crs,
+                "reason": "stations reprojected to the DEM CRS so each one stands on "
+                "the cell it actually occupies",
+            }
+        else:
+            record.crs_decisions = {
+                "analysis_crs": crs,
+                "reason": "stations and DEM share the same CRS",
+            }
+
+        ws = workspace.root()
+        with tempfile.TemporaryDirectory(dir=str(ws) if ws else None) as tmp:
+            shp = Path(tmp) / "stations.shp"
+            stations.to_file(shp)
+            vec = wbe.read_vector(str(shp))
+            seen = wbe.terrain.visibility.viewshed(
+                input=dem, stations=vec, height=station_height
+            )
+            wbe.write_raster(seen, str(output_path))
+
+        meta = dem.metadata()
+        checks = _raster_checks(
+            wbe,
+            output_path,
+            expect_epsg=dem.crs_epsg(),
+            expect_shape=(meta.rows, meta.columns),
+            # 0..n, because it counts. Written as the station count rather than
+            # 1.0 precisely because the documentation says 1.0: if a future
+            # version really does turn it into a boolean, this range still
+            # passes and the note below stops being true — so there is also a
+            # test that asserts the count semantics directly.
+            value_range=(0.0, float(len(stations))),
+        )
+        if input_note:
+            record.notes.append(input_note)
+        record.notes.append(
+            "each cell holds the NUMBER of stations that can see it, not a 0/1 flag: "
+            "measured on whitebox-workflows 2.0.6, against its own documentation"
+        )
+        manifest = record.add_verification(checks).finish().write_for(output_path)
+        verify.enforce(checks, "viewshed")
+        return {
+            "output": str(output_path),
+            "stations": len(stations),
+            "station_height": station_height,
+            "shape": [meta.rows, meta.columns],
+            "provenance": str(manifest),
+            "verified": True,
+        }
+
+
 def idw_interpolation(
     points_path: str,
     output_path: str,

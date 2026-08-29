@@ -133,6 +133,67 @@ def _run_sql() -> Callable[..., dict[str, Any]]:
     return duckdb_engine.run_sql
 
 
+
+def _sample_raster_at_points() -> Callable[..., dict[str, Any]]:
+    from ..engines import sampling
+
+    return sampling.sample_raster_at_points
+
+
+def _elevation_profile() -> Callable[..., dict[str, Any]]:
+    from ..engines import sampling
+
+    return sampling.elevation_profile
+
+
+def _line_of_sight() -> Callable[..., dict[str, Any]]:
+    from ..engines import sampling
+
+    return sampling.line_of_sight
+
+
+def _viewshed() -> Callable[..., dict[str, Any]]:
+    from ..engines import whitebox_engine
+
+    return whitebox_engine.viewshed
+
+
+def _network_shortest_path() -> Callable[..., dict[str, Any]]:
+    from ..engines import network
+
+    return network.network_shortest_path
+
+
+def _service_area() -> Callable[..., dict[str, Any]]:
+    from ..engines import network
+
+    return network.service_area
+
+
+def _hot_spots() -> Callable[..., dict[str, Any]]:
+    from ..engines import spatial_stats
+
+    return spatial_stats.hot_spots
+
+
+def _smooth_rates() -> Callable[..., dict[str, Any]]:
+    from ..engines import spatial_stats
+
+    return spatial_stats.smooth_rates
+
+
+def _aggregate_to_threshold() -> Callable[..., dict[str, Any]]:
+    from ..engines import spatial_stats
+
+    return spatial_stats.aggregate_to_threshold
+
+
+def _thin_points() -> Callable[..., dict[str, Any]]:
+    from ..engines import spatial_stats
+
+    return spatial_stats.thin_points
+
+
 def _resample_raster() -> Callable[..., dict[str, Any]]:
     from ..engines import raster
 
@@ -359,6 +420,80 @@ BINDINGS: dict[str, Binding] = {
     ),
     # merge_layers takes a LIST of input paths; static analysis tracks only
     # string path arguments, so its inputs are opaque here, like run_sql's.
+    "sample_raster_at_points": Binding(
+        _sample_raster_at_points,
+        ("raster_path", "points_path"),
+        "output_path",
+        "raster",
+        ("same_as", "raster_path"),
+        "vector",
+    ),
+    "elevation_profile": Binding(
+        _elevation_profile,
+        ("raster_path", "line_path"),
+        "output_path",
+        "raster",
+        ("same_as", "raster_path"),
+        "vector",
+    ),
+    # Reads only: an answer, no dataset, so no manifest and nothing to place.
+    "line_of_sight": Binding(_line_of_sight, ("raster_path",), None, "raster", None),
+    "viewshed": Binding(
+        _viewshed,
+        ("dem_path", "stations_path"),
+        "output_path",
+        "whitebox",
+        ("same_as", "dem_path"),
+        "raster",
+    ),
+    "network_shortest_path": Binding(
+        _network_shortest_path,
+        ("network_path",),
+        "output_path",
+        None,
+        ("same_as", "network_path"),
+        "vector",
+    ),
+    "service_area": Binding(
+        _service_area,
+        ("network_path",),
+        "output_path",
+        None,
+        ("same_as", "network_path"),
+        "vector",
+    ),
+    "hot_spots": Binding(
+        _hot_spots,
+        ("input_path",),
+        "output_path",
+        None,
+        ("same_as", "input_path"),
+        "vector",
+    ),
+    "smooth_rates": Binding(
+        _smooth_rates,
+        ("input_path",),
+        "output_path",
+        None,
+        ("same_as", "input_path"),
+        "vector",
+    ),
+    "aggregate_to_threshold": Binding(
+        _aggregate_to_threshold,
+        ("input_path",),
+        "output_path",
+        None,
+        ("same_as", "input_path"),
+        "vector",
+    ),
+    "thin_points": Binding(
+        _thin_points,
+        ("input_path",),
+        "output_path",
+        None,
+        ("same_as", "input_path"),
+        "vector",
+    ),
     "merge_layers": Binding(
         _merge, (), "output_path", None, ("unknown", ""), "vector",
         list_input_args=("input_paths",),

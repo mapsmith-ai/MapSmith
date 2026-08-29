@@ -25,10 +25,15 @@ ALLOWED_INPUTS = {"vector", "raster", "dataset", "plan", "none"}
 def test_every_entry_declares_its_applicability(op):
     block = op.get("applicability")
     assert block, f"{op['name']} has no applicability block"
-    assert set(block) == {"inputs", "requires_projected_crs"}
+    assert set(block) == {"inputs", "requires_projected_crs", "dataset_inputs"}
     assert block["inputs"], "inputs must not be empty"
     assert set(block["inputs"]) <= ALLOWED_INPUTS
     assert isinstance(block["requires_projected_crs"], bool)
+    # How many datasets the caller is holding. An exact set rather than a subset
+    # on purpose: a facet the filter does not read narrows nothing and lies in
+    # the schema, and a facet the schema does not know about is one the entries
+    # can start disagreeing about.
+    assert isinstance(block["dataset_inputs"], int) and block["dataset_inputs"] >= 0
 
 
 def test_the_projected_crs_requirement_matches_the_engines_that_refuse():
@@ -52,6 +57,17 @@ def test_the_projected_crs_requirement_matches_the_engines_that_refuse():
         "curvature",
         "flow_direction",
         "euclidean_distance",
+        # Added 2026-08-29 with the ten operations that came out of the discovery
+        # benchmark. Each refuses a geographic CRS for the same reason: a length
+        # the caller names — a sample spacing, a sight-line run, a station height
+        # against a cell size, a minimum spacing between labels — is not a length
+        # in degrees, and the answer would be plausible and wrong rather than
+        # absent. `test_whitebox_geographic_refusal` executes the whitebox one;
+        # the others have their own refusal tests.
+        "elevation_profile",
+        "line_of_sight",
+        "viewshed",
+        "thin_points",
         # Added 2026-08-29, and the reason belongs here rather than in a commit:
         # it declared False and did not refuse, so the executable check in
         # test_whitebox_geographic_refusal saw the two statements agree and

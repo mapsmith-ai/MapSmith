@@ -831,11 +831,15 @@ def test_the_retrieval_numbers_agree_between_the_readme_and_the_site():
     # whole job of this test.
     shared = [
         ("118", "independent requests the retrieval numbers come from"),
-        ("48%", "our ranking, found@3, on requests we did not write"),
+        ("60%", "our ranking, found@3, once arity is declared"),
         ("69%", "a model choosing from the delivered candidates"),
-        ("68%", "where two independent labellers agree with each other"),
+        ("70%", "where the two model labellers agree with each other"),
         ("4.4", "plausible families per request, why family cannot filter"),
-        ("43", "families a caller would have to guess among at 800 operations"),
+        # Replaced the 800-operation projection on 2026-08-29: the wall it
+        # projected arrived at sixty-one, so the pages now carry what happened
+        # rather than what was expected to.
+        ("34", "candidates before arity was declared — the set that broke it"),
+        ("45%", "delivered while the set was too large to hand over"),
         ("0.90", "top-3 agreement when an answer exists"),
         ("0.18", "top-3 agreement when it does not"),
         ("9 of 11", "unanswerable queries the clarification catches"),

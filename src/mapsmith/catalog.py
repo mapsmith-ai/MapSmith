@@ -27,7 +27,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "inspection",
         "produces": "description",
-        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Inspect a vector or raster dataset: CRS, schema/bands, extent, "
         "nodata, statistics",
         "phrasings": "what is in this file; what am I looking at; how many features and what extent; which layers does it have; before I start",
@@ -74,7 +74,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Metric buffer with automatic UTM estimation on geographic CRS",
         "phrasings": "everything within a distance of; a zone around; how far out from; catchment radius; protection zone",
         "distinguishes": "Grows each feature by a fixed distance. Not voronoi_polygons, which divides all "
@@ -139,7 +139,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "heavy_join",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2},
         "summary": "Clip a layer with a mask layer (CRS-aligned automatically)",
         "phrasings": "cut to the study area; keep only what falls inside the boundary; trim to the region",
         "distinguishes": "Cuts one layer to the shape of another and keeps the first layer's attributes. Not "
@@ -204,7 +204,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "heavy_join",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2},
         "summary": "Intersect, union or subtract two polygon layers: set-theoretic "
         "overlay with intersection, union, identity, symmetric_difference and "
         "difference (CRS-aligned automatically)",
@@ -281,7 +281,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "sql",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Merge features into one geometry per key, with the aggregation "
         "recorded in the manifest and the group count verified",
         "phrasings": "collapse into; group by and combine; roll up smaller units into larger ones; merge by attribute",
@@ -356,7 +356,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "heavy_join",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2},
         "summary": "Nearest-neighbour join with the distance in meters in a named column "
         "(UTM-measured on geographic CRS, decision recorded)",
         "phrasings": "which one is closest to each; find the nearest and how far; assign each to its closest",
@@ -436,7 +436,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Split multi-part geometries into one feature per part, "
         "with the part count verified",
         "phrasings": "one row per part instead of one per feature; split multipart; separate the islands",
@@ -490,7 +490,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "sql",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Area per feature in square metres — ground (ellipsoidal) or "
         "planar with the CRS's own unit, with the distortion checked",
         "phrasings": "how big is it really on the ground not on the map; true size; hectares; square metres of land",
@@ -569,7 +569,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "heavy_join",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Append two or more layers into one, schema union, "
         "count verified against the sum",
         "phrasings": "put several files together into one; stack these layers; concatenate",
@@ -626,7 +626,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Simplify geometries with the drift measured: area and length "
         "before/after recorded in the manifest",
         "phrasings": "too many vertices; the outlines are too detailed; make the file lighter; generalise the shapes",
@@ -696,7 +696,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "One point per feature: geometric centroids computed in a "
         "metric CRS, never on degrees",
         # Deliberately says what it is NOT for. Advertising a centroid as a label
@@ -764,7 +764,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Convert between vector formats, re-read and verified; "
         "lossy conversions are refused with the reason",
         "phrasings": "save it as another format instead; export to; turn this into a geopackage",
@@ -822,7 +822,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Reproject a layer to a target CRS (EPSG code or WKT)",
         "phrasings": "my data is in degrees and I need metres; change the coordinate system; wrong units; put two layers on the same system",
         "distinguishes": "Changes the coordinate system of a layer that already has one. Not "
@@ -887,7 +887,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "heavy_join",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2},
         "summary": "Join by spatial predicate (intersects/within/contains); auto-routed to "
         "SedonaDB or DuckDB for speed, GeoPandas fallback",
         "phrasings": "give each feature the attribute of the area it sits in; tag points with their region; which district is each in",
@@ -980,7 +980,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "sql",
         "category": "sql",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False, 'dataset_inputs': 0},
         "summary": "Spatial SQL (DuckDB dialect, ST_* functions) over GeoParquet and GDAL "
         "formats; materializes GeoParquet outputs with provenance",
         "phrasings": "query it like a database; a select with a spatial predicate; join and filter in one go",
@@ -1047,7 +1047,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "raster",
         "category": "raster",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2},
         "summary": "Statistics of a raster within vector zones via exactextract "
         "(exact fractional pixel coverage); requires the [raster] extra",
         "phrasings": "average value of a grid inside each polygon; summarise a raster per area; mean elevation per zone",
@@ -1123,7 +1123,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "provenance",
         "produces": "description",
-        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Full lineage manifest of any MapSmith output",
         "phrasings": "where did this number come from; what was run to make this; the audit trail",
         "description": (
@@ -1164,7 +1164,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "raster",
         "category": "terrain",
         "produces": "dataset:raster",
-        "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Shaded relief from a DEM (Whitebox engine, in-memory); "
         "requires the [whitebox] extra",
         "phrasings": "make the terrain look three dimensional; relief for a map; shaded relief",
@@ -1235,7 +1235,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "raster",
         "category": "terrain",
         "produces": "dataset:raster",
-        "applicability": {"inputs": ["raster"], "requires_projected_crs": True},
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": True, 'dataset_inputs': 1},
         "summary": "Slope gradient from a DEM in degrees, percent or radians "
         "(Whitebox engine); requires the [whitebox] extra",
         "phrasings": "how steep is the ground; steepness; gradient of the land; where is it too steep to build",
@@ -1301,7 +1301,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "raster",
         "category": "terrain",
         "produces": "dataset:raster",
-        "applicability": {"inputs": ["raster"], "requires_projected_crs": True},
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": True, 'dataset_inputs': 1},
         "summary": "Aspect from a DEM: downslope azimuth in degrees, 0 = north, "
         "flat cells = -1 (Whitebox engine); requires the [whitebox] extra",
         "phrasings": "which way does the hillside face; north facing slopes; exposure",
@@ -1356,7 +1356,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "raster",
         "category": "hydrology",
         "produces": "dataset:raster",
-        "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "D8 flow accumulation from a DEM with automatic depression filling; "
         "requires the [whitebox] extra",
         "phrasings": "how much water arrives at each cell; upstream area; where the channels form",
@@ -1424,7 +1424,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "raster",
         "category": "hydrology",
         "produces": "dataset:raster",
-        "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2},
         "summary": "Watershed delineation from a DEM and pour points (Whitebox engine); "
         "requires the [whitebox] extra",
         "phrasings": "what drains to this point; the basin above; contributing area",
@@ -1488,7 +1488,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "planning",
         "produces": "description",
-        "applicability": {"inputs": ["plan"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["plan"], "requires_projected_crs": False, 'dataset_inputs': 0},
         "summary": "Static validation of a multi-step plan before execution: operations, "
         "arguments, references, input files, simulated CRS flow",
         "phrasings": "will this sequence work before I run it; check the steps",
@@ -1572,7 +1572,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "planning",
         "produces": "plan_result",
-        "applicability": {"inputs": ["plan"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["plan"], "requires_projected_crs": False, 'dataset_inputs': 0},
         "summary": "Validate then run a multi-step plan; per-step provenance plus a "
         "plan-level manifest tying the chain together",
         "phrasings": "run the whole sequence; do all these steps in order",
@@ -1664,7 +1664,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "visualization",
         "produces": "description",
-        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Interactive in-chat map of one or more datasets (MCP Apps panel) "
         "with per-layer provenance and verification status",
         "phrasings": "let me see it; show me the layer; a quick look at the result",
@@ -1715,7 +1715,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "raster",
         "category": "raster",
         "produces": "dataset:raster",
-        "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Resample a raster to a target cell size; the method is required, "
         "and inventing class codes is reported",
         "phrasings": "change the pixel size; coarser grid; finer grid; make the cells bigger",
@@ -1802,7 +1802,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "raster",
         "category": "raster",
         "produces": "dataset:raster",
-        "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2},
         "summary": "Clip a raster to a vector mask, with the mask reprojected "
         "explicitly instead of assumed",
         "phrasings": "cut the grid to the boundary; only the part over the study area",
@@ -1887,7 +1887,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "raster",
         "category": "raster",
         "produces": "dataset:raster",
-        "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Map value ranges onto new codes, half-open by contract, "
         "with overlaps refused",
         "phrasings": "bucket the values into classes; turn elevations into bands; group into categories",
@@ -1965,7 +1965,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "raster",
         "category": "raster",
         "produces": "dataset:raster",
-        "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Arithmetic across a raster's bands (NDVI and friends), with "
         "declared scale and offset applied",
         "phrasings": "arithmetic between bands; a vegetation index; subtract one band from another",
@@ -2046,7 +2046,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "sql",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 2},
         "summary": "Join a CSV table onto a layer by key, keys read as text and fan-out measured",
         "phrasings": "attach a spreadsheet by a shared key; bring in the csv columns; look up values by id",
         "distinguishes": "Matches rows by a shared key column, not by location. Use spatial_join when the "
@@ -2116,7 +2116,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Length per feature in metres — geodesic, planar, or through space with the Z the geometry carries",
         "phrasings": "how long is this line really; kilometres of road; perimeter; distance along",
         "distinguishes": "How long a line is, on the ground, in three dimensions if the file has them. Not "
@@ -2181,7 +2181,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "sql",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "A rate over an area: the ratio of totals, with the unweighted mean reported beside it",
         "phrasings": "average that respects population; weighted mean; do not treat a village like a city",
         "description": (
@@ -2249,7 +2249,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Point layer from a coordinate table, DMS or decimal, stated by the caller rather than guessed",
         "phrasings": "the coordinates are text in a csv; degrees minutes seconds; latitude and longitude columns",
         "description": (
@@ -2317,7 +2317,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "One point per feature, verified to lie ON the feature — unlike a centroid",
         "phrasings": "a point guaranteed to be inside the shape; label point for an awkward polygon",
         "distinguishes": "One point guaranteed to lie on the feature, which is what a map label needs. Use "
@@ -2370,7 +2370,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Convex hull, envelope or minimum rotated rectangle, with the inflation reported",
         "phrasings": "the outline around these points; bounding shape; extent of the site",
         "distinguishes": "Wraps features in a convex hull, bounding box or rotated rectangle — a shape that "
@@ -2430,7 +2430,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Report which geometries are invalid and why, repairing nothing",
         "phrasings": "something is wrong with these shapes; broken polygons; self intersecting; why does the area look wrong",
         "description": (
@@ -2480,7 +2480,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "heavy_join",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2},
         "summary": "Points per polygon with the boundary rule stated, and the points that fell nowhere counted",
         "phrasings": "tally by area; how many fall inside each; count per district; incidents per neighbourhood",
         "distinguishes": "Counts how many features fall inside each polygon, with the boundary rule stated. "
@@ -2551,7 +2551,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "raster",
         "category": "raster",
         "produces": "dataset:raster",
-        "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Moving-window statistic over a raster, window size required and checked odd",
         "phrasings": "smooth the grid; a moving window average; local maximum",
         "distinguishes": "A moving window over a grid: smoothing, local maxima. Not zonal_statistics, which "
@@ -2616,7 +2616,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "raster",
         "category": "hydrology",
         "produces": "dataset:raster",
-        "applicability": {"inputs": ["raster"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Stream network from a flow-accumulation grid, threshold required and its unit recorded",
         "phrasings": "where the rivers are on this terrain; the channel network",
         "description": (
@@ -2677,7 +2677,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "heavy_join",
         "category": "network",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Travel-time polygons (Valhalla engine)",
         "phrasings": "how far can I get in fifteen minutes; travel time area; drive time",
     },
@@ -2687,7 +2687,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "bridge",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False},
+        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "~900 QGIS/GRASS/SAGA algorithms via GPL-isolated subprocess sidecar",
         "phrasings": "one of the qgis algorithms",
     },
@@ -2697,7 +2697,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'raster',
         'category': 'raster',
         "produces": "dataset:raster",
-        'applicability': {'inputs': ['raster'], 'requires_projected_crs': False},
+        'applicability': {'inputs': ['raster'], 'requires_projected_crs': False, 'dataset_inputs': 1},
         'summary': 'Warp a raster to another CRS; the resampling method is required and '
                    'recorded. Requires the [raster] extra',
         "phrasings": "warp the grid to another coordinate system; my geotiff is in the wrong projection",
@@ -2758,7 +2758,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'raster',
         'category': 'raster',
         "produces": "dataset:raster",
-        'applicability': {'inputs': ['raster'], 'requires_projected_crs': False},
+        'applicability': {'inputs': ['raster'], 'requires_projected_crs': False, 'dataset_inputs': 1},
         'summary': 'Write one band of a multi-band raster to a single-band raster; '
                    '1-based, out-of-range refused. Requires the [raster] extra',
         "phrasings": "pull one band out; just the red channel; separate the layers of a composite",
@@ -2806,7 +2806,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'raster',
         'category': 'inspection',
         "produces": "answer",
-        'applicability': {'inputs': ['raster'], 'requires_projected_crs': False},
+        'applicability': {'inputs': ['raster'], 'requires_projected_crs': False, 'dataset_inputs': 1},
         'summary': 'Per-band min/max/mean/std/sum over the VALID cells only, with the '
                    'masked count. Reads, writes nothing. Requires the [raster] extra',
         "phrasings": "min and max of the grid; what range are these values; ignore the nodata",
@@ -2846,7 +2846,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'raster',
         'category': 'terrain',
         "produces": "dataset:raster",
-        'applicability': {'inputs': ['raster'], 'requires_projected_crs': True},
+        'applicability': {'inputs': ['raster'], 'requires_projected_crs': True, 'dataset_inputs': 1},
         'summary': 'Surface curvature from a DEM; the kind is required (profile, plan, '
                    'tangential, mean, gaussian, total). Requires the [whitebox] extra',
         "phrasings": "where does the hillslope curve; convex and concave ground; hollows and ridges",
@@ -2904,7 +2904,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'raster',
         'category': 'hydrology',
         "produces": "dataset:raster",
-        'applicability': {'inputs': ['raster'], 'requires_projected_crs': True},
+        'applicability': {'inputs': ['raster'], 'requires_projected_crs': True, 'dataset_inputs': 1},
         'summary': 'Flow-direction pointer raster (d8, rho8, dinf, fd8) whose direction '
                    'TABLE is written into the manifest. Requires the [whitebox] extra',
         "phrasings": "where the rain runs off; which way water leaves; drainage direction",
@@ -2970,7 +2970,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'raster',
         'category': 'raster',
         "produces": "dataset:raster",
-        'applicability': {'inputs': ['raster'], 'requires_projected_crs': True},
+        'applicability': {'inputs': ['raster'], 'requires_projected_crs': True, 'dataset_inputs': 1},
         'summary': "Distance from every cell to the nearest non-zero cell, in the CRS's "
                    'own units. Requires the [whitebox] extra',
         "phrasings": "how far is every place from the nearest one; proximity surface; distance to roads",
@@ -3019,7 +3019,7 @@ OPERATIONS: list[dict[str, Any]] = [
         # True since 0.3.0, and it was a claim rather than an oversight: a caller
         # who honestly passed projected=False was OFFERED an operation that
         # weights samples by distance, on a CRS where distance is degrees.
-        'applicability': {'inputs': ['vector'], 'requires_projected_crs': True},
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': 1},
         'summary': 'Inverse-distance-weighted surface from a point layer; the field is '
                    'REQUIRED. Requires the [whitebox] extra',
         "phrasings": "a surface from scattered measurements; fill in between the gauges; interpolate the readings",
@@ -3091,7 +3091,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'small_vector',
         'category': 'vector',
         "produces": "dataset:vector",
-        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False},
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1},
         'summary': 'Thiessen polygons from points, each verified to hold its own point; '
                    'the clipping boundary is declared',
         "phrasings": "every place goes to its closest one; catchment areas; service area per shop; Thiessen",
@@ -3150,7 +3150,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'small_vector',
         'category': 'inspection',
         "produces": "description",
-        'applicability': {'inputs': ['none'], 'requires_projected_crs': False},
+        'applicability': {'inputs': ['none'], 'requires_projected_crs': False, 'dataset_inputs': 0},
         'summary': 'What a CRS actually declares: axis order, unit and its factor to the '
                    'metre, datum, ellipsoid, area of use. Reads no data',
         "phrasings": "is this in feet or metres; what unit; which axis comes first; is it projected or degrees",
@@ -3197,7 +3197,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'small_vector',
         'category': 'inspection',
         "produces": "answer",
-        'applicability': {'inputs': ['none'], 'requires_projected_crs': False},
+        'applicability': {'inputs': ['none'], 'requires_projected_crs': False, 'dataset_inputs': 0},
         'summary': 'Distance and azimuths between two lon/lat points measured on the '
                    'ellipsoid — no projection involved. Reads no data',
         "phrasings": "how far apart are two places as the crow flies; true distance between coordinates; without picking a projection",
@@ -3261,6 +3261,564 @@ OPERATIONS: list[dict[str, Any]] = [
                                                                           'to_lon': 9.19,
                                                                           'to_lat': 45.4642,
                                                                           'ellipsoid': 'intl'}}}}]},
+    {   'name': 'sample_raster_at_points',
+        'status': 'available',
+        'tool': None,
+        'workload': 'raster',
+        'category': 'raster',
+        "produces": "dataset:vector",
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 2},
+        'summary': "The raster's value at each point, with the ones it could not read "
+                   'counted rather than filled in. Requires the [raster] extra',
+        "phrasings": "what is the elevation at each of my survey shots; read the grid "
+                     "at these locations; are my levels off compared to the surface",
+        "distinguishes": "Reads ONE cell per point. Not zonal_statistics, which "
+                         "summarises a raster inside polygons and weights partial "
+                         "pixels; not band_statistics, which describes a whole grid "
+                         "with no locations at all.",
+        'description': "Adds a column holding the raster's value at every point. "
+                       "method is required and has no default because the two are "
+                       "right for different data: 'nearest' returns the cell the "
+                       "point falls in, which is what class codes need, and "
+                       "'bilinear' interpolates the four surrounding cell CENTRES, "
+                       "which is what a survey comparison needs \u2014 a total station "
+                       "shot does not land on a cell centre, and snapping it there "
+                       "adds up to half a cell of horizontal error to a vertical "
+                       "difference somebody is about to call a datum offset. A point "
+                       "outside the raster or on a nodata cell comes back NULL rather "
+                       "than as the nodata value, and the count of those is a "
+                       "non-critical check in the manifest: a table with silent nulls "
+                       "averages to a number nobody can defend. Points are reprojected "
+                       "to the raster's CRS with the decision recorded.",
+        'parameters': [{'name': 'raster_path', 'type': 'str', 'required': True,
+                        'description': 'Raster to read (must have a CRS)'},
+                       {'name': 'points_path', 'type': 'str', 'required': True,
+                        'description': 'Point layer giving the positions'},
+                       {'name': 'output_path', 'type': 'str', 'required': True,
+                        'description': 'Output path (.parquet or .gpkg) with the value column added'},
+                       {'name': 'method', 'type': 'str', 'required': True,
+                        'description': "'nearest' for class codes, 'bilinear' for a continuous surface"},
+                       {'name': 'band', 'type': 'int', 'required': False,
+                        'description': '1-based band number (default 1)'},
+                       {'name': 'column_name', 'type': 'str', 'required': False,
+                        'description': "Column to write (default 'value'); refuses to overwrite an existing one"}],
+        'examples': [{'goal': 'Are my levelling shots consistently above the city surface model?',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'sample_raster_at_points',
+                                             'arguments': {'raster_path': 'surface.tif',
+                                                           'points_path': 'shots.gpkg',
+                                                           'output_path': 'shots_vs_surface.parquet',
+                                                           'method': 'bilinear'}}}},
+                     {'goal': 'Which land-cover class is each sensor standing on?',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'sample_raster_at_points',
+                                             'arguments': {'raster_path': 'landcover.tif',
+                                                           'points_path': 'sensors.gpkg',
+                                                           'output_path': 'sensors_class.parquet',
+                                                           'method': 'nearest'}}}}]},
+    {   'name': 'elevation_profile',
+        'status': 'available',
+        'tool': None,
+        'workload': 'raster',
+        'category': 'terrain',
+        "produces": "dataset:vector",
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': 2},
+        'summary': 'One point every N metres along each line, carrying the surface '
+                   'value and the distance travelled. Requires the [raster] extra',
+        "phrasings": "elevation every 20 metres along the centreline so I can plot it; "
+                     "how does the ground change along this slice; cross section of the "
+                     "terrain",
+        "distinguishes": "Walks a line and reads the surface at a fixed step. Not "
+                         "sample_raster_at_points, which reads at positions you already "
+                         "have; not slope, which describes steepness everywhere rather "
+                         "than along one route.",
+        'description': 'Produces a point layer with distance, value, point_index and '
+                       'line_index, ordered along each line. The spacing is a length '
+                       "in the raster's own linear unit, so a geographic CRS is "
+                       'refused: 20 of a degree is not 20 metres and the distance axis '
+                       'would mean nothing at a plausible-looking scale. Both ends of '
+                       'each line are always included, the far one clamped to the '
+                       "line's length when the step does not divide evenly \u2014 a "
+                       'profile that silently stops short of the summit is the worst '
+                       'kind of nearly-right. The point count is checked in closed '
+                       'form against floor(length/spacing) + 1.',
+        'parameters': [{'name': 'raster_path', 'type': 'str', 'required': True,
+                        'description': 'Surface to read, usually a DEM'},
+                       {'name': 'line_path', 'type': 'str', 'required': True,
+                        'description': 'Line layer to walk (projected CRS)'},
+                       {'name': 'output_path', 'type': 'str', 'required': True,
+                        'description': 'Output point layer (.parquet or .gpkg)'},
+                       {'name': 'spacing', 'type': 'float', 'required': True,
+                        'description': "Step between samples, in the raster CRS's linear unit"},
+                       {'name': 'method', 'type': 'str', 'required': False,
+                        'description': "'bilinear' (default) or 'nearest'"},
+                       {'name': 'band', 'type': 'int', 'required': False,
+                        'description': '1-based band number (default 1)'}],
+        'examples': [{'goal': 'Elevation every 20 metres along the road centreline, to plot a profile',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'elevation_profile',
+                                             'arguments': {'raster_path': 'dem.tif',
+                                                           'line_path': 'centreline.gpkg',
+                                                           'output_path': 'profile.parquet',
+                                                           'spacing': 20.0}}}},
+                     {'goal': 'How the ground changes along a straight slice from the ridge to the valley',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'elevation_profile',
+                                             'arguments': {'raster_path': 'dem.tif',
+                                                           'line_path': 'slice.gpkg',
+                                                           'output_path': 'slice_profile.parquet',
+                                                           'spacing': 5.0}}}}]},
+    {   'name': 'line_of_sight',
+        'status': 'available',
+        'tool': None,
+        'workload': 'raster',
+        'category': 'terrain',
+        "produces": "answer",
+        'applicability': {'inputs': ['raster'], 'requires_projected_crs': True, 'dataset_inputs': 1},
+        'summary': 'Whether the terrain blocks the view between two positions, and '
+                   'where it first does. Requires the [raster] extra',
+        "phrasings": "line of sight check, is the ridge blocking it; can these two "
+                     "masts see each other; why is there a dead zone behind the hill",
+        "distinguishes": "Two positions, one answer. Not viewshed, which maps "
+                         "everything visible FROM a set of stations and cannot raise "
+                         "the target end; not elevation_profile, which gives the shape "
+                         "of the ground without deciding whether it blocks anything.",
+        'description': 'Samples the terrain along the sight line at one sample per '
+                       'cell and reports whether anything rises above it, the distance '
+                       'at which it first does, and the minimum clearance. '
+                       'earth_curvature has no default: over 5 km the planet drops '
+                       'about 1.7 m below the tangent plane and over 30 km about 62 m '
+                       'net of refraction, so a flat-Earth answer is right for a '
+                       'rooftop survey and badly wrong for a radio link, and there is '
+                       'no way to guess which the caller has. When true the standard '
+                       'refraction coefficient of 0.13 is applied with it, because '
+                       'curvature without refraction over-corrects. Observer and '
+                       'target heights are added to the ground elevation at each end.',
+        'parameters': [{'name': 'raster_path', 'type': 'str', 'required': True,
+                        'description': 'DEM in a projected CRS'},
+                       {'name': 'observer_x', 'type': 'float', 'required': True,
+                        'description': "Observer easting in the raster's CRS"},
+                       {'name': 'observer_y', 'type': 'float', 'required': True,
+                        'description': "Observer northing in the raster's CRS"},
+                       {'name': 'target_x', 'type': 'float', 'required': True,
+                        'description': "Target easting in the raster's CRS"},
+                       {'name': 'target_y', 'type': 'float', 'required': True,
+                        'description': "Target northing in the raster's CRS"},
+                       {'name': 'earth_curvature', 'type': 'bool', 'required': True,
+                        'description': 'Whether to lower the sight line by the curvature sagitta, with refraction'},
+                       {'name': 'observer_height', 'type': 'float', 'required': False,
+                        'description': 'Height above ground at the observer (default 0)'},
+                       {'name': 'target_height', 'type': 'float', 'required': False,
+                        'description': 'Height above ground at the target (default 0)'},
+                       {'name': 'samples', 'type': 'int', 'required': False,
+                        'description': 'Samples along the line (default: one per cell)'},
+                       {'name': 'band', 'type': 'int', 'required': False,
+                        'description': '1-based band number (default 1)'}],
+        'examples': [{'goal': 'Is the ridge blocking the view between these two sites?',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'line_of_sight',
+                                             'arguments': {'raster_path': 'dem.tif',
+                                                           'observer_x': 512340.0, 'observer_y': 4928110.0,
+                                                           'target_x': 519880.0, 'target_y': 4931450.0,
+                                                           'earth_curvature': False,
+                                                           'observer_height': 10.0,
+                                                           'target_height': 15.0}}}},
+                     {'goal': 'A 30 km microwave link: does the Earth itself get in the way?',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'line_of_sight',
+                                             'arguments': {'raster_path': 'dem.tif',
+                                                           'observer_x': 500000.0, 'observer_y': 4900000.0,
+                                                           'target_x': 530000.0, 'target_y': 4900000.0,
+                                                           'earth_curvature': True,
+                                                           'observer_height': 40.0,
+                                                           'target_height': 40.0}}}}]},
+    {   'name': 'viewshed',
+        'status': 'available',
+        'tool': None,
+        'workload': 'raster',
+        'category': 'terrain',
+        "produces": "dataset:raster",
+        'applicability': {'inputs': ['raster'], 'requires_projected_crs': True, 'dataset_inputs': 2},
+        'summary': 'How many observing stations can see each cell \u2014 a COUNT, not a '
+                   'yes/no. Requires the [whitebox] extra',
+        "phrasings": "which areas can be seen from these towers; the coverage circles "
+                     "ignore the hills and the client will ask about the dead zone; "
+                     "what is visible from the summit",
+        "distinguishes": "Maps everything visible from a set of stations. Not "
+                         "line_of_sight, which answers about ONE pair of positions and "
+                         "can raise the target end too; not euclidean_distance, which "
+                         "measures how far away things are regardless of whether you "
+                         "can see them.",
+        'description': 'Each cell holds the NUMBER of stations that can see it, which '
+                       "contradicts the tool's own documentation \u2014 Whitebox's help "
+                       'says "a Boolean raster, containing 1\'s and 0\'s", and measured '
+                       'on 2.0.6 with two stations on flat ground every cell comes back '
+                       '2.0. Threshold at > 0 for a boolean; do not sum the raster '
+                       'expecting an area. station_height has no default because its '
+                       "unit is the DEM's Z unit rather than metres: on a DEM in US "
+                       'survey feet, 2.0 is two feet. There is no target height in this '
+                       'tool \u2014 only the observer is raised \u2014 so use '
+                       'line_of_sight when the far end has a mast on it. A geographic '
+                       'CRS is refused: the height would be in Z units against cell '
+                       'sizes in degrees.',
+        'parameters': [{'name': 'dem_path', 'type': 'str', 'required': True,
+                        'description': 'DEM in a projected CRS'},
+                       {'name': 'stations_path', 'type': 'str', 'required': True,
+                        'description': 'Point layer of observing stations (at least one)'},
+                       {'name': 'output_path', 'type': 'str', 'required': True,
+                        'description': 'Output raster: count of stations that see each cell'},
+                       {'name': 'station_height', 'type': 'float', 'required': True,
+                        'description': "Observer height above ground, in the DEM's Z unit"}],
+        'examples': [{'goal': 'Which streets can the two new masts actually cover, given the hills?',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'viewshed',
+                                             'arguments': {'dem_path': 'dem.tif',
+                                                           'stations_path': 'masts.gpkg',
+                                                           'output_path': 'coverage.tif',
+                                                           'station_height': 25.0}}}},
+                     {'goal': 'What can be seen from the lookout at eye height?',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'viewshed',
+                                             'arguments': {'dem_path': 'dem.tif',
+                                                           'stations_path': 'lookout.gpkg',
+                                                           'output_path': 'visible.tif',
+                                                           'station_height': 1.7}}}}]},
+    {   'name': 'network_shortest_path',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'network',
+        "produces": "dataset:vector",
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1},
+        'summary': 'Cheapest route between two positions over a line network, with the '
+                   'connectivity of that network reported',
+        "phrasings": "cheapest path to lay the cable avoiding steep slopes; how do I "
+                     "actually drive from here to there; the route along the streets "
+                     "not as the crow flies",
+        "distinguishes": "Follows the network. Not nearest_join, which measures "
+                         "straight-line distance to the closest feature; not "
+                         "service_area, which is everything reachable rather than the "
+                         "way to one place.",
+        'description': 'Dijkstra over a graph built from the line layer, with junctions '
+                       'formed by snapping endpoints. tolerance has no default and it '
+                       'is the parameter that decides whether the answer means '
+                       'anything: two segments a millimetre apart are one junction on '
+                       'the ground and two nodes in a naive build, so the route detours '
+                       'or comes back impossible \u2014 and nothing raises, because a '
+                       'graph with a gap is a valid graph. The manifest carries the '
+                       'number of connected components and the number of merged '
+                       'endpoints, and how far each end snapped to the network. '
+                       'cost_field is any non-negative numeric column (minutes, euros, '
+                       'a slope-weighted length); without it the cost is geometric '
+                       'length, which needs a projected CRS. Negative or missing costs '
+                       'are refused rather than answered, because Dijkstra is only '
+                       'correct on non-negative weights and would return a confident '
+                       'wrong route.',
+        'parameters': [{'name': 'network_path', 'type': 'str', 'required': True,
+                        'description': 'Line layer forming the network'},
+                       {'name': 'output_path', 'type': 'str', 'required': True,
+                        'description': 'Output line layer: the route, with cumulative cost'},
+                       {'name': 'from_x', 'type': 'float', 'required': True,
+                        'description': 'Origin easting'},
+                       {'name': 'from_y', 'type': 'float', 'required': True,
+                        'description': 'Origin northing'},
+                       {'name': 'to_x', 'type': 'float', 'required': True,
+                        'description': 'Destination easting'},
+                       {'name': 'to_y', 'type': 'float', 'required': True,
+                        'description': 'Destination northing'},
+                       {'name': 'tolerance', 'type': 'float', 'required': True,
+                        'description': 'How far apart two endpoints can be and still be the same junction'},
+                       {'name': 'cost_field', 'type': 'str', 'required': False,
+                        'description': 'Non-negative numeric column to use as cost (default: geometric length)'},
+                       {'name': 'oneway_field', 'type': 'str', 'required': False,
+                        'description': 'Boolean column marking one-way edges (default: undirected)'}],
+        'examples': [{'goal': 'The cheapest trench route from the substation, avoiding steep ground',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'network_shortest_path',
+                                             'arguments': {'network_path': 'corridors.gpkg',
+                                                           'output_path': 'route.parquet',
+                                                           'from_x': 512000.0, 'from_y': 4928000.0,
+                                                           'to_x': 515500.0, 'to_y': 4930200.0,
+                                                           'tolerance': 0.5,
+                                                           'cost_field': 'slope_weighted_length'}}}},
+                     {'goal': 'Quickest way between two depots along the road network',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'network_shortest_path',
+                                             'arguments': {'network_path': 'roads.gpkg',
+                                                           'output_path': 'route.parquet',
+                                                           'from_x': 512000.0, 'from_y': 4928000.0,
+                                                           'to_x': 515500.0, 'to_y': 4930200.0,
+                                                           'tolerance': 0.5,
+                                                           'cost_field': 'minutes'}}}}]},
+    {   'name': 'service_area',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'network',
+        "produces": "dataset:vector",
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1},
+        'summary': 'Every stretch of network reachable within a cost budget, with the '
+                   'last segment cut where the budget runs out',
+        "phrasings": "which blocks are more than a ten minute walk from a clinic; what "
+                     "can be reached from here in twenty minutes; who is cut off if "
+                     "these roads flood",
+        "distinguishes": "Reach along the network. Not buffer_layer, which draws a "
+                         "circle that includes the far side of a river with no bridge "
+                         "and excludes the house 900 m away along a straight road; not "
+                         "network_shortest_path, which is the way to one place rather "
+                         "than everywhere.",
+        'description': 'Dijkstra from one position, keeping every edge whose start is '
+                       'within the budget and cutting the last one at the point where '
+                       'the budget runs out, so the edge of the area is where the walk '
+                       'actually ends rather than at the nearest junction. Each output '
+                       'segment carries cost_at_start, cost_at_end and a partial flag. '
+                       'The connectivity caveats of network_shortest_path apply '
+                       'identically and are reported the same way: tolerance decides '
+                       'whether the network is one piece, and a disconnected graph '
+                       'makes destinations unreachable by construction rather than by '
+                       'distance.',
+        'parameters': [{'name': 'network_path', 'type': 'str', 'required': True,
+                        'description': 'Line layer forming the network'},
+                       {'name': 'output_path', 'type': 'str', 'required': True,
+                        'description': 'Output line layer: the reachable stretches'},
+                       {'name': 'from_x', 'type': 'float', 'required': True,
+                        'description': 'Origin easting'},
+                       {'name': 'from_y', 'type': 'float', 'required': True,
+                        'description': 'Origin northing'},
+                       {'name': 'budget', 'type': 'float', 'required': True,
+                        'description': "Cost budget, in the cost field's unit or in the CRS's length unit"},
+                       {'name': 'tolerance', 'type': 'float', 'required': True,
+                        'description': 'How far apart two endpoints can be and still be the same junction'},
+                       {'name': 'cost_field', 'type': 'str', 'required': False,
+                        'description': 'Non-negative numeric column to use as cost (default: geometric length)'},
+                       {'name': 'oneway_field', 'type': 'str', 'required': False,
+                        'description': 'Boolean column marking one-way edges (default: undirected)'}],
+        'examples': [{'goal': 'Everything within a ten-minute walk of this clinic, along the actual streets',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'service_area',
+                                             'arguments': {'network_path': 'footways.gpkg',
+                                                           'output_path': 'ten_minutes.parquet',
+                                                           'from_x': 512000.0, 'from_y': 4928000.0,
+                                                           'budget': 10.0, 'tolerance': 0.5,
+                                                           'cost_field': 'walk_minutes'}}}},
+                     {'goal': 'How far can an ambulance get from this station in 800 metres of road?',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'service_area',
+                                             'arguments': {'network_path': 'roads.gpkg',
+                                                           'output_path': 'reach.parquet',
+                                                           'from_x': 512000.0, 'from_y': 4928000.0,
+                                                           'budget': 800.0, 'tolerance': 0.5}}}}]},
+    {   'name': 'hot_spots',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'inspection',
+        "produces": "dataset:vector",
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1},
+        'summary': 'Getis-Ord Gi* with a false-discovery-rate correction: where high '
+                   'values cluster with other high values',
+        "phrasings": "the high-count villages seem grouped but I am not sure what I am "
+                     "seeing; is this a real cluster or noise; where are the hot spots",
+        "distinguishes": "Tests whether a grouping is more than chance. Not "
+                         "count_in_polygons, which counts without asking whether the "
+                         "pattern means anything; not smooth_rates, which stabilises "
+                         "small-denominator rates rather than locating clusters.",
+        'description': 'Gi* including the feature itself, with binary weights from '
+                       'either shared-boundary contiguity or a distance band. Every '
+                       'feature is a hypothesis test, so over 300 districts at the '
+                       'conventional 0.05 about fifteen come back significant from '
+                       'noise alone \u2014 and they will be somewhere, and that '
+                       'somewhere will look like a pattern. The significant column is '
+                       'therefore a Benjamini-Hochberg false-discovery-rate decision '
+                       'across all features, and the uncorrected count is reported '
+                       'alongside so the difference is visible rather than implied. '
+                       'gi_z and gi_p carry the raw statistic. Features with no '
+                       'neighbours are counted in a non-critical check, because an '
+                       'isolated Gi* is computed over the feature alone and says more '
+                       'about the weights than about the data.',
+        'parameters': [{'name': 'input_path', 'type': 'str', 'required': True,
+                        'description': 'Layer to test (polygons or points)'},
+                       {'name': 'output_path', 'type': 'str', 'required': True,
+                        'description': 'Output layer with gi_z, gi_p, significant, hot_or_cold'},
+                       {'name': 'value_field', 'type': 'str', 'required': True,
+                        'description': 'Numeric column to test for clustering'},
+                       {'name': 'weights', 'type': 'str', 'required': True,
+                        'description': "'contiguity' (shared boundaries) or 'distance_band'"},
+                       {'name': 'distance_band', 'type': 'float', 'required': False,
+                        'description': "Radius within which features are neighbours (required for 'distance_band')"},
+                       {'name': 'alpha', 'type': 'float', 'required': False,
+                        'description': 'False-discovery rate (default 0.05)'}],
+        'examples': [{'goal': 'Are the high-count villages really clustered, or does it just look that way?',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'hot_spots',
+                                             'arguments': {'input_path': 'villages.gpkg',
+                                                           'output_path': 'clusters.parquet',
+                                                           'value_field': 'cases',
+                                                           'weights': 'distance_band',
+                                                           'distance_band': 5000.0}}}},
+                     {'goal': 'Which districts form a genuine cluster of high values?',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'hot_spots',
+                                             'arguments': {'input_path': 'districts.gpkg',
+                                                           'output_path': 'hot.parquet',
+                                                           'value_field': 'incidents',
+                                                           'weights': 'contiguity'}}}}]},
+    {   'name': 'smooth_rates',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'inspection',
+        "produces": "dataset:vector",
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1},
+        'summary': 'Empirical-Bayes rates: the small-denominator problem handled '
+                   'explicitly, with the shrinkage reported per area',
+        "phrasings": "the rates jump from 0 to 800 per 100000 because the districts are "
+                     "tiny; my choropleth is really a map of population size; stabilise "
+                     "these rates",
+        "distinguishes": "Estimates underlying risk from counts and populations. Not "
+                         "aggregate_weighted, which computes a rate over an area "
+                         "without stabilising it; not hot_spots, which asks where "
+                         "values cluster rather than what each one really is.",
+        'description': 'Marshall (1991) empirical Bayes with a global prior: each raw '
+                       'rate is shrunk toward the global rate by an amount that depends '
+                       'on how much information its denominator carries, so a district '
+                       'of two million barely moves and one of 120 moves most of the '
+                       'way. Output carries raw_rate, smoothed_rate and shrinkage \u2014 '
+                       'the weight given to the local rate, between 0 and 1 \u2014 so a '
+                       'reader can see which numbers are evidence and which are mostly '
+                       'the prior. When the between-area variance comes out at or below '
+                       'zero the variation is no larger than sampling noise alone would '
+                       'produce, every area is shrunk to the global rate, and the '
+                       'manifest says so. A smoothed rate is an estimate of risk and is '
+                       'the wrong number for how many people were actually ill.',
+        'parameters': [{'name': 'input_path', 'type': 'str', 'required': True,
+                        'description': 'Area layer with counts and populations'},
+                       {'name': 'output_path', 'type': 'str', 'required': True,
+                        'description': 'Output layer with raw_rate, smoothed_rate, shrinkage'},
+                       {'name': 'count_field', 'type': 'str', 'required': True,
+                        'description': 'Numerator: events observed in each area'},
+                       {'name': 'population_field', 'type': 'str', 'required': True,
+                        'description': 'Denominator: population at risk (must be positive)'},
+                       {'name': 'per', 'type': 'float', 'required': False,
+                        'description': 'Rate denominator for reporting (default 100000)'}],
+        'examples': [{'goal': 'District TB rates swing from 0 to 800 per 100,000 because the denominators are tiny',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'smooth_rates',
+                                             'arguments': {'input_path': 'districts.gpkg',
+                                                           'output_path': 'smoothed.parquet',
+                                                           'count_field': 'cases',
+                                                           'population_field': 'population'}}}},
+                     {'goal': 'Stabilise incident rates per 1,000 households before mapping them',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'smooth_rates',
+                                             'arguments': {'input_path': 'wards.gpkg',
+                                                           'output_path': 'wards_eb.parquet',
+                                                           'count_field': 'incidents',
+                                                           'population_field': 'households',
+                                                           'per': 1000.0}}}}]},
+    {   'name': 'aggregate_to_threshold',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'vector',
+        "produces": "dataset:vector",
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1},
+        'summary': 'Merge neighbouring areas until every one meets a minimum count, '
+                   'deterministically \u2014 disclosure control that can be defended',
+        "phrasings": "the ethics committee will not let me publish counts below five; "
+                     "patient confidentiality on this map; combine the small areas until "
+                     "they are safe to release",
+        "distinguishes": "Merges by COUNT until a threshold is met. Not dissolve_layer, "
+                         "which merges by a key you already have; not "
+                         "aggregate_weighted, which computes a rate without changing "
+                         "the geometry.",
+        'description': 'Greedy and deterministic: repeatedly take the area with the '
+                       'smallest count still under the minimum and merge it into '
+                       'whichever neighbour has the smallest count, ties broken by '
+                       'feature order. The same input produces the same grouping every '
+                       'run, which matters more here than optimality \u2014 a disclosure '
+                       'decision that changes between runs cannot be defended to an '
+                       'ethics committee. Output carries the merged count, the number '
+                       'of members and the source feature indices. An area with no '
+                       'neighbours cannot be merged and the operation REFUSES rather '
+                       'than emitting it below the threshold, because quietly '
+                       'publishing the one island that could not be fixed is exactly '
+                       'the disclosure this prevents. Three closed-form checks: nothing '
+                       'below the minimum, the total unchanged, every input area in '
+                       'exactly one group.',
+        'parameters': [{'name': 'input_path', 'type': 'str', 'required': True,
+                        'description': 'Area layer with a count column'},
+                       {'name': 'output_path', 'type': 'str', 'required': True,
+                        'description': 'Output layer of merged areas'},
+                       {'name': 'count_field', 'type': 'str', 'required': True,
+                        'description': 'Numeric column that must reach the minimum'},
+                       {'name': 'minimum', 'type': 'float', 'required': True,
+                        'description': 'Smallest count an area may have in the output'}],
+        'examples': [{'goal': 'No published area may have fewer than five cases',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'aggregate_to_threshold',
+                                             'arguments': {'input_path': 'wards.gpkg',
+                                                           'output_path': 'safe_wards.parquet',
+                                                           'count_field': 'cases',
+                                                           'minimum': 5}}}},
+                     {'goal': 'Combine tiny districts so every one has at least 1,000 residents',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'aggregate_to_threshold',
+                                             'arguments': {'input_path': 'districts.gpkg',
+                                                           'output_path': 'merged.parquet',
+                                                           'count_field': 'population',
+                                                           'minimum': 1000}}}}]},
+    {   'name': 'thin_points',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'vector',
+        "produces": "dataset:vector",
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': 1},
+        'summary': 'Keep points no closer together than a distance, deterministically '
+                   'and in priority order. Removes data, and says so',
+        "phrasings": "a million dots and the map freezes; the town names overlap into a "
+                     "dark bar, drop the smaller ones; my readings are dense near the "
+                     "road and sparse elsewhere",
+        "distinguishes": "Drops points to open up space. Not simplify_layer, which "
+                         "reduces vertices within a geometry rather than removing "
+                         "features; not centroid_layer, which replaces geometries "
+                         "instead of thinning them.",
+        'description': 'Greedy in priority order, ties by feature index: a point is '
+                       'kept when no already-kept point lies within min_distance. That '
+                       'is deterministic, which random or grid-jittered thinning is '
+                       'not, and a map that changes between runs cannot carry a '
+                       'manifest. priority_field is what makes it usable on labels: '
+                       'without it, thinning keeps whichever point came first in the '
+                       'file, which on a place-name layer means keeping hamlets and '
+                       'dropping capitals. A geographic CRS is refused because the '
+                       'distance would be in degrees. This operation REMOVES DATA: it '
+                       'is for drawing, the manifest records how many went, and any '
+                       'total computed from the output is a total of what survived '
+                       'thinning.',
+        'parameters': [{'name': 'input_path', 'type': 'str', 'required': True,
+                        'description': 'Point layer in a projected CRS'},
+                       {'name': 'output_path', 'type': 'str', 'required': True,
+                        'description': 'Output layer holding the surviving points'},
+                       {'name': 'min_distance', 'type': 'float', 'required': True,
+                        'description': "Smallest allowed spacing, in the CRS's linear unit"},
+                       {'name': 'priority_field', 'type': 'str', 'required': False,
+                        'description': 'Numeric column deciding which point survives a crowd'},
+                       {'name': 'keep_highest', 'type': 'bool', 'required': False,
+                        'description': 'Whether the largest priority wins (default true)'}],
+        'examples': [{'goal': 'A million logged points freeze the map; thin them to something drawable',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'thin_points',
+                                             'arguments': {'input_path': 'harvest.parquet',
+                                                           'output_path': 'harvest_thin.parquet',
+                                                           'min_distance': 5.0}}}},
+                     {'goal': 'The place names overlap; keep the larger towns and drop the rest',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'thin_points',
+                                             'arguments': {'input_path': 'places.gpkg',
+                                                           'output_path': 'labels.parquet',
+                                                           'min_distance': 30000.0,
+                                                           'priority_field': 'population'}}}}]},
 ]
 
 # --- Okapi BM25 over the catalog (deterministic, no dependencies) ---------
@@ -3423,6 +3981,7 @@ def applicable(
     projected: bool | None = None,
     produces: str | None = None,
     category: str | None = None,
+    dataset_inputs: int | None = None,
 ) -> list[dict[str, Any]]:
     """The subset of the catalog applicable to the data in hand — deterministically.
 
@@ -3445,6 +4004,23 @@ def applicable(
     input kind + produces                               21         44%
     input kind + produces + category                    15         56%
     ==========================================  ==========  ==========
+
+    ``dataset_inputs`` is how many datasets the caller is holding, and it is the
+    facet that made the catalog scale past sixty operations. Added 2026-08-29,
+    when ten new entries pushed the vector-in/vector-out set from 26 candidates
+    to 34 — over the threshold at which the whole set can be handed over — and
+    the measured consequence was that `delivered` fell from 100% to 45% and
+    found@3 from 48% to 36%. **Adding capability had made discovery worse**,
+    which is the scaling wall this project had predicted at eight hundred
+    operations and met at sixty-one.
+
+    Raising the threshold would have postponed it. Arity does not: it takes the
+    median surviving set from 34 to 9 and the worst case from 34 to 22. And it
+    is the right KIND of facet, which is the part worth keeping — a caller knows
+    whether they have one layer or two without knowing anything about our
+    taxonomy, and the number is derivable from each operation's binding, so
+    `test_the_declared_arity_matches_the_binding` checks the declaration against
+    the code rather than trusting it.
 
     **``category`` is a hard filter here and** :func:`search` **deliberately does
     not use it as one.** The difference is who knows the answer. ``input_kind``
@@ -3496,6 +4072,11 @@ def applicable(
         if produces is not None and op.get("produces") != produces:
             continue
         if category is not None and op["category"] != category:
+            continue
+        if (
+            dataset_inputs is not None
+            and op["applicability"]["dataset_inputs"] != dataset_inputs
+        ):
             continue
         kept.append(op)
     return kept
@@ -3586,6 +4167,7 @@ def search(
     projected: bool | None = None,
     produces: str | None = None,
     category: str | None = None,
+    dataset_inputs: int | None = None,
     engine: str = "auto",
 ) -> list[dict[str, Any]]:
     """Search the catalog. Compact entries by default; detail=True adds parameters/examples.
@@ -3636,7 +4218,7 @@ def search(
     # removing them: it is the one facet the caller has to guess about our own
     # taxonomy, and a wrong guess would delete the right answer in silence. See
     # `applicable` for the measurement behind that.
-    candidates = applicable(input_kind, projected, produces)
+    candidates = applicable(input_kind, projected, produces, dataset_inputs=dataset_inputs)
     # `_tokenize` is what decides whether there is a query at all: a string of
     # function words scores nothing against every entry, and returning the
     # catalog says "ask me better" more usefully than returning nothing.

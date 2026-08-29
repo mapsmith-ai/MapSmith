@@ -243,3 +243,109 @@ def test_idw_refuses_a_non_positive_cell_size(four_equal_points, tmp_path):
         engine.idw_interpolation(
             four_equal_points, str(tmp_path / "x.tif"), field_name="height", cell_size=0.0
         )
+
+
+# ------------------------------------------------------------------ viewshed
+
+def test_the_viewshed_counts_stations_and_does_not_flag_them(tmp_path):
+    """The tool's own documentation says the opposite, so this is measured.
+
+    Whitebox's help for Viewshed states "the output image will be a Boolean
+    raster, containing 1's and 0's". On flat ground with two stations, every
+    cell here comes back 2.0 — the classic source calls `increment`, not
+    `set_value`. A caller who summed the raster expecting a visible area would
+    be out by a factor of the station count, and nothing would raise.
+
+    This test is the reason that claim is safe to put in a docstring: if a
+    future version really does turn the output into a flag, this fails.
+    """
+    pytest.importorskip("whitebox_workflows")
+    import geopandas as gpd
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+    from shapely.geometry import Point
+
+    dem = tmp_path / "flat.tif"
+    with rasterio.open(
+        dem, "w", driver="GTiff", height=21, width=21, count=1, dtype="float32",
+        crs="EPSG:32632", transform=from_origin(0, 210, 10, 10),
+    ) as dst:
+        dst.write(np.zeros((21, 21), dtype="float32"), 1)
+
+    stations = tmp_path / "stations.gpkg"
+    gpd.GeoDataFrame(
+        {"id": [1, 2]},
+        geometry=[Point(55, 105), Point(155, 105)],
+        crs="EPSG:32632",
+    ).to_file(stations, layer="s", driver="GPKG")
+
+    out = tmp_path / "seen.tif"
+    result = engine.viewshed(
+        str(dem), str(stations), str(out), station_height=2.0
+    )
+    assert result["stations"] == 2
+
+    with rasterio.open(out) as ds:
+        values = ds.read(1, masked=True)
+    assert float(values.max()) == 2.0, (
+        "two stations on flat ground see every cell, so a count says 2 and a "
+        "boolean says 1 — this is the measurement the docstring rests on"
+    )
+
+    manifest = json.loads((tmp_path / "seen.tif.provenance.json").read_text(encoding="utf-8"))
+    assert manifest["parameters"]["output_meaning"].startswith("number of stations")
+    assert any("NUMBER of stations" in note for note in manifest["notes"])
+
+
+def test_the_station_height_unit_is_stated_because_it_is_not_metres(tmp_path):
+    """`station_height` is in the DEM's Z unit. On a DEM in feet, 2.0 is two
+    feet, and an eye height of 0.6 m would be a silent error with a
+    plausible-looking viewshed to show for it."""
+    pytest.importorskip("whitebox_workflows")
+    import geopandas as gpd
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+    from shapely.geometry import Point
+
+    dem = tmp_path / "flat.tif"
+    with rasterio.open(
+        dem, "w", driver="GTiff", height=5, width=5, count=1, dtype="float32",
+        crs="EPSG:32632", transform=from_origin(0, 50, 10, 10),
+    ) as dst:
+        dst.write(np.zeros((5, 5), dtype="float32"), 1)
+    stations = tmp_path / "s.gpkg"
+    gpd.GeoDataFrame(
+        {"id": [1]}, geometry=[Point(25, 25)], crs="EPSG:32632"
+    ).to_file(stations, layer="s", driver="GPKG")
+
+    out = tmp_path / "one.tif"
+    engine.viewshed(str(dem), str(stations), str(out), station_height=1.7)
+    manifest = json.loads((tmp_path / "one.tif.provenance.json").read_text(encoding="utf-8"))
+    assert manifest["parameters"]["height_unit"].startswith("the DEM's Z unit")
+    assert manifest["parameters"]["station_height"] == 1.7
+
+
+def test_a_viewshed_with_no_stations_is_refused_not_answered_with_zeros(tmp_path):
+    pytest.importorskip("whitebox_workflows")
+    import geopandas as gpd
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    dem = tmp_path / "flat.tif"
+    with rasterio.open(
+        dem, "w", driver="GTiff", height=5, width=5, count=1, dtype="float32",
+        crs="EPSG:32632", transform=from_origin(0, 50, 10, 10),
+    ) as dst:
+        dst.write(np.zeros((5, 5), dtype="float32"), 1)
+    empty = tmp_path / "none.gpkg"
+    gpd.GeoDataFrame(
+        {"id": []}, geometry=gpd.GeoSeries([], dtype="geometry"), crs="EPSG:32632"
+    ).to_file(empty, layer="s", driver="GPKG")
+
+    with pytest.raises(ValueError, match="nothing to see from"):
+        engine.viewshed(
+            str(dem), str(empty), str(tmp_path / "x.tif"), station_height=2.0
+        )

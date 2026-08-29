@@ -21,9 +21,10 @@ catalogue is written: *"the coastline is 400 000 nodes and the browser dies"*, n
 
 | what the caller declares | candidates left | ranked, found@3 | **in what comes back** |
 |---|---|---|---|
-| nothing — words alone | 51 | 25% | 25% |
-| the input kind | 33 | 29% | 43% |
-| + what it should produce | **21** | 48% | **100%** |
+| nothing — words alone | 61 | 18% | 18% |
+| the input kind | 39 | 23% | 37% |
+| + what it should produce | 27 | 36% | 45% |
+| **+ how many datasets** | **12** | **60%** | **100%** |
 
 **Ranking is not the mechanism; narrowing is** — and the last column is why. Once
 the two facts a caller genuinely knows have cut the catalogue to something readable,
@@ -74,6 +75,40 @@ entry declaring it is kept for *every* input kind. An empty list would read as
 True only when the engine actually refuses. **Verify it by executing**, not by
 reading the code: reading ours once reported five operations as refusing because
 the word "geographic" appeared in a warning rather than in a `raise`.
+
+### `applicability.dataset_inputs` — how many datasets are in hand
+
+`0`, `1` or `2`: the number of datasets the operation consumes. REQUIRED.
+
+It is the facet that makes a catalogue keep working as it grows, and the
+measurement that put it here is worth stating because it is the failure mode this
+whole specification is about. On 2026-08-29 a catalogue went from 51 operations to
+61 in an afternoon. The commonest surviving set — one vector layer in, one vector
+layer out — went from 26 candidates to 34, past the point at which the whole set
+can be handed to the caller, and the measured consequence over 118 independent
+requests was that the right operation stopped being delivered 100% of the time
+and fell to 45%, with found@3 down from 48% to 36%. **Adding capability had made
+discovery worse, and nothing raised.**
+
+Raising the hand-over threshold would have bought about ten more operations.
+Declaring arity took the median surviving set from 34 to 9 and found@3 to 60%.
+
+Two things make it the right *kind* of facet, and they are the two to look for
+when a catalogue of your own outgrows its facets:
+
+- **It is a fact about the caller's situation, not a label from your vocabulary.**
+  Somebody with a parcels layer and a flood-zone layer knows they are holding two
+  datasets. They do not know, and should not have to know, that you filed
+  `clip_layer` under `vector` and `zonal_statistics` under `raster`.
+- **It is derivable from the operation's own signature**, so the declaration can
+  be checked against the code rather than trusted. Declare it and test it; do not
+  compute it at search time from an engine registry, because the catalogue is the
+  reachability layer and has to be readable on its own.
+
+> **Normative.** An implementation MUST declare `dataset_inputs` on every entry
+> and SHOULD verify it against the operation's signature in CI. A wrong value is
+> the worst kind of wrong: the operation becomes invisible to every caller who
+> describes their situation correctly, and no error is raised anywhere.
 
 ### `produces` — what the caller gets back
 

@@ -247,3 +247,44 @@ def test_the_catalog_search_makes_no_request_under_a_workspace(monkeypatch, tmp_
         "the fallback ran but the answer does not say which engine produced it"
     )
     retrieval._model.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [op for op in catalog.OPERATIONS if op["name"] in BINDINGS],
+    ids=lambda op: op["name"],
+)
+def test_the_declared_arity_matches_the_binding(entry):
+    """`dataset_inputs` is a filter input, so a wrong one hides an operation.
+
+    It is declared in the catalogue rather than derived from the registry
+    because the catalogue is the reachability layer and has to be readable
+    without importing the engine bindings. That makes it a second copy of a
+    fact, and a second copy of a fact drifts — so it is checked here against the
+    thing it describes, the same way `produces` is checked against what the
+    operation actually writes.
+
+    The failure it prevents is silent in the worst way: an operation that takes
+    two datasets but declares one is invisible to every caller who correctly
+    says they are holding two, and no error is raised anywhere.
+    """
+    binding = BINDINGS[entry["name"]]
+    actual = len(binding.input_args) + len(binding.list_input_args)
+    declared = entry["applicability"]["dataset_inputs"]
+    assert declared == actual, (
+        f"{entry['name']} declares dataset_inputs={declared} and its binding reads "
+        f"{actual} dataset argument(s) ({binding.input_args + binding.list_input_args}). "
+        "A caller who declares the true number will never be offered it."
+    )
+
+
+def test_every_entry_declares_an_arity_at_all():
+    """Including the ones with no binding — planned operations and the two plan
+    tools. A missing declaration would make `applicable(dataset_inputs=...)`
+    raise a KeyError deep inside a filter, which is a worse way to find out."""
+    missing = [
+        op["name"]
+        for op in catalog.OPERATIONS
+        if "dataset_inputs" not in op["applicability"]
+    ]
+    assert not missing, f"these entries declare no dataset_inputs: {missing}"

@@ -124,7 +124,9 @@ STEPS: list[dict[str, Any]] = [
     {
         "id": "buffer",
         "ask": "everything within one and a half kilometres of the river",
-        "facets": {"input_kind": "vector", "produces": "dataset:vector"},
+        "facets": {
+            "input_kind": "vector", "produces": "dataset:vector", "dataset_inputs": 1
+        },
         "operation": "buffer_layer",
         "why": (
             "The parcels are in degrees, and 300 of anything is not a distance in "
@@ -134,14 +136,18 @@ STEPS: list[dict[str, Any]] = [
     {
         "id": "near",
         "ask": "keep only the parcels that fall inside that strip",
-        "facets": {"input_kind": "vector", "produces": "dataset:vector"},
+        "facets": {
+            "input_kind": "vector", "produces": "dataset:vector", "dataset_inputs": 2
+        },
         "operation": "clip_layer",
         "why": "Two operations could do it and they answer differently at the edges.",
     },
     {
         "id": "height",
         "ask": "how high is the ground under each of these parcels",
-        "facets": {"input_kind": "raster", "produces": "dataset:vector"},
+        "facets": {
+            "input_kind": "raster", "produces": "dataset:vector", "dataset_inputs": 2
+        },
         "operation": "zonal_statistics",
         "why": (
             "A raster in and a vector out: declaring both narrows this to almost "
@@ -151,7 +157,9 @@ STEPS: list[dict[str, Any]] = [
     {
         "id": "area",
         "ask": "how big is each one on the ground",
-        "facets": {"input_kind": "vector", "produces": "dataset:vector"},
+        "facets": {
+            "input_kind": "vector", "produces": "dataset:vector", "dataset_inputs": 1
+        },
         "operation": "measure_area",
         "why": (
             "Ground area, not the area of the map. On a geographic CRS the planar "
@@ -164,7 +172,12 @@ STEPS: list[dict[str, Any]] = [
         "facets": {"input_kind": "vector", "produces": "dataset:vector"},
         "operation": "run_sql",
         "why": (
-            "The one step that cannot go in the plan, and the reason is a deliberate "
+            "The only step here that declares no arity, and the reason is the same "
+            "one that keeps it out of the plan: run_sql takes its inputs inside a "
+            "SQL string, so it consumes zero declared datasets. A caller who "
+            "correctly says they are holding one layer would not be offered it. "
+            "That is a real gap the arity facet creates, and it is written here "
+            "rather than hidden by declaring a number that is not true. "
             "boundary rather than a gap: `$step` references resolve only in arguments "
             "declared as dataset inputs, and run_sql takes its inputs inside a SQL "
             "string. A grammar that substituted into arbitrary strings would be a "
@@ -366,7 +379,10 @@ def _tables(trace: dict[str, Any]) -> str:
         "|---|---|---|---|---|",
     ]
     for found in trace["discovery"]:
-        declared = ", ".join(found["declared"].values())
+        declared = ", ".join(
+            f"{value} dataset(s)" if key == "dataset_inputs" else str(value)
+            for key, value in found["declared"].items()
+        )
         out.append(
             f'| “{found["ask"]}” | {declared} | **{found["candidates"]}** of '
             f'{found["catalog_size"]} | `{found["chosen"]}` | {found["rank_of_chosen"]} |'

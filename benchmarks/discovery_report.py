@@ -100,14 +100,21 @@ def facets_for(name: str, declare: tuple[str, ...]) -> dict[str, Any]:
         out["produces"] = op["produces"]
     if "category" in declare:
         out["category"] = op["category"]
+    if "dataset_inputs" in declare:
+        out["dataset_inputs"] = op["applicability"]["dataset_inputs"]
     return out
 
 
+#: The order is the order a caller can answer in, easiest first, and the family
+#: comes last because it is the only one that is a guess about our taxonomy
+#: rather than a fact about their situation — `search` orders on it and does not
+#: filter, so its row is what `applicable` would do if asked.
 LEVELS: list[tuple[str, tuple[str, ...]]] = [
     ("nothing — words alone", ()),
     ("the input kind", ("input_kind",)),
     ("+ what it should produce", ("input_kind", "produces")),
-    ("+ which family", ("input_kind", "produces", "category")),
+    ("+ how many datasets", ("input_kind", "produces", "dataset_inputs")),
+    ("+ which family", ("input_kind", "produces", "dataset_inputs", "category")),
 ]
 
 

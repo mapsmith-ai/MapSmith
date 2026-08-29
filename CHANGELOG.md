@@ -6,7 +6,66 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Ten operations, chosen by measurement rather than by taste.** The discovery
+  benchmark holds 155 requests written by other model families; twenty-one of
+  them were marked `none` by BOTH independent labellers, meaning the catalogue
+  could not serve them at all. Grouped, those twenty-one are six families, and
+  these ten cover four of them:
+
+  `sample_raster_at_points`, `elevation_profile` and `line_of_sight` read a
+  surface at a place, along a line, and between two positions. Every one counts
+  the positions it could not read and puts that count in the manifest, because a
+  null that reads as a value is how a nodata of -9999 ends up in an average.
+  `line_of_sight` requires an explicit answer on earth curvature: over 30 km the
+  planet drops 62 m net of refraction, and there is no way to guess whether the
+  caller has a rooftop survey or a radio link.
+
+  `network_shortest_path` and `service_area` route over a line network the caller
+  supplies. The failure they are built around is not a wrong number, it is a
+  disconnected graph: two street segments a millimetre apart are one junction on
+  the ground and two nodes in a naive build, so the route detours or is reported
+  impossible and nothing raises. `tolerance` therefore has no default, and every
+  manifest carries the component count, the merged-endpoint count and how far
+  each end snapped to the network. `service_area` cuts the last segment where the
+  budget runs out — a ten-minute walk ends where the walk ends, not at the next
+  junction — and it is a network operation rather than a buffer because a circle
+  includes the far bank of a bridgeless river and excludes the house 900 m away
+  along a straight road.
+
+  `viewshed` maps what a set of stations can see. **Its output is a COUNT of
+  stations, not a 0/1 flag**, which contradicts Whitebox's own documentation:
+  the help says "a Boolean raster, containing 1's and 0's", and measured on 2.0.6
+  with two stations on flat ground every cell comes back 2.0. Second time this
+  library's prose has described the reverse of what its code does, after the D8
+  pointer table.
+
+  `hot_spots`, `smooth_rates`, `aggregate_to_threshold` and `thin_points` are for
+  the moment before somebody publishes a map of noise. Getis-Ord Gi* with a
+  Benjamini-Hochberg correction, because at 0.05 over 300 districts about fifteen
+  hot spots appear from nothing and they will be somewhere. Empirical-Bayes rates,
+  because a choropleth of raw rates over small populations is a map of population
+  size. Disclosure-control aggregation that refuses rather than publishing the one
+  island it could not merge. And deterministic point thinning that says in the
+  manifest that it removed data.
+
+### Changed
+
+- **`dataset_inputs` is a new facet, and a new REQUIRED field of the published
+  catalogue-entry specification.** How many datasets the caller is holding: 0, 1
+  or 2. It exists because the ten operations above broke discovery and it is the
+  thing that fixed it — measured, on the 118 independent requests: the surviving
+  set for the commonest facet combination went from 26 candidates to 34, over the
+  threshold at which the whole set is handed over, and `delivered` fell from 100%
+  to 45% with found@3 from 48% to 36%. With arity declared the median set is 9,
+  found@3 is 60% and delivered is back to 100%.
+
+  It is the right *kind* of facet, which is the part that generalises: a fact
+  about the caller's own situation rather than a guess about our taxonomy, and
+  derivable from each operation's signature so
+  `test_the_declared_arity_matches_the_binding` checks the declaration against
+  the code instead of trusting it.
 
 ## [0.3.0] — 2026-08-29
 
@@ -75,7 +134,7 @@ are in `Changed` and one of them affects anybody passing `category=`.
   with a tool of its own: `measure_length`, `join_table`, `aggregate_weighted`,
   `parse_coordinates`, `point_on_surface`, `hull_layer`, `validate_geometry`,
   `count_in_polygons`, `focal_statistics` and `extract_streams`. The catalogue is
-  at 51 operations (49 available, 2 planned) behind 28 tools.
+  at 61 operations (59 available, 2 planned) behind 28 tools.
 - **Overlay and dissolve declare their semantics in the manifest.** Dropped
   lower-dimension pieces from an overlay are named rather than silently absent,
   and a dissolve's aggregation is recorded with the group count verified in

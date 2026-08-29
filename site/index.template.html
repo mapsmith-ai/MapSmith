@@ -301,7 +301,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   </p>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1.5rem;margin:2rem 0 1.5rem">
     <div class="stat"><b>118</b><span>REQUESTS WE DID NOT WRITE</span></div>
-    <div class="stat"><b>48%</b><span>OUR RANKING, FOUND@3</span></div>
+    <div class="stat"><b>60%</b><span>OUR RANKING, FOUND@3</span></div>
     <div class="stat"><b>69%</b><span>A MODEL <em>CHOOSING</em> FROM THE SET</span></div>
     <div class="stat"><b>70%</b><span>WHERE THE TWO MODEL LABELLERS AGREE WITH EACH OTHER</span></div>
   </div>
@@ -339,14 +339,21 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     systems, found in our own discovery layer.
   </p>
   <p>
-    <strong>What we have not solved is scale, and this page claimed we had.</strong> It said the
-    facets leave sixteen candidates at 800 operations as they do at 200. The sixteen is real and
-    <em>the family produces almost all of it</em> — those 800 are all raster in, raster out, so the
-    honest facets cut nothing and only the taxonomy does, a guess among 43. What is needed is more
-    facts a caller can state without knowing our vocabulary: how many inputs an operation takes,
-    whether it changes geometry or only attributes, whether the output has as many features as the
-    input. Structural, checkable against the code. Not built yet. The guarantee above holds at
-    fifty-one operations and not at eight hundred, and we would rather say so than round it.
+    <strong>The scaling wall arrived, and it took an afternoon.</strong> This page used to say the
+    guarantee held at fifty-one operations and not at eight hundred. On 29 August the catalogue went
+    to sixty-one, the commonest surviving set went from 26 candidates to 34 — past the point where
+    the whole set can be handed over — and <em>delivered</em> fell from 100% to 45% while found@3
+    fell from 48% to 36%. <strong>Adding capability had made discovery worse</strong>, and nothing
+    raised: a catalogue with too many candidates is a perfectly valid catalogue.
+  </p>
+  <p>
+    Raising the threshold would have bought about ten operations. What fixed it is the fourth facet
+    in the table above: <em>how many datasets you are holding</em>. One layer or two. It is a fact
+    about your situation rather than a guess about our vocabulary, it is derivable from each
+    operation's own signature so a test checks the declaration against the code, and it takes the
+    median surviving set from 34 to 9. The catalogue grew by a fifth and discovery got better — but
+    only because a facet arrived with it, and that is the trade rather than a free lunch. It is now
+    a required field of the published entry specification, with the measurement attached.
   </p>
   <p>
     <strong>And no model is needed to extract those facets, because the caller is one.</strong> An
@@ -406,10 +413,10 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <tr>
       <td>ablation</td>
       <td>Each facet is worth measuring alone, over the 118 independent requests: nothing declared
-      → 51 candidates, 25% found@3; what data I have → 33, 29%; + what I want back → 21, 48% ranked
-      and <strong>100% delivered</strong>. The last row is what ships, and the jump in the last
-      column is not the ranker getting better — it is the set becoming small enough to hand over
-      whole.</td>
+      → 61 candidates, 18% found@3; what data I have → 39, 23%; + what I want back → 27, 36%;
+      + how many datasets I have → <strong>12, 60% ranked and 100% delivered</strong>. The jump in
+      the last column is not the ranker getting better — it is the set becoming small enough to
+      hand over whole.</td>
     </tr>
     <tr>
       <td>the default</td>

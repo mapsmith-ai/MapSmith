@@ -49,12 +49,13 @@
       ]
     },
     "applicability": {
-      "description": "FACET. What the operation can be pointed at. Declaring the input kind alone doubles found@3 at 800 candidates, from 20% to 40%.",
+      "description": "FACET. What the operation can be pointed at, and how much of it. These are the declarations a caller can answer from their own situation without knowing the vocabulary of the catalogue they are searching.",
       "type": "object",
       "additionalProperties": false,
       "required": [
         "inputs",
-        "requires_projected_crs"
+        "requires_projected_crs",
+        "dataset_inputs"
       ],
       "properties": {
         "inputs": {
@@ -74,6 +75,11 @@
         "requires_projected_crs": {
           "description": "True when the engine REFUSES a geographic CRS. Checked by executing the operation on a geographic dataset, not by reading the source: reading it once reported five operations that do not refuse, because the word appeared in their warnings.",
           "type": "boolean"
+        },
+        "dataset_inputs": {
+          "description": "How many datasets the operation consumes: 0 for one that takes none, 1 for a single layer, 2 for one that combines two. A caller knows this about their own situation without knowing anything about the catalogue, which is what makes it a facet rather than a label. It became REQUIRED on 2026-08-29, when a catalogue growing from 51 to 61 operations pushed the commonest surviving set from 26 candidates to 34 -- past the point where the whole set can be handed to the caller -- and the measured effect was that the right operation stopped being delivered 100% of the time and fell to 45%. Adding capability had made discovery worse. Arity took the median surviving set from 34 to 9 and found@3 from 36% to 60%. Derive it from the operation's own signature and check it against that, rather than declaring it by hand: a wrong value makes the operation invisible to every caller who describes their situation correctly, with no error anywhere.",
+          "type": "integer",
+          "minimum": 0
         }
       }
     },

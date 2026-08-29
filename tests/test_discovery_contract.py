@@ -51,13 +51,18 @@ def _facets(op: dict) -> dict:
     Not a hint given to the test: every field here is one the calling agent is
     asked for in `list_operations`, and one it knows without being told.
     """
-    facets: dict[str, str] = {}
+    facets: dict[str, object] = {}
     kinds = [k for k in op["applicability"]["inputs"] if k not in ("dataset", "none")]
     if kinds:
         facets["input_kind"] = kinds[0]
     if op.get("produces"):
         facets["produces"] = op["produces"]
     facets["category"] = op["category"]
+    # How many datasets the caller is holding. Added when the catalogue passed
+    # sixty operations and the other facets stopped being enough to hand the set
+    # over: it is a fact about the caller's situation, like the two above it, and
+    # not a guess about our taxonomy like the family.
+    facets["dataset_inputs"] = op["applicability"]["dataset_inputs"]
     return facets
 
 
@@ -181,13 +186,16 @@ def test_the_delivered_set_is_a_choice_and_says_so():
     answer = catalog.search(
         "the coastline has far too many points",
         limit=3, input_kind="vector", produces="dataset:vector", category="vector",
+        dataset_inputs=1,
     )
     assert len(answer) == 1 and answer[0]["status"] == "choose"
     candidates = answer[0]["candidates"]
     # Compared WITHOUT category, because search does not filter on it: the family
     # is an ordering there, so every operation that takes a vector layer and
     # returns one is still in the set.
-    survivors = catalog.applicable(input_kind="vector", produces="dataset:vector")
+    survivors = catalog.applicable(
+        input_kind="vector", produces="dataset:vector", dataset_inputs=1
+    )
     assert {c["name"] for c in candidates} == {o["name"] for o in survivors}, (
         "the choice was truncated or padded: `limit` governs a ranking, and there "
         "is no ranking here to truncate"
@@ -210,6 +218,7 @@ def test_a_query_far_from_the_catalog_warns_even_when_it_is_a_choice():
     answer = catalog.search(
         "book me a flight to Lisbon on Tuesday",
         input_kind="vector", produces="dataset:vector", category="vector",
+        dataset_inputs=1,
     )
     assert answer[0]["status"] == "choose"
     assert "order_is_weak" in answer[0], (
@@ -232,22 +241,22 @@ def test_the_declared_family_orders_the_set_and_does_not_cut_it():
     So it sorts. Declaring the family puts it first; declaring the WRONG family
     costs positions and nothing else.
     """
-    facts = {"input_kind": "vector", "produces": "dataset:vector"}
+    facts = {"input_kind": "vector", "produces": "dataset:vector", "dataset_inputs": 2}
     query = "which parcels fall inside the flood zone"
 
     plain = catalog.entries(catalog.search(query, **facts))
-    # `sql` is one operation in a set of twenty-six, which is what makes it a
+    # `terrain` is one operation in this set of nine, which is what makes it a
     # good probe: if declaring it does not lift that one entry to the front,
     # the ordering is doing nothing.
-    guided = catalog.entries(catalog.search(query, category="sql", **facts))
+    guided = catalog.entries(catalog.search(query, category="terrain", **facts))
     assert {o["name"] for o in plain} == {o["name"] for o in guided}, (
         "declaring a family changed WHICH operations came back; it is only "
         "allowed to change the order"
     )
 
-    how_many = sum(1 for o in guided if o["category"] == "sql")
+    how_many = sum(1 for o in guided if o["category"] == "terrain")
     leading = [o["category"] for o in guided[:how_many]]
-    assert leading and set(leading) == {"sql"}, (
+    assert leading and set(leading) == {"terrain"}, (
         "the declared family did not come first, so declaring it bought nothing"
     )
 

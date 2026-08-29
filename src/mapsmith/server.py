@@ -737,6 +737,7 @@ def list_operations(
     produces: str | None = None,
     category: str | None = None,
     projected: bool | None = None,
+    dataset_inputs: int | None = None,
     engine: str = "auto",
 ) -> list[dict[str, Any]]:
     """Find the operation you need. **Say what you have and what you want** — it matters more than the words you search with.
@@ -770,6 +771,12 @@ def list_operations(
       safe.
     - **projected** — pass False if your data is in a geographic CRS (degrees),
       and every operation that would refuse it disappears from the results.
+    - **dataset_inputs** — how many datasets you are holding for this step: 1 if
+      you have one layer, 2 if the operation combines two. This is the facet that
+      makes a large catalog usable: on the current one it takes the surviving set
+      from a median of 34 to 9, because "clip these parcels with that boundary"
+      and "simplify these parcels" are different questions and you already know
+      which one you have.
 
     `query` is then plain words for what you are trying to do, and it breaks the
     tie inside what is left. Describe the PROBLEM rather than the operation:
@@ -816,6 +823,7 @@ def list_operations(
         category=category,
         input_kind=input_kind,
         projected=projected,
+        dataset_inputs=dataset_inputs,
         engine=engine,
     )
 

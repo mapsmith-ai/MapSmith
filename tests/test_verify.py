@@ -325,10 +325,59 @@ def _spec_fixtures(tmp_path):
         crs=crs,
     ).to_parquet(quad)
 
+    # A small connected network and a strip of touching areas: everything the
+    # network and statistics operations need, built once here rather than in
+    # each lambda.
+    streets = tmp_path / "streets.parquet"
+    gpd.GeoDataFrame(
+        {"id": [0, 1, 2]},
+        geometry=[
+            LineString([(0, 0), (100, 0)]),
+            LineString([(100, 0), (200, 0)]),
+            LineString([(100, 0), (100, 100)]),
+        ],
+        crs=crs,
+    ).to_parquet(streets)
+    areas = tmp_path / "areas.parquet"
+    gpd.GeoDataFrame(
+        {"cases": [1.0, 1.0, 5.0, 1.0], "pop": [100.0, 200.0, 300.0, 400.0]},
+        geometry=[
+            Polygon([(i * 10, 0), (i * 10 + 10, 0), (i * 10 + 10, 10), (i * 10, 10)])
+            for i in range(4)
+        ],
+        crs=crs,
+    ).to_parquet(areas)
+    crowd = tmp_path / "crowd.parquet"
+    gpd.GeoDataFrame(
+        {"weight": [1.0, 5.0, 2.0, 4.0]},
+        geometry=[Point(x, 0) for x in (0, 10, 20, 30)],
+        crs=crs,
+    ).to_parquet(crowd)
+
     def out(name: str) -> str:
         return str(tmp_path / name)
 
+    from mapsmith.engines import network, spatial_stats
+
     fixtures = {
+        "network_shortest_path": lambda: network.network_shortest_path(
+            str(streets), out("route.parquet"), 0, 0, 200, 0, tolerance=0.01
+        ),
+        "service_area": lambda: network.service_area(
+            str(streets), out("reach.parquet"), 0, 0, budget=150.0, tolerance=0.01
+        ),
+        "hot_spots": lambda: spatial_stats.hot_spots(
+            str(areas), out("gi.parquet"), value_field="cases", weights="contiguity"
+        ),
+        "smooth_rates": lambda: spatial_stats.smooth_rates(
+            str(areas), out("eb.parquet"), count_field="cases", population_field="pop"
+        ),
+        "aggregate_to_threshold": lambda: spatial_stats.aggregate_to_threshold(
+            str(areas), out("merged.parquet"), count_field="cases", minimum=2
+        ),
+        "thin_points": lambda: spatial_stats.thin_points(
+            str(crowd), out("thin.parquet"), min_distance=15.0
+        ),
         "buffer_layer": lambda: vector.buffer(str(layer), 10.0, out("buf.parquet")),
         "clip_layer": lambda: vector.clip(str(layer), str(second), out("clip.parquet")),
         "overlay_layers": lambda: vector.overlay(
@@ -447,7 +496,7 @@ def _spec_fixtures(tmp_path):
     })
 
     try:
-        from mapsmith.engines import whitebox_engine
+        from mapsmith.engines import sampling, whitebox_engine
     except ImportError:
         return fixtures
 
@@ -506,6 +555,15 @@ def _spec_fixtures(tmp_path):
         ),
         "idw_interpolation": lambda: whitebox_engine.idw_interpolation(
             str(quad), out("idw.tif"), field_name="v", cell_size=10.0
+        ),
+        "viewshed": lambda: whitebox_engine.viewshed(
+            str(dem), str(pour), out("seen.tif"), station_height=2.0
+        ),
+        "sample_raster_at_points": lambda: sampling.sample_raster_at_points(
+            str(dem), str(points), out("sampled.parquet"), "bilinear"
+        ),
+        "elevation_profile": lambda: sampling.elevation_profile(
+            str(dem), str(streets), out("profile.parquet"), spacing=25.0
         ),
     })
     return fixtures

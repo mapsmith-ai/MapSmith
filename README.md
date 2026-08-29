@@ -178,7 +178,7 @@ had to repair. `get_provenance` returns it for any output.
 ### Finding the right operation
 
 Those are the tools an agent chooses between. Behind them the **catalog** holds every
-operation MapSmith can perform — 51 today, and 26 of them have no tool of their own — and
+operation MapSmith can perform — 61 today, and 36 of them have no tool of their own — and
 it is built to hold thousands: tool-selection accuracy
 degrades past a few dozen *exposed* tools, while capability count has no such ceiling. That
 makes reaching scale a retrieval problem, so it is treated as one — and measured like one.
@@ -194,14 +194,29 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | our ranking, found@3 | **right answer in what comes back** |
 |---|---|---|---|
-| nothing — words alone | 51 | 25% | 25% |
-| what data I have | 33 | 29% | 43% |
-| **+ what I want back** | **21** | 48% | **100%** |
+| nothing — words alone | 61 | 18% | 18% |
+| what data I have | 39 | 23% | 37% |
+| + what I want back | 27 | 36% | 45% |
+| **+ how many datasets I have** | **12** | **60%** | **100%** |
 
 The last column is the one that matters, and it is not an accuracy figure — it is a property.
-Once the two facts a caller genuinely knows have narrowed the catalog to something readable,
+Once the facts a caller genuinely knows have narrowed the catalog to something readable,
 **every survivor is handed over**, so the right operation is in the answer for all 118 requests
 by construction rather than by ranking. Ranking decides the order. It does not decide membership.
+
+**The third row is the scaling wall, and we hit it in one afternoon.** On 2026-08-29 the
+catalogue went from 51 operations to 61. Two rows of that table got worse: the commonest
+surviving set went from 26 candidates to 34, past the point where the whole set can be handed
+over, and *delivered* fell from 100% to 45% while found@3 fell from 48% to 36%. **Adding
+capability had made discovery worse** — the failure this page had predicted at eight hundred
+operations and met at sixty-one.
+
+Raising the threshold would have postponed it by about ten operations. What fixed it is the
+fourth row: how many datasets you are holding. That is a fact about your situation — one layer
+or two — not a guess about our vocabulary, it is derivable from each operation's own signature
+so a test can check the declaration against the code, and it takes the median surviving set from
+34 to 9. The catalogue grew by a fifth and discovery got better, but only because a facet
+arrived with it. That is the trade this design makes, stated rather than discovered later.
 
 The requests, both labels and the harness are all in the repository:
 [`tests/data/discovery_queries.json`](tests/data/discovery_queries.json) and
@@ -419,15 +434,15 @@ flowchart TB
   ASK --> PLAN{{"plan validated<br/>before anything runs"}}
   PLAN -. "rejected: FORWARD_REFERENCE" .-> BAD["'mask_path' references '$buffer' which runs later — move step 'buffer' before 'near'"]
   BAD:::bad
-  BUFFER["<b>buffer_layer</b><br/>51 operations &rarr; 26 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
+  BUFFER["<b>buffer_layer</b><br/>61 operations &rarr; 24 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
   PLAN --> BUFFER
-  NEAR["<b>clip_layer</b><br/>51 operations &rarr; 26 candidates &rarr; chosen<br/>12/12 checks"]
+  NEAR["<b>clip_layer</b><br/>61 operations &rarr; 9 candidates &rarr; chosen<br/>12/12 checks"]
   BUFFER --> NEAR
-  HEIGHT["<b>zonal_statistics</b><br/>51 operations &rarr; 4 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
+  HEIGHT["<b>zonal_statistics</b><br/>61 operations &rarr; 1 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
   NEAR --> HEIGHT
-  AREA["<b>measure_area</b><br/>51 operations &rarr; 26 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>9/9 checks"]
+  AREA["<b>measure_area</b><br/>61 operations &rarr; 24 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>9/9 checks"]
   HEIGHT --> AREA
-  FILTER["<b>run_sql</b><br/>51 operations &rarr; 26 candidates &rarr; chosen<br/>outside the plan"]
+  FILTER["<b>run_sql</b><br/>61 operations &rarr; 34 candidates &rarr; chosen<br/>outside the plan"]
   AREA --> FILTER
   OUT[["3 parcels, each with elevation and ground area"]]
   FILTER --> OUT
@@ -436,11 +451,11 @@ flowchart TB
 
 | what the agent asks for | it declares | candidates | picked | at position |
 |---|---|---|---|---|
-| “everything within one and a half kilometres of the river” | vector, dataset:vector | **26** of 51 | `buffer_layer` | 2 |
-| “keep only the parcels that fall inside that strip” | vector, dataset:vector | **26** of 51 | `clip_layer` | 1 |
-| “how high is the ground under each of these parcels” | raster, dataset:vector | **4** of 51 | `zonal_statistics` | 2 |
-| “how big is each one on the ground” | vector, dataset:vector | **26** of 51 | `measure_area` | 1 |
-| “drop the ones where the ground is above 120 metres” | vector, dataset:vector | **26** of 51 | `run_sql` | 18 |
+| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s) | **24** of 61 | `buffer_layer` | 2 |
+| “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s) | **9** of 61 | `clip_layer` | 1 |
+| “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s) | **1** of 61 | `zonal_statistics` | 1 |
+| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s) | **24** of 61 | `measure_area` | 1 |
+| “drop the ones where the ground is above 120 metres” | vector, dataset:vector | **34** of 61 | `run_sql` | None |
 
 | step | operation | arguments that mattered | CRS decision, recorded | checks |
 |---|---|---|---|---|
