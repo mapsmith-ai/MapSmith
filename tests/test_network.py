@@ -147,9 +147,17 @@ def test_a_millimetre_gap_disconnects_the_network_and_the_manifest_says_so(tmp_p
 
     checks = _named(out)
     assert checks["x-mapsmith:network_is_one_connected_piece"]["passed"] is True
-    assert "1 endpoint(s) merged" in checks[
-        "x-mapsmith:endpoints_were_merged_into_junctions"
-    ]["detail"]
+    # The merged-endpoint count lives in `parameters`, beside the tolerance that
+    # produced it. It used to be a check whose predicate was the constant True —
+    # a counter wearing a check's name, which cannot fail and inflates the passed
+    # count of every network manifest.
+    # Two counters, because they measure two different things: what the data
+    # already agreed on, and what the tolerance pulled together. One counter for
+    # both reported "15 endpoints merged at tolerance 0.0" on a perfectly noded
+    # lattice — at a tolerance where nothing can be welded.
+    assert _manifest(out)["parameters"]["welded_by_tolerance"] == 1
+    assert _manifest(out)["parameters"]["coincident_endpoints"] == 0
+    assert _manifest(out)["parameters"]["junctions"] == 3
 
 
 def test_a_disconnected_network_is_reported_even_when_the_route_succeeds(tmp_path):
@@ -291,4 +299,174 @@ def test_the_budget_has_to_be_positive(grid_streets, tmp_path):
         network.service_area(
             str(grid_streets), str(tmp_path / "x.parquet"), 0, 0,
             budget=0.0, tolerance=0.01,
+        )
+
+
+def test_the_snap_check_declines_to_judge_a_distance_in_degrees(tmp_path):
+    """A threshold of 50 applied to a number in degrees passes 1,600 km.
+
+    A geographic network reaches the snap check only when a `cost_field` was
+    given — length-based costs are refused in degrees — which is exactly the
+    case a unit-blind threshold gets wrong. It used to pass an origin 19.8
+    degrees away, because 19.8 is less than 50, and print the number with no
+    unit so a human could not judge it either.
+    """
+    path = tmp_path / "geo.gpkg"
+    gpd.GeoDataFrame(
+        {"id": [0, 1], "minutes": [1.0, 1.0]},
+        geometry=[
+            LineString([(11.0, 45.0), (11.01, 45.0)]),
+            LineString([(11.01, 45.0), (11.02, 45.0)]),
+        ],
+        crs="EPSG:4326",
+    ).to_file(path, layer="net", driver="GPKG")
+
+    out = tmp_path / "geo_route.parquet"
+    result = network.network_shortest_path(
+        str(path), str(out), -8.8, 45.0, 11.02, 45.0,
+        tolerance=0.0001, cost_field="minutes",
+    )
+    assert result["origin_snap_distance"] > 19
+    check = _named(out)["x-mapsmith:origin_is_close_to_the_network"]
+    assert "degree" in check["detail"], (
+        "the distance is printed without its unit, so neither the threshold nor "
+        "a human reader can judge it"
+    )
+    assert "not judged" in check["detail"], (
+        "a distance in degrees was compared against a threshold in metres and "
+        "the check reported a pass"
+    )
+
+
+def test_a_projected_snap_distance_still_carries_its_unit(grid_streets, tmp_path):
+    out = tmp_path / "unit.parquet"
+    network.network_shortest_path(
+        str(grid_streets), str(out), -4000, 0, 200, 200, tolerance=0.01
+    )
+    detail = _named(out)["x-mapsmith:origin_is_close_to_the_network"]["detail"]
+    assert "metre" in detail, f"no unit in {detail!r}"
+
+
+def test_an_edge_reachable_from_both_ends_is_not_counted_twice(tmp_path):
+    """The number that gets published, and the way it was inflated.
+
+    A triangle: the origin reaches both ends of the far edge, so walking it from
+    each end independently emitted two overlapping pieces. Measured before the
+    fix: 8.0 metres of segments over an edge whose union is 6.83 — and
+    `nothing_exceeds_the_budget` passed, because each piece did respect the
+    budget on its own. "How many metres of road are within ten minutes" is
+    exactly the number computed from this output.
+    """
+    from shapely import union_all
+
+    lines = [
+        LineString([(0, 0), (2, 0)]),
+        LineString([(0, 0), (0, 2)]),
+        LineString([(2, 0), (0, 2)]),
+    ]
+    path = _write(lines, tmp_path, "triangle")
+    out = tmp_path / "triangle.parquet"
+    network.service_area(str(path), str(out), 0, 0, budget=4.0, tolerance=0.01)
+
+    got = gpd.read_parquet(out)
+    total = got.geometry.length.sum()
+    on_the_ground = union_all(list(got.geometry)).length
+    assert total == pytest.approx(on_the_ground, abs=1e-9), (
+        f"{total:.4f} m of segments over {on_the_ground:.4f} m of ground"
+    )
+    assert _named(out)["x-mapsmith:no_edge_is_emitted_over_itself_twice"]["passed"]
+
+
+def test_two_stubs_appear_when_the_budget_cannot_bridge_the_gap(tmp_path):
+    """The other half of the same decision: when the two reaches do NOT meet,
+    the edge really is walkable from both ends and the output is two disjoint
+    pieces with an unreachable middle. Emitting the whole edge there would
+    overstate the reach in the opposite direction."""
+    from shapely import union_all
+
+    lines = [
+        LineString([(0, 0), (10, 0)]),
+        LineString([(0, 0), (0, 10)]),
+        LineString([(10, 0), (0, 10)]),   # about 14.14 long
+    ]
+    path = _write(lines, tmp_path, "gap")
+    out = tmp_path / "gap.parquet"
+    result = network.service_area(
+        str(path), str(out), 0, 0, budget=14.0, tolerance=0.01
+    )
+    got = gpd.read_parquet(out)
+    on_the_far_edge = got[got["line_index"] == 2]
+    assert len(on_the_far_edge) == 2, "the unreachable middle was bridged"
+    assert result["partial_segments"] >= 2
+    assert got.geometry.length.sum() == pytest.approx(
+        union_all(list(got.geometry)).length, abs=1e-9
+    )
+
+
+def test_overlapping_input_geometries_are_not_called_an_error(tmp_path):
+    """A bridge over the road beneath it is two edges on the same ground.
+
+    The first version of the overlap check compared the total emitted length
+    against the union of everything, and called that network wrong: three
+    correct edges summed to 400 metres over 200 metres of ground. The property
+    that matters is narrower — no single edge emitted twice over itself — and
+    the difference is a real network the check would have rejected.
+    """
+    lines = [
+        LineString([(0, 0), (100, 0)]),
+        LineString([(100, 0), (200, 0)]),
+        LineString([(0, 0), (200, 0)]),   # the shortcut, lying on both
+    ]
+    path = _write(lines, tmp_path, "bridge")
+    out = tmp_path / "bridge.parquet"
+    network.service_area(str(path), str(out), 0, 0, budget=1000.0, tolerance=0.01)
+
+    check = _named(out)["x-mapsmith:no_edge_is_emitted_over_itself_twice"]
+    assert check["passed"] is True, check["detail"]
+    assert sorted(gpd.read_parquet(out)["line_index"].tolist()) == [0, 1, 2]
+
+
+def test_a_cost_column_whose_name_is_not_an_identifier_still_works(tmp_path):
+    """`"travel time"` is an ordinary column name in a shapefile or an OSM export.
+
+    `itertuples()` renames anything that is not a Python identifier, so the
+    column-exists check passed and the engine then died on
+    `AttributeError: 'Pandas' object has no attribute 'travel time'` — an
+    untranslated pandas error for a perfectly valid input.
+    """
+    lines = [LineString([(0, 0), (100, 0)]), LineString([(100, 0), (200, 0)])]
+    path = _write(lines, tmp_path, "spacey", {"travel time": [1.0, 2.0]})
+    out = tmp_path / "spacey.parquet"
+    result = network.network_shortest_path(
+        str(path), str(out), 0, 0, 200, 0, tolerance=0.01, cost_field="travel time"
+    )
+    assert result["total_cost"] == pytest.approx(3.0)
+
+
+def test_the_osm_convention_for_one_way_does_not_make_everything_one_way(tmp_path):
+    """`bool("no")` is True.
+
+    A layer using the OSM convention — where `oneway = "no"` means two-way —
+    came out entirely directed, every reverse route failed, and the error blamed
+    the tolerance and told the caller to widen it. That is the module's OTHER
+    declared trap, so the diagnosis actively pointed at the wrong repair.
+    """
+    lines = [LineString([(0, 0), (100, 0)]), LineString([(100, 0), (200, 0)])]
+    path = _write(lines, tmp_path, "osm", {"oneway": ["no", "no"]})
+    out = tmp_path / "osm.parquet"
+    result = network.network_shortest_path(
+        str(path), str(out), 200, 0, 0, 0, tolerance=0.01, oneway_field="oneway"
+    )
+    assert result["total_cost"] == pytest.approx(200.0), (
+        "routing against the line order failed on a layer that says it is two-way"
+    )
+
+
+def test_a_one_way_value_nobody_understands_is_refused_not_guessed(tmp_path):
+    lines = [LineString([(0, 0), (100, 0)])]
+    path = _write(lines, tmp_path, "odd", {"oneway": ["reversible"]})
+    with pytest.raises(ValueError, match="neither true nor false"):
+        network.network_shortest_path(
+            str(path), str(tmp_path / "x.parquet"), 0, 0, 100, 0,
+            tolerance=0.01, oneway_field="oneway",
         )

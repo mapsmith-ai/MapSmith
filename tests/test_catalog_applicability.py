@@ -33,7 +33,11 @@ def test_every_entry_declares_its_applicability(op):
     # on purpose: a facet the filter does not read narrows nothing and lies in
     # the schema, and a facet the schema does not know about is one the entries
     # can start disagreeing about.
-    assert isinstance(block["dataset_inputs"], int) and block["dataset_inputs"] >= 0
+    arity = block["dataset_inputs"]
+    # `None` means variable or not expressible as a count — a list of inputs, or
+    # inputs named inside a query string — and such an entry survives every
+    # declared arity instead of being dropped from all of them.
+    assert arity is None or (isinstance(arity, int) and arity >= 0)
 
 
 def test_the_projected_crs_requirement_matches_the_engines_that_refuse():

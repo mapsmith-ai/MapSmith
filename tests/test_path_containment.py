@@ -269,11 +269,26 @@ def test_the_declared_arity_matches_the_binding(entry):
     says they are holding two, and no error is raised anywhere.
     """
     binding = BINDINGS[entry["name"]]
-    actual = len(binding.input_args) + len(binding.list_input_args)
     declared = entry["applicability"]["dataset_inputs"]
-    assert declared == actual, (
+
+    # A LIST argument is N datasets, not one. Counting arguments instead of
+    # datasets is how `merge_layers` came to declare 1 while taking a list, and
+    # how this test certified it: the first version read
+    # `len(input_args) + len(list_input_args)` and agreed with the wrong number.
+    # An operation with a list input has variable arity, which the catalogue
+    # spells `null`.
+    if binding.list_input_args:
+        assert declared is None, (
+            f"{entry['name']} takes {binding.list_input_args} — a list of datasets, "
+            f"so its arity is variable — and declares {declared}. Any caller who "
+            "names a different number will never be offered it."
+        )
+        return
+
+    actual = len(binding.input_args)
+    assert declared in (actual, None), (
         f"{entry['name']} declares dataset_inputs={declared} and its binding reads "
-        f"{actual} dataset argument(s) ({binding.input_args + binding.list_input_args}). "
+        f"{actual} dataset argument(s) ({binding.input_args}). "
         "A caller who declares the true number will never be offered it."
     )
 
@@ -288,3 +303,63 @@ def test_every_entry_declares_an_arity_at_all():
         if "dataset_inputs" not in op["applicability"]
     ]
     assert not missing, f"these entries declare no dataset_inputs: {missing}"
+
+
+def test_an_operation_with_variable_arity_is_offered_to_every_caller():
+    """`null` is kept for every declared arity, like `inputs: ["none"]`.
+
+    Two operations have arity that is not a number: `merge_layers` takes a list,
+    and `run_sql` names its inputs inside a query string. The first version of
+    this facet gave them 1 and 0, and the measured result was that the obvious
+    two-layer operation disappeared for anyone holding two layers and the
+    product's general escape hatch disappeared for anyone holding any — in the
+    release whose notes said discovery was fixed. The worked example on the
+    README showed it: `run_sql` at position `None`.
+    """
+    variable = [
+        op["name"]
+        for op in catalog.OPERATIONS
+        if op["applicability"]["dataset_inputs"] is None
+    ]
+    assert {"merge_layers", "run_sql"} <= set(variable), (
+        f"these should have variable arity and do not: {variable}"
+    )
+    for arity in (0, 1, 2):
+        offered = {op["name"] for op in catalog.applicable(dataset_inputs=arity)}
+        missing = [name for name in variable if name not in offered]
+        assert not missing, (
+            f"declaring dataset_inputs={arity} hid {missing}, whose arity is not a "
+            "number and which must therefore survive every declaration"
+        )
+
+
+def test_an_operation_declares_every_kind_of_data_it_reads():
+    """`applicability.inputs` has to list every input, not just the first one.
+
+    `sample_raster_at_points` and `elevation_profile` shipped declaring
+    `['vector']` while taking a raster too, and `viewshed` declared `['raster']`
+    while taking a point layer — so "I have a DEM and my levelling shots" did not
+    find the operation written for that sentence. The parameter names say which
+    kinds an operation reads; the declaration has to agree with them.
+    """
+    suffixes = {
+        "raster_path": "raster", "dem_path": "raster",
+        "flow_accumulation_path": "raster",
+        "points_path": "vector", "line_path": "vector", "zones_path": "vector",
+        "stations_path": "vector", "mask_path": "vector",
+        "pour_points_path": "vector", "boundary_path": "vector",
+    }
+    wrong = []
+    for op in catalog.OPERATIONS:
+        declared = set(op["applicability"]["inputs"])
+        if "dataset" in declared or "none" in declared:
+            continue
+        for parameter in op.get("parameters", []):
+            name = parameter["name"] if isinstance(parameter, dict) else str(parameter)
+            kind = suffixes.get(name)
+            if kind and kind not in declared:
+                wrong.append(f"{op['name']}.{name} is a {kind}, not in {sorted(declared)}")
+    assert not wrong, (
+        "these operations read a kind of data they do not declare, so a caller "
+        f"who says they are holding it is never offered them: {wrong}"
+    )

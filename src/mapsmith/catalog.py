@@ -569,7 +569,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "heavy_join",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
+        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False, 'dataset_inputs': None},
         "summary": "Append two or more layers into one, schema union, "
         "count verified against the sum",
         "phrasings": "put several files together into one; stack these layers; concatenate",
@@ -980,7 +980,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "sql",
         "category": "sql",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False, 'dataset_inputs': 0},
+        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False, 'dataset_inputs': None},
         "summary": "Spatial SQL (DuckDB dialect, ST_* functions) over GeoParquet and GDAL "
         "formats; materializes GeoParquet outputs with provenance",
         "phrasings": "query it like a database; a select with a spatial predicate; join and filter in one go",
@@ -3267,7 +3267,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'raster',
         'category': 'raster',
         "produces": "dataset:vector",
-        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 2},
+        'applicability': {'inputs': ['raster', 'vector'], 'requires_projected_crs': False, 'dataset_inputs': 2},
         'summary': "The raster's value at each point, with the ones it could not read "
                    'counted rather than filled in. Requires the [raster] extra',
         "phrasings": "what is the elevation at each of my survey shots; read the grid "
@@ -3322,7 +3322,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'raster',
         'category': 'terrain',
         "produces": "dataset:vector",
-        'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': 2},
+        'applicability': {'inputs': ['raster', 'vector'], 'requires_projected_crs': True, 'dataset_inputs': 2},
         'summary': 'One point every N metres along each line, carrying the surface '
                    'value and the distance travelled. Requires the [raster] extra',
         "phrasings": "elevation every 20 metres along the centreline so I can plot it; "
@@ -3438,7 +3438,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'raster',
         'category': 'terrain',
         "produces": "dataset:raster",
-        'applicability': {'inputs': ['raster'], 'requires_projected_crs': True, 'dataset_inputs': 2},
+        'applicability': {'inputs': ['raster', 'vector'], 'requires_projected_crs': True, 'dataset_inputs': 2},
         'summary': 'How many observing stations can see each cell \u2014 a COUNT, not a '
                    'yes/no. Requires the [whitebox] extra',
         "phrasings": "which areas can be seen from these towers; the coverage circles "
@@ -4073,9 +4073,18 @@ def applicable(
             continue
         if category is not None and op["category"] != category:
             continue
+        # `None` on an ENTRY means the arity is variable or not expressible as a
+        # count — a list of inputs, or inputs named inside a query string — and
+        # such an entry is kept for every declared arity rather than dropped from
+        # all of them. Exactly the rule `inputs: ["none"]` already follows above,
+        # and it exists for the same reason: the first version dropped
+        # `merge_layers` for anyone holding two layers and `run_sql` for anyone
+        # holding any, in the release whose notes said discovery was fixed.
+        declared_arity = op["applicability"]["dataset_inputs"]
         if (
             dataset_inputs is not None
-            and op["applicability"]["dataset_inputs"] != dataset_inputs
+            and declared_arity is not None
+            and declared_arity != dataset_inputs
         ):
             continue
         kept.append(op)

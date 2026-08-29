@@ -267,8 +267,23 @@ def test_every_check_name_in_the_source_obeys_the_vocabulary():
 
     root = Path(mapsmith.__file__).parent
     found: dict[str, str] = {}
+    dynamic: list[str] = []
     for module in sorted(root.rglob("*.py")):
         tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
+        # Module-level tables of literal check names, so a lookup at the call
+        # site is still statically readable. Only all-string dicts count.
+        tables: dict[str, list[str]] = {}
+        for node in tree.body:
+            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Dict):
+                continue
+            values = node.value.values
+            if not values or not all(
+                isinstance(v, ast.Constant) and isinstance(v.value, str) for v in values
+            ):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    tables[target.id] = [v.value for v in values]
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
@@ -283,7 +298,31 @@ def test_every_check_name_in_the_source_obeys_the_vocabulary():
             first = node.args[0]
             if isinstance(first, ast.Constant) and isinstance(first.value, str):
                 found.setdefault(first.value, module.name)
+            elif isinstance(first, ast.Subscript) and isinstance(first.value, ast.Name):
+                # A lookup into a module-level table of literal names. The names
+                # ARE written out, just not at the call, so the sweep reads the
+                # table instead of giving up — and if the table holds anything
+                # that is not a plain string, this falls through to `dynamic`.
+                table = tables.get(first.value.id)
+                if table:
+                    for literal in table:
+                        found.setdefault(literal, module.name)
+                else:
+                    dynamic.append(f"{module.name}:{first.lineno}")
+            else:
+                # A name this cannot read is a name it cannot police, and it used
+                # to skip them in silence: `f"x-mapsmith:{name}_is_close_to_..."`
+                # in network.py was invisible to the whole sweep, and legal by
+                # luck. Refusing outright is stronger than half-evaluating an
+                # f-string, and it costs nothing: a check name is short.
+                dynamic.append(f"{module.name}:{getattr(first, 'lineno', '?')}")
 
+    assert not dynamic, (
+        f"these check names are built at runtime rather than written out: {dynamic}. "
+        "Write them literally — a name assembled from an f-string is invisible to "
+        "this sweep, so the vocabulary rule stops applying to exactly the newest "
+        "code, which is where it is most needed."
+    )
     assert len(found) >= 25, f"only {len(found)} check names found in the source: {sorted(found)}"
     offenders = {
         check: where

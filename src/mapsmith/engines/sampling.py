@@ -21,6 +21,7 @@ check, not a footnote.
 from __future__ import annotations
 
 import math
+from itertools import pairwise
 from typing import Any
 
 import geopandas as gpd
@@ -121,6 +122,15 @@ def _read_at(dataset: Any, band: int, xs, ys, method: str) -> list[float | None]
             (1, 0, (1 - fx) * fy),
             (1, 1, fx * fy),
         ):
+            if weight == 0.0:
+                # A corner with no weight contributes nothing, so whether it is
+                # nodata is not this sample's problem. Checking the mask first
+                # threw away exact values: a point sitting on a cell centre has
+                # three corners at weight zero, and one of them being nodata
+                # returned None for a position whose value was right there — the
+                # opposite of the loss this module exists to prevent, and it
+                # inflated the very counter the check reads.
+                continue
             r = min(max(r0 + dr, 0), height - 1)
             c = min(max(c0 + dc, 0), width - 1)
             if mask[r, c]:
@@ -381,13 +391,17 @@ def elevation_profile(
                 expect_crs=verify.crs_label(working.crs),
                 expect_count=len(rows),
             ),
-            # Closed form: a line of length L sampled every S carries
-            # floor(L/S) + 1 points — both ends included. Getting this wrong by
-            # one is how a profile silently stops short of the far end.
+            # Derived from the OUTPUT, not from the formula that produced it.
+            # The first version compared `len(rows)` against
+            # `floor(L/S) + 1` — the same expression the generator uses, written
+            # twice — so it could not fail. What is checked now is a property of
+            # the points on disk: each line starts at zero, the step between
+            # consecutive points is the spacing, and the last one is the last
+            # whole step that fits.
             verify.Check(
-                "x-mapsmith:point_count_follows_length_and_spacing",
-                len(rows) == _expected_points(working, spacing),
-                f"{len(rows)} points for {_expected_points(working, spacing)} expected",
+                "x-mapsmith:each_profile_starts_at_zero_and_steps_by_the_spacing",
+                _stepping_is_regular(rows, spacing),
+                _stepping_detail(rows, spacing),
             ),
             _unreadable_check(values, len(rows)),
         ],
@@ -405,14 +419,40 @@ def elevation_profile(
     }
 
 
-def _expected_points(lines: gpd.GeoDataFrame, spacing: float) -> int:
-    return sum(math.floor(length / spacing) + 1 for length in lines.geometry.length)
+def _usable(lines: gpd.GeoDataFrame) -> list[Any]:
+    return [g for g in lines.geometry if g is not None and not g.is_empty]
+
+
+def _stepping_is_regular(rows: list[dict[str, Any]], spacing: float) -> bool:
+    """Every line starts at 0 and advances by exactly `spacing`."""
+    by_line: dict[int, list[float]] = {}
+    for row in rows:
+        by_line.setdefault(row["line_index"], []).append(row["distance"])
+    for distances in by_line.values():
+        if distances[0] != 0.0:
+            return False
+        for previous, current in pairwise(distances):
+            if not math.isclose(current - previous, spacing, rel_tol=1e-9):
+                return False
+    return True
+
+
+def _stepping_detail(rows: list[dict[str, Any]], spacing: float) -> str:
+    lines = len({row["line_index"] for row in rows})
+    return f"{len(rows)} point(s) over {lines} line(s) at a step of {spacing}"
 
 
 def _profile_positions(lines: gpd.GeoDataFrame, spacing: float) -> list[dict[str, Any]]:
     """Positions along each line at a fixed step, both ends included."""
     rows: list[dict[str, Any]] = []
     for line_index, geometry in enumerate(lines.geometry):
+        # `network._build` guards these and this did not: a null geometry died on
+        # `'NoneType' object has no attribute 'length'`, and an empty LineString
+        # was counted as one point and then died in `interpolate`. Skipped rather
+        # than refused, because a layer with a few empty rows is ordinary — and
+        # counted, because a profile missing a line should not look complete.
+        if geometry is None or geometry.is_empty:
+            continue
         length = geometry.length
         steps = math.floor(length / spacing)
         for point_index in range(steps + 1):
@@ -455,6 +495,14 @@ def line_of_sight(
     Answers rather than writes: the result is a verdict, the distance at which
     the ground first rises above the sight line, and how far below the terrain
     the line passes there. Use `elevation_profile` for the shape of the ground.
+
+    **A profile with holes in it does not produce a verdict.** Samples that fall
+    on nodata are counted in `unreadable_samples`, and above a twentieth of the
+    line missing `visible` comes back `None` with `verdict_withheld` set. The
+    first version skipped unreadable samples and said nothing: a 100 m ridge
+    buried in a nodata gap returned `visible: True`. "Cannot say" is an answer a
+    caller can act on; "yes" computed over the parts that happened to be there
+    is not.
     """
     rasterio = _require_rasterio()
     with rasterio.open(raster_path) as dataset:
@@ -501,6 +549,7 @@ def line_of_sight(
     target_z = ground[-1] + target_height
     blocked_at: float | None = None
     clearance = math.inf
+    unreadable = sum(1 for value in ground if value is None)
     for index in range(1, steps - 1):
         if ground[index] is None:
             continue
@@ -512,8 +561,19 @@ def line_of_sight(
         if gap < 0 and blocked_at is None:
             blocked_at = distance
 
+    # A verdict computed over a profile with holes in it is not a verdict. This
+    # module's docstring promises that every operation counts what it could not
+    # read; this one is the only one that answers yes-or-no instead of returning
+    # a table, so a silent null costs the most here — a 100 m ridge buried in a
+    # nodata gap came back `visible: True` with nothing to show for it. Above a
+    # twentieth of the line missing, the answer is None: "cannot say" is an
+    # answer a caller can act on and "yes" is not.
+    too_holey = unreadable > max(1, steps // 20)
     return {
-        "visible": blocked_at is None,
+        "visible": None if too_holey else blocked_at is None,
+        "unreadable_samples": unreadable,
+        "samples_read": steps - unreadable,
+        "verdict_withheld": too_holey,
         "distance": run,
         "first_obstruction_at": blocked_at,
         "minimum_clearance": None if clearance is math.inf else clearance,

@@ -397,7 +397,13 @@ def verify_vector_output(
         empty = int(gdf.geometry.is_empty.sum())
         checks.append(
             Check(
-                "result_not_empty",
+                # NOT `result_not_empty`, which is a core name meaning "the output
+                # has at least one feature". This is a different property — none
+                # of those features is an empty geometry — and section 3.6 of the
+                # spec says a core name MUST NOT be used for anything else. The
+                # two were emitted together, both with `argument: null`, on
+                # nineteen operations: a consumer indexing by name collapsed them.
+                "x-mapsmith:no_geometry_is_empty",
                 empty == 0,
                 f"{empty}/{len(gdf)} empty geometries" if empty else "none empty",
                 critical=False,

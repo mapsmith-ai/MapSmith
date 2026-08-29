@@ -354,7 +354,15 @@ def test_total_erosion_is_flagged_with_a_hint(tmp_path):
     _gdf([Point(0, 0).buffer(5)]).to_parquet(src)
 
     result = vector.buffer(str(src), -50, str(out))
-    hints = [w["hint"] for w in result["warnings"] if w["check"] == "result_not_empty"]
+    # The check was renamed from `result_not_empty` to
+    # `x-mapsmith:no_geometry_is_empty` on 2026-08-29: the core name means "the
+    # output has at least one feature" and was being emitted twice with two
+    # different meanings, which section 3.6 of the manifest spec forbids.
+    hints = [
+        w["hint"]
+        for w in result["warnings"]
+        if w["check"] == "x-mapsmith:no_geometry_is_empty"
+    ]
     assert hints and "wrong sign or magnitude" in hints[0]
 
 

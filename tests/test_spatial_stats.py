@@ -10,7 +10,6 @@ and pasted back in.
 from __future__ import annotations
 
 import json
-import math
 from pathlib import Path
 
 import geopandas as gpd
@@ -44,32 +43,84 @@ def _squares(counts, tmp_path: Path, name: str, extra: dict | None = None) -> Pa
 # ------------------------------------------------------------------- Gi*
 
 def test_gi_star_matches_the_value_worked_out_by_hand(tmp_path):
-    """Four isolated features, values 4, 0, 0, 0.
+    """Four features in two pairs, values 4, 0, 0, 0.
 
-    mean = 1, sum of squares = 16, variance = 16/4 - 1 = 3, S = sqrt(3).
-    With a distance band too small to reach anything, each neighbourhood is the
-    feature alone: sum of weights = 1, sum of squared weights = 1, so the
-    denominator is S * sqrt((4*1 - 1)/3) = sqrt(3) * 1.
-    Feature 0: (4 - 1*1) / sqrt(3) = sqrt(3) = 1.7320508.
-    Feature 1: (0 - 1) / sqrt(3) = -0.5773503.
+    mean = 1, sum of squares = 16, variance = 16/4 - 1 = 3, S = sqrt(3). The
+    band pairs 0 with 1 and 2 with 3, so every neighbourhood is two features
+    including self: sum of weights = 2, sum of squared weights = 2, and the
+    denominator is S * sqrt((4*2 - 4)/3) = sqrt(3) * sqrt(4/3) = 2.
+
+    Features 0 and 1: (4 + 0) - 1*2 = 2, over 2 -> z = +1 exactly.
+    Features 2 and 3: (0 + 0) - 1*2 = -2, over 2 -> z = -1 exactly.
+
+    Paired rather than isolated because a layer where every feature is alone is
+    refused now: Gi* over a neighbourhood of one is the value's own z-score and
+    measures no clustering, which is a different statistic under this one's name.
     """
     path = tmp_path / "four.gpkg"
     gpd.GeoDataFrame(
         {"v": [4.0, 0.0, 0.0, 0.0]},
-        geometry=[Point(0, 0), Point(1000, 0), Point(2000, 0), Point(3000, 0)],
+        geometry=[Point(0, 0), Point(10, 0), Point(2000, 0), Point(2010, 0)],
         crs="EPSG:32632",
     ).to_file(path, layer="p", driver="GPKG")
 
     out = tmp_path / "gi.parquet"
     spatial_stats.hot_spots(
         str(path), str(out), value_field="v", weights="distance_band",
-        distance_band=10.0,
+        distance_band=50.0,
     )
     got = gpd.read_parquet(out)
-    assert got["gi_z"].tolist() == pytest.approx(
-        [math.sqrt(3), -1 / math.sqrt(3), -1 / math.sqrt(3), -1 / math.sqrt(3)]
+    assert got["gi_z"].tolist() == pytest.approx([1.0, 1.0, -1.0, -1.0])
+    assert got["neighbours"].tolist() == [1, 1, 1, 1]
+
+
+def test_a_layer_where_every_feature_is_alone_is_refused(tmp_path):
+    """Not a warning: a different statistic wearing this one's name.
+
+    With no neighbours, Gi* reduces to the z-score of the value against the
+    global distribution — it measures no clustering at all. A few islands are
+    data; half the layer is an analysis that did not happen, and the map would
+    be published under the word "hot spots".
+    """
+    path = tmp_path / "alone.gpkg"
+    gpd.GeoDataFrame(
+        {"v": [4.0, 0.0, 0.0, 0.0]},
+        geometry=[Point(0, 0), Point(1000, 0), Point(2000, 0), Point(3000, 0)],
+        crs="EPSG:32632",
+    ).to_file(path, layer="p", driver="GPKG")
+
+    from mapsmith.verify import VerificationError
+
+    with pytest.raises(VerificationError, match="isolated"):
+        spatial_stats.hot_spots(
+            str(path), str(tmp_path / "x.parquet"), value_field="v",
+            weights="distance_band", distance_band=10.0,
+        )
+
+
+def test_boundaries_that_overlap_by_a_millimetre_are_still_neighbours(tmp_path):
+    """`touches` is false for polygons that overlap, and real ones do.
+
+    A strip of five areas overlapping by 1 mm came back with zero neighbours
+    each — Gi* silently became a z-score, with a non-critical note as the only
+    trace. Same class of defect as the network tolerance, which this module was
+    treating as a warning.
+    """
+    path = tmp_path / "sloppy.gpkg"
+    gpd.GeoDataFrame(
+        {"n": [1.0, 2.0, 3.0, 4.0, 5.0]},
+        geometry=[
+            box(i * 100 - 0.001, 0, (i + 1) * 100 + 0.001, 100) for i in range(5)
+        ],
+        crs="EPSG:32632",
+    ).to_file(path, layer="a", driver="GPKG")
+
+    out = tmp_path / "sloppy.parquet"
+    result = spatial_stats.hot_spots(
+        str(path), str(out), value_field="n", weights="contiguity"
     )
-    assert got["neighbours"].tolist() == [0, 0, 0, 0]
+    assert result["isolated"] == 0, "a 1 mm overlap disconnected the whole layer"
+    assert gpd.read_parquet(out)["neighbours"].tolist() == [1, 2, 2, 2, 1]
 
 
 def test_a_neighbourhood_that_is_the_whole_layer_scores_zero(tmp_path):
@@ -369,4 +420,66 @@ def test_a_thinning_distance_in_degrees_is_refused(tmp_path):
     with pytest.raises(ValueError, match="DEGREES"):
         spatial_stats.thin_points(
             str(path), str(tmp_path / "x.parquet"), min_distance=500.0
+        )
+
+
+def test_the_total_check_is_emitted_only_when_it_has_something_to_check(tmp_path):
+    """A check that cannot fail is a tick in the manifest saying nothing.
+
+    `the_population_weighted_total_is_preserved` used to read
+    `math.isclose(...) or between > 0`, so in the ordinary case the predicate was
+    true without measuring anything: on the conformance fixture the weighted
+    total was 7.9175 against an input of 8.0 and the check was green. That is the
+    `shape_matches_resolution` defect, found the day after closing it.
+
+    Full shrinkage IS an identity, so the check is emitted there and nowhere
+    else, and its name says which case it is about.
+    """
+    equal = _squares([1, 2, 3], tmp_path, "equal", {"pop": [100, 200, 300]})
+    out = tmp_path / "equal.parquet"
+    result = spatial_stats.smooth_rates(
+        str(equal), str(out), count_field="n", population_field="pop"
+    )
+    assert result["fully_shrunk"] is True
+    check = _named(out)["x-mapsmith:full_shrinkage_reconstructs_the_total"]
+    assert check["passed"] is True
+    assert "against an input total of 6" in check["detail"]
+
+    spread = _squares(
+        [1, 1, 50, 60], tmp_path, "spread",
+        {"pop": [120, 500_000, 400_000, 500_000]},
+    )
+    partial = tmp_path / "spread.parquet"
+    spatial_stats.smooth_rates(
+        str(spread), str(partial), count_field="n", population_field="pop"
+    )
+    assert "x-mapsmith:full_shrinkage_reconstructs_the_total" not in _named(partial), (
+        "the check is present under partial shrinkage, where the identity does "
+        "not hold and there is nothing for it to verify"
+    )
+
+
+def test_a_detail_never_states_the_opposite_of_what_passed_says(tmp_path):
+    """Three checks used to carry the failure sentence on a passing result.
+
+    A reader opening the manifest of a disclosure-control run found a green tick
+    next to "the merged counts do not add up to the input's total". The detail is
+    prose the spec asks for to carry the diagnosis; contradicting `passed` is
+    worse than leaving it empty.
+    """
+    path = _squares([1, 1, 5, 1, 1], tmp_path, "detail")
+    out = tmp_path / "detail.parquet"
+    spatial_stats.aggregate_to_threshold(
+        str(path), str(out), count_field="n", minimum=2
+    )
+    for check in _manifest(out)["verification"]:
+        if not check["passed"]:
+            continue
+        wording = check["detail"].lower()
+        assert not any(
+            phrase in wording
+            for phrase in ("do not", "does not", "is missing", "fell outside")
+        ), (
+            f"{check['name']} passed and its detail reads like a failure: "
+            f"{check['detail']!r}"
         )

@@ -195,14 +195,17 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 | what the caller declares | candidates left | our ranking, found@3 | **right answer in what comes back** |
 |---|---|---|---|
 | nothing — words alone | 61 | 18% | 18% |
-| what data I have | 39 | 23% | 37% |
-| + what I want back | 27 | 36% | 45% |
-| **+ how many datasets I have** | **12** | **60%** | **100%** |
+| what data I have | 41 | 22% | 37% |
+| + what I want back | 27 | 34% | 45% |
+| **+ how many datasets I have** | **14** | **57%** | **97%** |
 
-The last column is the one that matters, and it is not an accuracy figure — it is a property.
-Once the facts a caller genuinely knows have narrowed the catalog to something readable,
-**every survivor is handed over**, so the right operation is in the answer for all 118 requests
-by construction rather than by ranking. Ranking decides the order. It does not decide membership.
+The last column is not an accuracy figure — it is a property, and the 97% rather than 100% is
+worth a sentence. The narrowing never drops the right operation: that is asserted per entry and
+holds for all 61. What the column measures is whether the surviving set was small enough to hand
+over WHOLE, and for a handful of requests it still is not, so those fall back to a ranked
+shortlist and the answer can be outside the top three. Ranking decides the order; it does not
+decide membership; and the 3% is the gap between "cannot lose the answer" and "can show you all
+of it".
 
 **The third row is the scaling wall, and we hit it in one afternoon.** On 2026-08-29 the
 catalogue went from 51 operations to 61. Two rows of that table got worse: the commonest
@@ -434,13 +437,13 @@ flowchart TB
   ASK --> PLAN{{"plan validated<br/>before anything runs"}}
   PLAN -. "rejected: FORWARD_REFERENCE" .-> BAD["'mask_path' references '$buffer' which runs later — move step 'buffer' before 'near'"]
   BAD:::bad
-  BUFFER["<b>buffer_layer</b><br/>61 operations &rarr; 24 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
+  BUFFER["<b>buffer_layer</b><br/>61 operations &rarr; 25 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
   PLAN --> BUFFER
-  NEAR["<b>clip_layer</b><br/>61 operations &rarr; 9 candidates &rarr; chosen<br/>12/12 checks"]
+  NEAR["<b>clip_layer</b><br/>61 operations &rarr; 11 candidates &rarr; chosen<br/>12/12 checks"]
   BUFFER --> NEAR
-  HEIGHT["<b>zonal_statistics</b><br/>61 operations &rarr; 1 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
+  HEIGHT["<b>zonal_statistics</b><br/>61 operations &rarr; 4 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
   NEAR --> HEIGHT
-  AREA["<b>measure_area</b><br/>61 operations &rarr; 24 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>9/9 checks"]
+  AREA["<b>measure_area</b><br/>61 operations &rarr; 25 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>9/9 checks"]
   HEIGHT --> AREA
   FILTER["<b>run_sql</b><br/>61 operations &rarr; 34 candidates &rarr; chosen<br/>outside the plan"]
   AREA --> FILTER
@@ -451,10 +454,10 @@ flowchart TB
 
 | what the agent asks for | it declares | candidates | picked | at position |
 |---|---|---|---|---|
-| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s) | **24** of 61 | `buffer_layer` | 2 |
-| “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s) | **9** of 61 | `clip_layer` | 1 |
-| “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s) | **1** of 61 | `zonal_statistics` | 1 |
-| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s) | **24** of 61 | `measure_area` | 1 |
+| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s) | **25** of 61 | `buffer_layer` | 2 |
+| “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s) | **11** of 61 | `clip_layer` | 1 |
+| “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s) | **4** of 61 | `zonal_statistics` | 3 |
+| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s) | **25** of 61 | `measure_area` | 1 |
 | “drop the ones where the ground is above 120 metres” | vector, dataset:vector | **34** of 61 | `run_sql` | None |
 
 | step | operation | arguments that mattered | CRS decision, recorded | checks |

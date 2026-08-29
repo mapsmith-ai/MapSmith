@@ -230,7 +230,7 @@ def test_a_profile_along_a_ramp_is_the_ramp(ramp, tmp_path):
     assert result["total_length"] == pytest.approx(16.0)
 
     named = {c["name"]: c["passed"] for c in _manifest(out)["verification"]}
-    assert named["x-mapsmith:point_count_follows_length_and_spacing"] is True
+    assert named["x-mapsmith:each_profile_starts_at_zero_and_steps_by_the_spacing"] is True
 
 
 def test_a_profile_includes_both_ends_even_when_the_step_does_not_divide(ramp, tmp_path):
@@ -416,3 +416,76 @@ def test_the_outer_half_cell_is_readable_and_outside_the_extent_is_not(grid, tmp
     )
     assert got[1] is None or np.isnan(got[1])
     assert result["unreadable"] == 1
+
+
+def test_a_ridge_hidden_in_a_nodata_gap_withholds_the_verdict(tmp_path):
+    """The wrong answer this cost: `visible: True` over a 100 m ridge.
+
+    The first version skipped unreadable samples and reported nothing, so a
+    ridge buried in a nodata hole produced a confident yes. The module's own
+    docstring promises that every operation here counts what it could not read,
+    and this is the one that answers yes-or-no rather than returning a table —
+    so it is where a silent null costs the most.
+    """
+    path = tmp_path / "holed_ridge.tif"
+    values = np.zeros((3, 100), dtype="float32")
+    values[:, 45:56] = -9999.0        # a nodata gap
+    values[:, 50] = -9999.0           # with a 100 m ridge inside it, unreadable
+    with rasterio.open(
+        path, "w", driver="GTiff", height=3, width=100, count=1, dtype="float32",
+        crs="EPSG:32632", transform=from_origin(0, 30, 10, 10), nodata=-9999.0,
+    ) as dst:
+        dst.write(values, 1)
+
+    result = sampling.line_of_sight(str(path), 5, 15, 995, 15, earth_curvature=False)
+    assert result["unreadable_samples"] > 5
+    assert result["verdict_withheld"] is True
+    assert result["visible"] is None, (
+        "a sight line with a tenth of its profile missing came back with a "
+        "yes-or-no answer"
+    )
+
+
+def test_a_couple_of_missing_samples_do_not_withhold_the_verdict(ridge):
+    """The threshold is a twentieth, not zero: refusing to answer whenever a
+    single cell is nodata would make the operation useless on real DEMs, which
+    have holes."""
+    result = sampling.line_of_sight(
+        str(ridge), 5, 15, 995, 15, earth_curvature=False
+    )
+    assert result["verdict_withheld"] is False
+    assert result["visible"] is False
+    assert result["unreadable_samples"] == 0
+
+
+def test_a_nodata_corner_with_no_weight_does_not_lose_an_exact_value(tmp_path):
+    """The loss this module exists to prevent, in the opposite direction.
+
+    A point on a cell centre has three of its four bilinear corners at weight
+    zero. Checking the nodata mask before the weight threw the sample away when
+    any of those three happened to be nodata — returning None for a position
+    whose value was sitting right there, and inflating the very counter the
+    unreadable check reads.
+    """
+    path = tmp_path / "corner.tif"
+    values = np.full((3, 3), 5.0, dtype="float32")
+    values[1, 1] = -9999.0
+    with rasterio.open(
+        path, "w", driver="GTiff", height=3, width=3, count=1, dtype="float32",
+        crs="EPSG:32632", transform=from_origin(0, 30, 10, 10), nodata=-9999.0,
+    ) as dst:
+        dst.write(values, 1)
+
+    # Centre of cell (0,0): (5, 25). Its bilinear window reaches (1,1), the
+    # nodata cell, at weight exactly zero.
+    points = tmp_path / "on_centre.gpkg"
+    gpd.GeoDataFrame(
+        {"n": [1]}, geometry=[Point(5, 25)], crs="EPSG:32632"
+    ).to_file(points, layer="p", driver="GPKG")
+
+    out = tmp_path / "corner.parquet"
+    result = sampling.sample_raster_at_points(
+        str(path), str(points), str(out), "bilinear"
+    )
+    assert result["unreadable"] == 0, "an exact value was discarded"
+    assert gpd.read_parquet(out)["value"].tolist() == pytest.approx([5.0])

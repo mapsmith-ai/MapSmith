@@ -42,9 +42,19 @@ DEFAULT_ALPHA = 0.05
 
 
 def _engine_info() -> dict[str, str]:
+    """The engine is this module. Gi*, Benjamini-Hochberg and the empirical-Bayes
+    estimator are arithmetic written here; shapely only builds the neighbourhoods,
+    so it belongs in a field of its own rather than in the version string, where
+    a reader would conclude the statistics came from it."""
     import shapely
 
-    return {"name": "mapsmith-stats", "version": f"shapely {shapely.__version__}"}
+    from .. import __version__
+
+    return {
+        "name": "mapsmith-stats",
+        "version": __version__,
+        "geometry_library": f"shapely {shapely.__version__}",
+    }
 
 
 def _normal_tail(z: float) -> float:
@@ -78,10 +88,18 @@ def _weights(
 ) -> list[list[int]]:
     """Neighbour lists, one per feature, excluding the feature itself."""
     if scheme == "contiguity":
+        # `intersects`, not `touches`. `touches` is false for polygons that
+        # OVERLAP, and real administrative boundaries overlap by millimetres all
+        # the time — a strip of five areas with a 1 mm overlap came back with
+        # zero neighbours each, which turns Gi* into a plain z-score of the value
+        # against the global distribution. A different statistic, computed in
+        # silence, with a non-critical note as the only trace. This is the same
+        # class of defect that `network.tolerance` exists for, and it was being
+        # treated as a warning here.
         index = gdf.sindex
         neighbours = []
         for position, geometry in enumerate(gdf.geometry):
-            candidates = index.query(geometry, predicate="touches")
+            candidates = index.query(geometry, predicate="intersects")
             neighbours.append(sorted(int(c) for c in candidates if int(c) != position))
         return neighbours
 
@@ -233,7 +251,9 @@ def hot_spots(
         parameters={
             "value_field": value_field,
             "weights": weights,
-            "distance_band": distance_band,
+            # Only when it was used. Recorded unconditionally, it told a reader
+            # of a contiguity run that the analysis used a radius it ignored.
+            "distance_band": distance_band if weights == "distance_band" else None,
             "alpha": alpha,
             "statistic": "Getis-Ord Gi* (self included), binary weights",
             "multiple_testing": "Benjamini-Hochberg false discovery rate",
@@ -280,6 +300,20 @@ def hot_spots(
                 critical=False,
                 hint="an isolated feature's Gi* is computed over itself alone; widen "
                 "the distance band, or check for slivers if using contiguity",
+            ),
+            # A few islands are data. Half the layer with no neighbours is not a
+            # property of the data, it is an analysis that did not happen: Gi*
+            # over a neighbourhood of one is the z-score of the value against the
+            # global distribution, which measures no clustering at all. Critical,
+            # because the output would be a map of a different statistic under
+            # this one's name.
+            verify.Check(
+                "x-mapsmith:the_weights_found_a_neighbourhood_to_work_with",
+                isolated <= n // 2,
+                f"{isolated} of {n} feature(s) are isolated, so for those Gi* is "
+                "the value's own z-score and measures no clustering",
+                hint="with contiguity, boundaries that overlap or fall short by a "
+                "sliver produce this; with a distance band, the band is too small",
             ),
         ],
     )
@@ -416,20 +450,39 @@ def smooth_rates(
                     min(r, global_rate) - 1e-12 <= s <= max(r, global_rate) + 1e-12
                     for r, s in zip(raw, smoothed, strict=True)
                 ),
-                "an estimate fell outside the interval between its own rate and the "
-                "global rate",
+                f"worst deviation from the interval: "
+                f"{max((max(min(r, global_rate) - s, s - max(r, global_rate), 0.0) for r, s in zip(raw, smoothed, strict=True)), default=0.0):.3g}",
             ),
-            verify.Check(
-                "x-mapsmith:the_population_weighted_total_is_preserved",
-                math.isclose(
-                    sum(s * p for s, p in zip(smoothed, populations, strict=True)),
-                    total_count,
-                    rel_tol=1e-6,
-                )
-                or between > 0,
-                "with full shrinkage the population-weighted estimates must "
-                "reconstruct the total count",
-                critical=False,
+            # Only when the estimator collapsed to the global rate, and the name
+            # says so. It used to be `... or between > 0`, which in the ordinary
+            # case made the predicate true without measuring anything: on the
+            # conformance fixture the weighted total was 7.9175 against an input
+            # of 8.0 and the check was green. That is the `shape_matches_resolution`
+            # defect, found the day after closing it — a name asserting a property
+            # the check does not test, with a tick in the manifest to say so.
+            #
+            # Full shrinkage IS an identity: every estimate equals the global rate,
+            # so the population-weighted sum reconstructs the total exactly.
+            # Partial shrinkage is not, and there is nothing here to check.
+            *(
+                [
+                    verify.Check(
+                        "x-mapsmith:full_shrinkage_reconstructs_the_total",
+                        math.isclose(
+                            sum(
+                                s * p
+                                for s, p in zip(smoothed, populations, strict=True)
+                            ),
+                            total_count,
+                            rel_tol=1e-6,
+                        ),
+                        f"{sum(s * p for s, p in zip(smoothed, populations, strict=True)):.6g} "
+                        f"against an input total of {total_count:.6g}",
+                        critical=False,
+                    )
+                ]
+                if between == 0.0
+                else []
             ),
         ],
     )
@@ -578,12 +631,14 @@ def aggregate_to_threshold(
                     sum(float(v) for v in gdf[count_field]),
                     rel_tol=1e-9,
                 ),
-                "the merged counts do not add up to the input's total",
+                f"{sum(totals[g] for g in order):.6g} after merging against "
+                f"{sum(float(v) for v in gdf[count_field]):.6g} in the input",
             ),
             verify.Check(
                 "x-mapsmith:every_input_area_is_in_exactly_one_group",
                 sorted(m for g in order for m in groups[g]) == list(range(n)),
-                "an input area is missing from the output, or is in two groups",
+                f"{len([m for g in order for m in groups[g]])} placements for "
+                f"{n} input areas",
             ),
         ],
     )
@@ -667,6 +722,11 @@ def thin_points(
     out = gdf.iloc[sorted(kept)].copy()
     _write(out, output_path)
 
+    # Once, into a name. Both arguments of a `Check` are evaluated eagerly, so
+    # calling this in the predicate AND in the detail ran an O(k^2) sweep twice:
+    # measured, 43.7 s of the 67 s that thinning 4,000 points took.
+    separation = _minimum_separation(kept_points)
+
     record = ProvenanceRecord(
         operation="thin_points",
         parameters={
@@ -707,9 +767,9 @@ def thin_points(
             # rather than assumed from the loop that produced it.
             verify.Check(
                 "x-mapsmith:no_two_kept_points_are_closer_than_the_minimum",
-                _minimum_separation(kept_points) >= min_distance - 1e-9,
-                f"closest surviving pair is {_minimum_separation(kept_points):.6g} "
-                f"apart, minimum was {min_distance}",
+                separation >= min_distance - 1e-9,
+                f"closest surviving pair is {separation:.6g} apart, minimum was "
+                f"{min_distance}",
             ),
         ],
     )
