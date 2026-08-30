@@ -449,16 +449,22 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
       <td>the default</td>
       <td>BM25 was the default until the golden queries were re-read: they had been written by
       whoever wrote the catalogue, so they shared its vocabulary and tested word overlap dressed as
-      retrieval. On those BM25 scores 100% found@1 and embeddings 60% — and the finding reverses on
-      queries phrased like a problem rather than like a manual.</td>
+      retrieval. On those BM25 scores 100% found@1 and embeddings 60%, and on queries phrased like a
+      problem rather than like a manual the finding reversed — at fifty-one entries.
+      <strong>It has since reversed back.</strong> Recomputed on 30 August at seventy-four, BM25
+      leads from thirty entries upward, and it leads at every row of the facet table above. The
+      embedding engine is still the default, and the measurement that made it one no longer says
+      so: that is a decision to take rather than a number to quietly restate.</td>
     </tr>
     <tr>
       <td>and reverses again</td>
       <td>Measured against 800 <em>near neighbours</em> rather than our own spread-out entries, the
       embedding engine degrades faster: 35% against 20% found@3. Embeddings blur near neighbours; an
-      exact term either matches or does not. Both measurements are kept, because they answer
-      different questions — and at 800 the better engine alone is wrong two times in three, which is
-      exactly why ranking is the tie-break and not the mechanism.</td>
+      exact term either matches or does not. This used to be the measurement that disagreed with the
+      one above it, and both were kept because they answered different questions. They agree now:
+      the near-neighbour effect this predicted has arrived in our own catalogue at seventy-four
+      entries. At 800 the better engine alone is wrong two times in three, which is exactly why
+      ranking is the tie-break and not the mechanism.</td>
     </tr>
     <tr>
       <td>per operation</td>

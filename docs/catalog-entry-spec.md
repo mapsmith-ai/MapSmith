@@ -36,7 +36,7 @@ Three more numbers say why the answer is a set rather than a pick:
 
 | | |
 |---|---|
-| the ranker puts the answer in the top three | 48% |
+| the ranker puts the answer in the top three | 53% |
 | a model handed the same candidates and asked to **choose** | **69%** |
 | the two labellers who wrote the ground truth agreeing **with each other** | **70%** |
 
@@ -91,7 +91,8 @@ and fell to 45%, with found@3 down from 48% to 36%. **Adding capability had made
 discovery worse, and nothing raised.**
 
 Raising the hand-over threshold would have bought about ten more operations.
-Declaring arity took the median surviving set from 34 to 9 and found@3 to 60%.
+Declaring arity took the median surviving set from 34 to 9, measured at sixty-one
+operations. What the same facet is worth today is the table above.
 
 Two things make it the right *kind* of facet, and they are the two to look for
 when a catalogue of your own outgrows its facets:
@@ -114,7 +115,7 @@ when a catalogue of your own outgrows its facets:
 
 `dataset:vector`, `dataset:raster`, `answer`, `description`, `plan_result`.
 
-Worth 19 points of found@3 on top of the input kind (29% to 48%, table above), and it is a facet the caller
+Worth 26 points of found@3 on top of the input kind (27% to 53%, table above), and it is a facet the caller
 always knows: they know whether they want a file, a number, or an account of
 something they already have. Check it against what the code actually writes — a
 declaration that disagrees makes the operation unreachable for the caller who
@@ -128,7 +129,7 @@ kind and projected-CRS are facts about the data in hand, `produces` is what they
 want back, but the family is a guess about *your* taxonomy, which they cannot see.
 
 Measured on the same set: as a hard filter it removes six candidates out of
-twenty-one, and when the guess is wrong it removes **the right operation**, with no
+seventeen, and when the guess is wrong it removes **the right operation**, with no
 error, leaving a confident answer assembled from neighbours. Every request in the
 set has 4.4 plausible families. At 800 operations the guess is among 43.
 
@@ -207,7 +208,7 @@ operation DOES differently, not around a list of names.
 
 1. **It is read at selection time, not at search time — and selection is where the
    accuracy is.** A model handed the surviving candidates and asked to choose gets
-   its first pick right 69% of the time, against 48% for the ranker putting it in the
+   its first pick right 69% of the time, against 53% for the ranker putting it in the
    top three. Entries that all say "one point per polygon" give it nothing to choose
    on. `distinguishes` is the only field written to be read *against its neighbours*,
    and that is the moment it pays. Measured against retrieval it is worth nothing;

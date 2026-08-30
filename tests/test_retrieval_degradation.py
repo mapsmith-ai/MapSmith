@@ -210,3 +210,101 @@ def test_every_available_operation_says_how_a_caller_would_ask_for_it():
         if op["status"] == "available" and not op.get("phrasings")
     ]
     assert not missing, f"these entries do not say how a caller would ask: {missing}"
+
+
+def _vector_top(query: str, candidates: list[dict], k: int = 3) -> list[str]:
+    """The embedding engine over the same subset, so the two are comparable.
+
+    `retrieval.rank` takes `candidates` for exactly this: one interface, two
+    engines, one measurement. Without it the vector column of the published
+    curve had no harness at all and was a hand-typed number for three catalogue
+    sizes.
+    """
+    from mapsmith import retrieval
+
+    return [op["name"] for op, _ in retrieval.rank(query, limit=k, candidates=candidates)]
+
+
+def _curve(top) -> dict[int, int]:
+    """found@3 per catalogue size, three seeds per query."""
+    out = {}
+    for size in (10, 30, len(catalog.OPERATIONS)):
+        at_three = trials = 0
+        for expected, query in CALLER_QUERIES.items():
+            for seed in (1, 2, 3):
+                trials += 1
+                at_three += expected in top(query, _subset(expected, size, seed))
+        out[size] = round(100 * at_three / trials)
+    return out
+
+
+@pytest.mark.slow
+def test_the_published_degradation_curve_is_what_the_harness_computes(vector_engine):
+    """The table on the README, recomputed — both columns.
+
+    It was published at 10/30/51 as 78/83, 47/65, 40/55 and stayed there through
+    three catalogue sizes while the sentence under it drew a conclusion the
+    numbers had stopped supporting. The BM25 column had a harness that printed
+    it and nobody compared; the embeddings column had no harness at all.
+
+    Recomputing here rather than trusting the print is the difference between a
+    number that is measured and a number that was measured once.
+    """
+    pytest.importorskip("model2vec")
+    import re
+    from pathlib import Path
+
+    lexical, vector = _curve(_lexical_top), _curve(_vector_top)
+    readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(
+        encoding="utf-8"
+    )
+    published = {
+        int(size): (int(bm25), int(embeddings))
+        for size, bm25, embeddings in re.findall(
+            r"^\| (\d+) \| (\d+)% \| (\d+)% \|$", readme, re.MULTILINE
+        )
+    }
+    for size, bm25 in lexical.items():
+        assert size in published, (
+            f"the README's degradation table no longer has a row for {size} "
+            "entries, so this check has nothing to compare — regenerate the table"
+        )
+        assert published[size] == (bm25, vector[size]), (
+            f"at {size} entries the harness computes BM25 {bm25}% and embeddings "
+            f"{vector[size]}%; the README publishes {published[size]}"
+        )
+
+
+@pytest.mark.slow
+def test_the_page_does_not_claim_an_overtake_that_does_not_happen(vector_engine):
+    """BM25 leads at every facet level, and the page said otherwise for a while.
+
+    "The embedding engine only overtakes it once the facets have narrowed" was
+    printed directly under a table showing BM25 ahead in every row. A sentence
+    contradicted by the table above it is the failure this project measures in
+    other people's output.
+    """
+    pytest.importorskip("model2vec")
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(root / "benchmarks"))
+    import discovery_report
+
+    rows = discovery_report.answerable(discovery_report.load())
+    lexical = discovery_report.ablation(rows, engine="lexical")
+    vector = discovery_report.ablation(rows, engine="vector")
+    overtakes = [
+        i
+        for i, (lex, vec) in enumerate(zip(lexical, vector, strict=True))
+        if vec["found_at_3"] > lex["found_at_3"]
+    ]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    claims_overtake = "embedding engine only overtakes" in readme
+
+    assert bool(overtakes) == claims_overtake, (
+        f"the vector engine overtakes BM25 at levels {overtakes} and the README "
+        f"{'claims' if claims_overtake else 'does not claim'} an overtake. "
+        "Whichever changed, the page and the measurement have to say the same thing."
+    )

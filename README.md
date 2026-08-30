@@ -207,10 +207,14 @@ recomputed the first row as 28% where this page said 18%. Not a flaky test: a
 number that had never been reproducible on a machine without the model,
 published under a sentence promising it could be checked.
 
-The two also differ in a way worth seeing. BM25 is the better ranker while the
-candidate set is large — an exact term either matches or does not — and the
-embedding engine only overtakes it once the facets have narrowed, which is where
-near neighbours have to be told apart by meaning rather than by words.
+The two also differ in a way worth seeing, and this page had it backwards
+until 2026-08-30. It said the embedding engine overtakes BM25 once the facets
+have narrowed. It does not overtake it anywhere: BM25 leads at every row of the
+table above, by seven to twelve points, and the gap is widest at the fullest
+declaration. An exact term either matches or does not, and the entries that
+survive a full declaration are told apart by the words that distinguish them —
+which is what `distinguishes` is for. The embedding engine earns its place on
+the phrasings it has never seen, not on the ranking once the set is small.
 
 The last column is not an accuracy figure — it is a property, and the 97% rather than 100% is
 worth a sentence. The narrowing never drops the right operation: that is asserted per entry and
@@ -279,13 +283,13 @@ Three measurements say this is the right shape, and the third is the one that se
 
 | | |
 |---|---|
-| our ranking puts the answer in the top three | **48%** |
+| our ranking puts the answer in the top three | **53%** |
 | a model handed the same candidates and asked to *choose* gets its first pick right | **69%** |
 | the two labellers who wrote the ground truth agree **with each other** | **70%** |
 
 All three are over the same 118 requests, which matters: agreement measured over all 155 requests
 in the file is 68%, and the difference is the 21 pairs where both labellers agreed a request was
-unanswerable — true, and the easy half. Quoting that 68% beside a 48% computed over the 118 would
+unanswerable — true, and the easy half. Quoting that 68% beside a 53% computed over the 118 would
 be comparing two populations, which this table did for half a day.
 
 **The last row is a ceiling, not a baseline**, and the second row sits at it rather than below it.
@@ -336,21 +340,30 @@ because a BM25 score of 10.03 and a cosine of 0.38 are not on the same scale.
 interesting part. Golden queries written by whoever wrote the catalog share its vocabulary, so
 they test word overlap dressed as retrieval: on those, BM25 scores 100% found@1 and embeddings
 60%. Re-phrased the way somebody with a problem actually phrases it — *"the coastline is 400000
-nodes and the browser dies"* rather than *"simplify the geometry"* — the finding reverses and
-both engines degrade as the catalog grows:
+nodes and the browser dies"* rather than *"simplify the geometry"* — the finding reversed, on a
+catalogue of fifty-one entries. It has since reversed back, and both engines degrade as the
+catalog grows:
 
 | catalog size | BM25 found@3 | embeddings found@3 |
 |---|---|---|
-| 10 | 78% | 83% |
-| 30 | 47% | 65% |
-| 51 | 40% | 55% |
+| 10 | 77% | 80% |
+| 30 | 65% | 58% |
+| 74 | 50% | 40% |
 
-BM25 degrades faster and the gap widens with every entry, which is why the embedding engine is
-a dependency rather than an extra. The whole curve is a test (`test_retrieval_degradation.py`),
-so growing the catalog cannot quietly make it harder to find anything.
+**This table used to say the opposite, and the reversal is the finding.** Published at 10/30/51
+it read 78/83, 47/65, 40/55 — embeddings ahead at every size — and the sentence under it said
+BM25 degrades faster, which is why the embedding engine became a dependency rather than an extra.
+Recomputed today the crossover has moved: embeddings still lead on ten entries, and from thirty
+up BM25 leads by a margin that widens with size. Part of that is the catalogue itself, because
+the distractors are drawn from it and it has grown from fifty-one entries to seventy-four — which
+is the point rather than a caveat. **The near-neighbour effect the eight-hundred-operation test
+predicted has arrived in our own catalogue**, and the two tables that used to disagree now agree.
+
+The curve is recomputed by `tests/test_retrieval_degradation.py` and compared with this table, so
+it cannot go stale again in silence — which it did for three catalogue sizes.
 
 **And that finding does not survive being scaled up — measured the same day it was
-published.** The distractors above are drawn from our own fifty-one entries, which are
+published.** The distractors above are drawn from our own seventy-four entries, which are
 semantically spread out. Growing this catalog means adding *near neighbours*: hundreds of
 raster and terrain operations that resemble each other. Re-run against 800 real GIS
 operations, taken from a library that ships them with their own descriptions, the ranking
@@ -504,7 +517,7 @@ describe your work; treat the file that way, and delete it when you are done.
 ### One question, end to end
 
 Everything above is about one step. Here is a whole question — six parcels, a river, an
-elevation grid, and five operations picked out of fifty-one — with the search, the arguments and
+elevation grid, and five operations picked out of 74 — with the search, the arguments and
 the verification of each step as they were actually recorded.
 
 Nothing in this section is drawn. `benchmarks/worked_example.py` builds fixtures whose answer can
@@ -513,7 +526,7 @@ plan, reads the manifests, and writes what follows; `tests/test_worked_example.p
 page and that script disagree. The position column is BM25's rather than the default engine's,
 because a published figure should not depend on whether a model download succeeded on the machine
 that built the page — the narrowing, which is the point, is identical on both. Two things worth watching: the middle column, where the catalogue
-goes from fifty-one operations to a handful the caller can read; and the CRS column, where every
+goes from 74 operations to a handful the caller can read; and the CRS column, where every
 metric operation says which coordinate system it moved the data into and why.
 
 <!-- worked-example:start -->
