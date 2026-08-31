@@ -1,0 +1,205 @@
+"""The Esri backend: three operations, run in ArcGIS Pro's own Python.
+
+Three and not seventy-two, deliberately. What this proves is that the path
+exists end to end — stack chosen, licence discovered, tool run, fallback
+recorded — on operations whose equivalence with the open source stack is
+**measured** rather than assumed (D-056 point 5). Adding a fourth is then a
+table entry and a probe, not a design question.
+
+The three are `buffer`, `centroid_layer` and `dissolve_layer`, and what the
+measurement of 2026-08-30 actually found is more interesting than a match.
+Compared across the two stacks on the same fixture, through the same reader,
+into the same container:
+
+    buffer      geometry identical  · ArcGIS adds BUFF_DIST, ORIG_FID
+    centroids   geometry identical  · ArcGIS adds ORIG_FID
+    dissolve    geometry identical  · ArcGIS adds Id and DROPS every attribute
+
+**The geometry deltas match on all three. The schemas do not match on any of
+them**, and the dissolve difference is not cosmetic: a pipeline that dissolves
+and then reads a column gets the column on one stack and nothing on the other.
+That is silent data loss on substitution, which is the precise failure a
+provenance product exists to prevent.
+
+So the measurement does not license a silent swap — it licenses a **recorded**
+one, and it is the reason `record.notes` carries the schema delta rather than a
+reassuring sentence. The first version of the comparison omitted the column
+fields and reported all three as matching; the difference was there all along
+and the check was not looking at it.
+
+Two caveats remain, written here rather than discovered later: three pairs are
+the easy case, chosen because a method that cannot recognise these recognises
+nothing; and a fixture of two squares cannot find geodesic-against-planar
+buffers or invalid-geometry handling. Those are Argleton's job.
+
+## The boundary
+
+ArcPy lives in ArcGIS Pro's conda environment, so MapSmith cannot import it:
+every call is a subprocess that reads and writes files. That is the same shape
+invariant 7 imposes on QGIS for a licensing reason, arrived at here for a
+technical one.
+"""
+
+from __future__ import annotations
+
+import json
+import pathlib
+import tempfile
+from typing import Any
+
+from .. import readers, stacks
+
+#: What each operation needs from the Esri side, and what it is called there.
+#: The qualified name matters: 297 of the 2198 installed tools share a bare
+#: name with a tool in another toolbox.
+#: Keyed by MapSmith's CATALOGUE names, not by convenient ones: the router
+#: passes the operation as the catalogue spells it, and a different key here
+#: means falling back every time with the wrong reason — "no such tool"
+#: instead of the real one. It failed exactly that way once.
+TOOLS = {
+    "buffer_layer": {"toolbox": "Analysis Tools", "tool": "Buffer"},
+    "centroid_layer": {"toolbox": "Data Management Tools", "tool": "FeatureToPoint"},
+    "dissolve_layer": {"toolbox": "Data Management Tools", "tool": "Dissolve"},
+}
+
+#: Runs inside Pro's Python. It PRODUCES and reports; it does not describe what
+#: it produced. Describing is done by MapSmith's own reader, because letting
+#: each vendor describe its own output is the thing measured not to work — and
+#: because two readers on one file gave two different answers on 2026-08-30.
+PROBE = '''
+import json, os, sys
+
+try:
+    import arcpy
+except Exception as failure:
+    print(json.dumps({"status": "no_arcpy", "detail": str(failure)[:300]}))
+    raise SystemExit(0)
+
+arcpy.env.overwriteOutput = True
+request = json.loads(open(sys.argv[1], encoding="utf-8").read())
+# A GeoPackage layer, addressed the way ArcPy addresses one: the container path
+# plus the layer name. A plain .gpkg path is refused (ERROR 000732), and
+# GeoParquet is not readable at all — measured 2026-08-30. The bridge is a
+# GeoPackage and deliberately NOT a shapefile, which truncates field names to
+# ten characters in silence: `convert_format` refuses to write one for exactly
+# that reason, and a back door cannot use what the front door refuses.
+source = os.path.join(os.path.abspath(request["input_path"]), request["input_layer"])
+# The output container has to exist first: ArcPy writes a layer INTO a
+# GeoPackage, it does not make one on the way (ERROR 000210).
+container = os.path.abspath(request["output_path"])
+arcpy.management.CreateSQLiteDatabase(container, "GEOPACKAGE")
+target = os.path.join(container, request["output_layer"])
+
+actions = {
+    "buffer_layer": lambda: arcpy.analysis.Buffer(
+        source, target, "%s Meters" % request["distance_meters"]),
+    "centroid_layer": lambda: arcpy.management.FeatureToPoint(source, target, "CENTROID"),
+    "dissolve_layer": lambda: arcpy.management.Dissolve(source, target),
+}
+try:
+    actions[request["operation"]]()
+    print(json.dumps({"status": "ok", "output_path": target}))
+except Exception as failure:
+    message = str(failure)
+    # The distinction D-056 point 4 requires. A tier that does not include a
+    # tool is not a product that cannot do the thing, and collapsing the two
+    # would be the error we corrected once already, made in reverse.
+    unlicensed = "not licensed" in message.lower() or "000824" in message
+    print(json.dumps({
+        "status": "not_in_this_licence" if unlicensed else "failed",
+        "detail": message[:300],
+    }))
+'''
+
+def available_for(operation: str) -> tuple[bool, str, str]:
+    """Can the Esri stack run this here? Returns (yes, reason, detail).
+
+    Answered from metadata on disk, so asking costs nothing. `reason` is one of
+    the three constants in `stacks`, never a single word for all of them.
+    """
+    if operation not in TOOLS:
+        return False, stacks.NO_SUCH_TOOL, "MapSmith has no Esri binding for it yet"
+    if not stacks.installed()["esri"]["available"]:
+        return False, stacks.NO_SUCH_TOOL, "ArcGIS Pro is not installed on this machine"
+
+    wanted = TOOLS[operation]
+    key = f"{wanted['toolbox']}/{wanted['tool']}"
+    entry = stacks.esri_inventory()["tools"].get(key)
+    if entry is None:
+        return False, stacks.NO_SUCH_TOOL, f"{key} is not in this installation"
+    if entry["extensions"]:
+        # The metadata says an extension is required. Whether this licence has
+        # it is only knowable by taking a seat, so the honest answer here is
+        # "ask the engine", and the engine's refusal is what gets recorded.
+        return True, "", f"{key} declares extensions {entry['extensions']}"
+    return True, "", f"{key}, {entry['level']} level, no extension required"
+
+
+def run(operation: str, source: Any, arguments: dict[str, Any],
+        timeout: int = 900) -> dict[str, Any]:
+    """Run one operation on the Esri stack, and hand back a GeoDataFrame.
+
+    The frame, not a path: the caller writes the real output with MapSmith's own
+    writer, so the canonical format stays canonical and the verification runs
+    over a file MapSmith produced. It also enforces the rule the fingerprint
+    work learned the hard way — one reader. Letting each engine describe its own
+    output is what does not work, and reading it with two readers gave two
+    different answers on the same file.
+
+    Never raises for a licence refusal: that is an outcome to act on, and an
+    exception would make it indistinguishable from a crash.
+    """
+    with tempfile.TemporaryDirectory(prefix="mapsmith-esri-") as workdir:
+        area = pathlib.Path(workdir)
+        source_file, target_file = area / "in.gpkg", area / "out.gpkg"
+        source.to_file(source_file, driver="GPKG", layer="data")
+
+        probe_file = area / "probe.py"
+        probe_file.write_text(PROBE, encoding="utf-8")
+        request_file = area / "request.json"
+        request_file.write_text(json.dumps({
+            "operation": operation,
+            "input_path": str(source_file), "input_layer": "main.data",
+            "output_path": str(target_file), "output_layer": "result",
+            **arguments,
+        }), encoding="utf-8")
+
+        done = stacks.esri_run(str(probe_file), [str(request_file)], timeout=timeout)
+        lines = [r for r in (done.stdout or "").strip().splitlines() if r.strip()]
+        if not lines:
+            return {"status": "failed", "detail": (done.stderr or "no output")[-300:]}
+        try:
+            outcome = json.loads(lines[-1])
+        except ValueError:
+            return {"status": "failed", "detail": lines[-1][:300]}
+        if outcome.get("status") != "ok":
+            return outcome
+        # Through the one reader, not `gpd.read_file`: that is the discipline
+        # from #28, and it counts double here — what the fingerprint work
+        # learned is that one file read by two readers gives two answers.
+        outcome["frame"] = readers.read_named_layer(str(target_file), "result")
+        return outcome
+
+
+def engine_info() -> dict[str, Any]:
+    """What produced the numbers, for the manifest.
+
+    The version comes from the installation on disk rather than from a string
+    we keep here: a record that names a version MapSmith guessed is worse than
+    one that says it does not know.
+    """
+    version = None
+    marker = stacks.PRO_ROOT / "bin" / "ArcGISPro.exe"
+    if marker.exists():
+        version = _version_from_install()
+    return {"name": "ArcGIS Pro", "version": version or "unknown"}
+
+
+def _version_from_install() -> str | None:
+    for candidate in (stacks.PRO_ROOT / "Resources" / "Version" / "Version.json",):
+        if candidate.exists():
+            try:
+                return json.loads(candidate.read_text(encoding="utf-8")).get("Version")
+            except (OSError, ValueError):
+                return None
+    return None

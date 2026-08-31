@@ -17,7 +17,7 @@ import geopandas as gpd
 import pandas as pd
 import shapely
 
-from .. import antimeridian, readers, verify
+from .. import antimeridian, readers, stacks, verify
 from ..provenance import InputRecord, ProvenanceRecord
 
 
@@ -89,12 +89,20 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
             f"{input_path} has no CRS. Refusing to buffer without knowing the units — "
             "assign a CRS first (see reproject_layer).",
         ))
+    # Which stack runs this, decided before any geometry is touched (D-056).
+    # In open source mode nothing changes from before: it is the default and it
+    # needs no licence.
+    routing = stacks.route("buffer_layer")
     record = ProvenanceRecord(
         operation="buffer_layer",
         parameters={"distance_meters": distance_meters},
         inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))],
         engine=_engine_info(),
     )
+    if routing.get("note"):
+        # A substitution is recorded. A product that sells provenance and swaps
+        # engines quietly is selling the opposite.
+        record.notes.append(routing["note"])
     pre = verify.verify_loaded_inputs("buffer_layer", input_path=gdf)
     original_crs = gdf.crs
     if original_crs.is_geographic:
@@ -113,6 +121,48 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
         }
         buffered = gdf.copy()
         buffered["geometry"] = buffered.geometry.buffer(distance_meters)
+
+    if routing["stack"] == "esri":
+        # The backend computes; verification and the manifest stay MapSmith's.
+        # That is the point: the engine changes, the guarantees do not — and the
+        # record says which engine actually made the numbers.
+        from . import esri as esri_engine
+
+        outcome = esri_engine.run(
+            "buffer_layer", gdf, {"distance_meters": distance_meters}
+        )
+        if outcome["status"] == "ok":
+            produced = outcome["frame"]
+            # The SCHEMA delta, computed on this output rather than quoted from
+            # an earlier measurement: the two engines agree on geometry and not
+            # on columns, and on a dissolve one of them drops every attribute.
+            # A note saying only "the fingerprints matched" would be reassuring
+            # and false.
+            added = sorted(set(produced.columns) - set(buffered.columns))
+            dropped = sorted(set(buffered.columns) - set(produced.columns))
+            record.engine = esri_engine.engine_info()
+            record.notes.append(
+                "requested stack 'esri': these numbers were produced by that "
+                "stack, not by MapSmith's own engines. The geometry the two "
+                "produce agrees; the schema does not, and that difference is "
+                f"here rather than in a footnote — columns added: {added or 'none'}; "
+                f"columns not carried through: {dropped or 'none'}. Anything "
+                "downstream that reads a column has to know which engine wrote it."
+            )
+            buffered = produced
+        else:
+            # Refusal or failure: fall back, and say why. Never in silence.
+            record.notes.append(
+                stacks.fallback_note(
+                    "buffer_layer",
+                    stacks.NOT_IN_THIS_LICENCE
+                    if outcome["status"] == "not_in_this_licence"
+                    else "the requested stack could not run it",
+                    outcome.get("detail", "")[:160],
+                )
+            )
+    # MapSmith's writer always writes, whichever engine computed: the canonical
+    # format stays canonical and verification runs over a file we produced.
     _write(buffered, output_path)
     manifest, extras = verify.audited(
         record,

@@ -15,7 +15,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 
-from . import __version__, catalog, jobs, ui, workspace
+from . import __version__, catalog, jobs, stacks, ui, workspace
 from .engines import dispatch, duckdb_engine, vector
 from .plans import Plan
 from .provenance import read_provenance
@@ -948,6 +948,11 @@ def server_info() -> dict[str, Any]:
         "license": "AGPL-3.0-or-later",
         "homepage": "https://github.com/mapsmith-ai/MapSmith",
         "engines": dispatch.available_engines(),
+        # Which geoprocessing stack this session is using, said at the START.
+        # A caller who asked for a stack this machine does not have should find
+        # out before planning five steps around it, not at the first failure
+        # (D-056).
+        "stack": stacks.describe(),
         # agents plan file paths: tell them the jail root instead of letting
         # them discover it through a failed call
         "workspace": str(ws) if ws else None,

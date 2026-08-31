@@ -493,7 +493,15 @@ VENDOR_SILENCE = re.compile(r"esri|arcgis|arcpy|arcmap", re.IGNORECASE)
 # what the project SAYS cannot forbid the spelling of a function parameter it has
 # to pass -- but the list stays short and explicit, so a new entry is a decision
 # rather than a hole.
-DRIVER_IDENTIFIERS = ("ESRI Shapefile", "ESRIJSON", "esri_pntr")
+DRIVER_IDENTIFIERS = (
+    "ESRI Shapefile", "ESRIJSON", "esri_pntr",
+    # The value of a manifest's `engine.name`, and of the module that produces
+    # it. A record that could not name the engine that made the numbers would
+    # be useless, and naming it is the opposite of a comparison — it is the
+    # admission that a different engine ran. Same principle as the driver names
+    # above: an identifier of somebody else's thing, not a claim about it.
+    "\"ArcGIS Pro\"", "ArcGISPro.exe",
+)
 
 
 def _tracked_text_files() -> list[Path]:
@@ -511,27 +519,67 @@ def _tracked_text_files() -> list[Path]:
     ]
 
 
-def test_no_vendor_is_named_in_public():
-    """Silence about a named vendor is a decision, so it needs a check.
+#: What a comparison looks like when it is written down. A percentage, a score,
+#: a ratio, or a word that ranks. A plain count is none of these: "2198 tools
+#: are installed, 1274 run on your licence" describes the reader's own machine
+#: and is the fact that explains why a fallback exists.
+COMPARATIVE = re.compile(
+    r"\d+(\.\d+)?\s*%"
+    r"|\b0\.\d+\b"
+    r"|\b\d+\s*/\s*\d+\b"
+    # Words only where they RANK, which in English means they carry a "than".
+    # The bare adjectives were tried and are too common in ordinary prose:
+    # "behind an extension" and "worse than a match" are not benchmarks, and a
+    # guard that cries on those gets switched off — which leaves less
+    # protection than a narrower rule that nobody disables.
+    r"|\b(faster|slower|better|worse|more accurate|less accurate)\s+than\b"
+    r"|\b(beats|outperforms)\b",
+    re.IGNORECASE,
+)
+#: How far from the name a figure still reads as being about it. Two lines of
+#: prose: far enough to catch "ArcGIS Pro. … 35% of tasks", short enough that an
+#: unrelated number three paragraphs down does not trip it.
+COMPARISON_WINDOW = 160
 
-    A prose mention costs nothing to add and cannot be taken back once it is in
-    a public git history, which is exactly the shape of mistake a test should
-    be catching instead of a reviewer. One test over every tracked file rather
-    than one per file: the whole list of offenders in a single failure is what
-    a person fixing this wants to see."""
+
+def test_no_vendor_is_named_beside_a_figure():
+    """The name is allowed; the name next to a number is not (D-057).
+
+    This used to forbid the name outright, and D-044 was right to while Esri was
+    only something we measured. D-056 made it a MODE of the product — a stack
+    the caller can choose — and a product with an Esri mode names it in the
+    README, in the opening handshake, and in the message that says the licence
+    is missing. Silence and the mode cannot both exist.
+
+    So the line moved to where it actually protects something: **integrating is
+    not comparing.** Saying "MapSmith calls what you have installed" describes
+    this project. Putting a score beside that name is a benchmark, and D-057
+    keeps benchmarks unpublished.
+
+    What is deliberately NOT relaxed: Argleton's own guard still forbids the
+    name outright, because Argleton is the surface a comparison would live on.
+    """
     offenders = {}
     for page in _tracked_text_files():
         if page.resolve() == Path(__file__).resolve():
-            continue  # this file names them in order to forbid them
+            continue  # this file names them in order to constrain them
         text = page.read_text(encoding="utf-8", errors="replace")
         for identifier in DRIVER_IDENTIFIERS:
             text = text.replace(identifier, "")
-        found = sorted({m.group(0) for m in VENDOR_SILENCE.finditer(text)})
-        if found:
-            offenders[str(page.relative_to(ROOT)).replace("\\", "/")] = found
+        hits = []
+        for match in VENDOR_SILENCE.finditer(text):
+            start = max(0, match.start() - COMPARISON_WINDOW)
+            window = text[start : match.end() + COMPARISON_WINDOW]
+            figure = COMPARATIVE.search(window)
+            if figure:
+                line = text[: match.start()].count("\n") + 1
+                hits.append(f"line {line}: {match.group(0)!r} near {figure.group(0)!r}")
+        if hits:
+            offenders[str(page.relative_to(ROOT)).replace("\\", "/")] = hits
     assert not offenders, (
-        f"these files name a vendor we stay silent about in public: {offenders}. "
-        "Say the thing without the name, or drop the sentence."
+        "a vendor is named beside a figure, which is a comparison however it is "
+        f"phrased, and D-057 keeps those unpublished: {offenders}. Say the thing "
+        "without the number, or move the number somewhere the name is not."
     )
 
 
