@@ -87,17 +87,37 @@ def _spans(values: Any) -> tuple[float, float, float, float]:
     )
 
 
+#: The axis directions of the two horizontal axes. A third axis — height — is
+#: `up` or `down`, and its unit says nothing about how longitude is measured.
+_HORIZONTAL = {"east", "west", "north", "south"}
+
+
 def _is_in_degrees(crs: Any) -> bool:
     """Geographic is not enough: EPSG:4807 is geographic in **grads**.
 
     Wrapping at 360 and talking about the 180th meridian would both be wrong
     there, and it is the same class of mistake `measure_area` exists to avoid —
     reading the unit from the CRS instead of assuming it.
+
+    Only the **horizontal** axes are asked. Requiring every axis to be in
+    degrees switched the whole module off on EPSG:4979 — WGS 84 3D, which is
+    what a great deal of GNSS and LiDAR data declares — because its third axis
+    is ellipsoidal height in metres. The result was the silent false negative
+    this module exists to prevent: a Fijian survey zone came back with the plain
+    world-spanning bounding box, no `crosses_antimeridian`, no note, nothing
+    anywhere to say a question had been skipped.
     """
     try:
-        return bool(crs.is_geographic) and all(
-            axis.unit_name == "degree" for axis in crs.axis_info
-        )
+        if not crs.is_geographic:
+            return False
+        horizontal = [
+            axis
+            for axis in crs.axis_info
+            if str(axis.direction).lower() in _HORIZONTAL
+        ]
+        if not horizontal:
+            return False
+        return all(axis.unit_name == "degree" for axis in horizontal)
     except AttributeError:  # pragma: no cover — a CRS without axis metadata
         return False
 

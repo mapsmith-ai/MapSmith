@@ -1,16 +1,21 @@
-"""Operation catalog with deterministic BM25 retrieval for progressive discovery.
+"""Operation catalog with two search engines, for progressive discovery.
 
-Agent accuracy collapses when hundreds of raw tools are exposed (the ~100-tool
-cliff). MapSmith keeps a small set of semantic MCP tools and lets agents
-*search* this catalog to find what exists: each entry carries structured docs
-(description, parameters, worked examples) so a client can defer-load tool
-detail instead of holding every schema in context. Entries marked ``planned``
-document the roadmap so the agent can say "not yet" instead of hallucinating.
+Tool-selection accuracy degrades once a few dozen tools are exposed at once,
+and fastest when two of them apply to the same input. (This docstring said
+"the ~100-tool cliff" for months; the figure came from a source that had been
+mis-cited, the README carries the corrected one, and a retracted number left
+in the source is a retraction that did not happen.) So MapSmith keeps a small
+set of semantic MCP tools and lets agents *search* this catalog to find what
+exists: each entry carries structured docs (description, parameters, worked
+examples) so a client can defer-load tool detail instead of holding every
+schema in context. Entries marked ``planned`` document the roadmap so the
+agent can say "not yet" instead of hallucinating.
 
-Retrieval is pure-Python Okapi BM25: deterministic, dependency-free, and fast
-at catalog scale (hundreds of entries). If lexical search ever proves
-insufficient, an embedding reranker can be layered on top of :func:`rank`
-without changing the public API.
+Both engines in :data:`SEARCH_ENGINES` always run. ``lexical`` is pure-Python
+Okapi BM25: deterministic, dependency-free, identical on every machine.
+``vector`` is static embeddings at a pinned model revision. Neither decides
+alone -- the applicability facets narrow first, for both, and when the two
+rankers agree on nothing the search says so instead of answering.
 """
 
 from __future__ import annotations

@@ -58,11 +58,24 @@ def available_engines() -> dict[str, bool]:
         status["sedonadb"] = False
     try:
         import exactextract  # noqa: F401
-        import rasterio  # noqa: F401
+        import rasterio
 
-        status["exactextract"] = True
+        status["exactextract"] = bool(rasterio)
     except ImportError:
         status["exactextract"] = False
+    # rasterio on its own, which is a different capability from exactextract and
+    # the one most raster operations actually need. It was missing, and seven
+    # bindings declared `engine_flag="raster"`: `available_engines().get("raster")`
+    # returned None, so the plan validator told a caller with rasterio installed
+    # to `pip install mapsmith[raster]` and refused the step. The message was
+    # right by accident — EXTRA_FOR_FLAG falls back to the flag name — which is
+    # probably why nobody noticed.
+    try:
+        import rasterio
+
+        status["raster"] = bool(rasterio)
+    except ImportError:
+        status["raster"] = False
     try:
         import whitebox_workflows  # noqa: F401
 

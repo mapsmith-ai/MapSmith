@@ -1,7 +1,7 @@
 """What happens at hundreds of operations, measured rather than extrapolated.
 
-The catalog is 51 entries and is meant to grow to thousands (D-031, D-037). Four
-points below 51 do not answer what happens at 800, and filling the gap with
+The catalog is 74 entries and is meant to grow to thousands (D-031, D-037). Four
+points below that do not answer what happens at 800, and filling the gap with
 invented entries would answer the wrong question: an invented distractor does not
 compete, because it is not a plausible GIS operation written the way somebody
 writes one.
@@ -15,19 +15,21 @@ The result is the one that matters for planning, and it reversed a conclusion
 this repository had already drawn:
 
     catalog    BM25 found@3    embeddings found@3
-         51             50%                   40%
+       ours             50%                   40%
         100             48%                   32%
         200             48%                   25%
         400             40%                   25%
         800             35%                   20%
 
 Against near-neighbour distractors the embedding engine degrades FASTER, not
-more slowly. That is not a contradiction of `test_retrieval_degradation.py`,
-which draws its distractors from our own 51 diverse entries and answers "which
-engine suits the catalog we have today" — the answer there is the embedding one.
-This file answers "which survives the catalog we plan", and the answer is
-neither. At 800 entries both are wrong more often than right, so scale will have
-to be bought structurally — the applicability filter that narrows before ranking,
+more slowly. This used to contradict `test_retrieval_degradation.py`, which
+draws its distractors from our own diverse entries and answers "which engine
+suits the catalog we have today" — and used to answer "the embedding one".
+The two agree now: recomputed on 2026-08-30 at seventy-four entries, BM25 leads
+there from thirty upward, because the near-neighbour effect THIS file predicted
+has arrived in our own catalogue. This file answers "which survives the catalog
+we plan", and the answer is neither. At 800 entries both are wrong more often
+than right, so scale will have to be bought structurally — the applicability filter that narrows before ranking,
 facets, and the clarification path — and not by choosing a better ranker.
 
 Marked slow: it embeds ~850 documents. Run it with `-m slow` or in full CI.

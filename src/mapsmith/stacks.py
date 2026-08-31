@@ -87,13 +87,13 @@ def _qgis_process() -> str | None:
     Looked up on PATH first so a caller can point at the build they mean, then
     in the usual install locations. Never imported: invariant 7.
     """
-    for nome in ("qgis_process", "qgis_process-qgis-ltr", "qgis_process-qgis"):
-        found = shutil.which(nome)
+    for name in ("qgis_process", "qgis_process-qgis-ltr", "qgis_process-qgis"):
+        found = shutil.which(name)
         if found:
             return found
     for root in sorted(pathlib.Path(r"C:\Program Files").glob("QGIS *"), reverse=True):
-        for nome in ("qgis_process-qgis-ltr.bat", "qgis_process-qgis.bat"):
-            candidate = root / "bin" / nome
+        for name in ("qgis_process-qgis-ltr.bat", "qgis_process-qgis.bat"):
+            candidate = root / "bin" / name
             if candidate.exists():
                 return str(candidate)
     return None

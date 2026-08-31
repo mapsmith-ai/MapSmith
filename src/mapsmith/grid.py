@@ -58,12 +58,30 @@ TAG = "AREA_OR_POINT"
 
 
 def registration(dataset: Any) -> str:
-    """`"area"` or `"point"` for an open rasterio dataset.
+    """`"area"` or `"point"` for an open rasterio dataset, or a literal kind.
 
     Anything other than a declared `Point` is area: the default is area, most
     formats cannot express anything else, and treating an unreadable tag as
     point would move every position on files that are fine.
+
+    A **closed** dataset raises instead of answering. This is not defensive
+    tidiness: `reclassify`, `band_math` and `extract_band` all called `preserve`
+    after their input's `with` block had ended, and asking a closed dataset for
+    its tags does not raise — GDAL prints `Pointer 'hObject' is NULL` to stderr
+    and returns nothing, so this function answered "area" and three writers
+    shipped point-registered inputs as area-registered outputs. Half a cell,
+    fifteen metres on a thirty-metre DEM, with nothing in the file or the
+    manifest to say it happened. A question asked of a closed file has no
+    answer, and pretending otherwise is what made it silent.
     """
+    if isinstance(dataset, str):
+        return dataset if dataset in OFFSET else "area"
+    if getattr(dataset, "closed", False):
+        raise ValueError(
+            "registration() was asked about a closed raster. Read it inside the "
+            "`with` block that opened the input and pass the string on, or the "
+            "answer is whatever GDAL returns for a null pointer."
+        )
     try:
         declared = (dataset.tags() or {}).get(TAG)
     except Exception:  # noqa: BLE001 - a driver that cannot report tags is area
@@ -197,6 +215,12 @@ def preserve(source: Any, destination: Any) -> str | None:
     and every position derived from it afterwards half a cell wrong with nothing
     in the file to say so.
 
+    `source` is an open input dataset **or** the string `registration()` already
+    returned for it. The second form exists because the output is often written
+    after the input's `with` block has closed, and three writers got that wrong
+    at once: taking the string while the input is open makes the correct thing
+    the easy thing.
+
     Returns a note for the manifest when something was carried, None otherwise.
     """
     if registration(source) != "point":
@@ -251,11 +275,21 @@ def georeferencing_source(path: str) -> dict[str, str]:
         return {}
 
     with rasterio.open(path) as used:
-        effective = used.transform
+        effective, effective_crs = used.transform, used.crs
     with rasterio.Env(GDAL_GEOREF_SOURCES="INTERNAL"), rasterio.open(path) as own:
-        internal = own.transform
+        internal, internal_crs = own.transform, own.crs
 
-    from_sidecar = effective != internal
+    # The CRS as well as the transform. A PAM sidecar can override the `<SRS>`
+    # and leave the geotransform alone, and comparing only the transform then
+    # reported `georeferencing_source: internal` — a field affirmatively saying
+    # the numbers came from the file's own tags when the coordinate system that
+    # produced them came from the sidecar. An absent field claims nothing; that
+    # one claimed something false. It is also the more consequential axis: a
+    # wrong CRS changes every area, length and reprojection downstream, which is
+    # the family Argleton measures as `projection-distortion`.
+    transform_differs = effective != internal
+    crs_differs = not _same_crs(effective_crs, internal_crs)
+    from_sidecar = transform_differs or crs_differs
     entry = {
         "georeferencing_source": "sidecar (.aux.xml)" if from_sidecar else "internal",
         "georeferencing_sidecar_present": sidecar.name,
@@ -270,11 +304,43 @@ def georeferencing_source(path: str) -> dict[str, str]:
         def plain(number: float) -> str:
             return f"{number:.4f}".rstrip("0").rstrip(".")
 
-        entry["georeferencing_internal_would_give"] = (
-            f"cell {plain(abs(internal.a))} x {plain(abs(internal.e))} at "
-            f"({plain(internal.c)}, {plain(internal.f)})"
-        )
+        parts = []
+        if transform_differs:
+            parts.append(
+                f"cell {plain(abs(internal.a))} x {plain(abs(internal.e))} at "
+                f"({plain(internal.c)}, {plain(internal.f)})"
+            )
+        if crs_differs:
+            # Named, because a CRS override is the half that changes every area
+            # and length downstream and the half a reader is least likely to
+            # look for.
+            parts.append(
+                f"CRS {_crs_name(internal_crs)} rather than "
+                f"{_crs_name(effective_crs)}"
+            )
+        entry["georeferencing_internal_would_give"] = "; ".join(parts)
     return entry
+
+
+def _same_crs(left: Any, right: Any) -> bool:
+    """Whether two rasterio CRSs are the same one, missing ones included."""
+    if left is None or right is None:
+        return left is None and right is None
+    try:
+        return bool(left == right)
+    except Exception:  # noqa: BLE001 - an uncomparable CRS is a difference
+        return False
+
+
+def _crs_name(crs: Any) -> str:
+    """A short, comparable name for a CRS, or a word saying it has none."""
+    if crs is None:
+        return "none declared"
+    try:
+        code = crs.to_epsg()
+        return f"EPSG:{code}" if code else (crs.to_string() or "an unnamed CRS")
+    except Exception:  # noqa: BLE001 - a CRS that cannot name itself
+        return "an unnamed CRS"
 
 
 def refuse_ambiguous_georeferencing(path: str, operation: str) -> dict[str, str]:

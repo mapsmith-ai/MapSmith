@@ -218,3 +218,72 @@ def test_the_esri_stack_produces_the_same_geometry_and_a_different_schema(
         "the schema difference is not in the record: a downstream step reading "
         "columns would not know the engine changed them"
     )
+
+
+def test_every_declared_esri_tool_is_actually_routed():
+    """A table entry is a promise that requesting the stack reaches it.
+
+    `TOOLS` declared three operations and `available_for` reported all three
+    usable, while `stacks.route` was called from exactly one place. So with the
+    Esri stack requested, `centroid_layer` and `dissolve_layer` ran on the open
+    source stack and no manifest note recorded the substitution — the one thing
+    `stacks.py` says never happens quietly, and on `dissolve` the vendor drops
+    every attribute, so a pipeline that dissolves and then reads a column gets
+    the column on one stack and nothing on the other.
+
+    This reads the source rather than calling anything, which is a weaker kind
+    of test — but the alternative needs ArcGIS Pro installed, and the failure it
+    guards against is exactly a missing line of source.
+    """
+    from pathlib import Path
+
+    from mapsmith.engines import esri
+
+    source_root = Path(esri.__file__).resolve().parent
+    routed = set()
+    for module in sorted(source_root.glob("*.py")):
+        text = module.read_text(encoding="utf-8")
+        for name in esri.TOOLS:
+            if f'stacks.route("{name}")' in text:
+                routed.add(name)
+
+    assert set(esri.TOOLS) == routed, (
+        f"declared in TOOLS and never routed: {sorted(set(esri.TOOLS) - routed)}. "
+        f"Requesting the Esri stack runs these on the open source one with no "
+        f"note in the manifest. Either call stacks.route in the operation, or "
+        f"move it to MEASURED_NOT_ROUTED."
+    )
+
+
+def test_the_two_stacks_are_told_the_same_distance_the_same_way():
+    """`distance_meters` meant two different things on the two stacks.
+
+    The open source branch buffers by that number in the CRS's own unit when the
+    CRS is projected; ArcPy was handed `"<n> Meters"`, and Buffer's PLANAR
+    method converts a linear unit into the CRS's unit. On EPSG:2263 (US survey
+    feet) the same call produced 100 feet on one stack and 328.08 on the other,
+    with the same sentence in the manifest and every check green.
+
+    The unit is now decided by the code that knows the CRS: the layer's own unit
+    when it is projected, metres when it is geographic — where the open source
+    branch reprojects to UTM and buffers metres, and where "Unknown" would mean
+    a hundred DEGREES.
+    """
+    from pathlib import Path
+
+    from mapsmith.engines import esri, vector
+
+    vector_source = Path(vector.__file__).read_text(encoding="utf-8")
+    assert '"distance_unit": "Meters" if on_a_geographic_crs else "Unknown"' in (
+        vector_source
+    ), "the unit is no longer chosen from the CRS before the Esri call"
+
+    probe = esri.PROBE
+    assert 'request.get("distance_unit"' in probe, (
+        "the probe no longer reads the unit from the request, so it is back to "
+        "assuming one"
+    )
+    assert '"%s Meters"' not in probe, (
+        "the probe hard-codes Meters again, which is wrong on every projected "
+        "CRS whose unit is not the metre"
+    )

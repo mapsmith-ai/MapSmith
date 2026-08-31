@@ -332,3 +332,37 @@ def test_spatial_still_works_without_a_workspace(tmp_path, monkeypatch):
     target = str(tmp_path / "free.parquet").replace("\\", "/")
     con.execute(f"COPY (SELECT 1 AS v) TO '{target}' (FORMAT parquet)")
     assert con.sql(f"SELECT v FROM read_parquet('{target}')").fetchone()[0] == 1
+
+
+def test_run_sql_itself_refuses_to_install_an_extension():
+    """Through the tool, not the policy function.
+
+    Written after making the same mistake this suite spent a day fixing: the
+    first tests for this called `sql_policy.refuse_extension_loading_in_sql`
+    directly, so deleting the call from `run_sql` left every one of them green.
+    A test of a policy function proves the function raises; only a test of the
+    operation proves anything is asking it.
+
+    The statement is the one an audit used to make this tool return the host's
+    real cloud credentials.
+    """
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="(?i)extension"):
+        duckdb_engine.run_sql(
+            "INSTALL aws; LOAD aws; SELECT * FROM load_aws_credentials()"
+        )
+
+
+def test_run_sql_still_answers_a_spatial_question():
+    """The other half: `spatial` must keep working.
+
+    MapSmith loads it through the Python API before the configuration is locked,
+    so no statement has to ask for it — but a policy that broke ST_Area would be
+    a worse defect than the one it fixed, and nothing else in this file would
+    have noticed.
+    """
+    result = duckdb_engine.run_sql(
+        "SELECT ST_Area(ST_GeomFromText('POLYGON((0 0,10 0,10 10,0 10,0 0))')) AS a"
+    )
+    assert result["rows"][0][0] == 100.0

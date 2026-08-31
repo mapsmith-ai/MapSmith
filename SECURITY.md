@@ -149,6 +149,32 @@ access and nothing else. Reports about that are welcome as hardening ideas;
 reports about a server reaching the network without `MAPSMITH_ALLOW_REMOTE`, in
 either mode, are vulnerabilities.
 
+**Since 0.4.0, `INSTALL` and `LOAD` are refused in both modes.** Until then the
+paragraph above was true only of the confined one, and this file said otherwise:
+an audit before the 0.4.0 tag used `run_sql` in the default mode to install
+DuckDB's `aws` extension and read the host's real cloud credentials back through
+a tool result. None of the layers that existed saw it —
+`autoinstall_known_extensions=false` stops *implicit* loading only,
+`lock_configuration=true` does not stop an explicit `INSTALL`, and the
+remote-path scan looks for `://` and `/vsi`, which `INSTALL postgres` does not
+contain. An `INSTALL` is an HTTPS fetch of a native binary executed in the
+server's process, on a statement written by a model, which is not a thing to do
+by default in either mode.
+
+Extensions **already loaded keep working**, `spatial` included: MapSmith loads
+it through the Python API before the configuration is locked, so no statement
+has to ask for it. To acquire others, name them where the agent cannot reach:
+`MAPSMITH_ALLOW_EXTENSIONS=postgres,azure` in the environment of the process
+that starts the server. Named extensions rather than a switch, because "allow
+everything" is how a geoprocessing server ends up holding a credential reader.
+
+This is the second promise in this file that the code contradicted — the first
+was a path list escaping the workspace jail through `run_operation`, fixed in
+0.3.0. Both were found by auditing before a release rather than reported from
+outside, and both are recorded here rather than quietly corrected, because a
+security document whose history is invisible is asking to be believed rather
+than checked.
+
 ## What MapSmith records, when you ask it to
 
 MapSmith writes nothing about your usage by default and sends nothing anywhere,

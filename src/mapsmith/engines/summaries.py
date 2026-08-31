@@ -371,6 +371,36 @@ def nearest_neighbour_index(
     return answer
 
 
+def _geometry(value: Any) -> Any:
+    """The geometry, or None when the row has none — whatever "none" looks like.
+
+    A missing geometry is `None` from a GeoPackage and `nan` (a float) from
+    GeoParquet, and the first version of this check tested `is not None`, so the
+    Parquet case reached `.distance` on a float and raised an AttributeError.
+    Asking whether it is a geometry answers both.
+    """
+    from shapely.geometry.base import BaseGeometry
+
+    return value if isinstance(value, BaseGeometry) and not value.is_empty else None
+
+
+def _same_value(left: Any, right: Any) -> bool:
+    """Whether two attribute values say the same thing, nulls included.
+
+    `NaN != NaN` is what IEEE 754 requires and what pandas gives back, and it is
+    the wrong answer to "did this attribute change": two rows that both record
+    nothing about a column agree about it. Comparing a layer with a copy of
+    itself reported every row holding a null as edited.
+    """
+    import pandas as pd
+
+    left_missing = left is None or (not isinstance(left, str) and pd.isna(left))
+    right_missing = right is None or (not isinstance(right, str) and pd.isna(right))
+    if left_missing or right_missing:
+        return bool(left_missing and right_missing)
+    return bool(left == right)
+
+
 def compare_layers(
     input_path: str,
     other_path: str,
@@ -461,16 +491,41 @@ def compare_layers(
     compare_columns = sorted((left_columns & right_columns) - {key_field})
     for key in shared:
         a, b = left_rows[key], right_rows[key]
-        distance = a.geometry.distance(b.geometry) if a.geometry and b.geometry else 0.0
-        differs = (
-            not a.geometry.equals(b.geometry)
-            if tolerance == 0
-            else distance > tolerance or not a.geometry.equals_exact(b.geometry, tolerance)
-        )
+        # Null geometries are ordinary in GeoPackage and GeoParquet, and the
+        # first version of this loop guarded only the distance call before
+        # asking a None for `.equals`, which is a raw AttributeError where every
+        # other operation here answers with a sentence.
+        left_geometry, right_geometry = _geometry(a.geometry), _geometry(b.geometry)
+        if left_geometry is None or right_geometry is None:
+            distance = 0.0
+            differs = (left_geometry is None) != (right_geometry is None)
+        else:
+            # The Hausdorff distance, not the distance between the two shapes:
+            # two overlapping polygons are zero apart however differently they
+            # are shaped, so a reshaped parcel measured that way came back
+            # unchanged. Hausdorff is the largest deviation between the two
+            # boundaries, which is what "did this move, and by how much" means
+            # for a feature that was edited rather than dragged.
+            distance = left_geometry.hausdorff_distance(right_geometry)
+            # `tolerance` is a deviation the caller is willing to ignore, so a
+            # larger one can only ever find FEWER changes. The first version
+            # switched from `equals` (topological) to `equals_exact`
+            # (structural) as soon as a tolerance was given, so a caller
+            # loosening the comparison to 5 m got a stricter one: two polygons
+            # of identical shape differing by a collinear vertex came back
+            # unchanged at 0 and changed at 5.
+            differs = not left_geometry.equals(right_geometry) and distance > tolerance
         if differs:
             moved.append(key)
             moved_by = max(moved_by, float(distance))
-        if any(a[column] != b[column] for column in compare_columns):
+        # `NaN != NaN` is True, so comparing a layer with a byte-identical copy
+        # of itself reported every row holding a null as edited — the operation
+        # whose whole question is "is this different from what we had" answering
+        # yes about the same file. Two nulls are the same value here: neither
+        # row says anything about that column.
+        if any(
+            not _same_value(a[column], b[column]) for column in compare_columns
+        ):
             edited.append(key)
 
     answer.update(

@@ -70,6 +70,73 @@ _RULES: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+#: The environment variable that allows named extensions to be installed and
+#: loaded from a statement. Named extensions, not a boolean: "yes, everything"
+#: is how a caller ends up with the `aws` extension and a credential reader in a
+#: process that was supposed to do geoprocessing.
+ALLOW_EXTENSIONS = "MAPSMITH_ALLOW_EXTENSIONS"
+
+#: `INSTALL name` / `LOAD name`, in DuckDB's spellings. `FORCE INSTALL` is one,
+#: and the name can be quoted or a path to a local `.duckdb_extension` file.
+_EXTENSION_STATEMENT = re.compile(
+    r"""(?i)\b(?:FORCE\s+)?(INSTALL|LOAD)\s+(?:["'`]?)([A-Za-z0-9_.:/\-]+)"""
+)
+
+
+def allowed_extensions() -> frozenset[str]:
+    """The extensions this process may install or load, from the environment.
+
+    Empty by default. Set `MAPSMITH_ALLOW_EXTENSIONS=postgres,azure` to allow
+    exactly those two, in the environment of the process that starts the server
+    — which is outside the agent's reach, and that is the point.
+    """
+    import os
+
+    raw = os.environ.get(ALLOW_EXTENSIONS, "")
+    return frozenset(
+        name.strip().lower() for name in raw.split(",") if name.strip()
+    )
+
+
+def refuse_extension_loading_in_sql(query: str) -> None:
+    """Raise if the statement would install or load a DuckDB extension.
+
+    An `INSTALL` is an HTTPS fetch of a **native binary** from
+    `extensions.duckdb.org`, executed in this process. It was allowed by default
+    in unconfined mode, and `SECURITY.md` said in the same artifact that what
+    remained unconfined was file access "and nothing else". An audit used it to
+    make `run_sql` return this machine's real cloud credentials:
+
+        INSTALL aws; LOAD aws; LOAD httpfs;
+        SELECT * FROM load_aws_credentials()
+
+    None of the existing layers saw it. `autoinstall_known_extensions=false`
+    stops *implicit* loading only; `lock_configuration=true` does not stop an
+    explicit `INSTALL`; and the remote-path scan looks for `://` and `/vsi`,
+    which `INSTALL postgres` does not contain.
+
+    So the answer is not a better scan but a decision that belongs to a person:
+    either the extension is already loaded, or somebody says which ones may be.
+    `spatial` is unaffected — MapSmith loads it through the Python API before
+    the configuration is locked, so no statement has to ask for it.
+    """
+    allowed = allowed_extensions()
+    for match in _EXTENSION_STATEMENT.finditer(strip_comments(query)):
+        verb, name = match.group(1).upper(), match.group(2)
+        if name.lower() in allowed:
+            continue
+        raise ValueError(
+            f"this SQL would {verb} the DuckDB extension {name!r}, which MapSmith "
+            f"refuses. An INSTALL downloads a native binary and runs it in this "
+            f"process, and the statement was written by a model rather than by "
+            f"you. "
+            f"If you want it, say so where the agent cannot: start the server with "
+            f"{ALLOW_EXTENSIONS}={name} in its environment (comma-separated for "
+            f"more than one). Extensions already loaded keep working — this "
+            f"refuses acquiring new ones, not using what is there."
+        )
+
+
 def strip_comments(query: str) -> str:
     """SQL with comments replaced by a space, so tokens cannot be split by one."""
     return _COMMENTS.sub(" ", query)

@@ -333,3 +333,111 @@ def _manifest(result: dict) -> dict:
     from pathlib import Path
 
     return json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+
+
+def test_a_t_junction_is_a_crossing_because_it_is_the_forgotten_node(tmp_path):
+    """The defect: `touches` is true for a T as well as for an end-to-end join.
+
+    A line ending on the middle of another is exactly the node somebody forgot
+    to split, and it is what the single-layer mode exists to find. Skipping it
+    reported no crossings and then wrote into the manifest that the network may
+    already be noded — a confident, well-formed, false statement about the data.
+    """
+    source = tmp_path / "unnoded.parquet"
+    gpd.GeoDataFrame(
+        {"id": [1, 2]},
+        geometry=[
+            LineString([(0, 0), (10, 0)]),
+            LineString([(5, 0), (5, 10)]),  # ends on the middle of the first
+        ],
+        crs="EPSG:32632",
+    ).to_parquet(source)
+    out = tmp_path / "found.parquet"
+
+    result = linework.line_intersections(str(source), None, str(out))
+
+    assert result["crossings"] == 1, (
+        "the T junction was not reported, which is the only kind of forgotten "
+        "node this operation is asked about"
+    )
+    found = gpd.read_parquet(out)
+    assert (float(found.geometry.iloc[0].x), float(found.geometry.iloc[0].y)) == (5.0, 0.0)
+
+
+def test_two_segments_joined_end_to_end_are_not_a_crossing(tmp_path):
+    """The other half, so the fix above is not just "report everything".
+
+    A shared endpoint is an ordinary junction and reporting it would bury the
+    real findings in one row per node.
+    """
+    source = tmp_path / "noded.parquet"
+    gpd.GeoDataFrame(
+        {"id": [1, 2]},
+        geometry=[LineString([(0, 0), (10, 0)]), LineString([(10, 0), (20, 0)])],
+        crs="EPSG:32632",
+    ).to_parquet(source)
+    out = tmp_path / "none.parquet"
+
+    result = linework.line_intersections(str(source), None, str(out))
+    assert result["crossings"] == 0
+
+
+def test_a_survey_with_no_crs_is_the_case_this_operation_exists_for(tmp_path):
+    """It refused the one input it was built for.
+
+    The docstring says this is for "data in a local, assumed or shifted grid: a
+    traverse that plots in the river, a scanned plan, an old site grid nobody has
+    the parameters for" — none of which has a CRS. The preconditions required one
+    on the input, so the operation computed the right answer, wrote the right
+    output and the right manifest, and then raised with advice to assign a CRS
+    first: the thing it replaces. Every existing test passed a `crs=`.
+
+    The control points still need one. They ARE the georeferencing.
+    """
+    survey = tmp_path / "traverse.parquet"
+    gpd.GeoDataFrame(
+        {"id": [1]},
+        geometry=[LineString([(0, 0), (100, 0), (100, 100)])],
+    ).to_parquet(survey)
+
+    control = tmp_path / "control.parquet"
+    gpd.GeoDataFrame(
+        {"source_x": [0.0, 100.0, 100.0], "source_y": [0.0, 0.0, 100.0]},
+        geometry=[
+            Point(500000, 5030000),
+            Point(500100, 5030000),
+            Point(500100, 5030100),
+        ],
+        crs="EPSG:32632",
+    ).to_parquet(control)
+
+    out = tmp_path / "placed.parquet"
+    linework.transform_by_control_points(
+        str(survey), str(control), str(out), "EPSG:32632"
+    )
+
+    placed = gpd.read_parquet(out)
+    assert placed.crs.to_epsg() == 32632
+    # The first control point maps (0, 0) onto (500000, 5030000) exactly, and a
+    # similarity fit on three consistent points reproduces it.
+    first = next(iter(placed.geometry.iloc[0].coords))
+    assert first == pytest.approx((500000.0, 5030000.0))
+
+
+def test_control_points_without_a_crs_are_still_refused(tmp_path):
+    """The other half: dropping the input's requirement must not drop theirs."""
+    survey = tmp_path / "traverse.parquet"
+    gpd.GeoDataFrame(
+        {"id": [1]}, geometry=[LineString([(0, 0), (100, 0)])]
+    ).to_parquet(survey)
+    control = tmp_path / "control.parquet"
+    gpd.GeoDataFrame(
+        {"source_x": [0.0, 100.0], "source_y": [0.0, 0.0]},
+        geometry=[Point(500000, 5030000), Point(500100, 5030000)],
+    ).to_parquet(control)
+
+    out = tmp_path / "placed.parquet"
+    with pytest.raises(Exception, match="(?i)crs"):
+        linework.transform_by_control_points(
+            str(survey), str(control), str(out), "EPSG:32632"
+        )

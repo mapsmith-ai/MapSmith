@@ -518,6 +518,39 @@ def test_no_stale_version_strings_in_the_docs():
     )
 
 
+def test_the_readme_says_which_release_it_describes():
+    """The version in PROSE, which the JSON check above does not see.
+
+    Both live within thirty lines of each other, both name a release, and the
+    0.4.0 release commit moved one and not the other: the manifest example said
+    0.4.0 while the sentence above it still said "this page describes 0.3.0" --
+    on a page documenting seventy-four operations, a stack switch and a manifest
+    field that 0.3.0 does not have. The reader most exposed is the one arriving
+    on release day, which is precisely when nobody re-reads the paragraph.
+
+    The sentence also promises to name the difference when `main` runs ahead of
+    the published artifact, so a mismatch is allowed -- as long as the page says
+    which is which rather than simply naming the wrong one.
+    """
+    from mapsmith import __version__
+
+    text = README.read_text(encoding="utf-8")
+    match = re.search(r"This page describes \*\*([0-9][^*]*)\*\*", text)
+    assert match, (
+        "the sentence saying which release this page describes has been "
+        "reworded or removed; update this test with it rather than dropping it"
+    )
+    stated = match.group(1)
+    if stated != __version__:
+        nearby = text[match.start() : match.start() + 400]
+        ahead = "ahead" in nearby
+        assert ahead, (
+            f"the README says it describes {stated} and this checkout is "
+            f"{__version__}. That is allowed only while the paragraph also says "
+            "main is ahead and names the difference -- it does not."
+        )
+
+
 def test_declared_dependencies_are_not_advertised_as_future_work():
     """"More to come: X" for an X that already ships reads as either sloppy or
     dishonest, and both cost the same."""
@@ -1029,3 +1062,41 @@ def test_the_site_build_is_at_least_valid_python():
             raise AssertionError(f"{script.name} does not compile: {broken}") from None
         finally:
             Path(str(script) + "c").unlink(missing_ok=True)
+
+
+def test_the_manifest_on_the_front_page_conforms_to_the_specification():
+    """The record a third-party implementer copies had none of the required fields.
+
+    Eighty lines above it the page says "Records carry `spec_version`, and CI
+    validates real MapSmith output against the spec's own validator" — and the
+    only manifest a reader sees under that sentence carried no `spec_version`,
+    no `producer` and no `verification`. It was hand-written and had drifted for
+    two releases while every generated surface stayed correct.
+
+    Validated against the specification's own validator, vendored from the
+    published repository rather than reimplemented here.
+    """
+    import importlib.util
+
+    blocks = re.findall(r"```json\n(.*?)\n```", README.read_text(encoding="utf-8"), re.DOTALL)
+    manifests = [
+        json.loads(block)
+        for block in blocks
+        if '"operation"' in block and '"engine"' in block
+    ]
+    assert manifests, (
+        "the README no longer shows a manifest, or the block stopped looking like "
+        "one — this guard would then pass on a page with nothing to check"
+    )
+
+    spec = importlib.util.spec_from_file_location(
+        "spec_validator", ROOT / "tests" / "data" / "manifest_spec_validator.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    for manifest in manifests:
+        problems = module.problems(manifest)
+        assert problems == [], (
+            f"the manifest on the front page is not a conforming record: "
+            f"{problems}. It is what an implementer copies."
+        )

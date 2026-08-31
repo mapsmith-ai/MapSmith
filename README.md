@@ -78,7 +78,7 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.3.0**, which is what that command installs. When `main` runs ahead of
+This page describes **0.4.0**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
 have to find out by calling a tool that is not there.
 
@@ -106,16 +106,31 @@ for it:
 
 ```json
 {
-  "mapsmith_version": "0.4.0",
+  "spec_version": "1.0.0-draft.3",
+  "producer": {"name": "mapsmith", "version": "0.4.0"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
-  "inputs": [{"path": "rivers.gpkg", "sha256": "9f2c…", "crs": "EPSG:4326"}],
+  "inputs": [{
+    "path": "rivers.gpkg",
+    "sha256": "b24b884f49eee431133d443d842557d3ed21f3978e2c4b1e8e072fd1240effe8",
+    "crs": "EPSG:4326"
+  }],
   "crs_decisions": {"analysis_crs": "EPSG:32632", "reason": "estimated UTM zone for metric buffering"},
   "engine": {"name": "geopandas", "version": "1.0.1"},
+  "environment": {},
+  "verification": [
+    {"name": "crs_matches", "passed": true, "detail": "expected EPSG:4326, got EPSG:4326"},
+    {"name": "feature_count_exact", "passed": true, "detail": "expected 1, got 1"}
+  ],
   "started_at": "2026-08-18T10:15:03Z",
   "finished_at": "2026-08-18T10:15:04Z"
 }
 ```
+
+This block is checked against the specification's own validator by
+`tests/test_showcase.py`, because the page that says records carry `spec_version`
+had an example without one for two releases — and this is the record a third-party
+implementer copies.
 
 The full manifest also carries the verification checks that ran, and any geometry MapSmith
 had to repair. `get_provenance` returns it for any output.
@@ -180,9 +195,13 @@ had to repair. `get_provenance` returns it for any output.
 
 Those are the tools an agent chooses between. Behind them the **catalog** holds every
 operation MapSmith can perform — 74 today, and 49 of them have no tool of their own — and
-it is built to hold thousands: tool-selection accuracy
-degrades past a few dozen *exposed* tools, while capability count has no such ceiling. That
-makes reaching scale a retrieval problem, so it is treated as one — and measured like one.
+it is built to hold thousands. (Two of the 74 are marked `planned` and say so when asked:
+the roadmap is in the catalog on purpose, so an agent can answer "not yet" instead of
+inventing a call.)
+
+The split is the design: tool-selection accuracy degrades past a few dozen *exposed* tools,
+while capability count has no such ceiling. That makes reaching scale a retrieval problem, so
+it is treated as one — and measured like one.
 
 **First it narrows, deterministically, on things the caller already knows.** Every entry
 declares what data it takes (`vector`, `raster`, `dataset`, `plan`, `none`), what it hands back
@@ -372,16 +391,19 @@ reverses and the embedding engine degrades **faster**:
 
 | catalog size | BM25 found@3 | embeddings found@3 |
 |---|---|---|
-| 51 | 50% | 40% |
+| 74 — our own entries, no foreign distractors | 50% | 40% |
 | 200 | 48% | 25% |
 | 800 | **35%** | **20%** |
 
-Embeddings blur near neighbours; an exact term either matches or does not. The two
-measurements answer different questions and both are kept: which engine suits the catalog we
-have (the embedding one, and it is the default), and which survives the catalog we plan
-(neither). At 800 entries the better engine is wrong two times in three, so **scale will not be
-bought by choosing a better ranker**. `test_retrieval_at_scale.py` keeps the projection under
-measurement rather than under opinion.
+Embeddings blur near neighbours; an exact term either matches or does not. These two
+measurements used to disagree, and both were kept because they answered different questions:
+which engine suits the catalog we have, and which survives the catalog we plan. **They agree
+now** — the near-neighbour effect this one predicted has arrived in our own catalogue, so BM25
+leads at both scales, and the second question has the answer *neither*. The embedding engine is
+still the default, and the measurement that made it one no longer says so: that is a decision to
+take rather than a number to quietly restate. At 800 entries the better engine is wrong two
+times in three, so **scale will not be bought by choosing a better ranker**.
+`test_retrieval_at_scale.py` keeps the projection under measurement rather than under opinion.
 
 **And the narrowing does not scale on its own either — this page claimed otherwise and was
 wrong.** It said the facets leave sixteen candidates at 800 operations just as they do at 200. The
@@ -610,6 +632,30 @@ One declaration is deliberately refused rather than guessed: `srid:<n>`. The spe
 it as a numeric identifier and names no authority — its own example is `srid:0` — so
 reading it as `EPSG:<n>` would be inventing a coordinate system and recording it as fact.
 
+### Choosing the stack, and never swapping it in silence
+
+`MAPSMITH_STACK` picks the geoprocessing stack once, at the start. The default is
+`opensource` — GDAL, GeoPandas, DuckDB, Whitebox — and needs no licence. `esri` routes to
+ArcPy on a machine that has ArcGIS Pro installed, through a subprocess and files, because
+ArcPy lives in Pro's own interpreter. MapSmith ships no part of it and takes no licence to
+look: what a session can reach is read from the metadata the installer left on disk, and
+reported when the session opens rather than at the first failure.
+
+The rule that makes the choice worth making is what happens at the edges. When the chosen
+stack cannot do something, MapSmith says which of three things is true — there is no such
+tool, this licence tier does not include it, or it would need an online service — because
+those lead to three different decisions and one word for all of them leads to none.
+Substitution then happens only where it was asked for, and the manifest names the engine
+that actually produced the numbers and why the preferred one did not run. An engine
+quietly replaced by another is a record that is true and a number nobody chose.
+
+Two things this is not. It is not a comparison: MapSmith calls what you have installed, and
+this repository publishes no scores for anybody's engine but the ones
+[Argleton](https://argleton.org) grades in public. And it is not equivalence: the bindings
+that exist were admitted by measuring both stacks on the same fixture, and the geometry
+matching is not the whole story — one of them drops every attribute, which is why the
+schema difference goes in the manifest instead of a reassuring sentence.
+
 ## Verification, in and out
 
 Every tool that writes a dataset also writes `<output>.provenance.json` beside it and
@@ -635,6 +681,20 @@ container and the layers left behind named in its manifest). Every attempt lands
 repaired output must never look like one that was right the first time. Failures that need
 judgement are never "fixed": an empty result, or geometries eroded away by a wrong
 distance, come back as warnings with hints for the agent to act on.
+
+**And a manifest can say which configuration produced the numbers** — `environment`,
+section 3.8 of the manifest specification, empty when there is nothing to say. What made it
+concrete: a GeoTIFF and the `.aux.xml` file beside it can declare *different*
+georeferencing, and GDAL prefers the sidecar by documented design, because that is how
+somebody overrides georeferencing they know to be wrong. Both readings are the library
+behaving exactly as written, and on one fixture the same file gives an area four times
+larger and an origin a hundred kilometres away. There is nothing upstream to fix and
+everything to state, so `describe_dataset` reports both sources when a raster has two, and
+an operation that *computes* from the georeferencing refuses instead, naming both and
+saying how to choose. Describing is different from computing: a file with two
+georeferencings is a thing to be told about, not a coin to flip. This is the multi-layer
+refusal ([#29](https://github.com/mapsmith-ai/MapSmith/issues/29)) on a second axis — the
+format's default answering a question the caller never asked.
 
 ## See results inside the chat
 
@@ -892,9 +952,13 @@ Next, in the order we intend to do it. The linked items carry a written spec —
 
   Its [published results](https://argleton.org/#results) measure MapSmith, and what they say about
   us is why they are linked from here. On the current twenty-seven-family run MapSmith answers
-  every trap correctly — **0.00 silent errors over 29 traps, nothing skipped** — and that family
-  list is now closed: twelve planned at the start, fifteen added from reproductions, all
-  twenty-seven with a probe pair as of 2026-08-30.
+  every trap correctly — **0.00 silent errors over 29 traps, nothing skipped**. That run closed the
+  family list as it then stood: twelve planned at the start, fifteen added from reproductions, all
+  twenty-seven with a probe pair as of 2026-08-30. It did not stay closed for a day. A
+  twenty-eighth family — one raster, two georeferencings, and no answer that says which one it
+  used — arrived the next morning and is the reason a manifest can now name its `environment`
+  (see the [changelog](CHANGELOG.md)). No published run covers it yet, so the numbers above are
+  over twenty-seven.
 
   Two of the last four caught defects here, and both are fixed. A DEM whose rows run south to
   north made a 5.7 degree slope come back as 45, with the output raster written at the origin and

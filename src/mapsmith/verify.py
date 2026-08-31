@@ -631,12 +631,35 @@ def audit_on_failure(record: Any, output_path: str, preconditions: list[Check]):
     The diagnosis this module exists to produce ("these extents cannot
     overlap") is most valuable exactly when the engine blows up, so it must not
     be lost with the exception.
+
+    When there were no preconditions to record, one is recorded anyway. The
+    specification requires `verification` to hold at least one check — a record
+    with none is "a log entry wearing a manifest's clothes", in its own words —
+    and four call sites passed an empty list, so on an engine crash they wrote a
+    file the published validator rejects. Saying *that the run failed* is a true
+    check and a useful one; saying nothing is not conforming.
     """
     try:
         yield
-    except Exception:
+    except Exception as failure:
+        recorded = list(preconditions) or [
+            Check(
+                # Prefixed: section 3.6 closed the core vocabulary, and a
+                # producer-specific check has to say whose it is.
+                "x-mapsmith:operation_completed",
+                False,
+                (
+                    "the engine raised before any check could run: "
+                    f"{type(failure).__name__}. This record exists to say the run "
+                    "happened and did not finish; it makes no claim about the "
+                    "output, which may be absent or partial."
+                ),
+                hint="read the error the operation raised; this record is the "
+                "audit trail, not the diagnosis",
+            )
+        ]
         with suppress(Exception):
-            record.add_verification(preconditions).finish().write_for(output_path)
+            record.add_verification(recorded).finish().write_for(output_path)
         raise
 
 
@@ -663,6 +686,17 @@ def audited(
             output_path, checks, operation=operation, reverify=checks_fn
         )
     all_checks = (preconditions or []) + checks
+    if not all_checks:
+        # The specification requires at least one check, in its own words
+        # because a record with none is "a log entry wearing a manifest's
+        # clothes". Raising here rather than writing one: an operation that
+        # verified nothing and says it verified nothing is a defect in that
+        # operation, and a manifest is not the place to find out.
+        raise VerificationError(
+            f"{operation} produced no verification at all, so the manifest it "
+            "would write is not a conforming record. An operation that writes a "
+            "dataset has to check something about it."
+        )
     record.add_verification(all_checks)
     if repairs:
         record.add_repairs(repairs)

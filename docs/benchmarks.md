@@ -453,9 +453,11 @@ What it says about MapSmith (twenty-seven-family run, engine tier, `spec_commit`
 | MapSmith | **0.00** | 1.00 | 29 | 0 |
 | naive composition (read file, take statistic) | 0.931 | 1.00 | 29 | 0 |
 
-**The family list closed on 2026-08-30**, at twenty-seven of twenty-seven, and the last four cost
-this project two defects. A DEM whose rows run south to north — legal, and what a NetCDF or GRIB
-conversion produces — made a 5.7 degree slope come back as 45 with the output raster written at
+**The family list closed on 2026-08-30**, at twenty-seven of twenty-seven, and reopened the next
+morning with a twenty-eighth that no published run covers yet — one raster carrying two
+georeferencings, which is why a manifest can now record its `environment`. The last four of the
+twenty-seven cost this project two defects. A DEM whose rows run south to north — legal, and
+what a NetCDF or GRIB conversion produces — made a 5.7 degree slope come back as 45 with the output raster written at
 the origin, and **all five verification checks passed**: the coordinate system had survived and
 nothing compared the output's geotransform with the input's. A pipe network with a treatment plant
 in the same layer totalled 3000 m of pipe where there are 2000. Both are fixed, and the first is

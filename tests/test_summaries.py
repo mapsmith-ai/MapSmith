@@ -317,3 +317,86 @@ def test_two_copies_of_the_same_layer_are_identical(two_versions):
     answer = summaries.compare_layers(a, a, key_field="id")
     assert answer["identical"] is True
     assert answer["geometry_changed"] == 0 and answer["attributes_changed"] == 0
+
+
+def test_a_layer_with_a_null_attribute_is_identical_to_a_copy_of_itself(tmp_path):
+    """`NaN != NaN` made the diff report a file as changed against itself.
+
+    The operation's whole question is "is this different from what we had", and
+    every row holding a null in a compared column came back edited. Two rows
+    that both record nothing about a column agree about it — IEEE 754 is right
+    about floats and wrong about this question.
+    """
+    gdf = gpd.GeoDataFrame(
+        {"id": ["a", "b"], "owner": ["Rossi", None]},
+        geometry=[square(0, 0), square(2, 0)],
+        crs="EPSG:32632",
+    )
+    path = tmp_path / "with_a_null.parquet"
+    gdf.to_parquet(path)
+
+    answer = summaries.compare_layers(str(path), str(path), key_field="id")
+    assert answer["attributes_changed"] == 0, answer["attributes_changed_keys"]
+    assert answer["identical"] is True
+
+
+def test_a_larger_tolerance_can_only_find_fewer_changes(tmp_path):
+    """The tolerance was inverted: loosening it made the comparison stricter.
+
+    `tolerance` is a distance the caller is willing to ignore, so raising it
+    cannot turn an unchanged feature into a changed one. The first version
+        switched from `equals` to `equals_exact` as soon as a tolerance was
+    given, so these two squares — the same shape, one carrying an extra
+    collinear vertex — came back unchanged at 0 and changed at 5.
+    """
+    plain = Polygon([(0, 0), (10, 0), (10, 10), (0, 10)])
+    with_extra_vertex = Polygon([(0, 0), (5, 0), (10, 0), (10, 10), (0, 10)])
+    left = tmp_path / "plain.parquet"
+    right = tmp_path / "extra.parquet"
+    gpd.GeoDataFrame({"id": ["a"]}, geometry=[plain], crs="EPSG:32632").to_parquet(left)
+    gpd.GeoDataFrame({"id": ["a"]}, geometry=[with_extra_vertex], crs="EPSG:32632").to_parquet(right)
+
+    changed = {
+        tolerance: summaries.compare_layers(
+            str(left), str(right), key_field="id", tolerance=tolerance
+        )["geometry_changed"]
+        for tolerance in (0.0, 5.0)
+    }
+    assert changed[5.0] <= changed[0.0], (
+        f"a tolerance of 5 found {changed[5.0]} changes where 0 found "
+        f"{changed[0.0]}: the tolerance is inverted"
+    )
+
+
+def test_a_null_geometry_is_compared_rather_than_crashed_on(tmp_path):
+    """Null geometries are ordinary in GeoPackage and GeoParquet, and the guard
+    protected only the distance call before asking a None for `.equals` — a raw
+    AttributeError where every other operation here answers with a sentence."""
+    gdf = gpd.GeoDataFrame(
+        {"id": ["a", "b"]},
+        geometry=[square(0, 0), None],
+        crs="EPSG:32632",
+    )
+    path = tmp_path / "with_a_null_geometry.parquet"
+    gdf.to_parquet(path)
+
+    answer = summaries.compare_layers(str(path), str(path), key_field="id")
+    assert answer["identical"] is True
+    assert answer["geometry_changed"] == 0
+
+
+def test_a_geometry_that_appears_only_on_one_side_counts_as_changed(tmp_path):
+    """The counterpart of the test above: treating two nulls as equal must not
+    make a null and a real geometry equal as well."""
+    present = gpd.GeoDataFrame(
+        {"id": ["a"]}, geometry=[square(0, 0)], crs="EPSG:32632"
+    )
+    absent = gpd.GeoDataFrame({"id": ["a"]}, geometry=[None], crs="EPSG:32632")
+    left = tmp_path / "present.parquet"
+    right = tmp_path / "absent.parquet"
+    present.to_parquet(left)
+    absent.to_parquet(right)
+
+    answer = summaries.compare_layers(str(left), str(right), key_field="id")
+    assert answer["geometry_changed"] == 1
+    assert answer["identical"] is False

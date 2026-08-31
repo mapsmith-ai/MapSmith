@@ -24,6 +24,7 @@ import rasterio
 from rasterio.transform import Affine
 
 from mapsmith import grid
+from mapsmith.engines import raster
 from mapsmith.provenance import REDACTED, InputRecord, ProvenanceRecord
 
 CRS = "EPSG:32632"
@@ -54,6 +55,25 @@ def two_georeferencings(tmp_path):
     path = tmp_path / "terrain.tif"
     _raster(path, *INTERNAL)
     ox, oy, cell = SIDECAR
+    Path(f"{path}.aux.xml").write_text(
+        AUX_XML.format(ox=ox, oy=oy, cell=cell), encoding="utf-8", newline="\n"
+    )
+    return str(path)
+
+
+@pytest.fixture
+def agreeing_sidecar(tmp_path):
+    """A raster with a sidecar that declares the SAME georeferencing.
+
+    The fixture the recording tests need once the disagreeing case refuses
+    (D-059). A sidecar is present, so there is something to record — which
+    source produced the numbers, and that a sidecar was there at all — and there
+    is nothing to refuse, because both readings give the same answer. Recording
+    is not the alternative to refusing: it is what stays on the disk afterwards.
+    """
+    path = tmp_path / "agreeing.tif"
+    _raster(path, *INTERNAL)
+    ox, oy, cell = INTERNAL
     Path(f"{path}.aux.xml").write_text(
         AUX_XML.format(ox=ox, oy=oy, cell=cell), encoding="utf-8", newline="\n"
     )
@@ -120,7 +140,7 @@ def test_computing_refuses_where_describing_reports(two_georeferencings):
         assert "GDAL_GEOREF_SOURCES=INTERNAL" in str(refusal)
 
 
-def test_a_writer_that_bypasses_audited_still_records_it(two_georeferencings, tmp_path):
+def test_a_writer_that_bypasses_audited_still_records_it(agreeing_sidecar, tmp_path):
     """`resample_raster` builds its record by hand, and that is the point.
 
     The first version filled `environment` inside `verify.audited`, which
@@ -129,16 +149,22 @@ def test_a_writer_that_bypasses_audited_still_records_it(two_georeferencings, tm
     are concentrated in raster — where georeferencing decides the numbers. The
     field is filled in `write_for` instead, which is the single point where a
     manifest becomes a file.
-    """
-    from mapsmith.engines import raster
 
+    The fixture is a sidecar that **agrees**, and it has to be: the disagreeing
+    case now refuses before any manifest exists (D-059), so it cannot show that
+    a record was written. A sidecar that agrees leaves something worth recording
+    — which source produced the numbers, and that a sidecar was there — and
+    nothing to refuse. Recording is not the alternative to refusing; it is what
+    stays on the disk afterwards.
+    """
     source = tmp_path / "in.tif"
-    shutil.copy(two_georeferencings, source)
-    shutil.copy(f"{two_georeferencings}.aux.xml", f"{source}.aux.xml")
+    shutil.copy(agreeing_sidecar, source)
+    shutil.copy(f"{agreeing_sidecar}.aux.xml", f"{source}.aux.xml")
 
     result = raster.resample(str(source), str(tmp_path / "out.tif"), 40, "nearest")
     record = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
-    assert record["environment"]["georeferencing_source"] == "sidecar (.aux.xml)"
+    assert record["environment"]["georeferencing_source"] == "internal"
+    assert record["environment"]["georeferencing_sidecar_present"] == "in.tif.aux.xml"
 
 
 def test_an_ordinary_raster_leaves_the_field_empty(one_georeferencing, tmp_path):
@@ -182,7 +208,7 @@ def test_an_ordinary_key_is_left_alone(key):
     assert record.parameters_redacted is False
 
 
-def test_the_field_is_never_a_dump_of_the_environment(two_georeferencings, tmp_path):
+def test_the_field_is_never_a_dump_of_the_environment(agreeing_sidecar, tmp_path):
     """A record listing forty variables would bury the one that mattered.
 
     The specification says a producer records what it knows influenced the
@@ -192,11 +218,15 @@ def test_the_field_is_never_a_dump_of_the_environment(two_georeferencings, tmp_p
     from mapsmith.engines import raster
 
     source = tmp_path / "in.tif"
-    shutil.copy(two_georeferencings, source)
-    shutil.copy(f"{two_georeferencings}.aux.xml", f"{source}.aux.xml")
+    shutil.copy(agreeing_sidecar, source)
+    shutil.copy(f"{agreeing_sidecar}.aux.xml", f"{source}.aux.xml")
     result = raster.resample(str(source), str(tmp_path / "out.tif"), 40, "nearest")
     record = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
 
+    assert record["environment"], (
+        "the fixture has a sidecar, so there is something to record; an empty "
+        "field here would make the rest of this test vacuous"
+    )
     assert len(record["environment"]) <= 5, (
         "the environment field is growing into a dump; a reader who has to scan "
         "it stops reading it"
@@ -259,3 +289,112 @@ def test_a_sidecar_that_agrees_is_not_a_conflict(tmp_path):
     found = grid.georeferencing_source(str(path))
     assert found["georeferencing_source"] == "internal"
     assert grid.refuse_ambiguous_georeferencing(str(path), "resample_raster") == found
+
+
+#: Every raster operation that computes from the georeferencing, and one call
+#: each. The refusal these check had **no caller in `src/`** when it shipped:
+#: `README.md` promised it publicly and D-059 recorded it as decided, while the
+#: only thing invoking it was a test calling the function directly. Green, and
+#: proving nothing about the product — which is the failure this file's own
+#: docstrings warn about elsewhere.
+COMPUTES_FROM_THE_GEOREFERENCING = {
+    "resample_raster": lambda path, out: raster.resample(path, out, 20.0, "nearest"),
+    "reclassify_raster": lambda path, out: raster.reclassify(path, out, ["0:10000:1"]),
+    "band_math": lambda path, out: raster.band_math(path, out, "b1*2"),
+    "reproject_raster": lambda path, out: raster.reproject_raster(
+        path, out, "EPSG:3857", "nearest"
+    ),
+    "extract_band": lambda path, out: raster.extract_band(path, out, 1),
+    "band_statistics": lambda path, out: raster.band_statistics(path, 1),
+    "locate_extreme_cell": lambda path, out: raster.locate_extreme_cell(path, "max"),
+}
+
+
+@pytest.mark.parametrize("operation", sorted(COMPUTES_FROM_THE_GEOREFERENCING))
+def test_every_computing_operation_refuses_an_ambiguously_georeferenced_raster(
+    operation, two_georeferencings, tmp_path
+):
+    """Through the operation, not the helper. That distinction is the defect.
+
+    A test that calls `refuse_ambiguous_georeferencing` directly proves the
+    function raises. It says nothing about whether anything calls it, and for
+    one release nothing did.
+    """
+    out = tmp_path / f"{operation}_out.tif"
+    with pytest.raises(ValueError, match="georeferenced twice") as refusal:
+        COMPUTES_FROM_THE_GEOREFERENCING[operation](two_georeferencings, str(out))
+    # It names both readings and how to choose, rather than only that a choice
+    # exists — a refusal a caller cannot act on is an obstacle, not a check.
+    assert "GDAL_GEOREF_SOURCES=INTERNAL" in str(refusal.value)
+
+
+@pytest.mark.parametrize("operation", sorted(COMPUTES_FROM_THE_GEOREFERENCING))
+def test_a_single_georeferencing_is_computed_from_without_a_word(
+    operation, one_georeferencing, tmp_path
+):
+    """The other half: the refusal must not fire on the ordinary case.
+
+    A guard that refuses everything is indistinguishable from a guard that
+    refuses the right thing until somebody tries an ordinary file. A sabotage of
+    this exact function once left every test green for that reason.
+    """
+    out = tmp_path / f"{operation}_ok.tif"
+    COMPUTES_FROM_THE_GEOREFERENCING[operation](one_georeferencing, str(out))
+
+
+def test_describing_never_refuses_because_describing_is_not_computing(
+    two_georeferencings,
+):
+    """D-059's other half, and the reason the split exists.
+
+    `describe_dataset`'s whole job is to say what a file is, and a file with two
+    georeferencings is a thing to be told about rather than turned away.
+    """
+    from mapsmith.engines import dispatch
+
+    described = dispatch.describe_routed(two_georeferencings)
+    assert described["georeferencing"]["georeferencing_source"].startswith("sidecar")
+    assert "georeferencing_internal_would_give" in described["georeferencing"]
+
+
+@pytest.fixture
+def sidecar_overrides_only_the_crs(tmp_path):
+    """A PAM sidecar that changes the `<SRS>` and leaves the geotransform alone.
+
+    GDAL applies the PAM SRS unconditionally when the PAM georeferencing source
+    is enabled, which it is by default, so the numbers come out in a coordinate
+    system the file's own tags do not name.
+    """
+    path = tmp_path / "srs.tif"
+    _raster(path, *INTERNAL)
+    Path(f"{path}.aux.xml").write_text(
+        "<PAMDataset><SRS>EPSG:3857</SRS></PAMDataset>", encoding="utf-8", newline="\n"
+    )
+    return str(path)
+
+
+def test_a_sidecar_that_overrides_only_the_crs_is_still_a_sidecar(
+    sidecar_overrides_only_the_crs,
+):
+    """Detection compared only the geotransform, so this said `internal`.
+
+    An absent field claims nothing. That one claimed something false: the
+    numbers came out in the sidecar's CRS and the manifest said they came from
+    the file's own tags. It is also the more consequential axis — a wrong CRS
+    changes every area, length and reprojection downstream, which is the family
+    Argleton measures as `projection-distortion`.
+    """
+    found = grid.georeferencing_source(sidecar_overrides_only_the_crs)
+    assert found["georeferencing_source"] == "sidecar (.aux.xml)"
+    other = found["georeferencing_internal_would_give"]
+    assert "EPSG:32632" in other and "EPSG:3857" in other, other
+
+
+def test_an_operation_refuses_a_crs_only_override_as_well(
+    sidecar_overrides_only_the_crs, tmp_path
+):
+    """And the refusal follows from the detection, rather than being separate."""
+    with pytest.raises(ValueError, match="georeferenced twice"):
+        raster.resample(
+            sidecar_overrides_only_the_crs, str(tmp_path / "out.tif"), 40, "nearest"
+        )

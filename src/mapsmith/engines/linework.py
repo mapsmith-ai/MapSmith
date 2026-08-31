@@ -415,6 +415,28 @@ def _all_on_line(lines: gpd.GeoDataFrame, points: gpd.GeoDataFrame) -> bool:
     return bool(points.geometry.distance(joined).max() < 1e-6)
 
 
+def _is_shared_endpoint(place: Any, left: Any, right: Any) -> bool:
+    """Whether this meeting point is an endpoint of BOTH lines.
+
+    Two segments joined end to end meet at a point that is on the boundary of
+    each: an ordinary junction, and not what a caller looking for crossings
+    wants back. A T junction — one line ending on the middle of another — is on
+    the boundary of one and the interior of the other, and it IS what they want,
+    because it is the node somebody forgot to split.
+
+    `left.touches(right)` cannot tell the two apart: it is true for both. The
+    first version used it and reported no crossings for a plain T, then wrote
+    into the manifest that the network might already be noded — a confident,
+    well-formed, false statement about the data, which is the failure class this
+    project exists to measure in other software.
+    """
+    tolerance = 1e-9
+    return (
+        left.boundary.distance(place) <= tolerance
+        and right.boundary.distance(place) <= tolerance
+    )
+
+
 def line_intersections(
     input_path: str,
     other_path: str | None,
@@ -492,10 +514,19 @@ def line_intersections(
         for place in places:
             if not isinstance(place, Point):
                 continue
-            # End-to-end contact is a junction, not a crossing. `touches` is the
-            # right predicate for exactly this and the wrong one for deciding
-            # neighbourhood (see spatial_stats).
-            if kind == "crossing" and left.touches(right):
+            # End-to-end contact is a junction, not a crossing — but `touches`
+            # is True whenever the interiors are disjoint and the boundaries
+            # meet, which includes the case where ONE line's endpoint lands on
+            # the OTHER's interior. That is a T junction, i.e. exactly the
+            # forgotten node this operation exists to find, and skipping it
+            # meant `(0,0)-(10,0)` against `(5,0)-(5,10)` reported no crossings
+            # and a note saying the network may already be noded.
+            #
+            # The contact to skip is the one where the meeting point is on the
+            # boundary of BOTH lines: two segments joined end to end. Checked at
+            # the point rather than on the pair, because one pair can have a
+            # proper junction at one end and a T at the other.
+            if kind == "crossing" and _is_shared_endpoint(place, left, right):
                 continue
             rows.append(
                 {
@@ -537,8 +568,12 @@ def line_intersections(
         )
     if not rows:
         record.notes.append(
-            "no crossings at all. For a network this can mean the lines are already "
-            "noded; between two layers it usually means they do not meet."
+            "no crossings at all: no pair of features meets anywhere except where "
+            "both lines end, which includes the T junctions where one line ends on "
+            "another's middle. For a network that is consistent with the lines "
+            "being noded; between two layers it usually means they do not meet. "
+            "Self-intersections within a single feature are not part of this "
+            "count, so this is not a claim that every geometry is simple."
         )
 
     manifest, extras = verify.audited(
@@ -754,8 +789,14 @@ def transform_by_control_points(
         record,
         output_path,
         operation="transform_by_control_points",
+        # The control points must have a CRS — they are the georeferencing. The
+        # input must NOT be required to: a layer in a local, assumed or shifted
+        # grid is the whole reason this operation exists, and "assign the correct
+        # CRS first" is advice to do the thing it replaces. It was checked, so
+        # the operation wrote a correct output and a correct manifest and then
+        # raised on the one input it was built for.
         preconditions=verify.verify_loaded_inputs(
-            "transform_by_control_points", input_path=gdf, control_path=control
+            "transform_by_control_points", control_path=control
         ),
         checks_fn=lambda: [
             *verify.verify_vector_output(

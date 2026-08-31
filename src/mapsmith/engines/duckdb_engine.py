@@ -210,6 +210,13 @@ def run_sql(query: str, output_path: str | None = None) -> dict[str, Any]:
     # meant to be shared; refusing the statement beats redacting its text, which
     # an audit escaped four ways in minutes (#18, see sql_policy).
     sql_policy.refuse_credentials_in_sql(query)
+    # An INSTALL fetches a native binary over HTTPS and runs it in this process.
+    # It was allowed by default, and an audit used it to make this tool return
+    # the host's real cloud credentials — while SECURITY.md said in the same
+    # artifact that what stayed unconfined was file access "and nothing else".
+    # Either the extension is already loaded, or a person names it in
+    # MAPSMITH_ALLOW_EXTENSIONS, which lives outside the agent's reach.
+    sql_policy.refuse_extension_loading_in_sql(query)
     con = _connect()
     record = ProvenanceRecord(
         operation="run_sql",

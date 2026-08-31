@@ -246,28 +246,129 @@ def test_the_same_point_on_the_area_twin_reads_the_boundary_average(tmp_path):
 # --- what gets written out --------------------------------------------------
 
 
-def test_the_registration_survives_an_operation_that_writes_a_raster(tmp_path):
-    """`profile.copy()` does not carry tags, so every raster MapSmith wrote came
-    back area-registered whatever went in — the same silent error one step
-    downstream, with nothing in the output to say so."""
+def _mask_for(tmp_path):
     import geopandas as gpd
     from shapely.geometry import box
 
-    source = hollow(tmp_path, "Point")
     mask = tmp_path / "mask.parquet"
     gpd.GeoDataFrame(
         {"id": [1]},
         geometry=[box(412000.0, 5107800.0, 412150.0, 5108000.0)],
         crs="EPSG:32632",
     ).to_parquet(mask)
-    out = tmp_path / "clipped.tif"
-    raster.clip_raster(source, str(mask), str(out))
+    return str(mask)
+
+
+#: Every operation that writes a raster, and one call each. Parametrised rather
+#: than written once because the single-operation version of this test picked
+#: `clip_raster`, which was one of the three that already worked — `reclassify`,
+#: `band_math` and `extract_band` shipped point-registered inputs as
+#: area-registered outputs while it stayed green.
+RASTER_WRITERS = {
+    "resample": lambda source, out, tmp_path: raster.resample(source, out, 20.0, "nearest"),
+    "clip_raster": lambda source, out, tmp_path: raster.clip_raster(
+        source, _mask_for(tmp_path), out
+    ),
+    "reproject_raster": lambda source, out, tmp_path: raster.reproject_raster(
+        source, out, "EPSG:3857", "nearest"
+    ),
+    "reclassify": lambda source, out, tmp_path: raster.reclassify(
+        source, out, ["0:10000:1"]
+    ),
+    "band_math": lambda source, out, tmp_path: raster.band_math(source, out, "b1*2"),
+    "extract_band": lambda source, out, tmp_path: raster.extract_band(source, out, 1),
+}
+
+
+@pytest.mark.parametrize("operation", sorted(RASTER_WRITERS))
+def test_the_registration_survives_every_operation_that_writes_a_raster(
+    operation, tmp_path
+):
+    """`profile.copy()` does not carry tags, so every raster MapSmith wrote came
+    back area-registered whatever went in — the same silent error one step
+    downstream, with nothing in the output to say so.
+
+    Parametrised over all of them because the defect that made this necessary
+    was not the carrying but *where* it was done: three writers called
+    `preserve` after their input's `with` block had closed. Asking a closed
+    dataset for its tags does not raise — GDAL returns nothing — so the answer
+    came back "area" and nothing anywhere said otherwise.
+    """
+    source = hollow(tmp_path, "Point")
+    out = tmp_path / f"{operation}.tif"
+    RASTER_WRITERS[operation](source, str(out), tmp_path)
 
     with rasterio.open(out) as dst:
         assert grid.registration(dst) == "point", (
-            "the output lost its point registration, so every position derived "
-            "from it is half a cell wrong and the file no longer says so"
+            f"{operation} lost the point registration, so every position derived "
+            "from its output is half a cell wrong and the file no longer says so"
         )
+
+
+def test_every_raster_writer_is_covered_by_the_registration_test():
+    """A writer added later must not be able to be quiet in the same way.
+
+    The parametrised test above is only worth its name if the list it runs over
+    is the real one. This compares it against the operations the catalogue says
+    write a raster, so adding one and forgetting the fixture fails here rather
+    than passing everywhere.
+    """
+    from mapsmith import catalog
+
+    writes_a_raster = {
+        entry["name"]
+        for entry in catalog.OPERATIONS
+        if entry.get("status") == "available"
+        and entry.get("produces") == "dataset:raster"
+    }
+    assert writes_a_raster, (
+        "no operation in the catalogue declares `produces: dataset:raster` — the "
+        "field was renamed and this guard is now checking an empty set, which is "
+        "how it would pass forever"
+    )
+    covered = {RASTER_WRITER_OPERATIONS[name] for name in RASTER_WRITERS}
+    missing = sorted(writes_a_raster - covered - _REFUSES_POINT - _NO_INPUT_RASTER)
+    assert not missing, (
+        f"these operations write a raster and nothing checks their registration: "
+        f"{missing}. Add a call to RASTER_WRITERS, or account for it below with "
+        "the reason — measured, not assumed."
+    )
+
+
+#: The catalogue name for each entry in RASTER_WRITERS, which is keyed by the
+#: engine function. They differ (`resample` writes `resample_raster`).
+RASTER_WRITER_OPERATIONS = {
+    "resample": "resample_raster",
+    "clip_raster": "clip_raster",
+    "reproject_raster": "reproject_raster",
+    "reclassify": "reclassify_raster",
+    "band_math": "band_math",
+    "extract_band": "extract_band",
+}
+
+#: These refuse a point-registered input outright rather than writing an output,
+#: so there is no output to ask the question of. They all reach the DEM through
+#: `whitebox_engine._read_dem`, which compares the grid the terrain engine reads
+#: against the grid the file declares and stops when they differ by the half
+#: cell — measured on `slope` and `aspect`, which come back with the refusal
+#: naming both readings, and the other nine share the reader.
+_REFUSES_POINT = {
+    "slope",
+    "aspect",
+    "curvature",
+    "hillshade",
+    "flow_direction",
+    "flow_accumulation",
+    "watershed",
+    "extract_streams",
+    "viewshed",
+    "euclidean_distance",
+    "focal_statistics",
+}
+
+#: Takes a vector layer, so there is no input raster whose registration could be
+#: carried: the grid it writes is one it invented.
+_NO_INPUT_RASTER = {"idw_interpolation"}
 
 
 def test_zonal_statistics_weights_cells_around_their_own_samples(tmp_path):

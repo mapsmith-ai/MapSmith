@@ -724,3 +724,69 @@ def _one_point(tmp_path, name: str, x: float, y: float) -> str:
             {"id": [1]}, geometry=[Point(x, y)], crs="EPSG:32632"
         ).to_parquet(path)
     return str(path)
+
+
+def test_a_crash_writes_a_manifest_the_published_validator_accepts(tmp_path):
+    """Four call sites passed an empty precondition list, so an engine crash
+    wrote `verification: []` — which the specification rejects, in its own
+    words because a record with no checks is "a log entry wearing a manifest's
+    clothes".
+
+    Two of the four were operations added in 0.4.0: the module that arrived in
+    this release did not inherit the pattern. The conformance sweep could not
+    see it because it exercises only the paths that succeed.
+    """
+    import importlib.util
+    import json
+    from pathlib import Path
+
+    from mapsmith.provenance import ProvenanceRecord
+
+    out = tmp_path / "out.parquet"
+    record = ProvenanceRecord(
+        operation="run_sql",
+        parameters={"query": "SELECT 1"},
+        inputs=[],
+        engine={"name": "duckdb", "version": "1.5.5"},
+    )
+    with pytest.raises(RuntimeError), verify.audit_on_failure(record, str(out), []):
+        raise RuntimeError("the engine blew up")
+
+    manifest = json.loads(
+        Path(f"{out}.provenance.json").read_text(encoding="utf-8")
+    )
+    assert manifest["verification"], "a crash wrote a record with no checks"
+    assert manifest["verification"][0]["passed"] is False
+
+    # Against the specification's own validator, vendored from the published
+    # repository rather than reimplemented here.
+    spec = importlib.util.spec_from_file_location(
+        "spec_validator", Path(__file__).parent / "data" / "manifest_spec_validator.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.problems(manifest) == [], module.problems(manifest)
+
+
+def test_an_operation_that_verifies_nothing_raises_rather_than_writing(tmp_path):
+    """The success-path half of the same rule.
+
+    An operation whose checks come back empty has verified nothing, and a
+    manifest is not the place for a caller to discover that.
+    """
+    from mapsmith.provenance import ProvenanceRecord
+
+    record = ProvenanceRecord(
+        operation="pretend_operation",
+        parameters={},
+        inputs=[],
+        engine={"name": "test", "version": "0"},
+    )
+    (tmp_path / "out.parquet").write_bytes(b"")
+    with pytest.raises(verify.VerificationError, match="no verification at all"):
+        verify.audited(
+            record,
+            str(tmp_path / "out.parquet"),
+            operation="pretend_operation",
+            checks_fn=list,
+        )

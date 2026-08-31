@@ -260,3 +260,43 @@ def test_only_one_place_decides_what_a_crossing_extent_means():
         and "HALF_THE_WORLD" in path.read_text(encoding="utf-8")
     ]
     assert not guilty, f"the antimeridian rule has a second copy in {guilty}"
+
+
+def test_a_three_dimensional_geographic_crs_is_still_geographic(tmp_path):
+    """EPSG:4979 switched the whole module off, silently.
+
+    WGS 84 3D is what a great deal of GNSS and LiDAR data declares, and its
+    third axis is ellipsoidal height in metres. The unit check asked *every*
+    axis for degrees, so `_is_in_degrees` was False, detection never ran, and a
+    Fijian survey zone came back with the plain world-spanning box and no note —
+    the exact false negative this module exists to prevent, leaving no trace
+    that a question had been skipped.
+
+    Only the horizontal axes decide how longitude is measured.
+    """
+    for crs in ("EPSG:4326", "EPSG:4979"):
+        gdf = gpd.GeoDataFrame(
+            {"id": [1, 2]}, geometry=[FIJI_WEST, FIJI_EAST], crs=crs
+        )
+        described = antimeridian.describe_extent(gdf)
+        assert described["crosses_antimeridian"] is True, (
+            f"the crossing was not detected in {crs}"
+        )
+        assert described["true_extent"]["width_degrees"] == pytest.approx(2.0)
+
+
+def test_a_crs_in_grads_is_still_refused_and_a_geocentric_one_too():
+    """The counterpart: relaxing the axis check must not let non-degree CRSs in.
+
+    EPSG:4807 is geographic in grads, where 180 is not the antimeridian at all,
+    and EPSG:4936 is geocentric — three metre axes and no longitude to wrap.
+    """
+    from pyproj import CRS
+
+    from mapsmith.antimeridian import _is_in_degrees
+
+    assert _is_in_degrees(CRS.from_user_input("EPSG:4326")) is True
+    assert _is_in_degrees(CRS.from_user_input("EPSG:4979")) is True
+    assert _is_in_degrees(CRS.from_user_input("EPSG:4807")) is False
+    assert _is_in_degrees(CRS.from_user_input("EPSG:4936")) is False
+    assert _is_in_degrees(CRS.from_user_input("EPSG:32632")) is False

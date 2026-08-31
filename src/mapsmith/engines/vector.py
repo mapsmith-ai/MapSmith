@@ -105,9 +105,10 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
         record.notes.append(routing["note"])
     pre = verify.verify_loaded_inputs("buffer_layer", input_path=gdf)
     original_crs = gdf.crs
-    if original_crs.is_geographic:
+    on_a_geographic_crs = bool(original_crs.is_geographic)
+    if on_a_geographic_crs:
         analysis_crs = gdf.estimate_utm_crs()
-        record.crs_decisions = {
+        open_source_decision = {
             "analysis_crs": str(analysis_crs),
             "reason": "estimated UTM zone for metric buffering on a geographic CRS",
         }
@@ -115,12 +116,18 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
         buffered["geometry"] = buffered.geometry.buffer(distance_meters)
         buffered = buffered.to_crs(original_crs)
     else:
-        record.crs_decisions = {
+        open_source_decision = {
             "analysis_crs": verify.crs_label(original_crs),
             "reason": "input CRS is already projected; distance interpreted in its units",
         }
         buffered = gdf.copy()
         buffered["geometry"] = buffered.geometry.buffer(distance_meters)
+    # NOT assigned yet. The Esri branch below discards `buffered` and, in the
+    # first version, left this standing: the manifest named an analysis CRS the
+    # run never used and a reason that did not apply, on numbers a different
+    # engine produced. A CRS decision is a record of what happened, so it is
+    # written by whichever branch actually happens.
+    record.crs_decisions = open_source_decision
 
     if routing["stack"] == "esri":
         # The backend computes; verification and the manifest stay MapSmith's.
@@ -128,8 +135,20 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
         # record says which engine actually made the numbers.
         from . import esri as esri_engine
 
+        # The unit is decided HERE, by the code that knows the CRS, because the
+        # two stacks read the same number differently. Buffer's PLANAR method
+        # converts a linear unit into the CRS's unit, so "100 Meters" on a CRS
+        # in US survey feet buffers by 328.08 feet while the open source branch
+        # buffers by 100. On a geographic CRS the open source branch reprojects
+        # to UTM and buffers metres, so metres is what Esri must be told —
+        # "Unknown" there would mean 100 DEGREES.
         outcome = esri_engine.run(
-            "buffer_layer", gdf, {"distance_meters": distance_meters}
+            "buffer_layer",
+            gdf,
+            {
+                "distance_meters": distance_meters,
+                "distance_unit": "Meters" if on_a_geographic_crs else "Unknown",
+            },
         )
         if outcome["status"] == "ok":
             produced = outcome["frame"]
@@ -141,6 +160,23 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
             added = sorted(set(produced.columns) - set(buffered.columns))
             dropped = sorted(set(buffered.columns) - set(produced.columns))
             record.engine = esri_engine.engine_info()
+            # What actually happened, replacing the open source branch's plan.
+            record.crs_decisions = (
+                {
+                    "analysis_crs": verify.crs_label(original_crs),
+                    "reason": "buffered in the input's own geographic CRS by the "
+                    "Esri stack, which interprets a distance in metres geodesically "
+                    "there rather than reprojecting — so no analysis CRS was chosen "
+                    "and none is claimed",
+                }
+                if on_a_geographic_crs
+                else {
+                    "analysis_crs": verify.crs_label(original_crs),
+                    "reason": "input CRS is already projected; the distance was "
+                    "passed to the Esri stack in the CRS's own unit so that both "
+                    "stacks read the same number the same way",
+                }
+            )
             record.notes.append(
                 "requested stack 'esri': these numbers were produced by that "
                 "stack, not by MapSmith's own engines. The geometry the two "

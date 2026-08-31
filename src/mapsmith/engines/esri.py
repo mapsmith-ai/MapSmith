@@ -1,13 +1,23 @@
-"""The Esri backend: three operations, run in ArcGIS Pro's own Python.
+"""The Esri backend: ONE operation routed, run in ArcGIS Pro's own Python.
 
-Three and not seventy-two, deliberately. What this proves is that the path
-exists end to end — stack chosen, licence discovered, tool run, fallback
-recorded — on operations whose equivalence with the open source stack is
-**measured** rather than assumed (D-056 point 5). Adding a fourth is then a
-table entry and a probe, not a design question.
+One and not seventy-two, deliberately. What this proves is that the path exists
+end to end — stack chosen, licence discovered, tool run, fallback recorded — on
+an operation whose equivalence with the open source stack is **measured** rather
+than assumed (D-056 point 5). Adding a second is then a table entry, a probe,
+and a call to `stacks.route` in the operation.
 
-The three are `buffer`, `centroid_layer` and `dissolve_layer`, and what the
-measurement of 2026-08-30 actually found is more interesting than a match.
+That last part is the correction. This module used to declare three, and
+`available_for` reported all three usable, while `stacks.route` was called from
+exactly one place. With the Esri stack requested, `centroid_layer` and
+`dissolve_layer` ran on the open source stack and **no manifest note recorded
+the substitution** — the one thing this design says never happens quietly, on
+the operation where the vendor drops every attribute. A table entry is a promise
+that requesting the stack reaches it, so the table now holds only what does, and
+`test_every_declared_esri_tool_is_actually_routed` keeps it honest in both
+directions.
+
+The measurement of 2026-08-30 covered three, and what it found is more
+interesting than a match.
 Compared across the two stacks on the same fixture, through the same reader,
 into the same container:
 
@@ -47,7 +57,7 @@ import pathlib
 import tempfile
 from typing import Any
 
-from .. import readers, stacks
+from .. import readers, stacks, workspace
 
 #: What each operation needs from the Esri side, and what it is called there.
 #: The qualified name matters: 297 of the 2198 installed tools share a bare
@@ -58,6 +68,15 @@ from .. import readers, stacks
 #: instead of the real one. It failed exactly that way once.
 TOOLS = {
     "buffer_layer": {"toolbox": "Analysis Tools", "tool": "Buffer"},
+}
+
+#: Measured against the open source stack on 2026-08-30 and **not routed**: the
+#: operations do not call `stacks.route`, so requesting the Esri stack runs them
+#: on the open source one. Kept here as the record of what was measured, and
+#: deliberately out of `TOOLS` so that `available_for` cannot report a tool no
+#: caller reaches. Wiring one means a `TOOLS` entry, a probe action, and the
+#: route call in the operation itself.
+MEASURED_NOT_ROUTED = {
     "centroid_layer": {"toolbox": "Data Management Tools", "tool": "FeatureToPoint"},
     "dissolve_layer": {"toolbox": "Data Management Tools", "tool": "Dissolve"},
 }
@@ -91,8 +110,15 @@ arcpy.management.CreateSQLiteDatabase(container, "GEOPACKAGE")
 target = os.path.join(container, request["output_layer"])
 
 actions = {
+    # The distance in the LAYER'S OWN UNIT, not in metres. Buffer's PLANAR
+    # method converts a linear unit into the CRS's unit, so "100 Meters" on a
+    # CRS in US survey feet buffers by 328.08 feet while the open source branch
+    # buffers by 100 — a 3.28x difference from the same call, with the same
+    # sentence in the manifest and every check green. "Unknown" tells Buffer to
+    # use the input's own linear unit, which is what MapSmith's parameter means.
     "buffer_layer": lambda: arcpy.analysis.Buffer(
-        source, target, "%s Meters" % request["distance_meters"]),
+        source, target,
+        "%s %s" % (request["distance_meters"], request.get("distance_unit", "Unknown"))),
     "centroid_layer": lambda: arcpy.management.FeatureToPoint(source, target, "CENTROID"),
     "dissolve_layer": lambda: arcpy.management.Dissolve(source, target),
 }
@@ -149,7 +175,15 @@ def run(operation: str, source: Any, arguments: dict[str, Any],
     Never raises for a licence refusal: that is an outcome to act on, and an
     exception would make it indistinguishable from a crash.
     """
-    with tempfile.TemporaryDirectory(prefix="mapsmith-esri-") as workdir:
+    # Inside the workspace when there is one, exactly as the other subprocess
+    # engine does it. The bridge file is a COPY of the caller's layer, so a
+    # system temp directory would put their data outside the boundary
+    # SECURITY.md promises -- with no path argument anywhere for the jail at
+    # the MCP boundary to catch, because MapSmith chose this path itself.
+    root = workspace.root()
+    with tempfile.TemporaryDirectory(
+        prefix="mapsmith-esri-", dir=str(root) if root else None
+    ) as workdir:
         area = pathlib.Path(workdir)
         source_file, target_file = area / "in.gpkg", area / "out.gpkg"
         source.to_file(source_file, driver="GPKG", layer="data")

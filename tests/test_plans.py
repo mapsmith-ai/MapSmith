@@ -547,3 +547,58 @@ def test_plan_sha256_is_deterministic(wells, tmp_path):
          "arguments": dict(args, distance_meters=10.0)}
     )
     assert p1.sha256() == p3.sha256()
+
+
+def test_every_engine_flag_names_an_engine_the_dispatcher_probes():
+    """A flag no probe answers for means the step is always refused.
+
+    Seven bindings declared `engine_flag="raster"` while `available_engines()`
+    had no such key, so `.get("raster")` returned None, the validator emitted
+    MISSING_EXTRA, and a caller with rasterio installed was told to install
+    rasterio — and the step was rejected. The message read correctly by
+    accident, because the extra lookup falls back to the flag's own name, which
+    is why it survived.
+
+    This is one line of comparison and it makes that class impossible: a flag is
+    a claim that something probes it.
+    """
+    from mapsmith.engines.dispatch import available_engines
+
+    probed = set(available_engines())
+    declared = {
+        binding.engine_flag
+        for binding in BINDINGS.values()
+        if binding.engine_flag
+    }
+    assert declared <= probed, (
+        f"these engine flags are declared by a binding and probed by nothing: "
+        f"{sorted(declared - probed)}. Every operation with one is permanently "
+        f"unplannable. Probed: {sorted(probed)}."
+    )
+
+
+def test_no_operation_that_reads_a_raster_is_declared_core():
+    """`least_cost_path` shipped as core and imported rasterio at runtime.
+
+    rasterio is in the `[raster]` extra, so on a plain `pip install mapsmith`
+    the validator called the plan runnable and the operation then raised a bare
+    ModuleNotFoundError — where the project's own convention is that a missing
+    extra gives a sentence naming what to install. The validator can only give
+    that sentence if the binding says which engine it needs.
+    """
+    reads_a_raster = {
+        entry["name"]
+        for entry in catalog.OPERATIONS
+        if entry.get("status") == "available"
+        and "raster" in (entry.get("applicability", {}).get("inputs") or [])
+    }
+    assert reads_a_raster, "no available operation declares a raster input"
+    core_but_reads_a_raster = sorted(
+        name
+        for name in reads_a_raster
+        if name in BINDINGS and not BINDINGS[name].engine_flag
+    )
+    assert not core_but_reads_a_raster, (
+        f"these read a raster and declare no engine: {core_but_reads_a_raster}. "
+        "Nothing but the import error will tell a caller what is missing."
+    )

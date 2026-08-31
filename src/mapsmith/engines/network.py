@@ -841,6 +841,13 @@ def least_cost_path(
             )
         cost = src.read(1, masked=True)
         crs_label = verify.crs_label(src.crs)
+        # The coordinate system itself, kept apart from its label. A label
+        # is a string for a manifest and `crs_label` invents one for a CRS
+        # with no authority code — "unnamed CRS (sha256:...)" — so feeding
+        # it back to GeoPandas raised CRSError on any national or agency
+        # grid whose .prj carries no EPSG code. This is the #28 class,
+        # named in CLAUDE.md, and this was its last instance in src/.
+        surface_crs = src.crs
         transform = src.transform
         pixel_x = abs(transform.a)
         pixel_y = abs(transform.e)
@@ -951,6 +958,20 @@ def least_cost_path(
         # cell south-east on a DEM that says otherwise.
         coordinates = [grid.sample_xy(src, row, column) for row, column in path_cells]
         registration = grid.describe(src)
+        cell_width, cell_height = abs(src.transform.a), abs(src.transform.e)
+    if len(coordinates) < 2:
+        # Both endpoints landed in the same cell, so there is no route to draw:
+        # `LineString` on one coordinate raises a GEOSException about the point
+        # array, which tells the caller nothing about their data. Two points
+        # seven metres apart on a ten-metre cost surface is not a pathological
+        # input, and the answer they need is the cell size.
+        raise ValueError(
+            "both points fall in the same cell of the cost surface "
+            f"({cell_width:g} x {cell_height:g} in the surface's own unit), so "
+            "there is no path between them to compute — the least-cost route "
+            "from a cell to itself is the cell. Use a finer cost surface if the "
+            "distance between the points matters at this scale."
+        )
     line = LineString(coordinates)
 
     import geopandas as gpd
@@ -965,7 +986,7 @@ def least_cost_path(
             "straight_line": [round(straight, 6)],
         },
         geometry=[line],
-        crs=crs_label,
+        crs=surface_crs,
     )
     if str(output_path).endswith(".parquet"):
         out.to_parquet(output_path)

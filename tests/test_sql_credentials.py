@@ -115,3 +115,79 @@ def test_persistent_secrets_are_disabled_in_the_connection():
     # and the configuration lock makes it a policy rather than a default
     with pytest.raises(duckdb.Error):
         con.execute("SET allow_persistent_secrets = true")
+
+
+# --- extensions: an INSTALL is a native binary, not a setting ----------------
+
+
+EXTENSION_STATEMENTS = [
+    "INSTALL aws; LOAD aws; SELECT * FROM load_aws_credentials()",
+    "LOAD httpfs",
+    "FORCE INSTALL postgres",
+    "install ui",
+    "INSTALL azure ; SELECT 1",
+    "LOAD 'spatial'",
+    "-- harmless\nINSTALL aws",
+    "INSTALL /tmp/evil.duckdb_extension",
+]
+
+
+@pytest.mark.parametrize("query", EXTENSION_STATEMENTS)
+def test_installing_or_loading_an_extension_is_refused(query):
+    """An audit turned this into a credential reader in three statements.
+
+        INSTALL aws; LOAD aws; LOAD httpfs;
+        SELECT * FROM load_aws_credentials()
+
+    returned the host's real access key id and session token, in the default
+    mode, with no opt-in — while `SECURITY.md` said in the same artifact that
+    what remained unconfined was file access "and nothing else".
+
+    None of the layers that existed saw it: `autoload_known_extensions=false`
+    stops implicit loading only, `lock_configuration=true` does not stop an
+    explicit INSTALL, and the remote-path scan looks for `://` and `/vsi`, which
+    `INSTALL postgres` does not contain.
+    """
+    with pytest.raises(ValueError, match="(?i)extension"):
+        sql_policy.refuse_extension_loading_in_sql(query)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT 1",
+        "SELECT * FROM duckdb_extensions()",
+        "SELECT payload FROM downloads WHERE name = 'installer'",
+        "CREATE TABLE loads AS SELECT 1",
+    ],
+)
+def test_ordinary_sql_is_not_refused_for_mentioning_a_word(query):
+    """Keyed on the statement, not on a word appearing in it. A guard that
+    refuses `SELECT * FROM duckdb_extensions()` teaches its reader to work
+    around it."""
+    sql_policy.refuse_extension_loading_in_sql(query)
+
+
+def test_an_extension_named_in_the_environment_is_allowed(monkeypatch):
+    """The decision is a person's, and it is made where the agent cannot reach.
+
+    Named extensions rather than a boolean: "yes, everything" is how a caller
+    ends up with the `aws` extension and a credential reader in a process that
+    was supposed to do geoprocessing.
+    """
+    monkeypatch.setenv(sql_policy.ALLOW_EXTENSIONS, "postgres, azure")
+    sql_policy.refuse_extension_loading_in_sql("INSTALL postgres")
+    sql_policy.refuse_extension_loading_in_sql("LOAD azure")
+    with pytest.raises(ValueError, match="(?i)extension"):
+        sql_policy.refuse_extension_loading_in_sql("INSTALL aws")
+
+
+def test_the_refusal_says_how_to_allow_it():
+    """A refusal a caller cannot act on is an obstacle, not a check."""
+    try:
+        sql_policy.refuse_extension_loading_in_sql("INSTALL postgres")
+    except ValueError as refusal:
+        message = str(refusal)
+    assert sql_policy.ALLOW_EXTENSIONS in message
+    assert "postgres" in message
+    assert "already loaded keep working" in message

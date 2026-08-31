@@ -868,7 +868,12 @@ BINDINGS: dict[str, Binding] = {
         _least_cost_path,
         ("cost_path", "start_path", "end_path"),
         "output_path",
-        None,
+        # `rasterio`, not core: this reads a raster and rasterio lives in the
+        # [raster] extra. Declared core, the validator called the plan runnable
+        # and the operation then raised a bare ModuleNotFoundError on a plain
+        # `pip install mapsmith` — where every other extra gives a sentence
+        # naming what to install.
+        "raster",
         ("same_as", "cost_path"),
         "vector",
     ),
