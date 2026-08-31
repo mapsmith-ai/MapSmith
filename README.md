@@ -106,7 +106,7 @@ for it:
 
 ```json
 {
-  "mapsmith_version": "0.3.0",
+  "mapsmith_version": "0.4.0",
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{"path": "rivers.gpkg", "sha256": "9f2c…", "crs": "EPSG:4326"}],

@@ -4,10 +4,25 @@ All notable changes to MapSmith are documented here, in the format of
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows
 [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.4.0] — 2026-08-31
 
 ### Added
 
+- **The caller chooses the geoprocessing stack once, at the start, and it is
+  never swapped underneath them.** `MAPSMITH_STACK` takes `opensource` (the
+  default: GDAL, GeoPandas, DuckDB, Whitebox) or `esri`, which routes to ArcPy
+  on a machine that has a licence for it. The rule that makes the choice worth
+  making is what happens at the edges: when the chosen stack cannot do
+  something, MapSmith says which of three things is true — the tool does not
+  exist, this licence tier does not include it, or it would need an online
+  service — and falls back only where the caller asked for a fallback, naming
+  the substitution in the manifest. An engine quietly replaced by another is a
+  result whose provenance record is true and whose number came from software
+  nobody chose.
+- **Citation metadata** (`CITATION.cff`). Every release from here on is
+  archived and assigned a DOI, so the file is a release artifact: a test fails
+  if its version is not the version being released, or if its release date is
+  in the future.
 - **A manifest can now say which configuration produced the numbers**
   (`environment`, section 3.8 of the manifest specification). The field existed
   in the published specification and in the schema, and nothing in MapSmith

@@ -241,6 +241,59 @@ def test_the_citation_file_matches_the_released_version():
     assert "mapsmith-ai/MapSmith" in citation, "repository-code does not point at this repository"
 
 
+def test_the_archive_metadata_uses_a_licence_identifier_zenodo_resolves():
+    """SPDX and Zenodo disagree about case, and nothing warns you.
+
+    CFF requires SPDX identifiers, written `AGPL-3.0-or-later`. Zenodo's licence
+    vocabulary is keyed lowercase and returns 404 on anything else, so citation
+    metadata that is correct by its own standard names a licence the archive
+    cannot resolve, and the release is archived without it.
+
+    That is why this file exists rather than letting CITATION.cff speak for
+    itself. Its sibling repositories learned the same thing twice: a list of
+    licences where one string was required, then a capital letter.
+    """
+    import json
+
+    metadata = json.loads((ROOT / ".zenodo.json").read_text(encoding="utf-8"))
+    licence = metadata.get("license")
+
+    assert isinstance(licence, str), (
+        f"license must be a single string, got {type(licence).__name__}: {licence!r}"
+    )
+    assert licence == licence.lower(), (
+        f"Zenodo's licence identifiers are lowercase and it 404s on anything "
+        f"else; {licence!r} would not resolve"
+    )
+
+
+def test_the_archive_metadata_does_not_contradict_the_rest_of_the_release():
+    """Zenodo ignores CITATION.cff entirely when .zenodo.json is present, so the
+    two carry the same facts twice and nothing at release time notices them
+    drifting. This is the cost of the fix above, paid here."""
+    import json
+
+    from mapsmith import __version__
+
+    metadata = json.loads((ROOT / ".zenodo.json").read_text(encoding="utf-8"))
+    citation = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
+
+    assert metadata["version"] == __version__, (
+        f".zenodo.json archives {metadata['version']} while the package is "
+        f"{__version__}. Zenodo reads this file from inside the tag, so a "
+        f"release cannot correct it afterwards."
+    )
+    title = re.search(r'^title:\s*"(.+)"', citation, re.MULTILINE)
+    assert title and metadata["title"] == title.group(1), (
+        f".zenodo.json titles the record {metadata['title']!r}; CITATION.cff "
+        f"says {title.group(1) if title else None!r}"
+    )
+    for creator in (c["name"] for c in metadata["creators"]):
+        assert creator in citation, (
+            f".zenodo.json credits {creator!r}, absent from CITATION.cff"
+        )
+
+
 def test_the_registry_ownership_proof_is_in_every_place_it_is_read_from():
     """The MCP Registry proves ownership by matching one string in three
     artifacts: the README marker it reads from the repository, the Dockerfile
