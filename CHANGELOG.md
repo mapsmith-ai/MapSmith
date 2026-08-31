@@ -8,6 +8,41 @@ All notable changes to MapSmith are documented here, in the format of
 
 ### Added
 
+- **A manifest can now say which configuration produced the numbers**
+  (`environment`, section 3.8 of the manifest specification). The field existed
+  in the published specification and in the schema, and nothing in MapSmith
+  could produce it — a whole section describing something the reference
+  implementation could not do.
+
+  What made it concrete: a GeoTIFF and the `.aux.xml` beside it can declare
+  different georeferencing, and GDAL prefers the sidecar by documented design,
+  because that is how somebody overrides georeferencing they know to be wrong.
+  Both readings are the library behaving exactly as written. On one fixture the
+  same file gives 40,000 m² or 160,000 m² and an origin a hundred kilometres
+  apart, and until now nothing MapSmith wrote could say which of the two it
+  read. There is nothing upstream to fix and everything to state.
+
+  So: `describe_dataset` reports both sources when a raster has two, and an
+  operation that *computes* from the georeferencing refuses instead, naming
+  both and saying how to choose. That split is the multi-layer refusal (#29)
+  applied to a second axis — the format's default answers a question the caller
+  never asked, and a manifest could not honestly say which data produced the
+  numbers. Describing is different from computing: a file with two
+  georeferencings is a thing to be told about.
+
+  The field is filled where a manifest becomes a file rather than in
+  `verify.audited`, and the difference matters: seventeen writers of fifty-seven
+  build their record by hand and never reach `audited`, and they are
+  concentrated in raster — exactly where georeferencing decides the numbers.
+  Empty when there is nothing to say, because a field that appears on every
+  operation is a field its reader learns to skip.
+- **Redaction now reads dictionary keys, not only values.** Adding a field that
+  holds environment variables exposed a gap that was never about that field:
+  `{"AWS_SECRET_ACCESS_KEY": "AKIA…"}` passed through untouched, because the
+  scanner looks for `name=value` *inside a string* and in a dictionary the name
+  is the key. That was true of every dictionary a manifest carries. Bare `key`
+  stays off the list on purpose — `sort_key` and `primary_key` are ordinary
+  field names, and a mask that fires on those teaches its reader to distrust it.
 - **`select_features` and `extract_layer`: two remedies MapSmith was already
   recommending without offering.** The mixed-geometry warning said *select the
   features the question is about*; the multi-layer refusal said *extract the

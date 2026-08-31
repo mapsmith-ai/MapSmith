@@ -84,6 +84,15 @@ _VALUE = (
 # that exact form since the first version.
 _OPTIONAL_GAP = "(?:" + _GAP + ")?"
 
+#: A dictionary key that names a credential. Same vocabulary as the assignment
+#: scanner, and the same restraint: bare `key` is deliberately NOT in the list,
+#: because `sort_key`, `primary_key` and `key` itself are ordinary field names,
+#: and a redaction that fires on those teaches its reader to distrust the mask.
+_SECRET_KEY = re.compile(
+    r"(?:^|[_.\-])(?:" + _NAMES + r")(?:$|[_.\-])",
+    re.IGNORECASE,
+)
+
 _SECRET_ASSIGNMENT = re.compile(
     r"(?is)(?P<name>[A-Za-z0-9_.\-]*(?:" + _NAMES + r"))\b"
     r"(?P<sep>" + _OPTIONAL_GAP + r"(?::=|=)" + _OPTIONAL_GAP + r"|" + _GAP + r")"
@@ -163,7 +172,16 @@ def redact_secrets(value: Any) -> Any:
         masked = _QUOTED_PAIR.sub(rf"\g<key>{_QUOTED_REDACTED}", masked)
         return _SECRET_ASSIGNMENT.sub(_mask_assignment, masked)
     if isinstance(value, dict):
-        return {k: redact_secrets(v) for k, v in value.items()}
+        # The KEY is a name too. `{"AWS_SECRET_ACCESS_KEY": "AKIA..."}` used to
+        # pass through untouched, because the scanner looks for `name=value`
+        # INSIDE a string and here the name is not inside the string — it is
+        # the key. The gap belongs to every dict a manifest carries, and
+        # `environment` is simply the field that makes it obvious, holding
+        # environment variables by definition.
+        return {
+            k: REDACTED if _SECRET_KEY.search(str(k)) else redact_secrets(v)
+            for k, v in value.items()
+        }
     if isinstance(value, (list, tuple)):
         return type(value)(redact_secrets(v) for v in value)
     return value
@@ -228,6 +246,28 @@ class ProvenanceRecord:
     repairs: list[dict[str, Any]] = field(default_factory=list)
     # disclosures about how the inputs were handled before the engine saw them
     notes: list[str] = field(default_factory=list)
+    # Section 3.8 of the specification: the configuration that influenced the
+    # result and lives neither in the data nor in the call — a georeferencing
+    # source, a GDAL variable that changes how a file is read, the presence of
+    # a datum grid on this machine.
+    #
+    # It exists because `parameters` holds what the caller asked for and
+    # `engine` holds what computed it, and neither holds the state of the
+    # machine — which can change the number. The same thousand-metre square
+    # measures 1,000,530.603 m2 or exactly 1,000,000 depending on a project
+    # setting that appears in no argument and no output.
+    #
+    # **What goes in it is what a producer KNOWS influenced the result, never a
+    # dump of the environment.** A record that listed forty variables would
+    # bury the one that mattered, and the reader would learn to skip the field.
+    # Empty or absent claims nothing, exactly like an absent `crs_decisions`.
+    #
+    # Argleton trap 030 is the measurement that made this concrete rather than
+    # theoretical: a GeoTIFF and the `.aux.xml` beside it declare different
+    # georeferencing, GDAL prefers the sidecar by documented design, and until
+    # this field existed nothing in a MapSmith manifest could say which of the
+    # two produced the number.
+    environment: dict[str, str] = field(default_factory=dict)
     # `producer` is the spec's field for "the software that emitted this
     # record, as distinct from the engine that computed the result", and until
     # now MapSmith declared its version in a field of its own invention. Both
@@ -273,6 +313,10 @@ class ProvenanceRecord:
         safe_params = redact_secrets(self.parameters)
         safe_decisions = redact_secrets(self.crs_decisions)
         safe_notes = redact_secrets(self.notes)
+        # An environment variable carries a credential as readily as a path
+        # does — `AWS_SECRET_ACCESS_KEY` is an environment variable — so the
+        # field joins the others here rather than being remembered later.
+        safe_environment = redact_secrets(self.environment)
         safe_paths = [redact_secrets(i.path) for i in self.inputs]
         safe_layers = [
             redact_secrets(i.layer) if i.layer is not None else None for i in self.inputs
@@ -287,17 +331,44 @@ class ProvenanceRecord:
             or safe_layers != [i.layer for i in self.inputs]
             or safe_verification != self.verification
             or safe_repairs != self.repairs
+            or safe_environment != self.environment
         )
         self.parameters = safe_params
         self.crs_decisions = safe_decisions
         self.notes = safe_notes
         self.verification = safe_verification
         self.repairs = safe_repairs
+        self.environment = safe_environment
         for record, path, layer in zip(self.inputs, safe_paths, safe_layers, strict=True):
             record.path = path
             record.layer = layer
         if changed:
             self.parameters_redacted = True
+
+    def _record_environment(self) -> None:
+        """Fill `environment` from the inputs, for anything that changed the answer.
+
+        Today that means one thing: a raster georeferenced twice, where GDAL's
+        documented preference for a `.aux.xml` sidecar decides the numbers and
+        nothing else in the record could say so (Argleton trap 030).
+
+        Costs a `stat` per input in the ordinary case — the sidecar check is a
+        file-existence test that returns nothing when there is no second source.
+        Anything already set by the operation is kept: an engine that knows
+        something about its own environment knows it better than this does.
+        """
+        from . import grid
+
+        for entry in self.inputs:
+            try:
+                found = grid.georeferencing_source(entry.path)
+            except Exception:  # noqa: BLE001, S112 — see below
+                # An input that is not a raster has nothing to disambiguate, and
+                # a failure to LOOK is not a finding. Swallowing cannot hide a
+                # defect here: nothing downstream reads a value this did not set.
+                continue
+            for key, value in found.items():
+                self.environment.setdefault(key, value)
 
     def add_verification(self, checks: list[Any]) -> ProvenanceRecord:
         """Attach deterministic check results (objects with .as_dict())."""
@@ -322,6 +393,14 @@ class ProvenanceRecord:
         describes the bytes next to it, and the record could not become the
         predicate of an in-toto attestation, whose subject requires a digest.
         """
+        # Section 3.8, filled here for the same reason redaction runs here: this
+        # is the single point where a manifest becomes a file. `verify.audited`
+        # looked like the place — it is where the invariants are made
+        # unmissable — and it is not: sixteen writers of fifty-seven build their
+        # record by hand, and they are concentrated in raster, which is exactly
+        # where georeferencing decides the numbers. A hook a quarter of the
+        # writers bypass is not a hook.
+        self._record_environment()
         self._redact()
         record = asdict(self)
         if Path(output_path).exists():

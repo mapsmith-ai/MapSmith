@@ -207,3 +207,104 @@ def preserve(source: Any, destination: Any) -> str | None:
         "Dropping it would have made every position derived from the output half "
         "a cell wrong, with nothing in the file to say so."
     )
+
+
+#: GDAL variables that change which georeferencing a raster is read with. Only
+#: these: a manifest that listed forty variables would bury the one that
+#: mattered, and its reader would learn to skip the field.
+GEOREF_VARIABLES = ("GDAL_PAM_ENABLED", "GDAL_GEOREF_SOURCES")
+
+
+def georeferencing_source(path: str) -> dict[str, str]:
+    """Which georeferencing produced the numbers, when more than one exists.
+
+    A `.aux.xml` beside a raster georeferences it too, and GDAL prefers the
+    sidecar over the file's own tags by documented design — a sidecar is how
+    somebody corrects georeferencing they know to be wrong, so an override that
+    lost to the thing it overrides would not be an override.
+
+    Both readings are the library behaving exactly as written, and that is what
+    makes this a field in a record rather than a bug to file. Measured by
+    Argleton trap 030: the same file gives 40 000 m² or 160 000 m² and an origin
+    a hundred kilometres apart, and until this function existed nothing MapSmith
+    wrote could say which.
+
+    Returns the entries for the manifest's `environment` (specification section
+    3.8), and **an empty dict when there is nothing to say** — one georeferencing
+    means nothing outside the data and the call influenced the answer, and a
+    field that fires on every operation is a field nobody reads.
+
+    Costs one extra open, and only on the rare file that has a sidecar at all.
+    """
+    import os
+    from pathlib import Path
+
+    import rasterio
+
+    sidecar = Path(f"{path}.aux.xml")
+    setting = {
+        name: os.environ[name] for name in GEOREF_VARIABLES if os.environ.get(name)
+    }
+    if not sidecar.exists():
+        # Nothing overrides the file. Whatever the variables say, they changed
+        # nothing here, and recording them would be noise dressed as diligence.
+        return {}
+
+    with rasterio.open(path) as used:
+        effective = used.transform
+    with rasterio.Env(GDAL_GEOREF_SOURCES="INTERNAL"), rasterio.open(path) as own:
+        internal = own.transform
+
+    from_sidecar = effective != internal
+    entry = {
+        "georeferencing_source": "sidecar (.aux.xml)" if from_sidecar else "internal",
+        "georeferencing_sidecar_present": sidecar.name,
+        **setting,
+    }
+    if from_sidecar:
+        # The number the other reading would have produced, because "there was
+        # a choice" is weaker than "here is what the other branch says".
+        # Plain decimals, never scientific notation: `5.03e+06` is a northing
+        # nobody can compare with the one in front of them, and this string
+        # exists to be compared.
+        def plain(number: float) -> str:
+            return f"{number:.4f}".rstrip("0").rstrip(".")
+
+        entry["georeferencing_internal_would_give"] = (
+            f"cell {plain(abs(internal.a))} x {plain(abs(internal.e))} at "
+            f"({plain(internal.c)}, {plain(internal.f)})"
+        )
+    return entry
+
+
+def refuse_ambiguous_georeferencing(path: str, operation: str) -> dict[str, str]:
+    """Raise when two georeferencings claim the same raster and nobody chose.
+
+    The twin of `readers.refuse_ambiguous_container` (issue #29), on a different
+    axis and for the same reason. There, GDAL's default is the first layer of a
+    container; here it is the sidecar over the file's own tags. Both defaults
+    answer a question the caller never asked, and in both cases a manifest
+    could not honestly say which data produced the numbers.
+
+    Returns the `environment` entry when there is nothing to refuse, so a caller
+    writes one line and gets either the refusal or the record.
+
+    **Describe does not call this**, on purpose. Its whole job is to say what a
+    file is, and a file with two georeferencings is a thing to be told about,
+    not a thing to be refused. Refusing where a number is computed and reporting
+    where a file is described is the same principle applied twice, not two
+    policies.
+    """
+    source = georeferencing_source(path)
+    if not source or source.get("georeferencing_source") == "internal":
+        return source
+    raise ValueError(
+        f"{path} is georeferenced twice and nobody chose: the GeoTIFF's own tags "
+        f"say {source['georeferencing_internal_would_give']}, and "
+        f"{source['georeferencing_sidecar_present']} beside it says something else. "
+        "GDAL prefers the sidecar, which is correct — that is how an override "
+        f"works — but {operation} would then report numbers from a file you did "
+        "not name, and this record could not say which. describe_dataset lists "
+        "both. To choose, either remove the sidecar or set "
+        "GDAL_GEOREF_SOURCES=INTERNAL for a run that must use the file's own."
+    )

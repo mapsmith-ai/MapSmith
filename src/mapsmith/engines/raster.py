@@ -103,6 +103,14 @@ def describe(path: str) -> dict[str, Any]:
                 "maxy": float(top),
             },
             "bands": bands,
+            # Which georeferencing produced the numbers above, when the file is
+            # not the only thing claiming to georeference itself. Describe is
+            # the operation whose whole job is to say what a file IS, so a
+            # second georeferencing is exactly the kind of thing it has to
+            # mention — and it writes no manifest, so there is nowhere else it
+            # could. Absent when there is only one source, because a key that
+            # appears on every raster is a key nobody reads.
+            **({"georeferencing": source} if (source := grid.georeferencing_source(path)) else {}),
         }
 
 
