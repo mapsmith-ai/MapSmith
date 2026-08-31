@@ -24,7 +24,8 @@ versions, and the deterministic checks that ran on the result.
 The manifest is a [specified format](https://github.com/mapsmith-ai/manifest-spec), not
 MapSmith's private output: JSON Schema, a toolchain-free validator, a conformance suite, and a
 hundred-line emitter that never imports MapSmith. Records carry `spec_version`, and CI validates
-real MapSmith output against the spec's own validator.
+real MapSmith output against the spec's own validator. The specification is archived and citable
+as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213).
 
 Evidence before promises: an [A/B on GABench](docs/benchmarks.md) whose headline is a null
 result — with the analysis that took our own positive number apart — a correctness suite in
