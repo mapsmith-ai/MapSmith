@@ -736,7 +736,6 @@ def test_a_crash_writes_a_manifest_the_published_validator_accepts(tmp_path):
     this release did not inherit the pattern. The conformance sweep could not
     see it because it exercises only the paths that succeed.
     """
-    import importlib.util
     import json
     from pathlib import Path
 
@@ -758,14 +757,11 @@ def test_a_crash_writes_a_manifest_the_published_validator_accepts(tmp_path):
     assert manifest["verification"], "a crash wrote a record with no checks"
     assert manifest["verification"][0]["passed"] is False
 
-    # Against the specification's own validator, vendored from the published
-    # repository rather than reimplemented here.
-    spec = importlib.util.spec_from_file_location(
-        "spec_validator", Path(__file__).parent / "data" / "manifest_spec_validator.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    assert module.problems(manifest) == [], module.problems(manifest)
+    # BOTH implementations, via the helper this file already has. The first
+    # version of this test used only the vendored validator — the lenient one of
+    # the two — which is the thing `_spec_problems`'s own docstring forbids, and
+    # a `pipeline: null` divergence between them was live at the time.
+    assert _spec_problems(manifest) == [], _spec_problems(manifest)
 
 
 def test_an_operation_that_verifies_nothing_raises_rather_than_writing(tmp_path):

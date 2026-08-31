@@ -179,7 +179,27 @@ def problems(record: object) -> list[str]:
         # section 7 faults other formats for.
         if _optional(out, decisions, "transformation", dict, "crs_decisions"):
             shift = decisions["transformation"]
-            _optional(out, shift, "pipeline", str, "crs_decisions.transformation")
+            # `pipeline` is NULLABLE, like `source_crs` above and `accuracy_m`
+            # below: PROJ does not always give a pipeline string for a
+            # transformation it performed. This used to be `_optional(..., str)`,
+            # the only nullable field in this file written the non-nullable way,
+            # and the schema said `["string", "null"]` — so the two
+            # implementations disagreed, and section 3 says the schema wins.
+            #
+            # The record that exposed it is not exotic: a reprojection from
+            # EPSG:4267 to EPSG:4326, which is the NAD27-to-WGS84 pair section
+            # 3.7 uses as its headline example. The conformance suite did not
+            # see it for two reasons, both now closed: it mutated
+            # `crs_decisions.transformation` as a container and never descended
+            # into the three keys draft.3 added, and it only ever checked that
+            # both implementations REJECT a bad value, never that both ACCEPT a
+            # permitted one — and null on a nullable field is exactly that case.
+            if shift.get("pipeline") is not None and not isinstance(
+                shift["pipeline"], str
+            ):
+                out.append(
+                    "`crs_decisions.transformation.pipeline` must be a string or null"
+                )
             _optional(out, shift, "is_ballpark", bool, "crs_decisions.transformation")
             accuracy = shift.get("accuracy_m")
             # `isinstance(True, int)` is True in Python, and a boolean accuracy is

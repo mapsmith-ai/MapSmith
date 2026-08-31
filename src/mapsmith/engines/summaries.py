@@ -394,11 +394,32 @@ def _same_value(left: Any, right: Any) -> bool:
     """
     import pandas as pd
 
-    left_missing = left is None or (not isinstance(left, str) and pd.isna(left))
-    right_missing = right is None or (not isinstance(right, str) and pd.isna(right))
+    def missing(value: Any) -> bool:
+        # `pd.isna` on a list or an array returns an ARRAY, and `if a or b` on
+        # one raises "the truth value of an array is ambiguous". List columns are
+        # ordinary in GeoParquet, and the plain `!=` this replaced handled them —
+        # so the null fix broke a case that worked. Anything list-shaped is
+        # present by definition: it holds values.
+        if value is None:
+            return True
+        if isinstance(value, str | bytes | list | tuple | set | dict):
+            return False
+        try:
+            return bool(pd.isna(value))
+        except (TypeError, ValueError):
+            # An ndarray, or anything else pandas cannot reduce to one boolean.
+            return False
+
+    left_missing, right_missing = missing(left), missing(right)
     if left_missing or right_missing:
-        return bool(left_missing and right_missing)
-    return bool(left == right)
+        return left_missing and right_missing
+    try:
+        return bool(left == right)
+    except (TypeError, ValueError):
+        # Two arrays compare elementwise; fall back to their representations
+        # rather than raising inside a comparison that is meant to answer yes
+        # or no.
+        return repr(left) == repr(right)
 
 
 def compare_layers(
@@ -514,7 +535,17 @@ def compare_layers(
             # loosening the comparison to 5 m got a stricter one: two polygons
             # of identical shape differing by a collinear vertex came back
             # unchanged at 0 and changed at 5.
-            differs = not left_geometry.equals(right_geometry) and distance > tolerance
+            # Zero tolerance means exact geometric equality and nothing else.
+            # Gating on the distance unconditionally made zero WEAKER than the
+            # docstring promises, because GEOS's Hausdorff distance is the
+            # DISCRETE one — vertices of each against the other — so it is 0.0
+            # for a line and the same line with a stretch missing in the middle:
+            # every vertex still coincides. A road that lost two metres came
+            # back identical. Second attempt at this fix; the first traded one
+            # wrong answer for another.
+            differs = not left_geometry.equals(right_geometry) and (
+                tolerance == 0 or distance > tolerance
+            )
         if differs:
             moved.append(key)
             moved_by = max(moved_by, float(distance))

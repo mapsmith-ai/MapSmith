@@ -129,6 +129,19 @@ EXTENSION_STATEMENTS = [
     "LOAD 'spatial'",
     "-- harmless\nINSTALL aws",
     "INSTALL /tmp/evil.duckdb_extension",
+    # The two an audit walked past on the first version of this policy, both
+    # confirmed to reach the real INSTALL/LOAD in DuckDB. The suite was green
+    # over an exploitable policy because every case used a canonical spelling.
+    #
+    # Dollar quoting: the name character class had no `$`.
+    "LOAD $$aws$$",
+    "INSTALL $$inet$$",
+    # A `--` inside a STRING LITERAL. `strip_comments` treated it as a comment
+    # and deleted the rest, so the scanner saw `"SELECT ' "` while DuckDB
+    # executed all three statements. Not fixable by a better regex: finding
+    # statement boundaries in SQL with string literals is parsing.
+    "SELECT '--' AS x; LOAD aws; SELECT 1",
+    "SELECT '/*' AS x; INSTALL aws",
 ]
 
 
@@ -159,13 +172,28 @@ def test_installing_or_loading_an_extension_is_refused(query):
         "SELECT * FROM duckdb_extensions()",
         "SELECT payload FROM downloads WHERE name = 'installer'",
         "CREATE TABLE loads AS SELECT 1",
+        # These four are the ones that mattered, and the first version of this
+        # test had none of them: it stated the principle and exercised only
+        # cases that never came close. `load` is an everyday column name —
+        # sediment load, nutrient load, traffic load — and all four came back
+        # refused as loading an extension called "FROM", "DESC" or "IS".
+        "SELECT load FROM sediment",
+        "SELECT id FROM t ORDER BY load DESC",
+        "SELECT a FROM t WHERE b = 1 AND load IS NULL",
+        "SELECT * FROM t WHERE note = 'INSTALL aws'",
     ],
 )
 def test_ordinary_sql_is_not_refused_for_mentioning_a_word(query):
     """Keyed on the statement, not on a word appearing in it. A guard that
-    refuses `SELECT * FROM duckdb_extensions()` teaches its reader to work
-    around it."""
+    refuses `SELECT load FROM sediment` teaches its reader to work around it,
+    which costs more than the guard is worth."""
     sql_policy.refuse_extension_loading_in_sql(query)
+
+
+def test_an_extension_statement_after_a_semicolon_is_still_caught():
+    """Anchoring to statement position must not create a way past it."""
+    with pytest.raises(ValueError, match="(?i)extension"):
+        sql_policy.refuse_extension_loading_in_sql("SELECT 1; INSTALL aws")
 
 
 def test_an_extension_named_in_the_environment_is_allowed(monkeypatch):
@@ -191,3 +219,71 @@ def test_the_refusal_says_how_to_allow_it():
     assert sql_policy.ALLOW_EXTENSIONS in message
     assert "postgres" in message
     assert "already loaded keep working" in message
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "INSTALL aws",
+        "LOAD aws",
+        "LOAD 'aws'",
+        'LOAD "aws"',
+        "LOAD $$aws$$",
+        "FORCE INSTALL aws",
+    ],
+)
+def test_an_allowed_extension_is_allowed_in_every_spelling(query, monkeypatch):
+    """The half that catches an over-strict unquote.
+
+    Without stripping the quoting, `LOAD $$aws$$` yields the name `$$aws$$`,
+    which is not in the allow-list — so it stays refused, and a test that only
+    checks refusal cannot tell a correct policy from one that refuses an
+    extension the operator explicitly permitted. Sabotaging `_unquote` left the
+    first version of these tests green for exactly that reason.
+    """
+    monkeypatch.setenv(sql_policy.ALLOW_EXTENSIONS, "aws")
+    sql_policy.refuse_extension_loading_in_sql(query)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        # A `--` inside a STRING LITERAL. `strip_comments` treated it as a
+        # comment and deleted the rest, so the scanner saw `"SELECT ' "` for a
+        # query that went on to create a secret. Sixth escape, same root cause
+        # as the extension bypass found the same day: stripping comments from
+        # SQL is parsing, and a scan cannot do it.
+        (
+            "SELECT '--' AS x; CREATE SECRET s (TYPE http, "
+            "EXTRA_HTTP_HEADERS MAP{'Authorization':'Bearer LEAK'})"
+        ),
+        "SELECT '/*' AS x; CREATE SECRET s (TYPE S3, SECRET 'shh')",
+    ],
+)
+def test_a_comment_marker_inside_a_string_literal_does_not_hide_a_secret(query):
+    """The rules now run over the raw text as well as the stripped one.
+
+    Fail closed: if either reading matches, refuse. A credential word inside a
+    real comment now costs a caller one rewritten comment; the other direction
+    cost a credential.
+    """
+    with pytest.raises(ValueError, match="(?i)refuses"):
+        sql_policy.refuse_credentials_in_sql(query)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT secret_count FROM audit",
+        "SET memory_limit = '1GB'",
+        "CALL load_aws_credentials()",
+        "SELECT 1",
+    ],
+)
+def test_honest_work_still_runs_after_the_raw_text_pass(query):
+    """Adding a second pass over the raw text must not start refusing work.
+
+    These four are the cases the module header names as the ones that decide
+    whether the policy survives contact with users.
+    """
+    sql_policy.refuse_credentials_in_sql(query)

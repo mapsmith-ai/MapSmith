@@ -75,7 +75,21 @@ def registration(dataset: Any) -> str:
     answer, and pretending otherwise is what made it silent.
     """
     if isinstance(dataset, str):
-        return dataset if dataset in OFFSET else "area"
+        kind = dataset.strip().lower()
+        if kind not in OFFSET:
+            # The same policy as the closed-dataset guard below, and for the
+            # same reason. A path is the natural mistake — every other entry
+            # point in this module takes one — and so is passing "Point", the
+            # literal GDAL writes and `preserve` writes back. Answering "area"
+            # to either makes `preserve` a silent no-op, which is the
+            # fifteen-metres-on-a-30 m-DEM defect this module exists to prevent.
+            raise ValueError(
+                f"registration() got {dataset!r}, which is neither 'area' nor "
+                "'point'. Pass an open dataset, or the string registration() "
+                "returned for one — a path is not an answer, and neither is the "
+                "AREA_OR_POINT tag's own spelling."
+            )
+        return kind
     if getattr(dataset, "closed", False):
         raise ValueError(
             "registration() was asked about a closed raster. Read it inside the "
@@ -263,17 +277,20 @@ def georeferencing_source(path: str) -> dict[str, str]:
     import os
     from pathlib import Path
 
+    sidecar = Path(f"{path}.aux.xml")
+    if not sidecar.exists():
+        # Checked BEFORE importing rasterio. This function is called at the top
+        # of nine raster operations, and importing an optional dependency here
+        # turned a missing extra into a bare ImportError instead of the sentence
+        # naming what to install. Nothing overrides the file, so there is
+        # nothing to open and nothing to say.
+        return {}
+
     import rasterio
 
-    sidecar = Path(f"{path}.aux.xml")
     setting = {
         name: os.environ[name] for name in GEOREF_VARIABLES if os.environ.get(name)
     }
-    if not sidecar.exists():
-        # Nothing overrides the file. Whatever the variables say, they changed
-        # nothing here, and recording them would be noise dressed as diligence.
-        return {}
-
     with rasterio.open(path) as used:
         effective, effective_crs = used.transform, used.crs
     with rasterio.Env(GDAL_GEOREF_SOURCES="INTERNAL"), rasterio.open(path) as own:
@@ -290,11 +307,25 @@ def georeferencing_source(path: str) -> dict[str, str]:
     transform_differs = effective != internal
     crs_differs = not _same_crs(effective_crs, internal_crs)
     from_sidecar = transform_differs or crs_differs
+    # A plain image plus an `.aux.xml` carrying SRS and GeoTransform is the
+    # documented GDAL way to georeference something that has none. There is one
+    # georeferencing there, not two, so there is nothing for anybody to choose
+    # and nothing to refuse — and the refusal's own remedy ("remove the sidecar
+    # or read the file's own") would have destroyed or ignored the only
+    # georeferencing that exists. The field still records that the sidecar
+    # supplied it, because that is worth knowing.
+    internal_absent = internal_crs is None and internal.is_identity
     entry = {
         "georeferencing_source": "sidecar (.aux.xml)" if from_sidecar else "internal",
         "georeferencing_sidecar_present": sidecar.name,
         **setting,
     }
+    if internal_absent:
+        entry["georeferencing_supplied_by_sidecar"] = (
+            "the file carries no georeferencing of its own, so the sidecar is the "
+            "only one there is and nothing was overridden"
+        )
+        return entry
     if from_sidecar:
         # The number the other reading would have produced, because "there was
         # a choice" is weaker than "here is what the other branch says".
@@ -332,15 +363,37 @@ def _same_crs(left: Any, right: Any) -> bool:
         return False
 
 
+#: How much of an authority-less CRS's own text may reach a manifest. The name
+#: inside `PROJCS["..."]` is chosen by whoever wrote the file or its sidecar, and
+#: this string goes into `environment`, which SECURITY.md invites people to
+#: attach to a bug report and which downstream agents read. An audit put 800
+#: characters of prompt-injection prose, a filesystem path and a connection
+#: string in a CRS name and watched them arrive intact. Redaction is the right
+#: second layer for the credential-shaped part of that and no bound at all for
+#: the rest.
+_CRS_NAME_LIMIT = 80
+
+
 def _crs_name(crs: Any) -> str:
-    """A short, comparable name for a CRS, or a word saying it has none."""
+    """A short, comparable name for a CRS, or a word saying it has none.
+
+    Prefers the authority code, which no file can choose. Falls back to the
+    CRS's own text, truncated: see `_CRS_NAME_LIMIT`.
+    """
     if crs is None:
         return "none declared"
     try:
         code = crs.to_epsg()
-        return f"EPSG:{code}" if code else (crs.to_string() or "an unnamed CRS")
+        if code:
+            return f"EPSG:{code}"
+        text = (crs.to_string() or "").strip()
     except Exception:  # noqa: BLE001 - a CRS that cannot name itself
         return "an unnamed CRS"
+    if not text:
+        return "an unnamed CRS"
+    if len(text) > _CRS_NAME_LIMIT:
+        return f"{text[:_CRS_NAME_LIMIT]}… (truncated, {len(text)} characters)"
+    return text
 
 
 def refuse_ambiguous_georeferencing(path: str, operation: str) -> dict[str, str]:
@@ -363,6 +416,12 @@ def refuse_ambiguous_georeferencing(path: str, operation: str) -> dict[str, str]
     """
     source = georeferencing_source(path)
     if not source or source.get("georeferencing_source") == "internal":
+        return source
+    if "georeferencing_supplied_by_sidecar" in source:
+        # One georeferencing, supplied rather than overridden. Recorded, not
+        # refused: refusing here asserted the file was georeferenced twice when
+        # it was georeferenced once, and offered a remedy that would have thrown
+        # away the only georeferencing there was.
         return source
     raise ValueError(
         f"{path} is georeferenced twice and nobody chose: the GeoTIFF's own tags "

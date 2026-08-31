@@ -396,7 +396,7 @@ class ProvenanceRecord:
         # Section 3.8, filled here for the same reason redaction runs here: this
         # is the single point where a manifest becomes a file. `verify.audited`
         # looked like the place — it is where the invariants are made
-        # unmissable — and it is not: sixteen writers of fifty-seven build their
+        # unmissable — and it is not: seventeen writers of fifty-seven build their
         # record by hand, and they are concentrated in raster, which is exactly
         # where georeferencing decides the numbers. A hook a quarter of the
         # writers bypass is not a hook.

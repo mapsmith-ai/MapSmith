@@ -132,8 +132,10 @@ This block is checked against the specification's own validator by
 had an example without one for two releases — and this is the record a third-party
 implementer copies.
 
-The full manifest also carries the verification checks that ran, and any geometry MapSmith
-had to repair. `get_provenance` returns it for any output.
+Trimmed for the page, not for the file: the real record also carries the output's own path
+and hash, any geometry MapSmith had to repair, and the notes it made about how the inputs
+were handled — and every check says whether it was critical and, when it failed, what to do
+about it. `get_provenance` returns it for any output.
 
 ## Why MapSmith
 
@@ -639,22 +641,32 @@ reading it as `EPSG:<n>` would be inventing a coordinate system and recording it
 ArcPy on a machine that has ArcGIS Pro installed, through a subprocess and files, because
 ArcPy lives in Pro's own interpreter. MapSmith ships no part of it and takes no licence to
 look: what a session can reach is read from the metadata the installer left on disk, and
-reported when the session opens rather than at the first failure.
+`server_info` reports it, so a caller learns it before planning five steps around it rather
+than at the first failure.
 
 The rule that makes the choice worth making is what happens at the edges. When the chosen
 stack cannot do something, MapSmith says which of three things is true — there is no such
 tool, this licence tier does not include it, or it would need an online service — because
-those lead to three different decisions and one word for all of them leads to none.
-Substitution then happens only where it was asked for, and the manifest names the engine
-that actually produced the numbers and why the preferred one did not run. An engine
-quietly replaced by another is a record that is true and a number nobody chose.
+those lead to three different decisions and one word for all of them leads to none. Where a
+route exists and cannot run, the manifest names the engine that actually produced the
+numbers and why the preferred one did not: an engine quietly replaced by another is a record
+that is true and a number nobody chose.
+
+**One operation is routed today: `buffer_layer`.** Everything else runs on the open source
+stack whatever `MAPSMITH_STACK` says. That is the state of the wiring rather than a property
+of the design, and it is written here because the alternative was a defect: a table
+declaring three routes while one operation consulted the router meant requesting the stack
+ran two of them elsewhere with nothing in the manifest saying so. It was fixed before this
+release by shortening the table, not the sentence.
 
 Two things this is not. It is not a comparison: MapSmith calls what you have installed, and
 this repository publishes no scores for anybody's engine but the ones
-[Argleton](https://argleton.org) grades in public. And it is not equivalence: the bindings
-that exist were admitted by measuring both stacks on the same fixture, and the geometry
-matching is not the whole story — one of them drops every attribute, which is why the
-schema difference goes in the manifest instead of a reassuring sentence.
+[Argleton](https://argleton.org) grades in public. And it is not equivalence: two further
+operations were measured against both stacks on the same fixture and deliberately left
+unrouted, because matching geometry is not the whole story — on a dissolve the other stack
+drops every attribute, so a pipeline that dissolves and then reads a column would find the
+column on one stack and nothing on the other. That is a difference to record before it is a
+route to offer.
 
 ## Verification, in and out
 
@@ -690,11 +702,20 @@ somebody overrides georeferencing they know to be wrong. Both readings are the l
 behaving exactly as written, and on one fixture the same file gives an area four times
 larger and an origin a hundred kilometres away. There is nothing upstream to fix and
 everything to state, so `describe_dataset` reports both sources when a raster has two, and
-an operation that *computes* from the georeferencing refuses instead, naming both and
-saying how to choose. Describing is different from computing: a file with two
-georeferencings is a thing to be told about, not a coin to flip. This is the multi-layer
-refusal ([#29](https://github.com/mapsmith-ai/MapSmith/issues/29)) on a second axis — the
-format's default answering a question the caller never asked.
+**nine operations that read a raster's grid directly refuse instead** — zonal statistics,
+resampling, clipping, reclassification, band maths, reprojection, band extraction, band
+statistics and locating an extreme cell — naming both readings and saying how to choose.
+Describing is different from computing: a file with two georeferencings is a thing to be
+told about, not a coin to flip. This is the multi-layer refusal
+([#29](https://github.com/mapsmith-ai/MapSmith/issues/29)) on a second axis — the format's
+default answering a question the caller never asked.
+
+The terrain and sampling operations do not refuse yet, and saying "any operation that
+computes" would be the promise-with-no-caller this release already found once: the terrain
+engine catches the same file by a different route, because it compares its own reading of
+the grid against GDAL's and stops when they differ, but its message names neither the
+sidecar nor the way out. Sampling a raster at points does not catch it at all. Extending the
+refusal to the remaining raster operations is on the roadmap below.
 
 ## See results inside the chat
 
@@ -762,9 +783,9 @@ Set `MAPSMITH_WORKSPACE=/data` to confine the server to one directory:
 - the `run_sql` DuckDB connection is sandboxed in the engine itself, because SQL text is
   out of reach of a textual path check: filesystem whitelisted to the workspace
   (`allowed_directories` + external access off, which also covers GDAL-backed `ST_Read`),
-  extension install and load refused, memory and temp disk capped
-  (`MAPSMITH_DUCKDB_MEMORY`, default 4GB; `MAPSMITH_DUCKDB_TEMP_LIMIT`, default 8GB),
-  configuration locked. SQL can name any path it likes; the engine refuses to open it.
+  memory and temp disk capped (`MAPSMITH_DUCKDB_MEMORY`, default 4GB;
+  `MAPSMITH_DUCKDB_TEMP_LIMIT`, default 8GB), configuration locked. SQL can name any path it
+  likes; the engine refuses to open it.
 
 `MAPSMITH_DISCOVERY_LOG` is the one path MapSmith writes to that no tool argument names,
 so it goes through the same check: outside the workspace it is refused, and the refusal
@@ -772,10 +793,18 @@ disables the log and says so on stderr rather than failing the search that trigg
 
 Without a workspace, *file* access is deliberately unconfined — fine for a local stdio
 server on your own files — and plan validation flags `run_sql` steps with a
-`SQL_NOT_SANDBOXED` warning. Code execution is still closed: extension autoloading and
-community extensions are off (`shellfs` turns a filename into a shell command), unsigned
-extensions are refused, DuckDB's HTTP and S3 filesystems are disabled, and the
-configuration is locked, so untrusted SQL cannot turn file access into code execution.
+`SQL_NOT_SANDBOXED` warning. Code execution is closed **in both modes**, and since 0.4.0 the
+layer that closes it is the right one: `INSTALL` and `LOAD` in a statement are refused
+outright, because an `INSTALL` is an HTTPS fetch of a native binary run in this process on
+SQL a model wrote. Until 0.4.0 only the *implicit* forms were off, and an audit installed
+DuckDB's `aws` extension and read this machine's real cloud credentials back through a tool
+result — the whole story is in [SECURITY.md](SECURITY.md), including why none of the four
+existing layers saw it. Extensions already loaded keep working, `spatial` included; to
+acquire others, name them where the agent cannot reach:
+**`MAPSMITH_ALLOW_EXTENSIONS=postgres,azure`** in the environment of the process that starts
+the server. Behind that, community extensions stay off (`shellfs` turns a filename into a
+shell command), unsigned extensions are refused, DuckDB's HTTP and S3 filesystems are
+disabled, and the configuration is locked.
 
 **The network is closed too, unless you open it.** Remote and virtual forms — GDAL
 `/vsi*`, `https://` COGs — are refused by default in path arguments *and* inside `run_sql`
@@ -791,7 +820,8 @@ and what is explicitly *not* covered — is in [SECURITY.md](SECURITY.md).
 Fine print, because it changes how you deploy this: the path jail assumes a single trusted
 writer of the workspace filesystem (paths are resolved at check time, so a symlink swap by
 another local process is out of scope); the DuckDB spatial extension is fetched once per
-environment, so on air-gapped machines pre-install it (`python -c "import duckdb;
+environment by MapSmith itself, through the Python API rather than by any statement, so on
+air-gapped machines pre-install it (`python -c "import duckdb;
 duckdb.connect().install_extension('spatial')"`) before locking the network down; and the
 HTTP transport has no authentication in this release, so keep it on loopback or a trusted
 network. For real isolation, run the container and mount only the data you want it to see.
@@ -1005,6 +1035,7 @@ Next, in the order we intend to do it. The linked items carry a written spec —
 - [x] Slope and aspect (Whitebox, closed-form tested; geographic-CRS DEMs refused)
 - [x] Stream network extraction (Whitebox, from a flow-accumulation grid; the threshold and its unit recorded in the manifest)
 - [x] More terrain & hydrology: curvature (six kinds, the kind required because profile and plan answer opposite questions), flow direction (d8/rho8/dinf/fd8, with the direction-code **table** written into the manifest — the engine's own manual documents its default table backwards, so a name would not have been enough), Euclidean distance and IDW interpolation
+- [ ] The ambiguous-georeferencing refusal on **every** raster operation rather than the nine that read the grid directly. The terrain engine stops on the same file for a different reason — its own reading of the grid disagrees with GDAL's — and its message names neither the sidecar nor the way out; sampling a raster at points does not stop at all
 - [ ] Map panel: MapLibre vector rendering, and an export of the panel as a self-contained HTML file you host yourself (raster OSM tiles already ship). No hosted viewer — MapSmith runs on your machine and we would rather not own your maps
 - [ ] [Sandboxed code-execution tool](https://github.com/mapsmith-ai/MapSmith/issues/7) for the long tail
 - [ ] QGIS Processing sidecar (subprocess-isolated): ~900 algorithms. By far the largest item on this list — parameter mapping and error handling for an external process, not an afternoon

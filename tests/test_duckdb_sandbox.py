@@ -366,3 +366,38 @@ def test_run_sql_still_answers_a_spatial_question():
         "SELECT ST_Area(ST_GeomFromText('POLYGON((0 0,10 0,10 10,0 10,0 0))')) AS a"
     )
     assert result["rows"][0][0] == 100.0
+
+
+def test_run_sql_refuses_the_two_spellings_that_walked_past_the_first_policy():
+    """Through the tool, on the vectors an audit actually used.
+
+    Both reached the real INSTALL/LOAD in DuckDB against the first version of
+    this policy: one downloaded a 22 MB native extension binary over HTTPS, the
+    other made `run_sql` return this machine's real cloud access key id. The
+    suite was green throughout, because every test vector used a canonical
+    spelling.
+    """
+    import pytest as _pytest
+
+    for query in (
+        "LOAD $$httpfs$$; LOAD $$aws$$; SELECT * FROM load_aws_credentials()",
+        "INSTALL $$inet$$",
+        "SELECT '--' AS x; LOAD aws; SELECT 1",
+    ):
+        with _pytest.raises(ValueError, match="(?i)extension"):
+            duckdb_engine.run_sql(query)
+
+
+def test_run_sql_does_not_refuse_a_column_called_load():
+    """The other direction, through the tool.
+
+    `load` is an everyday column name — sediment load, nutrient load, traffic
+    load — and the scanning version refused all of these as loading an extension
+    called "FROM", "DESC" or "IS".
+    """
+    for query in (
+        "SELECT 1 AS load",
+        "SELECT * FROM (SELECT 3 AS load) t ORDER BY load DESC",
+        "SELECT * FROM (SELECT NULL AS load) t WHERE load IS NULL",
+    ):
+        duckdb_engine.run_sql(query)

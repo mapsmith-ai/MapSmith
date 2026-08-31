@@ -121,11 +121,11 @@ def zonal_statistics(
     stats: list[str] | None = None,
 ) -> dict[str, Any]:
     """Statistics of a single-band raster within each vector zone."""
+    exactextract, rasterio = _require()
     # Two georeferencings and nobody chose: refuse rather than compute
     # from a file the caller did not name (D-059). Returns the manifest
     # entry when there is nothing to refuse.
     grid.refuse_ambiguous_georeferencing(raster_path, "zonal_statistics")
-    exactextract, rasterio = _require()
     ops = stats or ["count", "mean", "min", "max"]
     unknown = [s for s in ops if s not in VALID_STATS]
     if unknown:
@@ -253,11 +253,11 @@ def resample(
     for bilinear on land-cover codes silently gets classes that do not exist.
     Neither failure raises anything, so the choice is the caller's to state.
     """
+    rasterio = _require_rasterio()
     # Two georeferencings and nobody chose: refuse rather than compute
     # from a file the caller did not name (D-059). Returns the manifest
     # entry when there is nothing to refuse.
-    grid.refuse_ambiguous_georeferencing(input_path, "resample")
-    rasterio = _require_rasterio()
+    grid.refuse_ambiguous_georeferencing(input_path, "resample_raster")
     import math
 
     from rasterio.enums import Resampling
@@ -479,11 +479,11 @@ def clip_raster(
     warning nobody reads. So the mask is reprojected here, deliberately, and
     the decision is recorded.
     """
+    rasterio = _require_rasterio()
     # Two georeferencings and nobody chose: refuse rather than compute
     # from a file the caller did not name (D-059). Returns the manifest
     # entry when there is nothing to refuse.
     grid.refuse_ambiguous_georeferencing(raster_path, "clip_raster")
-    rasterio = _require_rasterio()
     from rasterio.mask import mask as rio_mask
 
     frame = readers.read_vector(mask_path)
@@ -616,11 +616,11 @@ def reclassify(
     leaving them at their original value, mixes old codes with new ones in the
     same band and is unreadable afterwards.
     """
+    rasterio = _require_rasterio()
     # Two georeferencings and nobody chose: refuse rather than compute
     # from a file the caller did not name (D-059). Returns the manifest
     # entry when there is nothing to refuse.
-    grid.refuse_ambiguous_georeferencing(input_path, "reclassify")
-    rasterio = _require_rasterio()
+    grid.refuse_ambiguous_georeferencing(input_path, "reclassify_raster")
     import numpy as np
 
     parsed: list[tuple[float, float, float]] = []
@@ -771,11 +771,11 @@ def band_math(input_path: str, output_path: str, expression: str) -> dict[str, A
       inheriting the input's integer profile, which would round an index in
       [-1, 1] to zeros and ones on the way to disk.
     """
+    rasterio = _require_rasterio()
     # Two georeferencings and nobody chose: refuse rather than compute
     # from a file the caller did not name (D-059). Returns the manifest
     # entry when there is nothing to refuse.
     grid.refuse_ambiguous_georeferencing(input_path, "band_math")
-    rasterio = _require_rasterio()
     import numpy as np
 
     if not _ALLOWED_EXPRESSION.match(expression):
@@ -925,11 +925,11 @@ def reproject_raster(
     output really is in the CRS that was asked for, and that an interpolating
     method did not put new codes into a categorical raster.
     """
+    rasterio = _require_rasterio()
     # Two georeferencings and nobody chose: refuse rather than compute
     # from a file the caller did not name (D-059). Returns the manifest
     # entry when there is nothing to refuse.
     grid.refuse_ambiguous_georeferencing(input_path, "reproject_raster")
-    rasterio = _require_rasterio()
     import math
 
     from rasterio.enums import Resampling
@@ -1119,11 +1119,11 @@ def extract_band(input_path: str, output_path: str, band: int) -> dict[str, Any]
     downstream can tell, which is the whole reason this refuses instead of
     guessing.
     """
+    rasterio = _require_rasterio()
     # Two georeferencings and nobody chose: refuse rather than compute
     # from a file the caller did not name (D-059). Returns the manifest
     # entry when there is nothing to refuse.
     grid.refuse_ambiguous_georeferencing(input_path, "extract_band")
-    rasterio = _require_rasterio()
 
     with rasterio.open(input_path) as src:
         # Taken while the input is open: a closed dataset used to answer
@@ -1203,11 +1203,11 @@ def band_statistics(input_path: str, band: int | None = None) -> dict[str, Any]:
     cells travels with every statistic so the caller can see what it is a mean
     OF.
     """
+    rasterio = _require_rasterio()
     # Two georeferencings and nobody chose: refuse rather than compute
     # from a file the caller did not name (D-059). Returns the manifest
     # entry when there is nothing to refuse.
     grid.refuse_ambiguous_georeferencing(input_path, "band_statistics")
-    rasterio = _require_rasterio()
 
     with rasterio.open(input_path) as src:
         if band is not None and not 1 <= band <= src.count:
@@ -1277,13 +1277,13 @@ def locate_extreme_cell(
     — and picking the first in scan order and saying nothing turns it into a
     confident single answer.
     """
+    if which not in ("min", "max"):
+        raise ValueError(f"which must be 'min' or 'max', got {which!r}")
+    rasterio = _require_rasterio()
     # Two georeferencings and nobody chose: refuse rather than compute
     # from a file the caller did not name (D-059). Returns the manifest
     # entry when there is nothing to refuse.
     grid.refuse_ambiguous_georeferencing(input_path, "locate_extreme_cell")
-    if which not in ("min", "max"):
-        raise ValueError(f"which must be 'min' or 'max', got {which!r}")
-    rasterio = _require_rasterio()
 
     import numpy as np
 

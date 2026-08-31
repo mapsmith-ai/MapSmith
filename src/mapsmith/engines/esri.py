@@ -60,8 +60,8 @@ from typing import Any
 from .. import readers, stacks, workspace
 
 #: What each operation needs from the Esri side, and what it is called there.
-#: The qualified name matters: 297 of the 2198 installed tools share a bare
-#: name with a tool in another toolbox.
+#: The qualified name matters: on a real installation a substantial minority of
+#: tools share a bare name with a tool in another toolbox.
 #: Keyed by MapSmith's CATALOGUE names, not by convenient ones: the router
 #: passes the operation as the catalogue spells it, and a different key here
 #: means falling back every time with the wrong reason — "no such tool"

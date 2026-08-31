@@ -78,8 +78,16 @@ ALLOW_EXTENSIONS = "MAPSMITH_ALLOW_EXTENSIONS"
 
 #: `INSTALL name` / `LOAD name`, in DuckDB's spellings. `FORCE INSTALL` is one,
 #: and the name can be quoted or a path to a local `.duckdb_extension` file.
+#: Anchored to STATEMENT position — start of input, or after a semicolon. The
+#: first version matched the word anywhere, so `SELECT load FROM sediment` came
+#: back refused as loading an extension called "FROM", and so did `ORDER BY load
+#: DESC` and a string literal mentioning INSTALL. `load` is an everyday column
+#: name: sediment load, nutrient load, traffic load. A guard that refuses
+#: ordinary work teaches its reader to route around it, which costs more than
+#: the guard is worth — and the test that stated exactly that principle had four
+#: cases, none of which exercised it.
 _EXTENSION_STATEMENT = re.compile(
-    r"""(?i)\b(?:FORCE\s+)?(INSTALL|LOAD)\s+(?:["'`]?)([A-Za-z0-9_.:/\-]+)"""
+    r"""(?im)(?:^|;)\s*(?:FORCE\s+)?(INSTALL|LOAD)\s+(?:["'`]?)([A-Za-z0-9_.:/\-]+)"""
 )
 
 
@@ -96,6 +104,73 @@ def allowed_extensions() -> frozenset[str]:
     return frozenset(
         name.strip().lower() for name in raw.split(",") if name.strip()
     )
+
+
+def _extension_statements(query: str) -> list[tuple[str, str]]:
+    """Every INSTALL/LOAD in this SQL, as (verb, extension name).
+
+    Uses **DuckDB's own parser**, not a scan, because a scan lost twice on the
+    same statement in one day. The first version was a regex over
+    `strip_comments(query)`, and an audit walked past it two ways:
+
+        LOAD $$aws$$                          the name class had no `$`
+        SELECT '--' AS x; LOAD aws; SELECT 1  strip_comments saw the `--` INSIDE
+                                              the string literal, deleted the
+                                              rest, and handed the scanner
+                                              "SELECT ' " while DuckDB executed
+                                              all three statements
+
+    The second one is the deeper hole and it is not fixable by a better regex:
+    finding statement boundaries in SQL that has string literals and dollar
+    quoting is parsing, and there is a parser right here. `extract_statements`
+    classifies both cases as `StatementType.LOAD` and leaves
+    `SELECT load FROM sediment` a SELECT, which is the false positive a scan
+    also produced.
+
+    Fails CLOSED. If the parser cannot read the SQL, the statement will fail in
+    DuckDB anyway, but a regex backstop still runs — an unparseable query is not
+    a reason to stop looking.
+    """
+    import duckdb
+
+    found: list[tuple[str, str]] = []
+    try:
+        statements = duckdb.extract_statements(query)
+    except Exception:  # noqa: BLE001 - unparseable SQL: fall back, do not pass
+        statements = None
+
+    if statements is not None:
+        for statement in statements:
+            # DuckDB reports INSTALL and LOAD under one statement type.
+            if not str(statement.type).endswith("LOAD"):
+                continue
+            match = _EXTENSION_NAME.search(statement.query)
+            if match:
+                found.append((match.group(1).upper(), _unquote(match.group(2))))
+        return found
+
+    for match in _EXTENSION_STATEMENT.finditer(strip_comments(query)):
+        found.append((match.group(1).upper(), _unquote(match.group(2))))
+    return found
+
+
+def _unquote(name: str) -> str:
+    """The extension name without whatever was wrapped around it."""
+    stripped = name.strip()
+    for opening, closing in (("$$", "$$"), ("'", "'"), ('"', '"'), ("`", "`")):
+        if stripped.startswith(opening) and stripped.endswith(closing) and len(
+            stripped
+        ) > len(opening) + len(closing) - 1:
+            return stripped[len(opening) : -len(closing)]
+    return stripped
+
+
+#: The name inside a single INSTALL/LOAD statement the parser has already
+#: isolated. Wider than the scanning pattern on purpose: the statement boundary
+#: is no longer this expression's problem, so it can accept dollar quoting.
+_EXTENSION_NAME = re.compile(
+    r"""(?i)\b(?:FORCE\s+)?(INSTALL|LOAD)\s+(\$\$[^$]*\$\$|["'`][^"'`]*["'`]|[A-Za-z0-9_.:/\-]+)"""
+)
 
 
 def refuse_extension_loading_in_sql(query: str) -> None:
@@ -121,8 +196,7 @@ def refuse_extension_loading_in_sql(query: str) -> None:
     the configuration is locked, so no statement has to ask for it.
     """
     allowed = allowed_extensions()
-    for match in _EXTENSION_STATEMENT.finditer(strip_comments(query)):
-        verb, name = match.group(1).upper(), match.group(2)
+    for verb, name in _extension_statements(query):
         if name.lower() in allowed:
             continue
         raise ValueError(
@@ -154,10 +228,19 @@ def refuse_credentials_in_sql(query: str) -> None:
     # and this module is pulled in early by the engines
     from .provenance import redact_secrets
 
-    text = strip_comments(query)
-    for pattern, what in _RULES:
-        match = pattern.search(text)
-        if match:
+    # Both the comment-stripped text AND the raw text, because stripping
+    # comments cannot be done by a scan without a parser: a `--` inside a
+    # STRING LITERAL made this scanner see `"SELECT ' "` for a query that went
+    # on to create a secret, so `SELECT '--' AS x; CREATE SECRET ...` was not
+    # refused. Fail closed — if either reading matches, refuse. The raw text can
+    # produce a false positive on a credential word inside a comment, which
+    # costs a caller one rewritten comment; the other direction costs a
+    # credential.
+    for text in (strip_comments(query), query):
+        for pattern, what in _RULES:
+            match = pattern.search(text)
+            if not match:
+                continue
             # The ATTACH rule matches through the URI userinfo, so the quoted
             # fragment carried the password into the error message — and from
             # there onto disk, since a plan manifest records step errors. The

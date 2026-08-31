@@ -697,6 +697,64 @@ def test_no_vendor_is_named_beside_a_figure():
     )
 
 
+NUMBER_WORDS_TO_INT = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+    "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+    "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16,
+    "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20,
+}
+
+
+def test_the_pages_count_the_operations_that_actually_refuse_an_ambiguous_raster():
+    """A count of callers, stated in prose on two surfaces, counted from src/.
+
+    This page promised the refusal for a whole release while the function had
+    **no caller in src/** — a test called it directly and went green. The fix
+    gave it nine callers, and the prose then said "an operation that computes
+    from the georeferencing refuses", which is a different overstatement: the
+    terrain and sampling operations do not call it, so sixteen of the
+    twenty-five raster operations were covered by a sentence and not by code.
+
+    Now the pages name the number, which means the number can go stale the next
+    time one is wired — so it is counted here instead of remembered. Prose in
+    words, not digits, on purpose: a phrase is what a reader believes, and a
+    phrase is what this reads.
+    """
+    callers = set()
+    for source in (ROOT / "src" / "mapsmith").rglob("*.py"):
+        text = source.read_text(encoding="utf-8")
+        callers.update(
+            re.findall(
+                r"""refuse_ambiguous_georeferencing\(\s*[^,]+,\s*["']([a-z_]+)["']""",
+                text,
+            )
+        )
+    assert callers, (
+        "nothing in src/ calls refuse_ambiguous_georeferencing. That was the "
+        "defect: the README promised the refusal, a decision record declared it, "
+        "and the only caller was a test."
+    )
+
+    stated = []
+    for page in (README, SITE_TEMPLATE):
+        text = page.read_text(encoding="utf-8")
+        for word in re.findall(
+            r"\b([a-z]+) operations that read a raster's grid directly", text
+        ):
+            stated.append((page.name, word))
+    assert stated, (
+        "neither the README nor the site page states how many operations refuse "
+        "an ambiguously georeferenced raster. Say the number — the version "
+        "without one said 'an operation that computes', which is every raster "
+        "operation and was false for sixteen of them."
+    )
+    for name, word in stated:
+        assert NUMBER_WORDS_TO_INT.get(word) == len(callers), (
+            f"{name} says {word!r} operations refuse an ambiguous raster and "
+            f"{len(callers)} call the refusal: {sorted(callers)}"
+        )
+
+
 def test_the_roadmap_does_not_list_a_shipped_operation_as_future_work():
     """The tool-name version of this check stopped being enough.
 
@@ -1094,8 +1152,19 @@ def test_the_manifest_on_the_front_page_conforms_to_the_specification():
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    jsonschema = pytest.importorskip("jsonschema")
+    schema = json.loads(
+        (ROOT / "tests" / "data" / "manifest-v1.schema.json").read_text(encoding="utf-8")
+    )
+    checker = jsonschema.Draft202012Validator(schema)
     for manifest in manifests:
-        problems = module.problems(manifest)
+        # BOTH implementations. The schema is the normative one, and a page that
+        # says "conforming" on the strength of the lenient one of two is the
+        # sentence a reader trusts — a `pipeline: null` divergence between them
+        # was live when this test was written.
+        problems = module.problems(manifest) + [
+            error.message for error in checker.iter_errors(manifest)
+        ]
         assert problems == [], (
             f"the manifest on the front page is not a conforming record: "
             f"{problems}. It is what an implementer copies."

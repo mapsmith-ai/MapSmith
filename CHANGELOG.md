@@ -37,9 +37,13 @@ All notable changes to MapSmith are documented here, in the format of
   apart, and until now nothing MapSmith wrote could say which of the two it
   read. There is nothing upstream to fix and everything to state.
 
-  So: `describe_dataset` reports both sources when a raster has two, and an
-  operation that *computes* from the georeferencing refuses instead, naming
-  both and saying how to choose. That split is the multi-layer refusal (#29)
+  So: `describe_dataset` reports both sources when a raster has two, and the
+  nine operations that read a raster's grid directly refuse instead, naming
+  both and saying how to choose. The terrain and sampling operations are not
+  covered yet and the README says so rather than implying otherwise; the
+  terrain engine stops on the same file for a different reason, because its own
+  reading of the grid disagrees with GDAL's, and its message names neither the
+  sidecar nor the way out. That split is the multi-layer refusal (#29)
   applied to a second axis — the format's default answers a question the caller
   never asked, and a manifest could not honestly say which data produced the
   numbers. Describing is different from computing: a file with two
@@ -360,6 +364,31 @@ All notable changes to MapSmith are documented here, in the format of
   derivable from each operation's signature so
   `test_the_declared_arity_matches_the_binding` checks the declaration against
   the code instead of trusting it.
+
+### Security
+
+- **A statement that says `INSTALL` or `LOAD` is now refused in both modes, and
+  this is a breaking change for SQL that names an extension.** Until 0.4.0 only
+  the *implicit* forms were off, and an audit before this tag used `run_sql` in
+  the default mode to install DuckDB's `aws` extension and read the host's real
+  cloud credentials back through a tool result. An `INSTALL` is an HTTPS fetch of
+  a native binary executed in the server's process, on a statement written by a
+  model, so it is not a thing to do by default in either mode.
+
+  Extensions already loaded keep working, `spatial` included: MapSmith loads it
+  through the Python API before the configuration is locked, so no statement has
+  to ask for it. **What breaks** is SQL that says `LOAD spatial` or acquires
+  another extension. To allow specific ones, name them where the agent cannot
+  reach: `MAPSMITH_ALLOW_EXTENSIONS=postgres,azure` in the environment of the
+  process that starts the server — named extensions rather than a switch,
+  because "allow everything" is how a geoprocessing server ends up holding a
+  credential reader.
+
+  [SECURITY.md](SECURITY.md) carries the account, including why none of the four
+  layers that already existed saw it, and the fact that this is the second
+  promise in that file the code contradicted. Both were found by auditing before
+  a release rather than reported from outside, and both are recorded rather than
+  quietly corrected.
 
 ## [0.3.0] — 2026-08-29
 

@@ -58,9 +58,10 @@ vulnerability:
   sets `allow_persistent_secrets = false` in both modes, before locking the
   configuration.
 - **No network egress in sandbox mode** — with `MAPSMITH_WORKSPACE` set —
-  beyond the documented one-time extension install. Any way to make SQL, GDAL
-  or a tool argument reach the network from a workspace-confined server is a
-  vulnerability.
+  beyond MapSmith's own one-time install of the `spatial` extension, which it
+  does through DuckDB's Python API and no statement can ask for. Any way to
+  make SQL, GDAL or a tool argument reach the network from a
+  workspace-confined server is a vulnerability.
 
   This is why the catalogue's embedding engine does **not** download its model
   under a workspace. 0.3.0 made that engine the default, and the model weights
@@ -84,13 +85,18 @@ of authentication is a documented limitation, not one.
 
 Also worth knowing rather than reporting: with `MAPSMITH_WORKSPACE` unset,
 `run_sql` can read and write any path the process can reach — deliberate, and
-documented in the README. Escalation from there is closed on the paths that
-matter: extension autoinstall and autoloading are off, community extensions are
+documented in the README. Escalation from there is closed, and since 0.4.0 by
+the layer that actually closes it: a statement saying `INSTALL` or `LOAD` is
+refused in both modes. The paragraph that used to stand here listed four other
+layers instead, and an audit walked past all four — the account is further down
+this page, under the heading that says so. Behind the refusal those layers still
+hold: extension autoinstall and autoloading are off, community extensions are
 refused (`shellfs` turns a filename ending in `|` into a shell command),
 unsigned extensions cannot be enabled, DuckDB's HTTP and S3 filesystems are
-disabled so even an explicitly loaded `httpfs` can neither read nor write over
-the network, and the configuration is locked so SQL cannot undo any of it. So
-unconfined mode does not let SQL load unsigned code or run a shell command.
+disabled so even an already loaded `httpfs` can neither read nor write over the
+network, and the configuration is locked so SQL cannot undo any of it. So
+unconfined mode does not let SQL acquire code, load unsigned code, or run a
+shell command.
 
 **Since 0.2.2 it does not reach the network either, unless you say so.** Both
 paths that used to be open are refused by default, and each one is verified by a
@@ -150,11 +156,14 @@ reports about a server reaching the network without `MAPSMITH_ALLOW_REMOTE`, in
 either mode, are vulnerabilities.
 
 **Since 0.4.0, `INSTALL` and `LOAD` are refused in both modes.** Until then the
-paragraph above was true only of the confined one, and this file said otherwise:
-an audit before the 0.4.0 tag used `run_sql` in the default mode to install
+last sentence above — *what is left of unconfined mode is unconfined file access
+and nothing else* — was true of the confined mode and false of the unconfined
+one, in a file whose whole job is to be exact about which is which: an audit
+before the 0.4.0 tag used `run_sql` in the default mode to install
 DuckDB's `aws` extension and read the host's real cloud credentials back through
 a tool result. None of the layers that existed saw it —
-`autoinstall_known_extensions=false` stops *implicit* loading only,
+`autoinstall_known_extensions` and `autoload_known_extensions` being false stops
+the *implicit* forms and says nothing about a statement that asks outright,
 `lock_configuration=true` does not stop an explicit `INSTALL`, and the
 remote-path scan looks for `://` and `/vsi`, which `INSTALL postgres` does not
 contain. An `INSTALL` is an HTTPS fetch of a native binary executed in the
@@ -167,6 +176,16 @@ has to ask for it. To acquire others, name them where the agent cannot reach:
 `MAPSMITH_ALLOW_EXTENSIONS=postgres,azure` in the environment of the process
 that starts the server. Named extensions rather than a switch, because "allow
 everything" is how a geoprocessing server ends up holding a credential reader.
+
+**Who this affects.** Versions up to and including 0.3.0, run *without*
+`MAPSMITH_WORKSPACE` — which is the plain `uvx mapsmith` setup, though not the
+container image, which sets a workspace itself. On such a machine, SQL reaching
+`run_sql` could acquire an extension and hand back credentials the process could
+already see (cloud credential files, environment variables). It needed the model
+to write that statement, so the realistic route is prompt injection from data the
+agent read; nothing here says it happened to anyone. If you run the unconfined
+setup on a machine that holds credentials, upgrade to 0.4.0 — and either way, a
+workspace has always been the stronger configuration.
 
 This is the second promise in this file that the code contradicted — the first
 was a path list escaping the workspace jail through `run_operation`, fixed in

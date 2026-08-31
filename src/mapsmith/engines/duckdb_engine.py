@@ -76,10 +76,12 @@ def _connect() -> duckdb.DuckDBPyConnection:
         con.execute("SET enable_external_access = false")
     else:
         # No workspace means unconfined FILE access (documented). It must not
-        # also mean network egress: an agent can still LOAD a signed core
-        # extension like httpfs — autoload being off does not stop an explicit
-        # LOAD, and enable_external_access=false would take local files with
-        # it. Disabling the remote filesystems keeps local access intact and
+        # also mean network egress. `sql_policy` now refuses an explicit LOAD as
+        # well, so this is the second layer rather than the only one — and it is
+        # the layer that still holds for an extension a person allowed by name
+        # in MAPSMITH_ALLOW_EXTENSIONS. enable_external_access=false would take
+        # local files with it, so disabling the remote filesystems keeps local
+        # access intact and
         # closes the exfiltration channel (verified: read_csv of a URL raises
         # PermissionException while a local read still works).
         con.execute("SET disabled_filesystems = 'HTTPFileSystem,S3FileSystem'")

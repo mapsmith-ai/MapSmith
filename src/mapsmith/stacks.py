@@ -9,9 +9,13 @@ Three things make this more than a switch, and all three are measured rather
 than assumed:
 
 * **The available tool set is a property of the machine, not of the product.**
-  Of 2198 tools installed with ArcGIS Pro, 1274 run on a Standard licence with
-  no extensions; 815 are behind an extension and 106 behind the Advanced level.
-  So what "Esri mode" can do is discovered here, not baked in.
+  Which tools a licence reaches depends on its level and on which extensions it
+  carries, and both differ between two installations of the same version. So
+  what the other stack can do is discovered at runtime, from the installation in
+  front of us, rather than baked into a table here. (The counts behind that
+  sentence were measured on one licensed machine and stay in this project's
+  private notes: a measurement of somebody else's product does not belong in
+  this repository, whatever it says.)
 * **"Esri does not do it" is three different situations** — no such tool, this
   licence does not include it, or it needs an online service — and they lead a
   reader to three different decisions. They are never collapsed into one word.
@@ -19,6 +23,12 @@ than assumed:
   records which engine actually produced the numbers and why the preferred one
   did not. A product that sells provenance and quietly swaps engines is selling
   the opposite.
+
+What that adds up to today is one routed operation, `buffer_layer`: the set that
+calls :func:`route` is the set that can be substituted, and everything else runs
+on the open source stack whatever the variable says. Said here because the
+opposite reading was a real defect — see `engines/esri.py` — and because a
+docstring claiming a general property of three-line wiring is how it recurs.
 
 ## Why both foreign stacks are subprocesses
 
@@ -142,8 +152,9 @@ def esri_inventory() -> dict[str, Any]:
                 data = json.loads(content.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
-            # QUALIFIED key. The bare tool name lost 297 of 2198: the same name
-            # exists in several toolboxes, and a dictionary collapses them
+            # QUALIFIED key. The bare tool name loses a large minority of the
+            # installed tools, because the same name exists in several
+            # toolboxes, and a dictionary collapses them
             # without a word. It is also how the scripting module addresses
             # them — toolbox plus name, never the name alone.
             tools[f"{toolbox_dir.stem}/{area.stem}"] = {
@@ -179,11 +190,22 @@ def describe() -> dict[str, Any]:
     elif chosen == "esri":
         inventory = esri_inventory()
         report["esri"]["tools_installed"] = inventory["count"]
+        # What is ROUTED, not what was measured: the table of measured pairs and
+        # the set of operations that consult the router came apart once, and the
+        # caller was told about a route two of them did not take. Read from the
+        # engine so this sentence cannot drift from the wiring again.
+        from .engines import esri as esri_engine
+
+        routed = sorted(esri_engine.TOOLS)
+        report["esri"]["routed_operations"] = routed
         report["esri"]["note"] = (
-            "How many of these run depends on your licence level and extensions, "
-            "which is a property of this machine rather than of the product. "
-            "Whatever cannot run falls back to the open source stack, and the "
-            "manifest says so."
+            f"{len(routed)} operation(s) consult this stack today "
+            f"({', '.join(routed)}); every other operation runs on the open "
+            "source stack whatever MAPSMITH_STACK says. For the routed ones, "
+            "how many actually run depends on your licence level and "
+            "extensions, which is a property of this machine rather than of the "
+            "product — and whatever cannot run falls back to the open source "
+            "stack with the substitution named in the manifest."
         )
     if not present["opensource"]["qgis"]:
         report["opensource"]["note"] = (

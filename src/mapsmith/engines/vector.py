@@ -163,11 +163,17 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
             # What actually happened, replacing the open source branch's plan.
             record.crs_decisions = (
                 {
-                    "analysis_crs": verify.crs_label(original_crs),
+                    # NOT `analysis_crs`. Naming one and then saying none was
+                    # chosen is a record that contradicts itself, and a machine
+                    # reading the key gets EPSG:4326 as the analysis CRS of a
+                    # geodesic computation. The key is omitted; a separate one
+                    # says what happened instead.
+                    "computed_in": verify.crs_label(original_crs),
                     "reason": "buffered in the input's own geographic CRS by the "
-                    "Esri stack, which interprets a distance in metres geodesically "
-                    "there rather than reprojecting — so no analysis CRS was chosen "
-                    "and none is claimed",
+                    "requested stack, which interprets a distance in metres "
+                    "geodesically there rather than reprojecting — so there was no "
+                    "analysis CRS to choose and the key is absent rather than "
+                    "filled in with the input's",
                 }
                 if on_a_geographic_crs
                 else {

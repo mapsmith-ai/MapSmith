@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import geopandas as gpd
 import pytest
-from shapely.geometry import Point, Polygon
+from shapely.geometry import LineString, MultiLineString, Point, Polygon
 
 from mapsmith.engines import summaries
 
@@ -400,3 +400,69 @@ def test_a_geometry_that_appears_only_on_one_side_counts_as_changed(tmp_path):
     answer = summaries.compare_layers(str(left), str(right), key_field="id")
     assert answer["geometry_changed"] == 1
     assert answer["identical"] is False
+
+
+def test_a_stretch_missing_from_the_middle_is_a_change(tmp_path):
+    """The regression the Hausdorff fix introduced, and the reason for the gate.
+
+    GEOS's `hausdorff_distance` is the DISCRETE one: vertices of each geometry
+    against the other. A line and the same line with a stretch missing in the
+    middle share every vertex, so the distance is 0.0 — and gating the
+    comparison on it unconditionally made zero tolerance weaker than "exact
+    geometric equality", which is what the docstring promises. A road that lost
+    two metres came back identical.
+
+    Zero tolerance now means `equals` and nothing else.
+    """
+    whole = LineString([(0, 0), (10, 0)])
+    with_a_gap = MultiLineString([[(0, 0), (4, 0)], [(6, 0), (10, 0)]])
+    assert whole.hausdorff_distance(with_a_gap) == 0.0, (
+        "if GEOS ever makes this the continuous Hausdorff distance, the reason "
+        "for the gate below has changed and this test should say so"
+    )
+
+    before = tmp_path / "before.parquet"
+    after = tmp_path / "after.parquet"
+    gpd.GeoDataFrame({"id": ["r1"]}, geometry=[whole], crs="EPSG:32632").to_parquet(before)
+    gpd.GeoDataFrame({"id": ["r1"]}, geometry=[with_a_gap], crs="EPSG:32632").to_parquet(after)
+
+    answer = summaries.compare_layers(str(before), str(after), key_field="id")
+    assert answer["geometry_changed"] == 1
+    assert answer["identical"] is False
+
+
+def test_the_reported_move_is_the_boundary_deviation_and_has_a_known_value(
+    two_versions,
+):
+    """`largest_move` had one test and it could not fail.
+
+    It asserted `x == approx(0.0) or x > 0`, which is a tautology for any
+    non-negative float — so the correction that changed what this number MEANS
+    shipped with no coverage of its observable effect. The fixture moves
+    `square(2, 0)` to `square(2.5, 0)`, whose boundary deviation is exactly 0.5.
+    """
+    a, b = two_versions
+    answer = summaries.compare_layers(a, b, key_field="id")
+    assert answer["largest_move"] == pytest.approx(0.5), (
+        "the fixture's only moved feature is displaced by exactly 0.5, so this "
+        "number is checkable rather than merely non-negative"
+    )
+
+
+def test_a_list_valued_attribute_does_not_crash_the_comparison(tmp_path):
+    """`pd.isna` on a list returns an array, and `if a or b` on an array raises.
+
+    List columns are ordinary in GeoParquet, and the plain `!=` this replaced
+    handled them. Introduced by the null-handling fix and caught by review.
+    """
+    frame = gpd.GeoDataFrame(
+        {"id": ["a", "b"], "codes": [[1, 2], [3]]},
+        geometry=[square(0, 0), square(2, 0)],
+        crs="EPSG:32632",
+    )
+    path = tmp_path / "lists.parquet"
+    frame.to_parquet(path)
+
+    answer = summaries.compare_layers(str(path), str(path), key_field="id")
+    assert answer["identical"] is True
+    assert answer["attributes_changed"] == 0

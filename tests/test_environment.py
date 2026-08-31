@@ -307,7 +307,62 @@ COMPUTES_FROM_THE_GEOREFERENCING = {
     "extract_band": lambda path, out: raster.extract_band(path, out, 1),
     "band_statistics": lambda path, out: raster.band_statistics(path, 1),
     "locate_extreme_cell": lambda path, out: raster.locate_extreme_cell(path, "max"),
+    # These two were missing from the list while their code refused: seven
+    # entries for nine callers. Exactly the rule this file's other docstrings
+    # state — a parametrised test is worth what its list is worth — flagged by
+    # review rather than caught here, which is why the guard below exists now.
+    "zonal_statistics": lambda path, out: raster.zonal_statistics(
+        path, _zones_beside(path), out.replace(".tif", ".parquet")
+    ),
+    "clip_raster": lambda path, out: raster.clip_raster(
+        path, _zones_beside(path), out
+    ),
 }
+
+
+def _zones_beside(raster_path):
+    """A one-polygon zone layer next to a raster, for the two operations that
+    need a second input before they can refuse the first."""
+    import geopandas as gpd
+    from shapely.geometry import box
+
+    zones = Path(raster_path).with_suffix(".zones.parquet")
+    if not zones.exists():
+        ox, oy, cell = INTERNAL
+        gpd.GeoDataFrame(
+            {"id": [1]},
+            geometry=[box(ox, oy - cell * SIZE, ox + cell * SIZE, oy)],
+            crs=CRS,
+        ).to_parquet(zones)
+    return str(zones)
+
+
+def test_the_refusal_list_holds_every_operation_that_actually_refuses():
+    """The list above is only worth what it covers.
+
+    It had seven entries while `src/` had nine callers, so two operations
+    refused with nothing going through them. Read from the source rather than
+    maintained by hand, because that is the only version that cannot drift.
+    """
+    import re
+
+    source = (
+        Path(raster.__file__).read_text(encoding="utf-8")
+    )
+    callers = set()
+    for match in re.finditer(
+        r"""refuse_ambiguous_georeferencing\([^,]+,\s*["']([a-z_]+)["']""", source
+    ):
+        callers.add(match.group(1))
+    assert callers, (
+        "no call to refuse_ambiguous_georeferencing found in raster.py — the "
+        "pattern stopped matching and this guard would pass on an empty set"
+    )
+    missing = sorted(callers - set(COMPUTES_FROM_THE_GEOREFERENCING))
+    assert not missing, (
+        f"these operations refuse an ambiguous raster and nothing tests it "
+        f"through the operation: {missing}"
+    )
 
 
 @pytest.mark.parametrize("operation", sorted(COMPUTES_FROM_THE_GEOREFERENCING))
@@ -398,3 +453,53 @@ def test_an_operation_refuses_a_crs_only_override_as_well(
         raster.resample(
             sidecar_overrides_only_the_crs, str(tmp_path / "out.tif"), 40, "nearest"
         )
+
+
+@pytest.fixture
+def only_the_sidecar_georeferences_it(tmp_path):
+    """A plain image plus an `.aux.xml` that supplies its georeferencing.
+
+    The documented GDAL way to georeference something that has none. There is
+    ONE georeferencing here, not two.
+    """
+    path = tmp_path / "bare.tif"
+    values = np.tile(np.arange(SIZE, dtype="float32"), (SIZE, 1))
+    with rasterio.open(
+        path, "w", driver="GTiff", height=SIZE, width=SIZE, count=1, dtype="float32"
+    ) as destination:
+        destination.write(values, 1)
+    ox, oy, cell = INTERNAL
+    Path(f"{path}.aux.xml").write_text(
+        AUX_XML.format(ox=ox, oy=oy, cell=cell), encoding="utf-8", newline="\n"
+    )
+    return str(path)
+
+
+def test_a_georeferencing_supplied_by_a_sidecar_is_not_a_choice(
+    only_the_sidecar_georeferences_it, tmp_path
+):
+    """Refusing this was a regression introduced by the refusal itself.
+
+    `from_sidecar` could not tell "the two disagree" from "the file has none and
+    the sidecar supplies it", so a plain image with an `.aux.xml` was refused —
+    and the refusal *asserted* the file was georeferenced twice when it was
+    georeferenced once, then offered a remedy ("remove the sidecar, or read the
+    file's own") that would have destroyed or ignored the only georeferencing
+    there was. A well-formed, confident, false statement about the data, which
+    is the class this project measures in other software.
+    """
+    found = grid.georeferencing_source(only_the_sidecar_georeferences_it)
+    assert found["georeferencing_source"] == "sidecar (.aux.xml)"
+    assert "georeferencing_supplied_by_sidecar" in found, (
+        "the record must say the sidecar supplied it rather than overrode "
+        "something — those are different facts"
+    )
+
+    # And the operation runs, because there was nothing to choose.
+    raster.band_statistics(only_the_sidecar_georeferences_it, 1)
+
+
+def test_a_disagreeing_sidecar_is_still_refused(two_georeferencings, tmp_path):
+    """The other half, so the fix above is not just "stop refusing"."""
+    with pytest.raises(ValueError, match="georeferenced twice"):
+        raster.band_statistics(two_georeferencings, 1)
