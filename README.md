@@ -1,5 +1,7 @@
 # MapSmith
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22213091.svg)](https://doi.org/10.5281/zenodo.22213091)
+
 [![CI](https://github.com/mapsmith-ai/MapSmith/actions/workflows/ci.yml/badge.svg)](https://github.com/mapsmith-ai/MapSmith/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/mapsmith)](https://pypi.org/project/mapsmith/)
 [![Container](https://img.shields.io/badge/ghcr.io-mapsmith--ai%2Fmapsmith-2496ED?logo=docker&logoColor=white)](https://github.com/mapsmith-ai/MapSmith/pkgs/container/mapsmith)

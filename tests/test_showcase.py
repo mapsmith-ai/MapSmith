@@ -1169,3 +1169,47 @@ def test_the_manifest_on_the_front_page_conforms_to_the_specification():
             f"the manifest on the front page is not a conforming record: "
             f"{problems}. It is what an implementer copies."
         )
+
+
+def test_the_published_doi_is_the_concept_doi():
+    """Two DOIs exist per release and only one is safe to write down.
+
+    Zenodo mints a version DOI for each release and one concept DOI that always
+    resolves to the newest. A version DOI hard-coded into a file nobody
+    re-reads becomes a citation for a superseded release the moment the next one
+    lands. The sibling repositories carry the same guard, which is how this one
+    came to be written before it was needed here.
+    """
+    yaml = pytest.importorskip("yaml")
+
+    readme = README.read_text(encoding="utf-8")
+    citation = yaml.safe_load((ROOT / "CITATION.cff").read_text(encoding="utf-8"))
+
+    # The PARSED `doi` field, not a grep of the file. The first version searched
+    # the text, so deleting the `doi:` line left the test green because the
+    # string still appeared in the `identifiers:` block below it — and the
+    # converters that turn a CFF into archive metadata read `doi`, not
+    # `identifiers`: with the field removed, the DOI vanishes from their output
+    # entirely. Measuring something adjacent to the claim, in a test written to
+    # stop exactly that.
+    declared = citation.get("doi")
+    assert declared, (
+        "CITATION.cff has no `doi` field. An `identifiers:` entry alone does "
+        "not reach the converters, so the DOI would disappear from the archive "
+        "metadata while still appearing in the file."
+    )
+
+    in_readme = set(re.findall(r"10\.5281/zenodo\.(\d+)", readme))
+    assert in_readme, "the README publishes no DOI of its own"
+    assert declared.split(".")[-1] in in_readme, (
+        f"CITATION.cff declares {declared} and the README cites "
+        f"zenodo.{sorted(in_readme)}"
+    )
+    # One DOI in the citation file, and it must be the concept one: a version
+    # DOI written here becomes a citation for a superseded release at the next
+    # tag.
+    everywhere = set(re.findall(r"10\.5281/zenodo\.(\d+)",
+                               (ROOT / "CITATION.cff").read_text(encoding="utf-8")))
+    assert everywhere == {declared.split(".")[-1]}, (
+        f"CITATION.cff mentions more than one DOI: {sorted(everywhere)}"
+    )
