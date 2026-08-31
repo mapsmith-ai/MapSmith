@@ -213,6 +213,34 @@ def test_server_json_declares_the_version_being_released():
             )
 
 
+def test_the_citation_file_matches_the_released_version():
+    """Zenodo mints a DOI from this file on every GitHub release, and whatever it
+    says at that instant is archived permanently. A stale version here does not
+    fail a build or bother a user: it produces a citation that names the wrong
+    software, in a record that cannot be edited away."""
+    import datetime as dt
+
+    from mapsmith import __version__
+
+    citation = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
+
+    declared = re.search(r'^version:\s*"([^"]+)"', citation, re.MULTILINE)
+    assert declared, "CITATION.cff has no version"
+    assert declared.group(1) == __version__, (
+        f"CITATION.cff says {declared.group(1)}, the package says {__version__}. "
+        f"A release archives this file as it stands."
+    )
+
+    released = re.search(r'^date-released:\s*"(\d{4}-\d{2}-\d{2})"', citation, re.MULTILINE)
+    assert released, "CITATION.cff has no date-released"
+    assert dt.date.fromisoformat(released.group(1)) <= dt.datetime.now(tz=dt.UTC).date(), (
+        f"CITATION.cff claims a release on {released.group(1)}, which has not happened. "
+        f"The date is written by hand before tagging, and a slipped tag leaves it false."
+    )
+
+    assert "mapsmith-ai/MapSmith" in citation, "repository-code does not point at this repository"
+
+
 def test_the_registry_ownership_proof_is_in_every_place_it_is_read_from():
     """The MCP Registry proves ownership by matching one string in three
     artifacts: the README marker it reads from the repository, the Dockerfile
