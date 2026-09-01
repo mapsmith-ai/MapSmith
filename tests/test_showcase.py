@@ -1057,7 +1057,7 @@ def test_the_retrieval_numbers_agree_between_the_readme_and_the_site():
         # sizes: it passed only because that string happened to appear in two
         # unrelated sentences on the two pages. A shared-number check that
         # matches by coincidence is worse than one that is missing.
-        ("53%", "our ranking, found@3, once arity is declared"),
+        ("58%", "our ranking, found@3, once arity is declared"),
         ("69%", "a model choosing from the delivered candidates"),
         ("70%", "where the two model labellers agree with each other"),
         ("4.4", "plausible families per request, why family cannot filter"),

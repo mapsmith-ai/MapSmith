@@ -26,7 +26,11 @@
    "label_fable_also": [
     "nearest_join"
    ],
-   "label_fable_note": "the deliverable is a list of structures and no single call produces it: the classical reach is buffer_layer (50 ft around the zone edge) followed by a spatial_join/selection of what falls inside. nearest_join is the one-pass substitute — distance from each structure to the zone edge in a column, thresholded at 50 ft — and it leaves the exact distance on record for the notification file. A select_features on 'residential' precedes either path."
+   "label_fable_note": "the deliverable is a list of structures and no single call produces it: the classical reach is buffer_layer (50 ft around the zone edge) followed by a spatial_join/selection of what falls inside. nearest_join is the one-pass substitute — distance from each structure to the zone edge in a column, thresholded at 50 ft — and it leaves the exact distance on record for the notification file. A select_features on 'residential' precedes either path.",
+   "label_human_also": [
+    "nearest_join"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — the deliverable is a list of structures and no single call produces it: the classical reach is buffer_layer (50 ft around the zone edge) followed by a spatial_join/selection of what falls inside. nearest_join is the one-pass substitute — distance from each structure to the zone edge in a column, thresholded at 50 ft — and it leaves the exact distance on record for the notification file. A select_features on 'residential' precedes either path."
   },
   {
    "query": "Look, the mayor is going to ask me about houses cut in half by this line. Give me a list of every single property where the new zone cuts right through a building footprint, because if even a corner of someone's porch is in the new commercial zone, I need to know before tonight's council meeting!",
@@ -42,7 +46,11 @@
    "label_fable_also": [
     "overlay_layers"
    ],
-   "label_fable_note": "'cut right through' plus 'even a corner counts' = footprints that intersect the zone without being fully within — one intersects-predicate join against the boundary line gives the list without cutting any geometry. overlay_layers (intersection, then compare piece area to original) finds the same set when only the zone polygon is at hand, at the cost of producing fragments nobody asked for."
+   "label_fable_note": "'cut right through' plus 'even a corner counts' = footprints that intersect the zone without being fully within — one intersects-predicate join against the boundary line gives the list without cutting any geometry. overlay_layers (intersection, then compare piece area to original) finds the same set when only the zone polygon is at hand, at the cost of producing fragments nobody asked for.",
+   "label_human_also": [
+    "spatial_join"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — 'cut right through' plus 'even a corner counts' = footprints that intersect the zone without being fully within — one intersects-predicate join against the boundary line gives the list without cutting any geometry. overlay_layers (intersection, then compare piece area to original) finds the same set when only the zone polygon is at hand, at the cost of producing fragments nobody asked for."
   },
   {
    "query": "I'm looking at the south precinct, and I'm not really sure how to handle this... some of these large commercial lots are partly inside the new overlay and partly outside. I guess I need to figure out which ones have more than half their actual building area inside the new zone so we know which regulations apply?",
@@ -68,7 +76,11 @@
    "label_fable_also": [
     "join_table"
    ],
-   "label_fable_note": "the question is what is MISSING between two inventories of the same buildings, not what falls inside a boundary — compare_layers if the assessor data is a feature layer. But a tax assessor 'list' is usually a table keyed by parcel/address, in which case join_table is the instrument and the unmatched rows are the finding. Either way the 'inside the boundary line' scoping is a prior clip/select, not the heart of the request."
+   "label_fable_note": "the question is what is MISSING between two inventories of the same buildings, not what falls inside a boundary — compare_layers if the assessor data is a feature layer. But a tax assessor 'list' is usually a table keyed by parcel/address, in which case join_table is the instrument and the unmatched rows are the finding. Either way the 'inside the boundary line' scoping is a prior clip/select, not the heart of the request.",
+   "label_human_also": [
+    "join_table"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — the question is what is MISSING between two inventories of the same buildings, not what falls inside a boundary — compare_layers if the assessor data is a feature layer. But a tax assessor 'list' is usually a table keyed by parcel/address, in which case join_table is the instrument and the unmatched rows are the finding. Either way the 'inside the boundary line' scoping is a prior clip/select, not the heart of the request."
   },
   {
    "query": "Look, the eagles are flying up to 3 kilometers out from the nest trees to hunt, and I need to see what kind of tree cover is actually available within that daily hunting distance for each pair.",
@@ -150,15 +162,15 @@
    "label_gemini": "preview_map",
    "label_gemini_model": "gemini-3-flash-preview",
    "label_human": "transform_by_control_points",
-   "label_human_also": [
-    "ambiguous"
-   ],
-   "label_human_note": "the surveyor's workflow is recognisable — reconciling a 1978 plat with today's shots is an alignment between two reference systems, and that is the only operation on the list that addresses it. `ambiguous` is defensible because the caller says the control points are missing, which is the input the operation needs, and no source geometry is named: under a labelling rule of \"the tool must be runnable with the inputs mentioned\", this request does not pass. buffer_layer is the insidious distractor: \"50-foot right-of-way\" sounds like buffering a centreline, but the question is where the line sits, not how wide it is — a position, not a width.",
    "label_fable": "transform_by_control_points",
    "label_fable_also": [
     "ambiguous"
    ],
-   "label_fable_note": "'50-foot right-of-way' is the vocabulary trap — it sounds like a buffer, but the workflow is putting a 1978 plat and today's edge-of-pavement shots into the same reference frame, which is a control-point transform. ambiguous is defensible because the caller says the control points are missing, which is the very input the operation needs. buffer_layer only re-enters after alignment, to draw the dedicated ROW from the centerline."
+   "label_fable_note": "'50-foot right-of-way' is the vocabulary trap — it sounds like a buffer, but the workflow is putting a 1978 plat and today's edge-of-pavement shots into the same reference frame, which is a control-point transform. ambiguous is defensible because the caller says the control points are missing, which is the very input the operation needs. buffer_layer only re-enters after alignment, to draw the dedicated ROW from the centerline.",
+   "label_human_also": [
+    "ambiguous"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — '50-foot right-of-way' is the vocabulary trap — it sounds like a buffer, but the workflow is putting a 1978 plat and today's edge-of-pavement shots into the same reference frame, which is a control-point transform. ambiguous is defensible because the caller says the control points are missing, which is the very input the operation needs. buffer_layer only re-enters after alignment, to draw the dedicated ROW from the centerline."
   },
   {
    "query": "My boundary traverse from this morning is sitting way out in the middle of the river on your map. Get all my shot points aligned so they sit on top of the physical property corners shown in the aerial.",
@@ -213,7 +225,12 @@
    "label_fable_also": [
     "sample_raster_at_points"
    ],
-   "label_fable_note": "'which poles sit in wet ground' is a point-in-polygon labelling if the soils are a drainage-class polygon layer (select the wet classes, then join the poles); if wetness comes as a raster, sample_raster_at_points reads it under each pole instead. The 'safety margin around those spots' is a follow-on buffer_layer, not an alternative — the request is really a two-output mini-plan."
+   "label_fable_note": "'which poles sit in wet ground' is a point-in-polygon labelling if the soils are a drainage-class polygon layer (select the wet classes, then join the poles); if wetness comes as a raster, sample_raster_at_points reads it under each pole instead. The 'safety margin around those spots' is a follow-on buffer_layer, not an alternative — the request is really a two-output mini-plan.",
+   "label_human": "spatial_join",
+   "label_human_also": [
+    "sample_raster_at_points"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — 'which poles sit in wet ground' is a point-in-polygon labelling if the soils are a drainage-class polygon layer (select the wet classes, then join the poles); if wetness comes as a raster, sample_raster_at_points reads it under each pole instead. The 'safety margin around those spots' is a follow-on buffer_layer, not an alternative — the request is really a two-output mini-plan."
   },
   {
    "query": "I have a preliminary alignment drawn for the 115kV trench. Give me a list of all the property owners whose land gets crossed by this draft line, along with how many feet of trench fall on each parcel so we can start estimating right-of-way costs.",
@@ -238,7 +255,12 @@
    "label_fable_also": [
     "overlay_layers"
    ],
-   "label_fable_note": "three constraints from three layers (flood plain out, 50 ft of paved road in, clearance from overhead lines) is multi-criteria site screening: buffers plus chained set overlays, and no single operation states the conjunction. If forced to name one primitive it is overlay_layers applied repeatedly — but the honest label is the plan. 'Near Elm Street' and 'away from' need parameter elicitation before it can run."
+   "label_fable_note": "three constraints from three layers (flood plain out, 50 ft of paved road in, clearance from overhead lines) is multi-criteria site screening: buffers plus chained set overlays, and no single operation states the conjunction. If forced to name one primitive it is overlay_layers applied repeatedly — but the honest label is the plan. 'Near Elm Street' and 'away from' need parameter elicitation before it can run.",
+   "label_human": "execute_plan",
+   "label_human_also": [
+    "overlay_layers"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — three constraints from three layers (flood plain out, 50 ft of paved road in, clearance from overhead lines) is multi-criteria site screening: buffers plus chained set overlays, and no single operation states the conjunction. If forced to name one primitive it is overlay_layers applied repeatedly — but the honest label is the plan. 'Near Elm Street' and 'away from' need parameter elicitation before it can run."
   },
   {
    "query": "I have 500 line-list patient addresses from this morning's outbreak report and I need to figure out how many fall into each health district so we can route vaccine shipments.",
@@ -253,7 +275,12 @@
    "label_fable_also": [
     "none"
    ],
-   "label_fable_note": "'how many fall into each district' is exactly this operation — counts per polygon, boundary rule stated, strays counted. none is defensible on a stricter reading: the inputs are street ADDRESSES, and nothing in the catalogue geocodes text addresses into points (parse_coordinates reads coordinate columns, not addresses). That gap is the finding."
+   "label_fable_note": "'how many fall into each district' is exactly this operation — counts per polygon, boundary rule stated, strays counted. none is defensible on a stricter reading: the inputs are street ADDRESSES, and nothing in the catalogue geocodes text addresses into points (parse_coordinates reads coordinate columns, not addresses). That gap is the finding.",
+   "label_human": "count_in_polygons",
+   "label_human_also": [
+    "none"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — 'how many fall into each district' is exactly this operation — counts per polygon, boundary rule stated, strays counted. none is defensible on a stricter reading: the inputs are street ADDRESSES, and nothing in the catalogue geocodes text addresses into points (parse_coordinates reads coordinate columns, not addresses). That gap is the finding."
   },
   {
    "query": "Look, the district outlines are so bloated my map won't even render, and on top of that, these tiny rural sectors look like massive hotspots just because they have two cases in a population of twenty—I need this presentable for the minister by 9 AM!",
@@ -269,7 +296,13 @@
     "simplify_layer",
     "execute_plan"
    ],
-   "label_fable_note": "two independent complaints in one breath. 'Two cases in a population of twenty looks like a massive hotspot' is the small-denominator problem verbatim — smooth_rates. 'Outlines so bloated the map won't render' is simplify_layer, the catalogue's own 'file too heavy to draw' case. Either is a defensible first reach; execute_plan if the 9 AM deliverable is both fixes applied in sequence."
+   "label_fable_note": "two independent complaints in one breath. 'Two cases in a population of twenty looks like a massive hotspot' is the small-denominator problem verbatim — smooth_rates. 'Outlines so bloated the map won't render' is simplify_layer, the catalogue's own 'file too heavy to draw' case. Either is a defensible first reach; execute_plan if the 9 AM deliverable is both fixes applied in sequence.",
+   "label_human": "smooth_rates",
+   "label_human_also": [
+    "simplify_layer",
+    "execute_plan"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — two independent complaints in one breath. 'Two cases in a population of twenty looks like a massive hotspot' is the small-denominator problem verbatim — smooth_rates. 'Outlines so bloated the map won't render' is simplify_layer, the catalogue's own 'file too heavy to draw' case. Either is a defensible first reach; execute_plan if the 9 AM deliverable is both fixes applied in sequence."
   },
   {
    "query": "I'm looking at our dengue surveillance data and I'm not really sure what I'm seeing... the high-count villages seem grouped around the river, but how do I tell if that's a real transmission hotspot or just random noise?",
@@ -304,7 +337,13 @@
    "label_fable_also": [
     "execute_plan"
    ],
-   "label_fable_note": "the operation asked for is areal interpolation: reapportioning counts and population between two zone systems that don't nest. Nothing in the catalogue owns it — aggregate_weighted computes the rate but presumes numerator and denominator already live on the same zones. It is composable (overlay_layers intersection then measure_area then area-share weights via run_sql then the rate), so execute_plan is defensible if composition counts as an answer; the missing primitive is the finding."
+   "label_fable_note": "the operation asked for is areal interpolation: reapportioning counts and population between two zone systems that don't nest. Nothing in the catalogue owns it — aggregate_weighted computes the rate but presumes numerator and denominator already live on the same zones. It is composable (overlay_layers intersection then measure_area then area-share weights via run_sql then the rate), so execute_plan is defensible if composition counts as an answer; the missing primitive is the finding.",
+   "label_human": "overlay_layers",
+   "label_human_also": [
+    "none",
+    "execute_plan"
+   ],
+   "label_human_note": "Primary is where the work starts; `none` is confirmed by the person who answered, not adopted from a model: the operation this request names does not exist in the catalogue in any number of steps that end in a rate. Two established routes exist elsewhere and they are different products — deterministic apportionment by area share (with optional ancillary weighting), which is exactly this chain collapsed into one step; and the rigorous version designed for exactly this case, where a binomial model handles disease rates from count/population pairs AND returns the standard error of the prediction. That last part is the one that decides what MapSmith would have to build: an interpolated rate without an uncertainty estimate is a plausible number, which is the failure this project measures in other software. `execute_plan` stays defensible because the chain is composable today; it is not the same answer."
   },
   {
    "query": "Look, I've got yield monitor points from the combine scattered all over Block 4, but the sensor dropped out every few minutes. I need to see what the harvest looks like across those missing gaps so I can write a fertilizer plan, but I'm really not sure how we should estimate what happened between the points.",
@@ -429,7 +468,12 @@
    "label_fable_also": [
     "none"
    ],
-   "label_fable_note": "the caller is asking which scenario to model first, not for an operation — no label resolves that. Once scoped, the catalogue still has no inundation operation: a bathtub approximation is composable (reclassify_raster on the DEM at 14 m, then zonal_statistics per parcel to flag wet properties), but backwater through the storm drains cannot be expressed at all, which makes none worth recording too."
+   "label_fable_note": "the caller is asking which scenario to model first, not for an operation — no label resolves that. Once scoped, the catalogue still has no inundation operation: a bathtub approximation is composable (reclassify_raster on the DEM at 14 m, then zonal_statistics per parcel to flag wet properties), but backwater through the storm drains cannot be expressed at all, which makes none worth recording too.",
+   "label_human": "ambiguous",
+   "label_human_also": [
+    "none"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — the caller is asking which scenario to model first, not for an operation — no label resolves that. Once scoped, the catalogue still has no inundation operation: a bathtub approximation is composable (reclassify_raster on the DEM at 14 m, then zonal_statistics per parcel to flag wet properties), but backwater through the storm drains cannot be expressed at all, which makes none worth recording too."
   },
   {
    "query": "The bank along the south bend is eroding again and the draft file is so bogged down with fine elevation details that my computer crashes every time I try to draw the riverbed—can you fix the terrain layer so it loads fast without losing the major steep drop-offs?",
@@ -454,7 +498,12 @@
    "label_fable_also": [
     "measure_area"
    ],
-   "label_fable_note": "'acreage' points at measure_area, but the workflow points at the data: imperviousness almost always arrives as a land-cover raster, so the reach is reclassify impervious classes to 1 and take the zonal SUM (times cell area) inside the basin — exact fractional coverage matters at the basin edge. If instead the surfaces are polygons, it is select_features + clip_layer + measure_area + summarize_field, and measure_area becomes the heart."
+   "label_fable_note": "'acreage' points at measure_area, but the workflow points at the data: imperviousness almost always arrives as a land-cover raster, so the reach is reclassify impervious classes to 1 and take the zonal SUM (times cell area) inside the basin — exact fractional coverage matters at the basin edge. If instead the surfaces are polygons, it is select_features + clip_layer + measure_area + summarize_field, and measure_area becomes the heart.",
+   "label_human": "zonal_statistics",
+   "label_human_also": [
+    "measure_area"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — 'acreage' points at measure_area, but the workflow points at the data: imperviousness almost always arrives as a land-cover raster, so the reach is reclassify impervious classes to 1 and take the zonal SUM (times cell area) inside the basin — exact fractional coverage matters at the basin edge. If instead the surfaces are polygons, it is select_features + clip_layer + measure_area + summarize_field, and measure_area becomes the heart."
   },
   {
    "query": "Okay so for section 4 of the report, we need to know what essential facilities—you know like emergency services, power stations, water treatment—were sitting inside the high water footprint from the 2011 spring flood, because the board wants a list of critical assets that were drowned back then.",
@@ -469,7 +518,12 @@
    "label_fable_also": [
     "spatial_join"
    ],
-   "label_fable_note": "facility points against a flood-footprint polygon used purely as a boundary — clip returns the subset directly, attributes intact, which IS the requested list. spatial_join gives the same set as flagged features and keeps the full inventory. A select_features on facility type ('essential') precedes either. overlay is not in play: the catalogue declares it for two polygon layers."
+   "label_fable_note": "facility points against a flood-footprint polygon used purely as a boundary — clip returns the subset directly, attributes intact, which IS the requested list. spatial_join gives the same set as flagged features and keeps the full inventory. A select_features on facility type ('essential') precedes either. overlay is not in play: the catalogue declares it for two polygon layers.",
+   "label_human": "clip_layer",
+   "label_human_also": [
+    "spatial_join"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — facility points against a flood-footprint polygon used purely as a boundary — clip returns the subset directly, attributes intact, which IS the requested list. spatial_join gives the same set as flagged features and keeps the full inventory. A select_features on facility type ('essential') precedes either. overlay is not in play: the catalogue declares it for two polygon layers."
   },
   {
    "query": "Give me a list of all addresses where the proposed commercial district line cuts straight through an existing building.",
@@ -484,7 +538,12 @@
    "label_fable_also": [
     "overlay_layers"
    ],
-   "label_fable_note": "same case as the 'cut in half' request: footprints the district LINE passes through, i.e. intersect the boundary without being contained — one predicate join. With only the district polygon available, overlay intersection plus an area-vs-original comparison identifies the same partially-covered buildings. The deliverable is addresses, so the join that labels features beats the overlay that fragments them."
+   "label_fable_note": "same case as the 'cut in half' request: footprints the district LINE passes through, i.e. intersect the boundary without being contained — one predicate join. With only the district polygon available, overlay intersection plus an area-vs-original comparison identifies the same partially-covered buildings. The deliverable is addresses, so the join that labels features beats the overlay that fragments them.",
+   "label_human": "spatial_join",
+   "label_human_also": [
+    "overlay_layers"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — same case as the 'cut in half' request: footprints the district LINE passes through, i.e. intersect the boundary without being contained — one predicate join. With only the district polygon available, overlay intersection plus an area-vs-original comparison identifies the same partially-covered buildings. The deliverable is addresses, so the join that labels features beats the overlay that fragments them."
   },
   {
    "query": "The building outlines in the North Ward have way too many tiny points and details, so the public presentation map keeps crashing. Fix the files so they actually load on screen.",
@@ -519,7 +578,12 @@
    "label_fable_also": [
     "execute_plan"
    ],
-   "label_fable_note": "a per-parcel conjunction of two different predicates over two building classes (primary within the footprint AND accessory crossing its edge) exceeds one spatial_join call. Spatial SQL states it in a single query with two joins and a GROUP BY parcel; a plan of two spatial_joins plus join logic does the same in steps. select_features can't help — its conditions are attribute-only."
+   "label_fable_note": "a per-parcel conjunction of two different predicates over two building classes (primary within the footprint AND accessory crossing its edge) exceeds one spatial_join call. Spatial SQL states it in a single query with two joins and a GROUP BY parcel; a plan of two spatial_joins plus join logic does the same in steps. select_features can't help — its conditions are attribute-only.",
+   "label_human": "run_sql",
+   "label_human_also": [
+    "execute_plan"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — a per-parcel conjunction of two different predicates over two building classes (primary within the footprint AND accessory crossing its edge) exceeds one spatial_join call. Spatial SQL states it in a single query with two joins and a GROUP BY parcel; a plan of two spatial_joins plus join logic does the same in steps. select_features can't help — its conditions are attribute-only."
   },
   {
    "query": "Look, the riverfront data is a complete mess with multiple overlapping building footprints stacked on top of each other, and I just need one clean count of how many actual properties are inside the proposed flood overlay.",
@@ -564,7 +628,12 @@
    "label_fable_also": [
     "ambiguous"
    ],
-   "label_fable_note": "textbook suitability chain: slope + reclassify_raster (elevation > 500 m) from the DEM, proximity to mature pine (buffer_layer or euclidean_distance), exclusion rings around turbines, combined by overlay_layers or band_math. The caller says outright they can't compose it — that is what the plan machinery is for. ambiguous is defensible about the parameters ('nearby', 'a few miles' are unset), not about the workflow, which is fully recognisable."
+   "label_fable_note": "textbook suitability chain: slope + reclassify_raster (elevation > 500 m) from the DEM, proximity to mature pine (buffer_layer or euclidean_distance), exclusion rings around turbines, combined by overlay_layers or band_math. The caller says outright they can't compose it — that is what the plan machinery is for. ambiguous is defensible about the parameters ('nearby', 'a few miles' are unset), not about the workflow, which is fully recognisable.",
+   "label_human": "execute_plan",
+   "label_human_also": [
+    "ambiguous"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — textbook suitability chain: slope + reclassify_raster (elevation > 500 m) from the DEM, proximity to mature pine (buffer_layer or euclidean_distance), exclusion rings around turbines, combined by overlay_layers or band_math. The caller says outright they can't compose it — that is what the plan machinery is for. ambiguous is defensible about the parameters ('nearby', 'a few miles' are unset), not about the workflow, which is fully recognisable."
   },
   {
    "query": "For each of the 12 tracked eagle pairs, I need the exact acreage of old-growth timber that burned down inside their home range during last year's wildfire.",
@@ -600,7 +669,13 @@
     "describe_crs",
     "transform_by_control_points"
    ],
-   "label_fable_note": "'figure out why' is CRS forensics: a systematic ~4 ft offset smells like a datum or projection mismatch (or plat-vs-ground), and the first move is reading what the parcel layer actually declares; describe_crs then unpacks what that declaration means (datum, unit, axis order). With a handful of found monuments, transform_by_control_points turns the disagreement into fitted residuals rather than a hunch."
+   "label_fable_note": "'figure out why' is CRS forensics: a systematic ~4 ft offset smells like a datum or projection mismatch (or plat-vs-ground), and the first move is reading what the parcel layer actually declares; describe_crs then unpacks what that declaration means (datum, unit, axis order). With a handful of found monuments, transform_by_control_points turns the disagreement into fitted residuals rather than a hunch.",
+   "label_human": "describe_dataset",
+   "label_human_also": [
+    "describe_crs",
+    "transform_by_control_points"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — 'figure out why' is CRS forensics: a systematic ~4 ft offset smells like a datum or projection mismatch (or plat-vs-ground), and the first move is reading what the parcel layer actually declares; describe_crs then unpacks what that declaration means (datum, unit, axis order). With a handful of found monuments, transform_by_control_points turns the disagreement into fitted residuals rather than a hunch."
   },
   {
    "query": "Look, I've been out in the brush all morning, and when I load my points, the whole subdivision is shifted southwest by thirty feet. Did someone mess up the original grid reference or is the map using the wrong control points? Find out why everything is sitting in the wrong spot.",
@@ -645,7 +720,12 @@
    "label_fable_also": [
     "elevation_profile"
    ],
-   "label_fable_note": "slope distance vs plat distance is 3D length vs planar length of the same line, which is exactly the mode switch measure_length offers — provided the geometry carries Z. If it doesn't, elevation_profile drapes the line over the DEM first (distance travelled + surface value per step), from which the slope length falls out. Strictly the caller wants one trig number; the catalogue has no bare calculator, so the length operation is the vehicle."
+   "label_fable_note": "slope distance vs plat distance is 3D length vs planar length of the same line, which is exactly the mode switch measure_length offers — provided the geometry carries Z. If it doesn't, elevation_profile drapes the line over the DEM first (distance travelled + surface value per step), from which the slope length falls out. Strictly the caller wants one trig number; the catalogue has no bare calculator, so the length operation is the vehicle.",
+   "label_human": "measure_length",
+   "label_human_also": [
+    "elevation_profile"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — slope distance vs plat distance is 3D length vs planar length of the same line, which is exactly the mode switch measure_length offers — provided the geometry carries Z. If it doesn't, elevation_profile drapes the line over the DEM first (distance travelled + surface value per step), from which the slope length falls out. Strictly the caller wants one trig number; the catalogue has no bare calculator, so the length operation is the vehicle."
   },
   {
    "query": "Find me a route for the new underground line along 5th Avenue that keeps us at least 15 feet away from the existing gas main.",
@@ -660,7 +740,12 @@
    "label_fable_also": [
     "least_cost_path"
    ],
-   "label_fable_note": "'find me a route' is the vocabulary trap: the corridor is already fixed ('along 5th Avenue'), so the operational deliverable is the 15-ft clearance strip around the gas main — a buffer — inside which the cable may not sit. Synthesising the route itself would mean building a cost surface (euclidean_distance + reclassify) and running least_cost_path: a whole plan for what one exclusion buffer answers in the field."
+   "label_fable_note": "'find me a route' is the vocabulary trap: the corridor is already fixed ('along 5th Avenue'), so the operational deliverable is the 15-ft clearance strip around the gas main — a buffer — inside which the cable may not sit. Synthesising the route itself would mean building a cost surface (euclidean_distance + reclassify) and running least_cost_path: a whole plan for what one exclusion buffer answers in the field.",
+   "label_human": "buffer_layer",
+   "label_human_also": [
+    "least_cost_path"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — 'find me a route' is the vocabulary trap: the corridor is already fixed ('along 5th Avenue'), so the operational deliverable is the 15-ft clearance strip around the gas main — a buffer — inside which the cable may not sit. Synthesising the route itself would mean building a cost surface (euclidean_distance + reclassify) and running least_cost_path: a whole plan for what one exclusion buffer answers in the field."
   },
   {
    "query": "Look, the drilling rig can't handle these steep slopes on the north ridge. Show me where the grade is too high so we can route the trench around those hills.",
@@ -682,7 +767,8 @@
    "label_gemini": "spatial_join",
    "label_gemini_model": "gemini-3-flash-preview",
    "label_fable": "spatial_join",
-   "label_fable_note": "route line against the parcel fabric with an intersects predicate; the owner list for ROW outreach is the joined attribute table. No cutting (clip) or counting (count_in_polygons) is asked for, and overlay is declared polygon-only."
+   "label_fable_note": "route line against the parcel fabric with an intersects predicate; the owner list for ROW outreach is the joined attribute table. No cutting (clip) or counting (count_in_polygons) is asked for, and overlay is declared polygon-only.",
+   "label_human": "spatial_join"
   },
   {
    "query": "I'm not really sure how to handle this river crossing—we need to get the cable across, but I don't know where the existing bridge conduits are full and where there's still room to attach our line.",
@@ -707,7 +793,12 @@
    "label_fable_also": [
     "overlay_layers"
    ],
-   "label_fable_note": "'sections of the route inside wetlands' wants the pieces, not flags — cut the line to the wetland mask. Clip keeps the route's attributes; overlay's intersection would ALSO carry the wetland identifiers the permit filings will cite, which argues for it — but the catalogue declares overlay for two polygon layers and the route is a line, so clip is the sanctioned call and the wetland IDs come from a follow-up spatial_join."
+   "label_fable_note": "'sections of the route inside wetlands' wants the pieces, not flags — cut the line to the wetland mask. Clip keeps the route's attributes; overlay's intersection would ALSO carry the wetland identifiers the permit filings will cite, which argues for it — but the catalogue declares overlay for two polygon layers and the route is a line, so clip is the sanctioned call and the wetland IDs come from a follow-up spatial_join.",
+   "label_human": "clip_layer",
+   "label_human_also": [
+    "overlay_layers"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — 'sections of the route inside wetlands' wants the pieces, not flags — cut the line to the wetland mask. Clip keeps the route's attributes; overlay's intersection would ALSO carry the wetland identifiers the permit filings will cite, which argues for it — but the catalogue declares overlay for two polygon layers and the route is a line, so clip is the sanctioned call and the wetland IDs come from a follow-up spatial_join."
   },
   {
    "query": "I have 4,000 line-list patient records with GPS coordinates from yesterday's cholera outbreak, but I need them grouped into our official health sub-district boundaries so I can calculate incidence rates per 100k.",
@@ -912,7 +1003,12 @@
    "label_fable_also": [
     "run_sql"
    ],
-   "label_fable_note": "minimum-size culling at 1:20M: 1 mm of ink is about 20 km on the ground, so drop water polygons below roughly that footprint. Area isn't a stored attribute, so measure_area precedes the select; run_sql does both in one statement (WHERE ST_Area > threshold). simplify_layer is the trap — it thins vertices and never removes a single puddle; thin_points is for points."
+   "label_fable_note": "minimum-size culling at 1:20M: 1 mm of ink is about 20 km on the ground, so drop water polygons below roughly that footprint. Area isn't a stored attribute, so measure_area precedes the select; run_sql does both in one statement (WHERE ST_Area > threshold). simplify_layer is the trap — it thins vertices and never removes a single puddle; thin_points is for points.",
+   "label_human": "select_features",
+   "label_human_also": [
+    "run_sql"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — minimum-size culling at 1:20M: 1 mm of ink is about 20 km on the ground, so drop water polygons below roughly that footprint. Area isn't a stored attribute, so measure_area precedes the select; run_sql does both in one statement (WHERE ST_Area > threshold). simplify_layer is the trap — it thins vertices and never removes a single puddle; thin_points is for points."
   },
   {
    "query": "At this scale, the divided highways are printing so close together that the ink bridges into giant dark bars. I need each set of parallel lanes represented as a single stroke down the middle so the road hierarchy stays legible.",
@@ -958,7 +1054,13 @@
     "service_area",
     "nearest_join"
    ],
-   "label_fable_note": "'five-minute walk' read literally is network reach — service_area around the markers, then flag policies inside. But the workflow points the other way: flood exposure doesn't travel the sidewalk network, the caller wants speed, and a 400 m buffer + join is the proxy an exposure analyst would actually run; nearest_join (distance to nearest marker, thresholded) flags in one pass. As with any address list, geocoding to points precedes everything and isn't in the catalogue."
+   "label_fable_note": "'five-minute walk' read literally is network reach — service_area around the markers, then flag policies inside. But the workflow points the other way: flood exposure doesn't travel the sidewalk network, the caller wants speed, and a 400 m buffer + join is the proxy an exposure analyst would actually run; nearest_join (distance to nearest marker, thresholded) flags in one pass. As with any address list, geocoding to points precedes everything and isn't in the catalogue.",
+   "label_human": "buffer_layer",
+   "label_human_also": [
+    "service_area",
+    "nearest_join"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — 'five-minute walk' read literally is network reach — service_area around the markers, then flag policies inside. But the workflow points the other way: flood exposure doesn't travel the sidewalk network, the caller wants speed, and a 400 m buffer + join is the proxy an exposure analyst would actually run; nearest_join (distance to nearest marker, thresholded) flags in one pass. As with any address list, geocoding to points precedes everything and isn't in the catalogue."
   },
   {
    "query": "The detailed wildfire boundary shape is completely choking up my dashboard presentation. I just need a cleaner, smoother outline of the high-risk area so the leadership team can actually load the map.",
@@ -1043,7 +1145,12 @@
    "label_fable_also": [
     "execute_plan"
    ],
-   "label_fable_note": "the riparian exclusion is the distinctive step: buffer the creek at the statutory width — which lives in the state rules, not the request — then overlay_layers (difference) it out of the West 40 and measure_area both ways; the 'how much acreage that strips out' answer is the delta, so the honest full label is the plan. The unstated buffer width is the parameter to elicit before anything runs."
+   "label_fable_note": "the riparian exclusion is the distinctive step: buffer the creek at the statutory width — which lives in the state rules, not the request — then overlay_layers (difference) it out of the West 40 and measure_area both ways; the 'how much acreage that strips out' answer is the delta, so the honest full label is the plan. The unstated buffer width is the parameter to elicit before anything runs.",
+   "label_human": "buffer_layer",
+   "label_human_also": [
+    "execute_plan"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — the riparian exclusion is the distinctive step: buffer the creek at the statutory width — which lives in the state rules, not the request — then overlay_layers (difference) it out of the West 40 and measure_area both ways; the 'how much acreage that strips out' answer is the delta, so the honest full label is the plan. The unstated buffer width is the parameter to elicit before anything runs."
   },
   {
    "query": "Find all the stands in the north unit where the trees died off since last summer so we can send the salvage logging crew in before the wood rots.",
@@ -1059,7 +1166,13 @@
     "zonal_statistics",
     "compare_layers"
    ],
-   "label_fable_note": "mortality since last summer is imagery change detection: an index per date and a difference — band_math's own 'an index or a difference' — then reclassify the drop and zonal_statistics to attribute the loss to stands. If instead the stands layer itself carries a condition attribute in two vintages, compare_layers reads the change with no imagery at all; the label follows which data exists."
+   "label_fable_note": "mortality since last summer is imagery change detection: an index per date and a difference — band_math's own 'an index or a difference' — then reclassify the drop and zonal_statistics to attribute the loss to stands. If instead the stands layer itself carries a condition attribute in two vintages, compare_layers reads the change with no imagery at all; the label follows which data exists.",
+   "label_human": "band_math",
+   "label_human_also": [
+    "zonal_statistics",
+    "compare_layers"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — mortality since last summer is imagery change detection: an index per date and a difference — band_math's own 'an index or a difference' — then reclassify the drop and zonal_statistics to attribute the loss to stands. If instead the stands layer itself carries a condition attribute in two vintages, compare_layers reads the change with no imagery at all; the label follows which data exists."
   },
   {
    "query": "I've got 40 years of daily gridded temperature data and I need the mean and the hottest day for each county in the study area, but I genuinely don't know if I should just average whatever grid cells touch a county or do something more careful.",
@@ -1095,7 +1208,13 @@
     "describe_dataset",
     "ambiguous"
    ],
-   "label_fable_note": "the symptom is the diagnosis: coastal weirdness plus regions with 'barely any data' is ocean nodata and partial pixels leaking into a naive per-region mean, possibly with a CRS mismatch between grid and regions on top. The catalogue's zonal_statistics is the fix, not just the label — exact fractional coverage and valid-cell accounting are precisely what the caller's current tool lacks; describe_dataset first to confirm the grid's nodata and CRS. ambiguous is defensible since 'what is going on' asks for an explanation, not an operation."
+   "label_fable_note": "the symptom is the diagnosis: coastal weirdness plus regions with 'barely any data' is ocean nodata and partial pixels leaking into a naive per-region mean, possibly with a CRS mismatch between grid and regions on top. The catalogue's zonal_statistics is the fix, not just the label — exact fractional coverage and valid-cell accounting are precisely what the caller's current tool lacks; describe_dataset first to confirm the grid's nodata and CRS. ambiguous is defensible since 'what is going on' asks for an explanation, not an operation.",
+   "label_human": "zonal_statistics",
+   "label_human_also": [
+    "describe_dataset",
+    "ambiguous"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — the symptom is the diagnosis: coastal weirdness plus regions with 'barely any data' is ocean nodata and partial pixels leaking into a naive per-region mean, possibly with a CRS mismatch between grid and regions on top. The catalogue's zonal_statistics is the fix, not just the label — exact fractional coverage and valid-cell accounting are precisely what the caller's current tool lacks; describe_dataset first to confirm the grid's nodata and CRS. ambiguous is defensible since 'what is going on' asks for an explanation, not an operation."
   },
   {
    "query": "Precipitation anomaly per province, mm/month, using only the cells whose centre falls inside the boundary.",
@@ -1120,7 +1239,12 @@
    "label_fable_also": [
     "none"
    ],
-   "label_fable_note": "a population-WEIGHTED zonal mean is a ratio of two zonal sums: band_math(heat × pop), zonal_statistics(sum) of the product and of the population, then the division — a plan, not a call. The catalogue's zonal_statistics doesn't declare a weights argument, which is probably why this is 'the third time': the unweighted mean is what the tool hands back. none is the finding — exactextract natively supports weight rasters, so weighted zonal statistics is a missing primitive the engine could expose cheaply. 'Last summer' also implies a temporal subset of the grid the request leaves unstated."
+   "label_fable_note": "a population-WEIGHTED zonal mean is a ratio of two zonal sums: band_math(heat × pop), zonal_statistics(sum) of the product and of the population, then the division — a plan, not a call. The catalogue's zonal_statistics doesn't declare a weights argument, which is probably why this is 'the third time': the unweighted mean is what the tool hands back. none is the finding — exactextract natively supports weight rasters, so weighted zonal statistics is a missing primitive the engine could expose cheaply. 'Last summer' also implies a temporal subset of the grid the request leaves unstated.",
+   "label_human": "execute_plan",
+   "label_human_also": [
+    "none"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — a population-WEIGHTED zonal mean is a ratio of two zonal sums: band_math(heat × pop), zonal_statistics(sum) of the product and of the population, then the division — a plan, not a call. The catalogue's zonal_statistics doesn't declare a weights argument, which is probably why this is 'the third time': the unweighted mean is what the tool hands back. none is the finding — exactextract natively supports weight rasters, so weighted zonal statistics is a missing primitive the engine could expose cheaply. 'Last summer' also implies a temporal subset of the grid the request leaves unstated."
   },
   {
    "query": "how many grid cells actually fall inside this tiny island nation, I suspect zero and that would explain the blank column",
@@ -1135,7 +1259,12 @@
    "label_fable_also": [
     "clip_raster"
    ],
-   "label_fable_note": "the cell COUNT is a zonal statistic like any other, and exact fractional coverage is precisely the diagnostic for a polygon smaller than a cell — a count of zero (or a fractional coverage below one) confirms the blank-column hypothesis. clip_raster + band_statistics reaches the same number in two steps and shows the masked count alongside."
+   "label_fable_note": "the cell COUNT is a zonal statistic like any other, and exact fractional coverage is precisely the diagnostic for a polygon smaller than a cell — a count of zero (or a fractional coverage below one) confirms the blank-column hypothesis. clip_raster + band_statistics reaches the same number in two steps and shows the masked count alongside.",
+   "label_human": "zonal_statistics",
+   "label_human_also": [
+    "clip_raster"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — the cell COUNT is a zonal statistic like any other, and exact fractional coverage is precisely the diagnostic for a polygon smaller than a cell — a count of zero (or a fractional coverage below one) confirms the blank-column hypothesis. clip_raster + band_statistics reaches the same number in two steps and shows the masked count alongside."
   },
   {
    "query": "Two of our leases seem to clash with a neighbouring concession, can you find every place our boundary overlaps theirs and how many hectares are affected?",
@@ -1210,7 +1339,12 @@
    "label_fable_also": [
     "execute_plan"
    ],
-   "label_fable_note": "along-route grade lives in the profile: surface value + distance travelled (which IS the chainage) at a fixed step, then Δz/Δs per step and an argmax — post-processing the catalogue doesn't own, so the strict answer is a short plan. slope is the trap: cross-terrain steepness at a cell is not the alignment's grade along its own direction; a line traversing a hillside obliquely grades far below the terrain slope."
+   "label_fable_note": "along-route grade lives in the profile: surface value + distance travelled (which IS the chainage) at a fixed step, then Δz/Δs per step and an argmax — post-processing the catalogue doesn't own, so the strict answer is a short plan. slope is the trap: cross-terrain steepness at a cell is not the alignment's grade along its own direction; a line traversing a hillside obliquely grades far below the terrain slope.",
+   "label_human": "elevation_profile",
+   "label_human_also": [
+    "execute_plan"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — along-route grade lives in the profile: surface value + distance travelled (which IS the chainage) at a fixed step, then Δz/Δs per step and an argmax — post-processing the catalogue doesn't own, so the strict answer is a short plan. slope is the trap: cross-terrain steepness at a cell is not the alignment's grade along its own direction; a line traversing a hillside obliquely grades far below the terrain slope."
   },
   {
    "query": "can you give me elevation at every 20 metres along the centreline so I can plot the profile",
@@ -1235,7 +1369,12 @@
    "label_fable_also": [
     "execute_plan"
    ],
-   "label_fable_note": "'ANY 100 m stretch' is a sliding window: profile at a fine step (10 m), then a rolling 100 m Δz/Δs and its maximum. Sampling exactly every 100 m answers only the fixed-offset version of the question. focal_statistics is a raster window, not an along-line one — not the instrument."
+   "label_fable_note": "'ANY 100 m stretch' is a sliding window: profile at a fine step (10 m), then a rolling 100 m Δz/Δs and its maximum. Sampling exactly every 100 m answers only the fixed-offset version of the question. focal_statistics is a raster window, not an along-line one — not the instrument.",
+   "label_human": "elevation_profile",
+   "label_human_also": [
+    "execute_plan"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — 'ANY 100 m stretch' is a sliding window: profile at a fine step (10 m), then a rolling 100 m Δz/Δs and its maximum. Sampling exactly every 100 m answers only the fixed-offset version of the question. focal_statistics is a raster window, not an along-line one — not the instrument."
   },
   {
    "query": "the vertical profile looks impossible, there's a cliff in the middle of a flat stretch, something's wrong with the terrain under this bit",
@@ -1250,7 +1389,12 @@
    "label_fable_also": [
     "ambiguous"
    ],
-   "label_fable_note": "'a cliff in the middle of a flat stretch' is the signature of a DEM artefact — an unmasked nodata value (0 or −9999 leaking into the surface) or a tile seam — and the first move is reading what the grid declares: nodata, min/max. clip_raster + band_statistics over the suspect stretch then localises it. ambiguous is defensible because the caller asks what is wrong, not for an operation."
+   "label_fable_note": "'a cliff in the middle of a flat stretch' is the signature of a DEM artefact — an unmasked nodata value (0 or −9999 leaking into the surface) or a tile seam — and the first move is reading what the grid declares: nodata, min/max. clip_raster + band_statistics over the suspect stretch then localises it. ambiguous is defensible because the caller asks what is wrong, not for an operation.",
+   "label_human": "describe_dataset",
+   "label_human_also": [
+    "ambiguous"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — 'a cliff in the middle of a flat stretch' is the signature of a DEM artefact — an unmasked nodata value (0 or −9999 leaking into the surface) or a tile seam — and the first move is reading what the grid declares: nodata, min/max. clip_raster + band_statistics over the suspect stretch then localises it. ambiguous is defensible because the caller asks what is wrong, not for an operation."
   },
   {
    "query": "not sure how to check this but I need to know if any part of the route exceeds a 2.5% gradient, the alignment is a single line file",
@@ -1265,7 +1409,12 @@
    "label_fable_also": [
     "execute_plan"
    ],
-   "label_fable_note": "drape the line, then test Δz/Δs per step against 2.5% — the threshold check is post-processing. Two things are unstated: the DEM itself ('the alignment is a single line file' — the operation needs a terrain source the caller hasn't mentioned) and the base length of the gradient (2.5% over 10 m and over 100 m are different questions on rough terrain)."
+   "label_fable_note": "drape the line, then test Δz/Δs per step against 2.5% — the threshold check is post-processing. Two things are unstated: the DEM itself ('the alignment is a single line file' — the operation needs a terrain source the caller hasn't mentioned) and the base length of the gradient (2.5% over 10 m and over 100 m are different questions on rough terrain).",
+   "label_human": "elevation_profile",
+   "label_human_also": [
+    "execute_plan"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — drape the line, then test Δz/Δs per step against 2.5% — the threshold check is post-processing. Two things are unstated: the DEM itself ('the alignment is a single line file' — the operation needs a terrain source the caller hasn't mentioned) and the base length of the gradient (2.5% over 10 m and over 100 m are different questions on rough terrain)."
   },
   {
    "query": "compare the gradient profile of the two route options between the same two stations, which one climbs less overall",
@@ -1280,7 +1429,12 @@
    "label_fable_also": [
     "execute_plan"
    ],
-   "label_fable_note": "one profile per option at the same step, then total positive gain (sum of positive Δz) per line and the comparison — the aggregation is post-processing. 'Climbs less overall' should be pinned down before the answer means anything: total gain, ruling gradient, and mean grade can rank the two options differently. compare_layers is not in play — it diffs versions of a layer, not derived metrics."
+   "label_fable_note": "one profile per option at the same step, then total positive gain (sum of positive Δz) per line and the comparison — the aggregation is post-processing. 'Climbs less overall' should be pinned down before the answer means anything: total gain, ruling gradient, and mean grade can rank the two options differently. compare_layers is not in play — it diffs versions of a layer, not derived metrics.",
+   "label_human": "elevation_profile",
+   "label_human_also": [
+    "execute_plan"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — one profile per option at the same step, then total positive gain (sum of positive Δz) per line and the comparison — the aggregation is post-processing. 'Climbs less overall' should be pinned down before the answer means anything: total gain, ruling gradient, and mean grade can rank the two options differently. compare_layers is not in play — it diffs versions of a layer, not derived metrics."
   },
   {
    "query": "I've got hundreds of dive survey points, need the distance of each one from the shoreline so I can check how many are within the intertidal zone",
@@ -1305,7 +1459,12 @@
    "label_fable_also": [
     "none"
    ],
-   "label_fable_note": "thinning at 500 m keeps one point per crowded spot, deterministically and in priority order — close to the deduplicated count, but not identical: 'group anything within half a km' is transitive clustering (DBSCAN-style), where chains A–B–C merge even when A and C are 800 m apart, and no catalogue operation does that. buffer_layer + a dissolve of overlapping blobs would, but dissolve_layer merges by KEY, not by contact. none is the finding if the biologist needs the strict cluster count rather than a thinned representative set."
+   "label_fable_note": "thinning at 500 m keeps one point per crowded spot, deterministically and in priority order — close to the deduplicated count, but not identical: 'group anything within half a km' is transitive clustering (DBSCAN-style), where chains A–B–C merge even when A and C are 800 m apart, and no catalogue operation does that. buffer_layer + a dissolve of overlapping blobs would, but dissolve_layer merges by KEY, not by contact. none is the finding if the biologist needs the strict cluster count rather than a thinned representative set.",
+   "label_human": "thin_points",
+   "label_human_also": [
+    "none"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — thinning at 500 m keeps one point per crowded spot, deterministically and in priority order — close to the deduplicated count, but not identical: 'group anything within half a km' is transitive clustering (DBSCAN-style), where chains A–B–C merge even when A and C are 800 m apart, and no catalogue operation does that. buffer_layer + a dissolve of overlapping blobs would, but dissolve_layer merges by KEY, not by contact. none is the finding if the biologist needs the strict cluster count rather than a thinned representative set."
   },
   {
    "query": "some of my GPS points from the boat ended up on land, can you tell me which ones and by how far they're off",
@@ -1320,7 +1479,12 @@
    "label_fable_also": [
     "spatial_join"
    ],
-   "label_fable_note": "one call against the water POLYGON answers both halves at once: distance 0 means the fix is at sea, anything positive is a point on land AND its offset in metres. Run it against the shoreLINE instead and every point gets a positive distance with no side information — the polygon is the right reference. spatial_join (within water) answers 'which ones' but drops the 'by how far'."
+   "label_fable_note": "one call against the water POLYGON answers both halves at once: distance 0 means the fix is at sea, anything positive is a point on land AND its offset in metres. Run it against the shoreLINE instead and every point gets a positive distance with no side information — the polygon is the right reference. spatial_join (within water) answers 'which ones' but drops the 'by how far'.",
+   "label_human": "nearest_join",
+   "label_human_also": [
+    "spatial_join"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — one call against the water POLYGON answers both halves at once: distance 0 means the fix is at sea, anything positive is a point on land AND its offset in metres. Run it against the shoreLINE instead and every point gets a positive distance with no side information — the polygon is the right reference. spatial_join (within water) answers 'which ones' but drops the 'by how far'."
   },
   {
    "query": "so we've been recording coral cover at points along about 40km of coast over three years and I want to see if the points sit near river mouths, is there a way to check the distance from each point to the nearest river outlet without me doing it one by one in a spreadsheet",
@@ -1375,7 +1539,12 @@
    "label_fable_also": [
     "run_sql"
    ],
-   "label_fable_note": "density is the population attribute over ground area: measure_area supplies the denominator with the distortion checked (planar area on a geographic CRS would silently corrupt every density), and the per-feature ratio is attribute math — one line of run_sql. If the population sits in a census CSV rather than on the neighbourhoods, join_table precedes. aggregate_weighted is close in name but aggregates sub-units into areas; here each neighbourhood already carries its own numerator."
+   "label_fable_note": "density is the population attribute over ground area: measure_area supplies the denominator with the distortion checked (planar area on a geographic CRS would silently corrupt every density), and the per-feature ratio is attribute math — one line of run_sql. If the population sits in a census CSV rather than on the neighbourhoods, join_table precedes. aggregate_weighted is close in name but aggregates sub-units into areas; here each neighbourhood already carries its own numerator.",
+   "label_human": "measure_area",
+   "label_human_also": [
+    "run_sql"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — density is the population attribute over ground area: measure_area supplies the denominator with the distortion checked (planar area on a geographic CRS would silently corrupt every density), and the per-feature ratio is attribute math — one line of run_sql. If the population sits in a census CSV rather than on the neighbourhoods, join_table precedes. aggregate_weighted is close in name but aggregates sub-units into areas; here each neighbourhood already carries its own numerator."
   },
   {
    "query": "I ran this before and the numbers per district didn't add up to the citywide total, something is dropping addresses",
@@ -1400,7 +1569,12 @@
    "label_fable_also": [
     "ambiguous"
    ],
-   "label_fable_note": "the workflow is clear — the same aggregation run once per boundary vintage, then set side by side — but the 'stat' itself is unstated, so the workhorse operation (count_in_polygons? zonal_statistics? summarize_field?) cannot be picked. ambiguous is defensible on exactly those grounds; the plan is the shape of the answer either way."
+   "label_fable_note": "the workflow is clear — the same aggregation run once per boundary vintage, then set side by side — but the 'stat' itself is unstated, so the workhorse operation (count_in_polygons? zonal_statistics? summarize_field?) cannot be picked. ambiguous is defensible on exactly those grounds; the plan is the shape of the answer either way.",
+   "label_human": "execute_plan",
+   "label_human_also": [
+    "ambiguous"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — the workflow is clear — the same aggregation run once per boundary vintage, then set side by side — but the 'stat' itself is unstated, so the workhorse operation (count_in_polygons? zonal_statistics? summarize_field?) cannot be picked. ambiguous is defensible on exactly those grounds; the plan is the shape of the answer either way."
   },
   {
    "query": "average response time for service requests, grouped by neighbourhood, from the incident points we've logged",
@@ -1425,7 +1599,12 @@
    "label_fable_also": [
     "spatial_join"
    ],
-   "label_fable_note": "count parks per neighbourhood and keep the zeros. The boundary rule the operation states is load-bearing here: a park straddling the line either counts for both neighbourhoods or neither. One caveat from the catalogue's own wording — its first line says POINTS per polygon, so whether polygon parks are accepted (or need centroid_layer/point_on_surface first) is worth confirming. A spatial anti-join reaches the same zero set."
+   "label_fable_note": "count parks per neighbourhood and keep the zeros. The boundary rule the operation states is load-bearing here: a park straddling the line either counts for both neighbourhoods or neither. One caveat from the catalogue's own wording — its first line says POINTS per polygon, so whether polygon parks are accepted (or need centroid_layer/point_on_surface first) is worth confirming. A spatial anti-join reaches the same zero set.",
+   "label_human": "count_in_polygons",
+   "label_human_also": [
+    "spatial_join"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — count parks per neighbourhood and keep the zeros. The boundary rule the operation states is load-bearing here: a park straddling the line either counts for both neighbourhoods or neither. One caveat from the catalogue's own wording — its first line says POINTS per polygon, so whether polygon parks are accepted (or need centroid_layer/point_on_surface first) is worth confirming. A spatial anti-join reaches the same zero set."
   },
   {
    "query": "need a clean channel network from this DEM before I can even start building the model, right now it's got pits everywhere",
@@ -1440,7 +1619,12 @@
    "label_fable_also": [
     "flow_accumulation"
    ],
-   "label_fable_note": "the deliverable is the network, which is extract_streams over a flow-accumulation grid — and the caller's actual complaint ('pits everywhere') is already answered inside flow_accumulation's automatic depression filling. So the chain is flow_accumulation → extract_streams with a threshold to be chosen, and flow_accumulation is the defensible pick as the first thing you run."
+   "label_fable_note": "the deliverable is the network, which is extract_streams over a flow-accumulation grid — and the caller's actual complaint ('pits everywhere') is already answered inside flow_accumulation's automatic depression filling. So the chain is flow_accumulation → extract_streams with a threshold to be chosen, and flow_accumulation is the defensible pick as the first thing you run.",
+   "label_human": "extract_streams",
+   "label_human_also": [
+    "flow_accumulation"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — the deliverable is the network, which is extract_streams over a flow-accumulation grid — and the caller's actual complaint ('pits everywhere') is already answered inside flow_accumulation's automatic depression filling. So the chain is flow_accumulation → extract_streams with a threshold to be chosen, and flow_accumulation is the defensible pick as the first thing you run."
   },
   {
    "query": "what's the area draining to this gauge point, I need the full catchment boundary above it",
@@ -1466,7 +1650,13 @@
     "elevation_profile",
     "ambiguous"
    ],
-   "label_fable_note": "the decisive test is deriving where the DEM itself thinks the channel is (flow_accumulation → extract_streams) and measuring its offset from the centreline (nearest_join): a consistent lateral offset indicts the centreline, a wandering or absent DEM channel indicts the terrain. elevation_profile along the centreline is the quicker probe — a profile riding the bank instead of the thalweg points the same way. ambiguous is defensible: the caller asks which input is wrong, not for an operation."
+   "label_fable_note": "the decisive test is deriving where the DEM itself thinks the channel is (flow_accumulation → extract_streams) and measuring its offset from the centreline (nearest_join): a consistent lateral offset indicts the centreline, a wandering or absent DEM channel indicts the terrain. elevation_profile along the centreline is the quicker probe — a profile riding the bank instead of the thalweg points the same way. ambiguous is defensible: the caller asks which input is wrong, not for an operation.",
+   "label_human": "extract_streams",
+   "label_human_also": [
+    "elevation_profile",
+    "ambiguous"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — the decisive test is deriving where the DEM itself thinks the channel is (flow_accumulation → extract_streams) and measuring its offset from the centreline (nearest_join): a consistent lateral offset indicts the centreline, a wandering or absent DEM channel indicts the terrain. elevation_profile along the centreline is the quicker probe — a profile riding the bank instead of the thalweg points the same way. ambiguous is defensible: the caller asks which input is wrong, not for an operation."
   },
   {
    "query": "I'm trying to set up boundary conditions for about 15 sub-catchments and I need the outlet points and contributing areas for each, this is taking forever by hand and I keep getting different totals every time",
@@ -1521,7 +1711,12 @@
    "label_fable_also": [
     "run_sql"
    ],
-   "label_fable_note": "a grouped count of an attribute the parcels already carry — no geometry involved. With two county files, either merge_layers first and group by (zoning, county), or run the summary per file and lay the two out; run_sql states the whole cross-tab in one query. The 'side by side' is presentation, not an operation."
+   "label_fable_note": "a grouped count of an attribute the parcels already carry — no geometry involved. With two county files, either merge_layers first and group by (zoning, county), or run the summary per file and lay the two out; run_sql states the whole cross-tab in one query. The 'side by side' is presentation, not an operation.",
+   "label_human": "summarize_field",
+   "label_human_also": [
+    "run_sql"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — a grouped count of an attribute the parcels already carry — no geometry involved. With two county files, either merge_layers first and group by (zoning, county), or run the summary per file and lay the two out; run_sql states the whole cross-tab in one query. The 'side by side' is presentation, not an operation."
   },
   {
    "query": "how do these two counties even line up geographically, I need to know where county A's high-value cluster sits relative to county B's before I present this",
@@ -1556,7 +1751,12 @@
    "label_fable_also": [
     "compare_layers"
    ],
-   "label_fable_note": "'do I need to fix something first' is a pre-flight inspection — CRS, unit, schema of each file, which describe_dataset reports per file. compare_layers does the confrontation in one call but is contracted for two versions of the SAME layer: right if the two sources cover the same ground in different vintages, wrong across two disjoint counties — and the scenario suggests the latter, where per-feature diffing is meaningless and only the CRS/schema question survives."
+   "label_fable_note": "'do I need to fix something first' is a pre-flight inspection — CRS, unit, schema of each file, which describe_dataset reports per file. compare_layers does the confrontation in one call but is contracted for two versions of the SAME layer: right if the two sources cover the same ground in different vintages, wrong across two disjoint counties — and the scenario suggests the latter, where per-feature diffing is meaningless and only the CRS/schema question survives.",
+   "label_human": "describe_dataset",
+   "label_human_also": [
+    "compare_layers"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — 'do I need to fix something first' is a pre-flight inspection — CRS, unit, schema of each file, which describe_dataset reports per file. compare_layers does the confrontation in one call but is contracted for two versions of the SAME layer: right if the two sources cover the same ground in different vintages, wrong across two disjoint counties — and the scenario suggests the latter, where per-feature diffing is meaningless and only the CRS/schema question survives."
   },
   {
    "query": "flag any parcel in county B that's within a quarter mile of the interstate, need that for the highway-adjacency discount",
@@ -1571,7 +1771,12 @@
    "label_fable_also": [
     "nearest_join"
    ],
-   "label_fable_note": "the standard 'within X of Y' flag: buffer the interstate at a quarter mile (~402 m) and join/select the parcels touching it — or one nearest_join for per-parcel distance thresholded at 402 m, which also leaves the exact distance on record if the discount ever becomes tiered."
+   "label_fable_note": "the standard 'within X of Y' flag: buffer the interstate at a quarter mile (~402 m) and join/select the parcels touching it — or one nearest_join for per-parcel distance thresholded at 402 m, which also leaves the exact distance on record if the discount ever becomes tiered.",
+   "label_human": "buffer_layer",
+   "label_human_also": [
+    "nearest_join"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — the standard 'within X of Y' flag: buffer the interstate at a quarter mile (~402 m) and join/select the parcels touching it — or one nearest_join for per-parcel distance thresholded at 402 m, which also leaves the exact distance on record if the discount ever becomes tiered."
   },
   {
    "query": "need slope and aspect off this DEM before I can run anything else",
@@ -1607,7 +1812,13 @@
     "describe_dataset",
     "band_math"
    ],
-   "label_fable_note": "the decisive check is recomputing aspect from the DEM under a declared convention (0 = north, flats = −1) and differencing it against the suspect layer with band_math. Errors that concentrate on north-facing slopes are the signature of a convention mismatch — 0/360 wrap-around, radians vs degrees, or flat-cell coding — and describe_dataset's value range on the suspect layer often betrays that on its own (a max of 6.28 is not degrees)."
+   "label_fable_note": "the decisive check is recomputing aspect from the DEM under a declared convention (0 = north, flats = −1) and differencing it against the suspect layer with band_math. Errors that concentrate on north-facing slopes are the signature of a convention mismatch — 0/360 wrap-around, radians vs degrees, or flat-cell coding — and describe_dataset's value range on the suspect layer often betrays that on its own (a max of 6.28 is not degrees).",
+   "label_human": "aspect",
+   "label_human_also": [
+    "describe_dataset",
+    "band_math"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — the decisive check is recomputing aspect from the DEM under a declared convention (0 = north, flats = −1) and differencing it against the suspect layer with band_math. Errors that concentrate on north-facing slopes are the signature of a convention mismatch — 0/360 wrap-around, radians vs degrees, or flat-cell coding — and describe_dataset's value range on the suspect layer often betrays that on its own (a max of 6.28 is not degrees)."
   },
   {
    "query": "I'm trying to figure out which ridgelines would actually slow a fire down given the current fuel map and slope, and I don't really know how to combine those two things into one answer",
@@ -1622,7 +1833,12 @@
    "label_fable_also": [
     "ambiguous"
    ],
-   "label_fable_note": "recognisable but genuinely composite: ridge extraction from the terrain (curvature is the catalogue's instrument — plan convexity marks divides), the fuel map reclassified to resistance, slope folded in via band_math or overlay. The caller says outright they can't combine the pieces, which is the plan machinery's case. ambiguous is defensible about the criteria ('slow a fire down' has no threshold yet), not the workflow."
+   "label_fable_note": "recognisable but genuinely composite: ridge extraction from the terrain (curvature is the catalogue's instrument — plan convexity marks divides), the fuel map reclassified to resistance, slope folded in via band_math or overlay. The caller says outright they can't combine the pieces, which is the plan machinery's case. ambiguous is defensible about the criteria ('slow a fire down' has no threshold yet), not the workflow.",
+   "label_human": "execute_plan",
+   "label_human_also": [
+    "ambiguous"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — recognisable but genuinely composite: ridge extraction from the terrain (curvature is the catalogue's instrument — plan convexity marks divides), the fuel map reclassified to resistance, slope folded in via band_math or overlay. The caller says outright they can't combine the pieces, which is the plan machinery's case. ambiguous is defensible about the criteria ('slow a fire down' has no threshold yet), not the workflow."
   },
   {
    "query": "what's a reasonable way to get a single defensibility score per parcel near the wildland interface, combining slope and vegetation, I've never done this before",
@@ -1637,7 +1853,12 @@
    "label_fable_also": [
     "ambiguous"
    ],
-   "label_fable_note": "a per-parcel composite index: zonal_statistics brings mean slope (and a vegetation measure) onto each parcel, then a weighted formula — run_sql — makes the score. The weights and the classing are policy choices nobody has stated, and the caller says they've never done this: ambiguous is defensible about the recipe, while the machinery is a plain plan."
+   "label_fable_note": "a per-parcel composite index: zonal_statistics brings mean slope (and a vegetation measure) onto each parcel, then a weighted formula — run_sql — makes the score. The weights and the classing are policy choices nobody has stated, and the caller says they've never done this: ambiguous is defensible about the recipe, while the machinery is a plain plan.",
+   "label_human": "execute_plan",
+   "label_human_also": [
+    "ambiguous"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — a per-parcel composite index: zonal_statistics brings mean slope (and a vegetation measure) onto each parcel, then a weighted formula — run_sql — makes the score. The weights and the classing are policy choices nobody has stated, and the caller says they've never done this: ambiguous is defensible about the recipe, while the machinery is a plain plan."
   },
   {
    "query": "how much of the fuel break actually sits on slopes over 30 percent, that changes how we plan the crew work",
@@ -1652,7 +1873,12 @@
    "label_fable_also": [
     "execute_plan"
    ],
-   "label_fable_note": "reclassify the slope grid at 30% into a 0/1 mask and take its zonal sum (× cell area) inside the fuel break — the fraction over 30% is the deliverable, and exact fractional coverage matters on a feature this narrow. slope and reclassify_raster are the two preparatory steps if only the DEM exists, which makes the strict answer a short plan; a fuel break mapped as a LINE would need the along-line treatment (points_along_lines + sample_raster_at_points) instead."
+   "label_fable_note": "reclassify the slope grid at 30% into a 0/1 mask and take its zonal sum (× cell area) inside the fuel break — the fraction over 30% is the deliverable, and exact fractional coverage matters on a feature this narrow. slope and reclassify_raster are the two preparatory steps if only the DEM exists, which makes the strict answer a short plan; a fuel break mapped as a LINE would need the along-line treatment (points_along_lines + sample_raster_at_points) instead.",
+   "label_human": "zonal_statistics",
+   "label_human_also": [
+    "execute_plan"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — reclassify the slope grid at 30% into a 0/1 mask and take its zonal sum (× cell area) inside the fuel break — the fraction over 30% is the deliverable, and exact fractional coverage matters on a feature this narrow. slope and reclassify_raster are the two preparatory steps if only the DEM exists, which makes the strict answer a short plan; a fuel break mapped as a LINE would need the along-line treatment (points_along_lines + sample_raster_at_points) instead."
   },
   {
    "query": "need the area within 5km of each candidate mast site that isn't already covered by an existing tower",
@@ -1708,7 +1934,13 @@
     "viewshed",
     "ambiguous"
    ],
-   "label_fable_note": "mast siting is coverage analysis, and viewshed is the distinctive instrument — terrain in, 'which cells see the station' out — weighted by population (band_math or zonal sums) and ranked across candidates. But no candidate sites, antenna heights or radius are stated, so the request is a plan awaiting parameters; ambiguous is defensible about everything except the shape, which is unmistakable."
+   "label_fable_note": "mast siting is coverage analysis, and viewshed is the distinctive instrument — terrain in, 'which cells see the station' out — weighted by population (band_math or zonal sums) and ranked across candidates. But no candidate sites, antenna heights or radius are stated, so the request is a plan awaiting parameters; ambiguous is defensible about everything except the shape, which is unmistakable.",
+   "label_human": "execute_plan",
+   "label_human_also": [
+    "viewshed",
+    "ambiguous"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — mast siting is coverage analysis, and viewshed is the distinctive instrument — terrain in, 'which cells see the station' out — weighted by population (band_math or zonal sums) and ranked across candidates. But no candidate sites, antenna heights or radius are stated, so the request is a plan awaiting parameters; ambiguous is defensible about everything except the shape, which is unmistakable."
   },
   {
    "query": "how many households currently sit outside a 3km radius of any existing site, need the number for the funding application",
@@ -1723,7 +1955,12 @@
    "label_fable_also": [
     "buffer_layer"
    ],
-   "label_fable_note": "'radius of ANY site' is the trap for buffer-then-count: overlapping 3 km discs double-count households unless dissolved into one blob first. One nearest_join gives each household its distance to the closest site, and the funding number is the count above 3000 m (summarize_field). buffer_layer + dissolve + anti-join is the defensible classical route to the same figure."
+   "label_fable_note": "'radius of ANY site' is the trap for buffer-then-count: overlapping 3 km discs double-count households unless dissolved into one blob first. One nearest_join gives each household its distance to the closest site, and the funding number is the count above 3000 m (summarize_field). buffer_layer + dissolve + anti-join is the defensible classical route to the same figure.",
+   "label_human": "nearest_join",
+   "label_human_also": [
+    "buffer_layer"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — 'radius of ANY site' is the trap for buffer-then-count: overlapping 3 km discs double-count households unless dissolved into one blob first. One nearest_join gives each household its distance to the closest site, and the funding number is the count above 3000 m (summarize_field). buffer_layer + dissolve + anti-join is the defensible classical route to the same figure."
   },
   {
    "query": "I've only got thirty-odd pit results and want a map of estimated organic carbon across the whole field, not just dots at the sample points",
@@ -1748,7 +1985,12 @@
    "label_fable_also": [
     "none"
    ],
-   "label_fable_note": "the catalogue counts points per polygon but has no 'summarise a point ATTRIBUTE per polygon' — so the mean is two steps: spatial_join stamps the block ID on each pit, summarize_field groups the pH by it. none is defensible as the finding: count_in_polygons lacks its statistics sibling, and this three-word request is its exact use case."
+   "label_fable_note": "the catalogue counts points per polygon but has no 'summarise a point ATTRIBUTE per polygon' — so the mean is two steps: spatial_join stamps the block ID on each pit, summarize_field groups the pH by it. none is defensible as the finding: count_in_polygons lacks its statistics sibling, and this three-word request is its exact use case.",
+   "label_human": "spatial_join",
+   "label_human_also": [
+    "none"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — the catalogue counts points per polygon but has no 'summarise a point ATTRIBUTE per polygon' — so the mean is two steps: spatial_join stamps the block ID on each pit, summarize_field groups the pH by it. none is defensible as the finding: count_in_polygons lacks its statistics sibling, and this three-word request is its exact use case."
   },
   {
    "query": "a couple of these pit locations look like they're sitting in the wrong field entirely, can you check the coordinates against the field boundaries",
@@ -1793,7 +2035,12 @@
    "label_fable_also": [
     "ambiguous"
    ],
-   "label_fable_note": "the spatial step is reading the slope grid under each pit (slope from the DEM first, if only terrain exists) — sample_raster_at_points, with the unreadable ones counted rather than filled. But 'doesn't make sense' is an unstated plausibility rule relating depth to slope; until someone states it, no operation can produce the flag. run_sql applies the rule once it exists."
+   "label_fable_note": "the spatial step is reading the slope grid under each pit (slope from the DEM first, if only terrain exists) — sample_raster_at_points, with the unreadable ones counted rather than filled. But 'doesn't make sense' is an unstated plausibility rule relating depth to slope; until someone states it, no operation can produce the flag. run_sql applies the rule once it exists.",
+   "label_human": "sample_raster_at_points",
+   "label_human_also": [
+    "ambiguous"
+   ],
+   "label_human_note": "Secondary answers and this reasoning come from a third labeller (fable, 2026-09-01) and were adopted wholesale by the person who chose the primary, not judged request by request. Recorded that way on purpose: the primary is a human choice, the secondaries are an endorsement of somebody else's, and those are different strengths of evidence. — the spatial step is reading the slope grid under each pit (slope from the DEM first, if only terrain exists) — sample_raster_at_points, with the unreadable ones counted rather than filled. But 'doesn't make sense' is an unstated plausibility rule relating depth to slope; until someone states it, no operation can produce the flag. run_sql applies the rule once it exists."
   }
  ]
 }

@@ -301,7 +301,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   </p>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1.5rem;margin:2rem 0 1.5rem">
     <div class="stat"><b>118</b><span>REQUESTS WE DID NOT WRITE</span></div>
-    <div class="stat"><b>53%</b><span>OUR RANKING, FOUND@3</span></div>
+    <div class="stat"><b>58%</b><span>OUR RANKING, FOUND@3</span></div>
     <div class="stat"><b>69%</b><span>A MODEL <em>CHOOSING</em> FROM THE SET</span></div>
     <div class="stat"><b>70%</b><span>WHERE THE TWO MODEL LABELLERS AGREE WITH EACH OTHER<br><em>labels written 2026-08-28, catalogue of 51</em></span></div>
   </div>
@@ -323,20 +323,20 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   </p>
   <p>
     <strong>It narrows first, deterministically, on facts the caller already has.</strong> What data
-    is in hand, and what should come back. Declaring those two takes the candidates from 74 to 31 —
+    is in hand, and what should come back. Declaring those two takes the candidates from 74 to 30 —
     and below thirty survivors the search stops choosing for you: it returns
     <code>status: "choose"</code> with every candidate, ordered as a hint that says so, each carrying
-    the sentence that separates it from its neighbours. On 115 of those 118 requests the right
-    operation is in what comes back; the other three leave a set still too large to hand over whole
+    the sentence that separates it from its neighbours. On 116 of those 118 requests the right
+    operation is in what comes back; the other two leave a set still too large to hand over whole
     and fall back to a ranked shortlist. Not as an accuracy figure — as a property: the narrowing
-    never drops the answer, and the 3% is the gap between «cannot lose it» and «can show you all of
+    never drops the answer, and the 2% is the gap between «cannot lose it» and «can show you all of
     it».
   </p>
   <p>
     <strong>The family orders instead of filtering, and that is a correction.</strong> It used to be
     a hard filter like the others, and it is not like the others: input kind is a fact about your
     data, family is a guess about our taxonomy that you cannot see. It removed six candidates out of
-    seventeen — and when the guess was wrong it removed <em>the right operation</em>, silently,
+    sixteen — and when the guess was wrong it removed <em>the right operation</em>, silently,
     leaving a confident answer built from neighbours. Every request here has 4.4 plausible families.
     That is the failure <a href="https://argleton.org">Argleton</a> measures in other people's
     systems, found in our own discovery layer.
@@ -439,9 +439,9 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <tr>
       <td>ablation</td>
       <td>Each facet is worth measuring alone, over the 118 independent requests: nothing declared
-      → 74 candidates, 16% found@3 with embeddings and 26% with BM25; what data I have → 49,
-      20% and 28%; + what I want back → 31, 32% and 41%; + how many datasets I have →
-      <strong>17, 53% ranked and 97% delivered</strong>. Both engines, because this row carried one
+      → 74 candidates, 18% found@3 with embeddings and 31% with BM25; what data I have → 48,
+      21% and 32%; + what I want back → 30, 38% and 45%; + how many datasets I have →
+      <strong>16, 58% ranked and 98% delivered</strong>. Both engines, because this row carried one
       unnamed column until a CI run met a rate limit from the model host, fell back to BM25 and
       recomputed the first figure as 28% — the published number had been a measurement of what
       the machine could download. The jump in the last column is not the ranker getting better
@@ -518,7 +518,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     which is the failure this whole project exists to measure. The model revision stays pinned, held
     by a golden-vector test, so the same question gets the same answer next year. What changes is the
     catalogue text, as a diff somebody can read and revert. That loop is not the timid option: it is
-    what took found@3 from 18% to 57% and delivery to 97%.
+    what took found@3 from 18% to 58% and delivery to 98%.
   </p>
   <p>
     It found something on its first recorded session, which is the argument for it in one line. A

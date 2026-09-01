@@ -64,10 +64,18 @@ class Figure:
     spelled: tuple[str, ...] = field(default=())
 
 
+#: Spelled-out forms, because a page writes "sixteen" where a table writes 16.
+#: Filled in as values appear rather than exhaustively — and that has a cost
+#: worth stating: a value with no entry here cannot be recognised in its written
+#: form, so the check reports the page as stale and names the word it found. That
+#: is the safe direction (it complains rather than passing), and it happened on
+#: 2026-09-01 when a figure moved from seventeen to sixteen.
 NUMBER_WORDS = {
     0: "zero", 1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six",
     7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve",
-    17: "seventeen", 27: "twenty-seven", 28: "twenty-eight", 29: "twenty-nine",
+    13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen",
+    17: "seventeen", 18: "eighteen", 19: "nineteen", 20: "twenty",
+    27: "twenty-seven", 28: "twenty-eight", 29: "twenty-nine", 30: "thirty",
     31: "thirty-one", 49: "forty-nine", 72: "seventy-two", 74: "seventy-four",
 }
 
@@ -93,8 +101,18 @@ def measured():
     rows = discovery_report.answerable(discovery_report.load())
     lexical = discovery_report.ablation(rows, engine="lexical")
     full = discovery_report.LEVELS[3][1]
+    # Through `accepted_of`, which is what the harness measures against. Reading
+    # `label_claude` here was a second implementation of the same number, and on
+    # 2026-09-01 the two disagreed: this file computed 115 while
+    # `test_discovery_report` computed 116, each right by its own arithmetic,
+    # both checking a page against a number the page's own generator does not
+    # produce. One number, one computation.
     sizes = [
-        len(catalog.applicable(**discovery_report.facets_for(r["label_claude"], full)))
+        len(
+            catalog.applicable(
+                **discovery_report.facets_for(discovery_report.accepted_of(r)[0], full)
+            )
+        )
         for r in rows
     ]
     counts = _catalogue()
@@ -166,6 +184,10 @@ FIGURES: dict[str, Figure] = {
                 r"\d+% delivered", "{n}% delivered"
             ),
             r"delivery to {n}%",
+            # Added 2026-09-01: this phrasing sat two screens from the table and
+            # went stale with it, unseen. A figure restated in prose needs its
+            # own pattern — the table's does not cover it.
+            r"which is the {n}% in the table above",
         ),
     ),
     "answerable": Figure(

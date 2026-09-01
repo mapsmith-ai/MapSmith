@@ -326,6 +326,29 @@ def recorded_cases(path: Path | None) -> list[dict[str, Any]]:
     return cases
 
 
+#: Labellers whose answers are history rather than a proposal: the two the
+#: benchmark was built with, and the human, whose answer is the measurement.
+_NOT_A_PROPOSAL = {"label_claude", "label_gemini", "label_human", "label"}
+
+
+def _proposer(query: dict[str, Any]) -> str | None:
+    """The name of a third labeller who answered this request, if there is one.
+
+    Discovered from the keys rather than hard-coded, so adding a fourth opinion
+    needs no change here — and so that nothing has to remember which model was
+    used on which day.
+    """
+    for key in sorted(query):
+        if (
+            key.startswith("label_")
+            and key not in _NOT_A_PROPOSAL
+            and not key.endswith(("_also", "_note", "_model"))
+            and query[key]
+        ):
+            return key[len("label_") :]
+    return None
+
+
 def disagreements(queries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The requests the two labellers answered differently.
 
@@ -362,6 +385,20 @@ def disagreements(queries: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 # different browser, or after clearing site data, the work looked
                 # undone because the page had no way to know it was not.
                 "human": q.get("label_human"),
+                # A third labeller's proposal, with its reasoning. Not an answer:
+                # `label_human` stays the only thing any figure is measured
+                # against. It is here because reading somebody's reasoning turns
+                # "think about this request from scratch" into "confirm or
+                # correct", and fifty questions is the difference between half an
+                # hour and an afternoon.
+                "proposed": {
+                    "by": name,
+                    "label": q[f"label_{name}"],
+                    "also": q.get(f"label_{name}_also") or [],
+                    "note": q.get(f"label_{name}_note") or "",
+                }
+                if (name := _proposer(q))
+                else None,
                 "ranked": [entry["name"] for entry in catalog.entries(answer)][:10],
             }
         )
@@ -548,6 +585,11 @@ tr.bad td { background: color-mix(in srgb, var(--bad) 9%, transparent); }
    page stops asking as though nobody had. */
 .chip.recorded::after { content: "recorded"; }
 .chip.recorded { border-color: var(--accent); }
+.chip.proposed::after { content: "proposed"; font-size: .72em; color: var(--quiet); margin-left: .3rem; }
+details.proposed { margin: .35rem 0 .1rem; font-size: .92em; }
+details.proposed summary { cursor: pointer; color: var(--quiet); }
+details.proposed .reason { margin: .3rem 0 0; padding-left: .8rem;
+  border-left: 2px solid var(--line); color: var(--quiet); }
 /* A second answer somebody accepts, not the one they would choose. */
 .chip.also { border-style: dashed; border-color: var(--accent); }
 .chip.also::after { content: "also"; font-size: .72em; color: var(--quiet); margin-left: .3rem; }
@@ -1260,12 +1302,30 @@ function drawDisagreements() {
       box.classList.add("answered");
     }
     box.appendChild(meta);
+    if (row.proposed) {
+      /* A proposal to confirm or correct, never an answer. Collapsed by default:
+         reading somebody else's reasoning first is a help on a hard request and
+         an anchor on an easy one, so opening it is a choice. */
+      const why = el("details", "proposed");
+      const head = el("summary");
+      head.textContent = row.proposed.by + " would choose " + row.proposed.label
+        + (row.proposed.also.length
+             ? " (also defensible: " + row.proposed.also.join(", ") + ")"
+             : "")
+        + " — why";
+      why.appendChild(head);
+      why.appendChild(el("p", "reason", row.proposed.note || "no reason given"));
+      box.appendChild(why);
+    }
     const marks = {};
     marks[row.claude] = "claude";
     marks[row.gemini] = "gemini";
     if (row.human) marks[row.human] = "recorded";
-    const suggested = [row.human, row.claude, row.gemini]
-      .filter(n => n && DATA.catalog.some(o => o.name === n));
+    if (row.proposed) marks[row.proposed.label] = "proposed";
+    const suggested = [
+      row.human, row.proposed && row.proposed.label, row.claude, row.gemini,
+      ...((row.proposed && row.proposed.also) || []),
+    ].filter(n => n && DATA.catalog.some(o => o.name === n));
     for (const name of row.ranked) {
       if (!suggested.includes(name) && suggested.length < 8) suggested.push(name);
     }

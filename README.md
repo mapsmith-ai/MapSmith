@@ -218,10 +218,10 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 74 | 26% | 16% | 26% |
-| what data I have | 49 | 28% | 20% | 28% |
-| + what I want back | 31 | 41% | 32% | 50% |
-| **+ how many datasets I have** | **17** | **53%** | **46%** | **97%** |
+| nothing — words alone | 74 | 31% | 18% | 31% |
+| what data I have | 48 | 32% | 21% | 33% |
+| + what I want back | 30 | 45% | 38% | 53% |
+| **+ how many datasets I have** | **16** | **58%** | **53%** | **98%** |
 
 **Two ranking columns, and that is a correction.** This table used to carry one,
 computed with the default engine — which is the embedding one where its model
@@ -240,7 +240,7 @@ survive a full declaration are told apart by the words that distinguish them —
 which is what `distinguishes` is for. The embedding engine earns its place on
 the phrasings it has never seen, not on the ranking once the set is small.
 
-The last column is not an accuracy figure — it is a property, and the 97% rather than 100% is
+The last column is not an accuracy figure — it is a property, and the 98% rather than 100% is
 worth a sentence. The narrowing never drops the right operation: that is asserted per entry and
 holds for all 74. What the column measures is whether the surviving set was small enough to hand
 over WHOLE, and for a handful of requests it still is not, so those fall back to a ranked
@@ -272,12 +272,12 @@ that bottom row is the arity facet, and `dataset_inputs` did not exist at 51 ope
 quoted above at that size is the row above it. Two different rows under one sentence is the kind
 of comparison this page exists to refuse.)
 
-**And again at 74, with two operations that a caller is unusually likely to want.** `select_features` and `extract_layer` are the remedies MapSmith's own error messages had been recommending, so they sit in the busiest corner of the facet space: the average surviving set went from 16 to 17 and the second row's *delivered* did not move. The bottom row held at 97% for the third catalogue size running. The margin to the wall is now 13.
+**And again at 74, with two operations that a caller is unusually likely to want.** `select_features` and `extract_layer` are the remedies MapSmith's own error messages had been recommending, so they sit in the busiest corner of the facet space: the average surviving set went from 16 to 17 and the second row's *delivered* did not move. The bottom row held at 97% for the third catalogue size running. The margin to the wall is now 13. *(Those are the figures as measured on 2026-08-31. They were recomputed on 2026-09-01 against human answers — see the note under the table — which moved them without any catalogue change: the surviving set reads 16 and the bottom row 98%. A paragraph about a transition keeps the figures of the transition.)*
 
 That is the shape of the trade, and it says when the next facet is due. The figure to watch is
 not found@3 — a ranker will always get worse as the catalogue grows, and it is a hint. It is the
 **average** surviving set at the fullest declaration, the fourth column of that table:
-9 at 51 operations, 14 at 61, 16 at 72, 17 at 74. When that crosses 30, delivery stops being a
+9 at 51 operations, 14 at 61, 16 at 72, 16 at 74. When that crosses 30, delivery stops being a
 property and starts being a ranking again, and the answer is another fact the caller already
 knows, not a bigger threshold. (It said *median* until 2026-08-29, and published the mean:
 the median at 74 is 14. The distribution is skewed — most requests leave a small set and a few
@@ -296,7 +296,7 @@ says so where it stops.
 answers with `status: "choose"`: every candidate, ordered as a hint that says it is a hint, each
 carrying the sentence that separates it from its neighbours. The threshold is 30 because that is where the
 surviving set almost always sits: over those 118 requests its median is 14 and it exceeds 30
-for three of them — which is the 97% in the table above, seen from the other side. The payload
+for two of them — which is the 98% in the table above, seen from the other side. The payload
 is about 2,100 tokens, less than one wrong operation costs to run and undo.
 
 *(That sentence used to say the set had a median of 26 and never exceeded 30. It was false
@@ -307,9 +307,24 @@ Three measurements say this is the right shape, and the third is the one that se
 
 | | |
 |---|---|
-| our ranking puts the answer in the top three | **53%** |
+| our ranking puts the answer in the top three | **58%** |
 | a model handed the same candidates and asked to *choose* gets its first pick right | **69%** |
 | the two labellers who wrote the ground truth agree **with each other** | **70%** |
+
+**These figures went up on 2026-09-01 because the measurement changed, not because the ranker
+did.** Somebody who does this work answered all fifty of the requests the two model labellers
+had disagreed on, and a request can have more than one acceptable answer: two experienced
+analysts reach the same result with different tools. So a hit is now counted against every
+operation a professional would accept rather than against one label, and found@3 rose four to
+five points. Nothing in the ranking code changed. Read the other way round, the older figures
+were understating by that much — they scored a system as having failed when it returned the
+other defensible answer — and the honest description of this table is *the answer is among the
+ones a professional would accept*, which is a property, not an accuracy.
+
+Where the secondary answers came from is recorded rather than smoothed over: the primary on
+each of those fifty is a human choice, and the secondaries were proposed by a third model and
+adopted wholesale rather than judged one at a time. Two different strengths of evidence, and
+the file says which is which.
 
 **The two model figures are dated: the labels were written on 2026-08-28, against a catalogue of
 51 operations.** It now has 74, so for any request whose right answer is one of the 23 added since,
@@ -323,7 +338,7 @@ against a human answer where there is one.
 
 All three are over the same 118 requests, which matters: agreement measured over all 155 requests
 in the file is 68%, and the difference is the 21 pairs where both labellers agreed a request was
-unanswerable — true, and the easy half. Quoting that 68% beside a 53% computed over the 118 would
+unanswerable — true, and the easy half. Quoting that 68% beside a 58% computed over the 118 would
 be comparing two populations, which this table did for half a day.
 
 **The last row is a ceiling, not a baseline**, and the second row sits at it rather than below it.
@@ -345,7 +360,7 @@ numbers are reported as *agreement with model-written labels* and never as accur
 used to be a hard filter like the others. It is not like the others: input kind and projected-CRS
 are facts about the data in hand and output kind is what the caller wants, but *family* is a guess
 about our taxonomy, which the caller cannot see. Measured, it removed six candidates out of
-seventeen — and when the guess was wrong it removed the right operation, with no error, leaving a
+sixteen — and when the guess was wrong it removed the right operation, with no error, leaving a
 confident answer assembled from neighbours. Every request in the independent set has 4.4 plausible
 families. That is the silent-failure class [Argleton](https://argleton.org) measures in other
 people's systems, sitting in our own discovery layer, so it now sorts: declaring the family lifts
@@ -544,7 +559,7 @@ contradicts, which is the exact failure this product exists to measure. The mode
 stays pinned, held there by a golden-vector test, so the same query gets the same answer
 next year. What improves instead is the catalog text — a phrasing, a `distinguishes` that
 does not distinguish — as a diff somebody can read and revert. That loop is not the weak
-option: it is what took found@3 from 18% to 57% and delivery to 97%.
+option: it is what took found@3 from 18% to 58% and delivery to 98%.
 
 The log is off unless the variable is set, holds queries and operation names and nothing
 else (no dataset paths, no arguments), is guarded by `MAPSMITH_WORKSPACE` like any other
@@ -1042,6 +1057,28 @@ Next, in the order we intend to do it. The linked items carry a written spec —
   Argleton rather than left open here.
 - [ ] [Agent-loop repair](https://github.com/mapsmith-ai/MapSmith/issues/26): hand verification failures back to the agent as structured, actionable errors, with a bounded retry budget recorded in the manifest. Our [own measurements](docs/benchmarks.md) say the runtime error message is the information channel that works
 - [ ] [Tool contracts that carry their own rules](https://github.com/mapsmith-ai/MapSmith/issues/27): argument constraints enforced *and* stated, and errors that name the rule rather than only the violation. The one intervention in our benchmark work that moved a metric past its noise floor
+- [ ] **A project brief for the requests that are a chain, not a call.** A third of real requests
+  are not one operation: on the fifty hardest requests in our own set — the ones two model
+  labellers disagreed about, answered by hand on 2026-09-01 — **sixteen** have "this is a
+  sequence" as the answer or as a defensible second answer. To those, handing back a set of
+  candidates is the wrong shape: none of the candidates does what was asked. So the answer becomes
+  a brief: what has to happen, in what order, which engines this machine has, and **which
+  decisions the caller has to make** before anything runs — the extensive-or-intensive choice in
+  an areal interpolation, the buffer width that lives in a regulation rather than in the request,
+  the base length of a gradient. Today those surface one at a time, as refusals.
+
+  Two constraints are part of the plan rather than details of it. **The brief is a rendering of an
+  already-validated plan, never a preamble to one**: build the plan, validate it, then narrate the
+  validated plan — and every sentence in it has to trace back to a declared field, so a claim that
+  traces back to nothing is a claim somebody invented, which is checkable by machine. And
+  **MapSmith installs nothing**: the brief names what is missing and prints the command, and a
+  person runs it. The reason is dated — see [SECURITY.md](SECURITY.md) on why `INSTALL` in a SQL
+  statement is refused in both modes since 0.4.0. A server that installs on authorisation is the
+  same shape with a consent dialog in front, and the consent comes from somebody who has just read
+  persuasive prose written by the process asking for it.
+
+  Depends on the item above: the brief reads the rules the tools declare, so there is less to
+  derive from without them.
 - [ ] [Satellite embeddings as a first-class input](https://github.com/mapsmith-ai/MapSmith/issues/24): per-zone embedding vectors (multiband zonal statistics) and similarity rasters against a reference location, over the open [AlphaEarth annual dataset](https://developers.google.com/earth-engine/guides/aef_on_gcs_readme) (CC-BY 4.0 COGs). Deterministic arithmetic on a raster — no model inference in MapSmith — with the tile, year and reference vector recorded in the manifest
 - [ ] Authenticated remote mode (OAuth on the existing Streamable HTTP transport) and [long-job progress via MCP Tasks](https://github.com/mapsmith-ai/MapSmith/issues/8). This is the item that closes the one limitation [SECURITY.md](SECURITY.md) declares outright: the HTTP transport has no authentication today
 - [x] Slope and aspect (Whitebox, closed-form tested; geographic-CRS DEMs refused)

@@ -145,8 +145,19 @@ def test_the_prose_around_the_table_is_checked_too():
 
     rows = discovery_report.answerable(discovery_report.load())
     full = discovery_report.LEVELS[3][1]
+    # Through `accepted_of`, like the harness. This was the THIRD file computing
+    # this number its own way — `test_published_figures` and the site check were
+    # the other two — and all three diverged on 2026-09-01, the moment human
+    # answers started deciding which facets a request declares. Each was right by
+    # its own arithmetic and none matched the page's own generator. One number,
+    # one computation: the rule is now written in three places because it was
+    # broken in three.
     sizes = [
-        len(catalog.applicable(**discovery_report.facets_for(r["label_claude"], full)))
+        len(
+            catalog.applicable(
+                **discovery_report.facets_for(discovery_report.accepted_of(r)[0], full)
+            )
+        )
         for r in rows
     ]
     over = sum(1 for size in sizes if size > catalog.CHOOSABLE)
@@ -194,16 +205,21 @@ def test_the_site_carries_the_same_facet_numbers_as_the_harness():
     import discovery_report
 
     rows = discovery_report.answerable(discovery_report.load())
+    # Through `accepted_of`, like the harness. This used to read `label_claude`
+    # directly, which was a second implementation of the same number — and on
+    # 2026-09-01 the two diverged the moment human answers started deciding the
+    # facets: the page said 30 and this test computed 31, both "correct"
+    # according to their own arithmetic. A check that recomputes a published
+    # figure its own way is a check that will eventually disagree with the thing
+    # it is checking.
+    def declared_size(row, facets):
+        accepted = discovery_report.accepted_of(row)
+        return len(catalog.applicable(**discovery_report.facets_for(accepted[0], facets)))
+
     facets = discovery_report.LEVELS[2][1]  # input kind + produces
-    narrowed = [
-        len(catalog.applicable(**discovery_report.facets_for(r["label_claude"], facets)))
-        for r in rows
-    ]
+    narrowed = [declared_size(r, facets) for r in rows]
     full = discovery_report.LEVELS[3][1]
-    surviving = [
-        len(catalog.applicable(**discovery_report.facets_for(r["label_claude"], full)))
-        for r in rows
-    ]
+    surviving = [declared_size(r, full) for r in rows]
     delivered = sum(1 for size in surviving if size <= catalog.CHOOSABLE)
 
     match = re.search(r"takes the candidates from (\d+) to (\d+)", prose)
