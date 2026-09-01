@@ -45,6 +45,73 @@ def load() -> list[dict[str, Any]]:
     return json.loads(DATA.read_text(encoding="utf-8"))["queries"]
 
 
+def accepted_of(query: dict[str, Any]) -> tuple[str, ...]:
+    """Every answer a professional would accept for this request.
+
+    The reason this is a set and not a string is the whole finding behind D-062,
+    and it came from a working surveyor's answer to one request: *gold
+    `transform_by_control_points`, with `ambiguous` defensible as a secondary* —
+    a sentence a single field cannot hold.
+
+    Two experienced analysts reach the same result with different tools. Storing
+    one answer makes the measurement wrong in both directions: a system that
+    picks the other defensible operation is scored as having failed, and the
+    figure is then called an accuracy when it is not even an agreement. It is
+    the same shape as the `category` defect, where a filter deleted the right
+    answer in silence because 4.4 families were plausible per request.
+
+    Order matters: the first is the one the person would choose, and everything
+    after it is defensible rather than merely possible. `label_human_also` is
+    not "operations that might work" — that list is the catalogue.
+    """
+    primary = query.get("label_human")
+    if not primary:
+        model = query.get("label_claude")
+        return (model,) if model else ()
+    also = [name for name in (query.get("label_human_also") or []) if name != primary]
+    return (primary, *also)
+
+
+def truth_of(query: dict[str, Any]) -> str | None:
+    """The label to measure against: the human answer where there is one.
+
+    D-054 is explicit that "there is a right answer" is false for a request two
+    experienced analysts would solve with different tools, and that the honest
+    name for a figure computed against model labels is *agreement*, not
+    accuracy. It also says what would change that: a human who has done the job.
+
+    So where somebody has answered, that answer wins, and every figure below is
+    computed against it. Where nobody has, the labeller's own answer stands and
+    the figure keeps its old meaning. The two are reported separately by
+    `human_coverage` rather than blended into one percentage with two meanings,
+    which is the mistake this file has a comment about further down.
+    """
+    return query.get("label_human") or query.get("label_claude")
+
+
+def human_coverage(queries: list[dict[str, Any]]) -> dict[str, Any]:
+    """How much of the population a person has actually answered.
+
+    Published beside any figure that uses `truth_of`, because a number computed
+    against 50 human answers and 105 model ones is neither of the two things a
+    reader might take it for, and the only honest fix is to say the mix.
+    """
+    answered = [q for q in queries if q.get("label_human")]
+    overruled = [
+        q
+        for q in answered
+        if q["label_human"] not in (q.get("label_claude"), q.get("label_gemini"))
+    ]
+    return {
+        "requests": len(queries),
+        "answered_by_a_person": len(answered),
+        "share": round(100 * len(answered) / len(queries)) if queries else 0,
+        # The interesting number: requests where BOTH labellers were wrong.
+        # Nothing published anywhere has it, because it needs a person.
+        "neither_labeller_was_right": len(overruled),
+    }
+
+
 def answerable(queries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Requests both labellers placed on an operation that still exists.
 
@@ -142,13 +209,21 @@ def ablation(queries: list[dict[str, Any]], engine: str = "lexical") -> list[dic
     for label, declare in LEVELS:
         left, top3, delivered = [], 0, 0
         for q in queries:
-            truth = q["label_claude"]
+            # Every answer a person would accept, not one (D-062). The facets
+            # come from the one they would CHOOSE — a request has one shape,
+            # whatever tool you reach for — while the hit is counted against the
+            # whole set, because a system that answers the other defensible
+            # operation has not failed.
+            accepted = accepted_of(q)
+            if not accepted:
+                continue
+            truth = accepted[0]
             facets = facets_for(truth, declare)
             left.append(len(catalog.applicable(**facets)))
             answer = catalog.search(q["query"], limit=3, engine=engine, **facets)
             names = [entry["name"] for entry in catalog.entries(answer)]
-            top3 += truth in names[:3]
-            delivered += truth in names
+            top3 += any(name in accepted for name in names[:3])
+            delivered += any(name in accepted for name in names)
         n = len(queries)
         rows.append(
             {

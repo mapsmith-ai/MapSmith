@@ -215,3 +215,380 @@ def test_the_site_carries_the_same_facet_numbers_as_the_harness():
     assert match, "the delivery sentence has been reworded; update this test with it"
     assert int(match.group(1)) == delivered
     assert int(match.group(2)) == len(rows)
+
+
+# --- the human answers, and the loop that was missing ----------------------
+
+
+def _ingest():
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "benchmarks"))
+    import ingest_answers
+
+    return ingest_answers
+
+
+def test_the_truth_is_the_human_answer_where_there_is_one():
+    """D-054 says a figure computed against model labels is an *agreement* and
+    not an accuracy, and that a person who has done the job is what changes it.
+
+    So the label every figure measures against has to prefer the human answer,
+    and until 2026-09-01 it did not: `discovery_report` read `label_claude`
+    unconditionally, so answering a question in the dashboard could not move a
+    single published number. The field existed, the page could write it, and
+    nothing read it.
+    """
+    import discovery_report
+
+    assert discovery_report.truth_of({"label_claude": "buffer_layer"}) == "buffer_layer"
+    assert (
+        discovery_report.truth_of(
+            {"label_claude": "buffer_layer", "label_human": "spatial_join"}
+        )
+        == "spatial_join"
+    ), "a human answer must beat a model's"
+    assert discovery_report.truth_of({}) is None
+
+    # Behavioural, not a grep of the source. The first version asserted the
+    # literal line `truth = truth_of(q)`, which broke the moment D-062 replaced
+    # it with `accepted_of` — a test that pins a spelling fails on a correct
+    # change and passes on a wrong one. This asks the arithmetic instead: give
+    # the same request two different human answers and the measured row has to
+    # differ, which can only happen if the answer reaches it.
+    from mapsmith import catalog
+
+    # A real request, and two answers chosen from what the ranker actually does
+    # with it: one the ranker returns and one it does not. Picking two answers it
+    # misses would leave both rows at zero and the test would pass on a broken
+    # implementation — which is how the first attempt at this test failed.
+    request = discovery_report.load()[0]
+    found = [
+        entry["name"]
+        for entry in catalog.entries(
+            catalog.search(request["query"], limit=3, engine="lexical")
+        )
+    ]
+    assert found, "the ranker returns nothing for this request; pick another"
+    missed = next(
+        op["name"] for op in catalog.OPERATIONS if op["name"] not in found
+    )
+
+    hit = [{"query": request["query"], "label_claude": found[0], "label_human": found[0]}]
+    miss = [{"query": request["query"], "label_claude": found[0], "label_human": missed}]
+    assert discovery_report.ablation(hit, engine="lexical") != discovery_report.ablation(
+        miss, engine="lexical"
+    ), (
+        "changing the human answer changed nothing in the measured table, so the "
+        "answer is not reaching the figures"
+    )
+
+
+def test_the_coverage_of_human_answers_is_reported_rather_than_blended():
+    """A figure over 50 human answers and 105 model ones is neither of the two
+    things a reader might take it for. The only honest fix is to say the mix."""
+    import discovery_report
+
+    queries = discovery_report.load()
+    coverage = discovery_report.human_coverage(queries)
+    assert coverage["requests"] == len(queries)
+    assert 0 <= coverage["answered_by_a_person"] <= len(queries)
+    assert coverage["neither_labeller_was_right"] <= coverage["answered_by_a_person"]
+
+
+def test_an_answer_naming_nothing_is_refused(tmp_path):
+    """The export is a file a person edited. An answer naming an operation that
+    does not exist is a typo, and storing it would put a label in the population
+    that no search can ever return."""
+    import json
+
+    import discovery_report
+
+    # A request that DOES exist, so only the unknown-name check can reject it.
+    # The first version of this test used a made-up request as well, so removing
+    # the name check left it green: the absent-request check caught it instead
+    # and the test passed for the wrong reason. Found by sabotage.
+    real = discovery_report.load()[0]["query"]
+    export = tmp_path / "answers.json"
+    export.write_text(
+        json.dumps([{"query": real, "label_human": "not_an_operation_at_all"}]),
+        encoding="utf-8",
+    )
+    assert _ingest().main([str(export)]) == 2
+
+
+def test_an_answer_to_a_request_that_no_longer_exists_is_refused(tmp_path):
+    """Matching is on the text of the request, so a reworded request cannot be
+    paired — and pairing it by position would silently reassign every answer
+    after it."""
+    import json
+
+    export = tmp_path / "answers.json"
+    export.write_text(
+        json.dumps(
+            [{"query": "a request nobody ever wrote", "label_human": "buffer_layer"}]
+        ),
+        encoding="utf-8",
+    )
+    assert _ingest().main([str(export)]) == 2
+
+
+def test_a_real_answer_is_accepted_without_writing_unless_asked(tmp_path):
+    """The dry run is the default: this file is data the published figures rest
+    on, and a script that rewrites it without being asked is one somebody runs
+    by accident."""
+    import json
+
+    import discovery_report
+
+    queries = discovery_report.load()
+    disagreeing = next(
+        q
+        for q in queries
+        if q.get("label_claude")
+        and q.get("label_gemini")
+        and q["label_claude"] != q["label_gemini"]
+    )
+    before = Path(discovery_report.DATA).read_text(encoding="utf-8")
+
+    export = tmp_path / "answers.json"
+    export.write_text(
+        json.dumps(
+            [{"query": disagreeing["query"], "label_human": disagreeing["label_gemini"]}]
+        ),
+        encoding="utf-8",
+    )
+    assert _ingest().main([str(export)]) == 0
+    assert Path(discovery_report.DATA).read_text(encoding="utf-8") == before, (
+        "the dry run wrote to discovery_queries.json"
+    )
+
+
+def test_the_dashboard_carries_answers_that_are_already_recorded():
+    """Without this the loop is one-way.
+
+    Answers go from the browser into `discovery_queries.json` through
+    `ingest_answers.py`, and until 2026-09-01 the next page generated asked the
+    same questions again as though nobody had answered them — the page had no
+    way to know. On a different browser, or after clearing site data, half an
+    hour of work looked undone.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "benchmarks"))
+    import dashboard
+    import discovery_report
+
+    queries = discovery_report.load()
+    answered = {q["query"]: q["label_human"] for q in queries if q.get("label_human")}
+    if not answered:
+        pytest.skip("nobody has answered a disagreement yet")
+
+    rows = dashboard.disagreements(queries)
+    carried = {row["query"]: row.get("human") for row in rows if row.get("human")}
+    for text, label in answered.items():
+        if any(row["query"] == text for row in rows):
+            assert carried.get(text) == label, (
+                f"the page would ask this again as though unanswered: {text[:60]}"
+            )
+
+
+def test_the_site_carries_the_same_ablation_figures_as_the_harness(report):
+    """The README's table was guarded and the site's prose version was not.
+
+    The site states the same four rows as a sentence — "74 candidates, 16%
+    found@3 with embeddings and 26% with BM25; what data I have → 49, 20% and
+    28%..." — and on 2026-09-01 four human answers moved three of those figures
+    by a point while every test stayed green. Guarding one surface and not the
+    other is the defect this file's own docstring describes: a measurement
+    changed and a page did not.
+
+    Deliberately anchored on the sentence rather than on the numbers alone. A
+    number that appears somewhere passes while the sentence two screens away
+    says something else — the failure `test_published_figures.py` was written
+    after.
+    """
+    template = (
+        Path(__file__).resolve().parent.parent / "site" / "index.template.html"
+    ).read_text(encoding="utf-8")
+
+    stated = re.search(
+        r"→\s*(\d+)\s*candidates,\s*(\d+)% found@3 with embeddings and (\d+)% with BM25;"
+        r"\s*what data I have\s*→\s*(\d+),\s*(\d+)% and (\d+)%;"
+        r"\s*\+ what I want back\s*→\s*(\d+),\s*(\d+)% and (\d+)%",
+        template,
+        re.DOTALL,
+    )
+    assert stated, (
+        "the site's ablation sentence no longer matches this pattern. Either it "
+        "was reworded — fix the pattern — or it was removed, and this guard has "
+        "been silently switched off."
+    )
+
+    lex, vec = report["ablation"], report["ablation_vector"]
+    # The sentence names the embedding figure first and BM25 second, which is
+    # the reverse of the table's column order — so the two engines come from two
+    # separate computations here rather than from one row.
+    expected = tuple(
+        str(value)
+        for row in range(3)
+        for value in (
+            lex[row]["candidates"],
+            vec[row]["found_at_3"],
+            lex[row]["found_at_3"],
+        )
+    )
+    assert stated.groups() == expected, (
+        f"the site says {stated.groups()} and the harness computes {expected}. "
+        "Run `python benchmarks/discovery_report.py` and put back what it says."
+    )
+
+
+def test_a_request_can_accept_more_than_one_answer(tmp_path):
+    """D-062: two experienced analysts reach the same result with different tools.
+
+    Storing one answer makes the measurement wrong in both directions — a system
+    that picks the other defensible operation is scored as having failed, and the
+    figure is then called an accuracy when it is not even an agreement.
+    """
+    import discovery_report
+
+    assert discovery_report.accepted_of(
+        {"label_human": "transform_by_control_points", "label_human_also": ["ambiguous"]}
+    ) == ("transform_by_control_points", "ambiguous")
+    # The chosen one comes first, and a duplicate in `also` is dropped rather
+    # than counted twice.
+    assert discovery_report.accepted_of(
+        {"label_human": "buffer_layer", "label_human_also": ["buffer_layer"]}
+    ) == ("buffer_layer",)
+    # No human answer: the model's label, as before.
+    assert discovery_report.accepted_of({"label_claude": "clip_layer"}) == ("clip_layer",)
+    assert discovery_report.accepted_of({}) == ()
+
+
+def test_a_second_answer_without_a_reason_is_refused(tmp_path):
+    """The note is required where there is more than one answer.
+
+    Without it, "both of these are right" and "I could not decide" are the same
+    row, and the second is not a datum — it is the absence of one in disguise.
+    """
+    import json
+
+    import discovery_report
+
+    real = discovery_report.load()[0]["query"]
+    export = tmp_path / "answers.json"
+    export.write_text(
+        json.dumps(
+            [
+                {
+                    "query": real,
+                    "label_human": "buffer_layer",
+                    "label_human_also": ["clip_layer"],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit):
+        _ingest().main([str(export)])
+
+    # And with the reason, it goes through.
+    export.write_text(
+        json.dumps(
+            [
+                {
+                    "query": real,
+                    "label_human": "buffer_layer",
+                    "label_human_also": ["clip_layer"],
+                    "label_human_note": "either reading of the request is defensible",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    assert _ingest().main([str(export)]) == 0
+
+
+def test_the_measurement_counts_a_hit_against_the_whole_accepted_set():
+    """The arithmetic, not the shape of the data.
+
+    Built so that the SECONDARY answer is the one the ranker returns and the
+    primary is not. Counting only the primary scores this as a miss; counting the
+    set scores it as a hit, which is what D-062 says it is — a system that
+    answers the other defensible operation has not failed.
+
+    The first version of this test only checked that rows with two answers had a
+    note, so replacing `any(name in accepted ...)` with `accepted[0] in ...` left
+    it green. Found by sabotage.
+    """
+    import discovery_report
+
+    from mapsmith import catalog
+
+    request = discovery_report.load()[0]
+    found = [
+        entry["name"]
+        for entry in catalog.entries(
+            catalog.search(request["query"], limit=3, engine="lexical")
+        )
+    ]
+    assert found, "the ranker returns nothing for this request; pick another"
+    missed = next(op["name"] for op in catalog.OPERATIONS if op["name"] not in found)
+
+    # Primary is the one the ranker misses; the acceptable secondary is the one
+    # it returns. The facets still come from the primary, which is why this is a
+    # measurement of the set and not of the label.
+    row = discovery_report.ablation(
+        [
+            {
+                "query": request["query"],
+                "label_claude": missed,
+                "label_human": missed,
+                "label_human_also": [found[0]],
+                "label_human_note": "both readings of this request are defensible",
+            }
+        ],
+        engine="lexical",
+    )
+    # Both columns. Asserting only `delivered` left the top-3 counter free to
+    # go back to the primary alone — the sabotage that found this.
+    assert row[0]["delivered"] == 100, (
+        "the ranker returned an answer the person accepts and delivery scored it "
+        "as a miss, so the hit is counted against the primary alone"
+    )
+    assert row[0]["found_at_3"] == 100, (
+        "the accepted answer is in the top three and found@3 scored it as a "
+        "miss, so that counter is still measuring the primary alone"
+    )
+
+
+def test_every_request_with_two_answers_carries_the_reason():
+    """The shape of the data, kept as its own check rather than folded into the
+    arithmetic one — where it used to hide the fact that nothing tested the
+    arithmetic."""
+    import discovery_report
+
+    with_two = [q for q in discovery_report.load() if q.get("label_human_also")]
+    if not with_two:
+        pytest.skip("no request has a second acceptable answer yet")
+    for q in with_two:
+        assert len(discovery_report.accepted_of(q)) > 1
+        assert (q.get("label_human_note") or "").strip(), (
+            "a request with two answers and no reason should not be in the file: "
+            "ingest_answers refuses it"
+        )
+
+
+def test_the_dashboard_can_collect_a_second_answer_and_its_reason():
+    """The page is where the answers come from, so it has to be able to give
+    what the format now accepts — otherwise the format is theory."""
+    dashboard_source = (
+        Path(__file__).resolve().parent.parent / "benchmarks" / "dashboard.py"
+    ).read_text(encoding="utf-8")
+    for needed in (
+        "function toggleAlso(",
+        "label_human_also",
+        "label_human_note",
+        "shift-click to add as also acceptable",
+    ):
+        assert needed in dashboard_source, (
+            f"the dashboard no longer carries {needed!r}, so a second answer "
+            f"cannot be given and D-062's format has nothing to fill it"
+        )

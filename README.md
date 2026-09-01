@@ -218,9 +218,9 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 74 | 25% | 16% | 25% |
-| what data I have | 49 | 27% | 20% | 27% |
-| + what I want back | 31 | 40% | 32% | 49% |
+| nothing — words alone | 74 | 26% | 16% | 26% |
+| what data I have | 49 | 28% | 20% | 28% |
+| + what I want back | 31 | 41% | 32% | 50% |
 | **+ how many datasets I have** | **17** | **53%** | **46%** | **97%** |
 
 **Two ranking columns, and that is a correction.** This table used to carry one,
@@ -310,6 +310,16 @@ Three measurements say this is the right shape, and the third is the one that se
 | our ranking puts the answer in the top three | **53%** |
 | a model handed the same candidates and asked to *choose* gets its first pick right | **69%** |
 | the two labellers who wrote the ground truth agree **with each other** | **70%** |
+
+**The two model figures are dated: the labels were written on 2026-08-28, against a catalogue of
+51 operations.** It now has 74, so for any request whose right answer is one of the 23 added since,
+neither labeller *could* have been right — the answer was not in the catalogue to name. Measured on
+the first four requests a person has answered by hand, two of the four have both labellers wrong,
+and both of those two name operations that did not exist on the 28th. So "both labellers wrong" and
+"both labellers chose badly" are not the same number, and the honest thing is to say when the labels
+were made rather than to quietly benefit from the difference. Human answers are replacing them one
+at a time — `benchmarks/ingest_answers.py` is how they get in, and every figure above is computed
+against a human answer where there is one.
 
 All three are over the same 118 requests, which matters: agreement measured over all 155 requests
 in the file is 68%, and the difference is the 21 pairs where both labellers agreed a request was

@@ -354,6 +354,14 @@ def disagreements(queries: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "claude": claude,
                 "gemini": gemini,
                 "stale": stale,
+                # The answer already recorded in the repository, if somebody has
+                # given one. Without this the loop is one-way: answers go from
+                # the browser into `discovery_queries.json` through
+                # `ingest_answers.py`, and the next page generated asked the same
+                # questions again as though nobody had ever answered — on a
+                # different browser, or after clearing site data, the work looked
+                # undone because the page had no way to know it was not.
+                "human": q.get("label_human"),
                 "ranked": [entry["name"] for entry in catalog.entries(answer)][:10],
             }
         )
@@ -533,9 +541,20 @@ tr.bad td { background: color-mix(in srgb, var(--bad) 9%, transparent); }
 .chip:hover { border-color: var(--accent); }
 .chip.ran { border-color: var(--warn); }
 .chip.picked { background: var(--accent); border-color: var(--accent); color: #fff; }
-.chip.claude::after, .chip.gemini::after {
+.chip.claude::after, .chip.gemini::after, .chip.recorded::after {
   content: "claude"; font-size: .72em; color: var(--quiet); margin-left: .3rem; }
 .chip.gemini::after { content: "gemini"; }
+/* An answer a person already gave and that is now in the repository, so the
+   page stops asking as though nobody had. */
+.chip.recorded::after { content: "recorded"; }
+.chip.recorded { border-color: var(--accent); }
+/* A second answer somebody accepts, not the one they would choose. */
+.chip.also { border-style: dashed; border-color: var(--accent); }
+.chip.also::after { content: "also"; font-size: .72em; color: var(--quiet); margin-left: .3rem; }
+textarea.why { width: 100%; margin-top: .4rem; font-size: .9em; }
+textarea.why.missing { border-color: var(--warn); }
+.case.answered { opacity: .72; }
+.case.answered:hover, .case.answered:focus-within { opacity: 1; }
 .chip.picked::after { color: rgba(255,255,255,.8); }
 select, input, textarea {
   font: inherit; background: var(--panel); color: var(--ink);
@@ -1132,10 +1151,31 @@ function pick(key, label) {
   saveLabels();
   note("saved in this browser");
 }
+/* A second acceptable answer, and the reason. D-062: two experienced analysts
+   reach the same result with different tools, so storing one answer makes the
+   measurement wrong in both directions. The reason is required wherever there is
+   more than one — without it a reader cannot tell "both are right" from "I could
+   not decide", and `ingest_answers.py` refuses the row. */
+function toggleAlso(key, label) {
+  const entry = LABELS[key];
+  if (!entry || entry.label === label) return;
+  const also = new Set(entry.also || []);
+  if (also.has(label)) also.delete(label); else also.add(label);
+  entry.also = [...also];
+  saveLabels();
+}
+function setNote(key, text) {
+  const entry = LABELS[key];
+  if (!entry) return;
+  entry.note = text;
+  saveLabels();
+}
 function picker(key, suggested, marks, onPick) {
   const wrap = el("div");
   const chips = el("div", "chips");
+  let redrawWhy = () => {};
   const draw = () => {
+    redrawWhy();
     chips.innerHTML = "";
     const chosen = LABELS[key] ? LABELS[key].label : null;
     const shown = suggested.slice();
@@ -1146,8 +1186,16 @@ function picker(key, suggested, marks, onPick) {
       const chip = el("button", "chip " + (marks[name] || ""), name);
       if (chosen === name) chip.classList.add("picked");
       const op = DATA.catalog.find(o => o.name === name);
-      chip.title = op ? op.summary : "";
-      chip.onclick = () => { pick(key, name); draw(); onPick(); };
+      const entry = LABELS[key];
+      const alsoSet = new Set((entry && entry.also) || []);
+      if (alsoSet.has(name)) chip.classList.add("also");
+      chip.title = (op ? op.summary + " — " : "")
+        + "click to choose, shift-click to add as also acceptable";
+      chip.onclick = (event) => {
+        if (event.shiftKey && chosen) toggleAlso(key, name);
+        else pick(key, name);
+        draw(); onPick();
+      };
       chips.appendChild(chip);
     }
     for (const special of ["none", "ambiguous"]) {
@@ -1166,9 +1214,27 @@ function picker(key, suggested, marks, onPick) {
     all.appendChild(new Option(op.name + " — " + op.summary.slice(0, 70), op.name));
   }
   all.onchange = () => { if (all.value) { pick(key, all.value); draw(); onPick(); all.value = ""; } };
-  draw();
+  const why = el("textarea");
+  why.className = "why";
+  why.rows = 2;
+  why.placeholder = "why more than one answer is defensible — required when you "
+    + "shift-click a second one";
+  why.oninput = () => { setNote(key, why.value); };
+  const refreshWhy = () => {
+    const entry = LABELS[key];
+    const many = entry && (entry.also || []).length;
+    why.value = (entry && entry.note) || "";
+    why.hidden = !many;
+    why.classList.toggle("missing", !!many && !why.value.trim());
+  };
   wrap.appendChild(chips);
   wrap.appendChild(all);
+  wrap.appendChild(why);
+  // `draw` already runs on every pick, so hanging the box's refresh off it keeps
+  // one path instead of reassigning the callback the chips closed over — which
+  // worked and was the kind of cleverness that breaks at the next edit.
+  redrawWhy = refreshWhy;
+  draw();
   return wrap;
 }
 
@@ -1188,11 +1254,18 @@ function drawDisagreements() {
       meta.textContent += (meta.textContent ? " · " : "")
         + "names an operation that no longer exists: " + row.stale.join(", ");
     }
+    if (row.human) {
+      meta.textContent += (meta.textContent ? " · " : "")
+        + "already answered in the repository: " + row.human;
+      box.classList.add("answered");
+    }
     box.appendChild(meta);
     const marks = {};
     marks[row.claude] = "claude";
     marks[row.gemini] = "gemini";
-    const suggested = [row.claude, row.gemini].filter(n => DATA.catalog.some(o => o.name === n));
+    if (row.human) marks[row.human] = "recorded";
+    const suggested = [row.human, row.claude, row.gemini]
+      .filter(n => n && DATA.catalog.some(o => o.name === n));
     for (const name of row.ranked) {
       if (!suggested.includes(name) && suggested.length < 8) suggested.push(name);
     }
@@ -1340,7 +1413,10 @@ function rows() {
     if (!answer) continue;
     out.push({query: row.query, scenario: row.scenario,
               generated_by: "dashboard, answered by hand", split: "tune",
-              label_human: answer.label, label_claude: row.claude, label_gemini: row.gemini});
+              label_human: answer.label,
+              label_human_also: answer.also || [],
+              label_human_note: answer.note || "",
+              label_claude: row.claude, label_gemini: row.gemini});
   }
   for (const row of DATA.recorded) {
     const answer = LABELS[keyFor("r", row)];
