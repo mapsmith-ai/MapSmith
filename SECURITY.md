@@ -1,6 +1,8 @@
 # Security policy
 
-> Published advisories: [GHSA-3rcc-xpw3-r4xh](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-3rcc-xpw3-r4xh) — affects <= 0.2.1, fixed in 0.2.2.
+> Published advisories:
+> [GHSA-g95f-6vxv-mgv7](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-g95f-6vxv-mgv7) — `run_sql` could install and load arbitrary DuckDB extensions, disclosing host credentials. Affects >= 0.1.0 < 0.4.0, fixed in 0.4.0.
+> [GHSA-3rcc-xpw3-r4xh](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-3rcc-xpw3-r4xh) — a plain local file could make MapSmith fetch attacker-chosen URLs. Affects <= 0.2.1, fixed in 0.2.2.
 
 MapSmith executes tool calls written by LLM agents against local data. Its
 security promises are precise, and we treat any break of them as a
@@ -186,6 +188,12 @@ to write that statement, so the realistic route is prompt injection from data th
 agent read; nothing here says it happened to anyone. If you run the unconfined
 setup on a machine that holds credentials, upgrade to 0.4.0 — and either way, a
 workspace has always been the stronger configuration.
+
+This has an advisory: **[GHSA-g95f-6vxv-mgv7](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-g95f-6vxv-mgv7)**,
+so a dependency scanner tells you rather than leaving it to whoever reads this
+page. It is filed against `>= 0.1.0, < 0.4.0` — the lower bound is where
+`run_sql` first shipped, checked by downloading the packages rather than by
+reading the tags.
 
 This is the second promise in this file that the code contradicted — the first
 was a path list escaping the workspace jail through `run_operation`, fixed in
