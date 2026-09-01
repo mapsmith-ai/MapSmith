@@ -473,7 +473,12 @@ def _notebook_output_text(notebook: Path) -> str:
 def test_the_gallery_shows_the_current_release(notebook):
     """The notebooks are committed *with their outputs*: that is the point (a
     visitor reads results without running anything), and it is also how a
-    manifest from the previous release stays on display forever."""
+    manifest from the previous release stays on display forever.
+
+    This half only catches a *wrong* version. It cannot catch a missing one —
+    see the test below, which is the half that was absent while two notebooks
+    displayed manifests from before 0.3.0.
+    """
     from mapsmith import __version__
 
     text = _notebook_output_text(notebook)
@@ -482,6 +487,89 @@ def test_the_gallery_shows_the_current_release(notebook):
         f"{notebook.name} displays manifests from {sorted(shown)} but this is "
         f"{__version__} — re-run the notebook instead of editing its output"
     )
+
+
+def _manifests_shown_in(notebook: Path) -> list[dict]:
+    """Every complete provenance manifest printed in a notebook's output.
+
+    Parsed rather than pattern-matched, which is the point: a manifest printed
+    through a slice — `json.dumps(manifest, indent=2)[:1500]`, which is what
+    notebook 01 did — does not parse, so it is not counted, so the "at least
+    one" assertion below fails instead of quietly having nothing to check.
+    """
+    text = _notebook_output_text(notebook)
+    decoder = json.JSONDecoder()
+    found = []
+    for start in re.finditer(r"^\{", text, re.MULTILINE):
+        try:
+            candidate, _ = decoder.raw_decode(text[start.start() :])
+        except ValueError:
+            continue
+        if isinstance(candidate, dict) and {"operation", "engine"} <= candidate.keys():
+            found.append(candidate)
+    return found
+
+
+def test_the_gallery_displays_a_conforming_manifest():
+    """The vacuous half, and the one that was missing.
+
+    `shown <= {__version__}` is true of the empty set. Two notebooks displayed
+    manifests written before 0.3.0 — no `spec_version`, no `producer`, both
+    REQUIRED by the specification this project publishes, and `"path":
+    "data\\\\wells.gpkg"` with the Windows separator that issue #30 fixed and the
+    README says is fixed. The guard read a field those manifests do not have,
+    found nothing, compared nothing to `{__version__}`, and passed. It had been
+    passing for two releases.
+
+    So the claim is stated positively and checked positively: the gallery shows
+    at least one manifest, it parses, and it conforms — against both the
+    validator and the schema, for the reason the front-page guard gives.
+    """
+    import importlib.util
+
+    from mapsmith import __version__
+
+    notebooks = sorted((ROOT / "examples").glob("*.ipynb"))
+    shown = {n.name: _manifests_shown_in(n) for n in notebooks}
+    total = sum(len(m) for m in shown.values())
+    assert total, (
+        "no notebook in the gallery displays a complete provenance manifest. "
+        "Either they stopped showing one, or one is printed through a slice and "
+        f"no longer parses — checked: {list(shown)}"
+    )
+
+    spec = importlib.util.spec_from_file_location(
+        "spec_validator", ROOT / "tests" / "data" / "manifest_spec_validator.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    jsonschema = pytest.importorskip("jsonschema")
+    schema = json.loads(
+        (ROOT / "tests" / "data" / "manifest-v1.schema.json").read_text(encoding="utf-8")
+    )
+    checker = jsonschema.Draft202012Validator(schema)
+
+    for name, manifests in shown.items():
+        for manifest in manifests:
+            problems = module.problems(manifest) + [
+                error.message for error in checker.iter_errors(manifest)
+            ]
+            assert problems == [], (
+                f"{name} displays a manifest that is not a conforming record: "
+                f"{problems}. Re-run the notebook; do not edit its output."
+            )
+            assert manifest.get("producer", {}).get("version") == __version__, (
+                f"{name} displays a manifest produced by "
+                f"{manifest.get('producer', {}).get('version')!r} and this is "
+                f"{__version__} — re-run it."
+            )
+            for recorded in manifest.get("inputs", []):
+                assert "\\" not in recorded.get("path", ""), (
+                    f"{name} displays a manifest with a Windows separator in "
+                    f"{recorded['path']!r}. Paths in a manifest are POSIX on "
+                    "every platform (#30), and the gallery is where a reader "
+                    "checks whether that is true."
+                )
 
 
 @pytest.mark.parametrize(
