@@ -510,20 +510,30 @@ def _manifests_shown_in(notebook: Path) -> list[dict]:
     return found
 
 
+#: Which notebooks are expected to display a full provenance manifest. Declared
+#: rather than counted, because summing over the gallery was itself vacuous: the
+#: first version of this test asserted `sum(...) > 0`, which notebook 01 satisfies
+#: on its own, so 02 and 03 could have gone back to showing pre-0.3.0 records with
+#: the suite still green. That is the defect this test exists to close, one level
+#: up. A notebook that starts or stops showing one fails here until somebody says
+#: so on purpose — the safe direction.
+NOTEBOOKS_SHOWING_A_MANIFEST = {"01_verified_geoprocessing.ipynb"}
+
+
 def test_the_gallery_displays_a_conforming_manifest():
     """The vacuous half, and the one that was missing.
 
     `shown <= {__version__}` is true of the empty set. Two notebooks displayed
-    manifests written before 0.3.0 — no `spec_version`, no `producer`, both
-    REQUIRED by the specification this project publishes, and `"path":
+    manifests written before 0.3.0 — no `spec_version`, which the specification
+    *requires*, and no `producer`, which it recommends — and `"path":
     "data\\\\wells.gpkg"` with the Windows separator that issue #30 fixed and the
     README says is fixed. The guard read a field those manifests do not have,
     found nothing, compared nothing to `{__version__}`, and passed. It had been
     passing for two releases.
 
     So the claim is stated positively and checked positively: the gallery shows
-    at least one manifest, it parses, and it conforms — against both the
-    validator and the schema, for the reason the front-page guard gives.
+    a manifest *where it is meant to*, it parses, and it conforms — against both
+    the validator and the schema, for the reason the front-page guard gives.
     """
     import importlib.util
 
@@ -531,11 +541,13 @@ def test_the_gallery_displays_a_conforming_manifest():
 
     notebooks = sorted((ROOT / "examples").glob("*.ipynb"))
     shown = {n.name: _manifests_shown_in(n) for n in notebooks}
-    total = sum(len(m) for m in shown.values())
-    assert total, (
-        "no notebook in the gallery displays a complete provenance manifest. "
-        "Either they stopped showing one, or one is printed through a slice and "
-        f"no longer parses — checked: {list(shown)}"
+    displaying = {name for name, found in shown.items() if found}
+    assert displaying == NOTEBOOKS_SHOWING_A_MANIFEST, (
+        f"the gallery displays manifests in {sorted(displaying)}, and this test "
+        f"expects {sorted(NOTEBOOKS_SHOWING_A_MANIFEST)}. A notebook that stopped "
+        "showing one may be printing it through a slice, which no longer parses; "
+        "a notebook that started showing one needs adding here, so that it is "
+        "checked rather than merely tolerated."
     )
 
     spec = importlib.util.spec_from_file_location(

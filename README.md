@@ -1086,7 +1086,7 @@ Next, in the order we intend to do it. The linked items carry a written spec —
 - [x] More terrain & hydrology: curvature (six kinds, the kind required because profile and plan answer opposite questions), flow direction (d8/rho8/dinf/fd8, with the direction-code **table** written into the manifest — the engine's own manual documents its default table backwards, so a name would not have been enough), Euclidean distance and IDW interpolation
 - [ ] The ambiguous-georeferencing refusal on **every** raster operation rather than the nine that read the grid directly. The terrain engine stops on the same file for a different reason — its own reading of the grid disagrees with GDAL's — and its message names neither the sidecar nor the way out; sampling a raster at points does not stop at all
 - [ ] Map panel: MapLibre vector rendering, and an export of the panel as a self-contained HTML file you host yourself (raster OSM tiles already ship). No hosted viewer — MapSmith runs on your machine and we would rather not own your maps
-- [ ] [Sandboxed code-execution tool](https://github.com/mapsmith-ai/MapSmith/issues/7) for the long tail
+- **Not planned**, and [closed as such](https://github.com/mapsmith-ai/MapSmith/issues/7) on 2026-09-01: a sandboxed code-execution tool for the long tail. A typed plan is the same efficiency win in a shape that can be refused for a stated reason before anything runs; a model-authored script keeps the arithmetic in the engines but moves the *composition* — engine, order, units, CRS — into text nobody validated, and then emits a manifest that is true about the library and silent about the part that decided
 - [ ] QGIS Processing sidecar (subprocess-isolated): ~900 algorithms. By far the largest item on this list — parameter mapping and error handling for an external process, not an afternoon
 
 ## License and project
@@ -1098,10 +1098,12 @@ You can self-host MapSmith freely, forever. If you modify it and offer it as a s
 AGPL asks you to share your changes — or [talk to us](mailto:mapsmith@proton.me) about a
 commercial license.
 
-Nothing here has been funded so far. [`funding.json`](funding.json) states, in the
-[FLOSS/fund](https://fundingjson.org/) format, the two pieces of work that money would go
-to: a public suite of geospatial traps with hand-computable answers, and the provenance
-manifest as a specification other tools can implement.
+Nothing here has been funded so far. [`funding.json`](funding.json) lists, in the
+[FLOSS/fund](https://fundingjson.org/) format, the two pieces of work money was asked for:
+a public suite of geospatial traps with hand-computable answers, and the provenance
+manifest as a specification other tools can implement. Both were built anyway, unfunded,
+and are archived with DOIs; the entries stay in the file marked inactive, so the estimate
+can be read against what came of it.
 
 Release notes are in [CHANGELOG.md](CHANGELOG.md), how to contribute in
 [CONTRIBUTING.md](CONTRIBUTING.md), how to report a vulnerability in

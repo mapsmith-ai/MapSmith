@@ -813,9 +813,44 @@ def _writers_by_shape() -> tuple[dict[str, str], dict[str, str]]:
             where = f"{module.name}:{node.name}"
             if "verify.audited(" in body:
                 audited[where] = body
-            elif ".finish().write_for(output_path)" in body:
+            elif ".write_for(" in body:
+                # `.write_for(` and not the whole `.finish().write_for(output_path)`
+                # line: keying on the literal meant a writer whose output
+                # parameter happened to be named differently would be invisible
+                # to both guards below — it would not fail, it would disappear,
+                # which is the defect these guards exist to close, one level up.
                 inline[where] = body
     return audited, inline
+
+
+def test_no_writer_reaches_the_manifest_from_outside_the_engines():
+    """The other half of the same worry: a writer in a module nobody scans.
+
+    `_writers_by_shape` reads `engines/`, because that is where dataset writers
+    live. That is a true statement about today and an assumption about tomorrow,
+    so it is asserted rather than assumed: `write_for` may be called from the
+    engines, from the module that defines it, and from the two helpers in
+    `verify` that wrap the sequence. Anywhere else is a writer that neither
+    guard can see.
+    """
+    import pathlib
+
+    import mapsmith
+
+    root = pathlib.Path(mapsmith.__file__).parent
+    allowed = {"provenance.py", "verify.py"}
+    stray = [
+        str(module.relative_to(root))
+        for module in sorted(root.rglob("*.py"))
+        if module.parent.name != "engines"
+        and module.name not in allowed
+        and ".write_for(" in module.read_text(encoding="utf-8")
+    ]
+    assert not stray, (
+        f"these modules write a manifest and live outside engines/, so neither "
+        f"writer guard scans them: {stray}. Either move the writer, or widen "
+        "`_writers_by_shape` — do not widen this allow-list without doing one."
+    )
 
 
 def test_every_writer_enforces_after_writing_the_manifest():

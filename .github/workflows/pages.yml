@@ -14,6 +14,13 @@ on:
       - "src/mapsmith/**"
       - "examples/fixtures/**"
       - ".github/workflows/pages.yml"
+      # The page renders numbers counted from these, so a commit that changes
+      # only them used to leave the live site quoting yesterday's figures with
+      # nothing red anywhere: on 2026-09-01 the page said 778 test functions
+      # while main had 779. The build counts `def test_` under tests/ and reads
+      # the vendored Argleton run, so both belong in this filter.
+      - "tests/**"
+      - "docs/argleton-run.json"
   workflow_dispatch:
 
 permissions:
