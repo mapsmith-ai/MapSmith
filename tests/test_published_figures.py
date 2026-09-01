@@ -49,6 +49,11 @@ SURFACES = {
     "site": ROOT / "site" / "index.template.html",
     "docs/benchmarks.md": ROOT / "docs" / "benchmarks.md",
     "docs/catalog-entry-spec.md": ROOT / "docs" / "catalog-entry-spec.md",
+    # A page of claims that no sweep touched until 2026-09-01, and the one
+    # read by people deciding whether to give the project money: it still
+    # said "16 semantic tools, 336 closed-form tests" and still asked for
+    # EUR 35000 to build two artifacts that had shipped, one of them with a DOI.
+    "funding.json": ROOT / "funding.json",
     "argleton/README.md": ARGLETON / "README.md",
     "argleton/site": ARGLETON / "site" / "index.template.html",
 }
@@ -154,6 +159,7 @@ FIGURES: dict[str, Figure] = {
             # typed it by hand, and only one of the two aged.
             r"operations picked out of {n}\b",
             r"goes from {n} operations to a handful",
+            r"a catalogue of {n} operations",
         ),
     ),
     "toolless": Figure(
@@ -295,3 +301,81 @@ def test_the_sweep_covers_every_public_surface():
     assert (ROOT / "README.md") in SURFACES.values()
     assert (ROOT / "site" / "index.template.html") in SURFACES.values()
     assert (ROOT / "docs" / "catalog-entry-spec.md") in SURFACES.values()
+
+
+def test_the_funding_manifest_dates_its_claims_and_does_not_overstate_them():
+    """`funding.json` is read by people deciding whether to fund the work.
+
+    It went unswept until 2026-09-01, and by then it said "16 semantic tools,
+    336 closed-form tests" — 16 and 336 against 28 and more than 1500 — and
+    carried two *active* plans totalling EUR 35000 to build a trap suite and a
+    provenance specification. Both had shipped, both are archived with a DOI,
+    and both were built with no funding. A funder opening that file read a
+    request for money for delivered work, on a project whose entire subject is
+    that a claim should be checkable.
+
+    Two rules, matching the ones at the top of this file: the volatile figures
+    are attached to a date, and the one that cannot be swept for equality — the
+    test count, which changes with every commit — is stated as a floor and
+    checked as a floor.
+    """
+    import json
+    import re
+
+    text = (ROOT / "funding.json").read_text(encoding="utf-8")
+    described = json.loads(text)["entity"]["description"]
+
+    assert re.search(r"\b20\d\d-\d\d-\d\d\b", described), (
+        "the entity description carries figures that go stale and no date. "
+        "Either recompute them here or attach the date they were true on."
+    )
+
+    claimed = re.search(r"more than (\d[\d,]*) closed-form tests", described)
+    assert claimed, (
+        "the test-count claim was reworded; this guard stopped guarding. Update "
+        "the pattern rather than dropping it."
+    )
+    floor = int(claimed.group(1).replace(",", ""))
+    collected = sum(1 for _ in (ROOT / "tests").rglob("test_*.py"))
+    assert collected, "no test files found, so the floor cannot be checked"
+    import subprocess
+
+    run = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", str(ROOT / "tests")],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+        check=False,  # collection alone; a non-zero exit is read from the output
+    )
+    total = re.search(r"(\d+) tests collected", run.stdout)
+    assert total, f"could not count the suite: {run.stdout[-400:]}"
+    assert int(total.group(1)) >= floor, (
+        f"funding.json claims more than {floor} tests and the suite collects "
+        f"{total.group(1)}. A floor that is no longer true is a false claim, not "
+        "a conservative one."
+    )
+
+
+def test_no_funding_plan_asks_for_work_that_is_already_delivered():
+    """A plan is `active` or it is not, and the file has to mean it.
+
+    The schema allows exactly two statuses, so "we already did this" has to be
+    said in the status and in the prose, not left as an active ask that ages
+    into a lie. Both delivered plans are kept rather than deleted, because what
+    was estimated against what it actually cost is the strongest thing this
+    project can show a funder — but they are kept *inactive*.
+    """
+    import json
+
+    plans = json.loads((ROOT / "funding.json").read_text(encoding="utf-8"))["funding"][
+        "plans"
+    ]
+    assert {p["status"] for p in plans} <= {"active", "inactive"}, (
+        "the schema allows only active and inactive"
+    )
+    for plan in plans:
+        delivered = "DELIVERED" in plan["description"]
+        assert delivered == (plan["status"] == "inactive" and plan["amount"] > 0), (
+            f"plan {plan['guid']!r} says status={plan['status']!r} and its "
+            "description does not agree about whether the work is done"
+        )

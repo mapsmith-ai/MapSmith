@@ -248,6 +248,13 @@ def run_sql(query: str, output_path: str | None = None) -> dict[str, Any]:
         if used and (axis := _axis_order_check(con, used)):
             checks.append(axis)
         manifest = record.add_verification(checks).finish().write_for(output_path)
+        # Both checks above are non-critical, so this raises nothing today. It
+        # is here because the alternative is a writer whose critical failures
+        # are recorded and not enforced, and the day someone adds a critical
+        # check to this function nobody would notice that it does not bite.
+        # Sixteen of the seventeen writers that open-code the sequence already
+        # end it this way; this was the seventeenth.
+        verify.enforce(checks, "run_sql")
         result = {
             "output": str(output_path),
             "row_count": int(count),

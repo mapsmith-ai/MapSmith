@@ -786,3 +786,70 @@ def test_an_operation_that_verifies_nothing_raises_rather_than_writing(tmp_path)
             operation="pretend_operation",
             checks_fn=list,
         )
+
+
+def _writers_by_shape() -> tuple[dict[str, str], dict[str, str]]:
+    """Every dataset writer in the engines, split by how it reaches the manifest.
+
+    Derived from the source rather than listed, because a list is worth exactly
+    what somebody remembered to put in it: the point of this pair of tests is
+    the writer nobody adds to a list.
+    """
+    import ast
+    import pathlib
+
+    import mapsmith.engines
+
+    audited: dict[str, str] = {}
+    inline: dict[str, str] = {}
+    root = pathlib.Path(mapsmith.engines.__file__).parent
+    for module in sorted(root.glob("*.py")):
+        text = module.read_text(encoding="utf-8")
+        tree = ast.parse(text)
+        for node in tree.body:
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            body = ast.get_source_segment(text, node) or ""
+            where = f"{module.name}:{node.name}"
+            if "verify.audited(" in body:
+                audited[where] = body
+            elif ".finish().write_for(output_path)" in body:
+                inline[where] = body
+    return audited, inline
+
+
+def test_every_writer_enforces_after_writing_the_manifest():
+    """Manifest first, enforce second — and *enforce* is the half that can vanish.
+
+    `mapsmith/CLAUDE.md` used to say that writers go through `verify.audited`
+    "so the audit-trail-first invariant cannot be bypassed". Seventeen of the
+    fifty-seven writers did not go through it, so the sentence was false on a
+    public page, and one of the seventeen — `run_sql` — wrote its manifest and
+    then never called `verify.enforce` at all. Its two checks are both
+    non-critical, so nothing was wrong with the output; what was wrong is that a
+    critical check added there later would have been recorded and not applied,
+    which is the shape of defect this file exists to catch.
+    """
+    audited, inline = _writers_by_shape()
+    assert audited, "no writer reaches the manifest through verify.audited"
+    missing = sorted(
+        where for where, body in inline.items() if "verify.enforce(" not in body
+    )
+    assert not missing, (
+        "these writers build the manifest by hand and never enforce, so a "
+        f"critical check would be recorded and ignored: {missing}"
+    )
+
+
+def test_the_number_of_hand_written_writers_only_goes_down():
+    """A ratchet, not a pin.
+
+    Open-coding the sequence is a migration in progress, not a second sanctioned
+    shape (see the roadmap item). A new writer must use `verify.audited`, so
+    this number may fall and must never rise — and when it falls, lower it here.
+    """
+    _, inline = _writers_by_shape()
+    assert len(inline) <= 17, (
+        f"{len(inline)} writers now build the manifest by hand, up from 17. A new "
+        "writer goes through verify.audited: " + ", ".join(sorted(inline))
+    )
