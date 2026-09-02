@@ -24,7 +24,7 @@ import rasterio
 from rasterio.transform import Affine
 
 from mapsmith import grid
-from mapsmith.engines import raster
+from mapsmith.engines import raster, sampling
 from mapsmith.provenance import REDACTED, InputRecord, ProvenanceRecord
 
 CRS = "EPSG:32632"
@@ -317,6 +317,21 @@ COMPUTES_FROM_THE_GEOREFERENCING = {
     "clip_raster": lambda path, out: raster.clip_raster(
         path, _zones_beside(path), out
     ),
+    # The three that read the grid to place a coordinate, and had no guard at
+    # all until 2026-09-02. `sample_raster_at_points` is the operation most
+    # dependent on georeferencing in the whole product: measured on 31/08, the
+    # same DEM gave 10.0 and 30.0 with no sidecar and 2.0 and 6.0 with a 40 m
+    # one — five times out, no refusal, no warning.
+    "sample_raster_at_points": lambda path, out: sampling.sample_raster_at_points(
+        path, _points_beside(path), out.replace(".tif", ".parquet"), "nearest"
+    ),
+    "elevation_profile": lambda path, out: sampling.elevation_profile(
+        path, _line_beside(path), out.replace(".tif", ".parquet"), 10.0
+    ),
+    # Coordinates, not a layer, and no output: it answers rather than writing.
+    "line_of_sight": lambda path, out: sampling.line_of_sight(
+        path, 500050.0, 5029950.0, 500150.0, 5029850.0, False
+    ),
 }
 
 
@@ -337,26 +352,76 @@ def _zones_beside(raster_path):
     return str(zones)
 
 
+def _points_beside(raster_path):
+    """Two points inside the raster, for the operation that samples at points."""
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    points = Path(raster_path).with_suffix(".points.parquet")
+    if not points.exists():
+        ox, oy, cell = INTERNAL
+        gpd.GeoDataFrame(
+            {"id": [1, 2]},
+            geometry=[
+                Point(ox + cell * 5, oy - cell * 5),
+                Point(ox + cell * 15, oy - cell * 15),
+            ],
+            crs=CRS,
+        ).to_parquet(points)
+    return str(points)
+
+
+def _line_beside(raster_path):
+    """One line across the raster, for the profile operation."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    line = Path(raster_path).with_suffix(".line.parquet")
+    if not line.exists():
+        ox, oy, cell = INTERNAL
+        gpd.GeoDataFrame(
+            {"id": [1]},
+            geometry=[
+                LineString(
+                    [
+                        (ox + cell * 2, oy - cell * 2),
+                        (ox + cell * 18, oy - cell * 18),
+                    ]
+                )
+            ],
+            crs=CRS,
+        ).to_parquet(line)
+    return str(line)
+
+
 def test_the_refusal_list_holds_every_operation_that_actually_refuses():
     """The list above is only worth what it covers.
 
     It had seven entries while `src/` had nine callers, so two operations
     refused with nothing going through them. Read from the source rather than
     maintained by hand, because that is the only version that cannot drift.
+
+    **Every module in `engines/`, not just `raster.py`.** Reading one file was
+    true of the day it was written and an assumption about every day after: the
+    three operations most dependent on georeferencing — `sample_raster_at_points`,
+    `elevation_profile`, `line_of_sight` — live in `sampling.py`, so the day the
+    refusal reached them the derivation would not have seen them, the
+    parametrised list below would have stayed at nine, and the guard would have
+    passed. It would have stopped guarding exactly when the work it protects got
+    done.
     """
     import re
 
-    source = (
-        Path(raster.__file__).read_text(encoding="utf-8")
-    )
     callers = set()
-    for match in re.finditer(
-        r"""refuse_ambiguous_georeferencing\([^,]+,\s*["']([a-z_]+)["']""", source
-    ):
-        callers.add(match.group(1))
+    for module in sorted(Path(raster.__file__).parent.glob("*.py")):
+        for match in re.finditer(
+            r"""refuse_ambiguous_georeferencing\([^,]+,\s*["']([a-z_]+)["']""",
+            module.read_text(encoding="utf-8"),
+        ):
+            callers.add(match.group(1))
     assert callers, (
-        "no call to refuse_ambiguous_georeferencing found in raster.py — the "
-        "pattern stopped matching and this guard would pass on an empty set"
+        "no call to refuse_ambiguous_georeferencing found anywhere in engines/ — "
+        "the pattern stopped matching and this guard would pass on an empty set"
     )
     missing = sorted(callers - set(COMPUTES_FROM_THE_GEOREFERENCING))
     assert not missing, (

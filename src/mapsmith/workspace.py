@@ -44,6 +44,14 @@ from pathlib import Path
 
 _URI_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 
+#: Windows reserves these names in every directory, with or without an
+#: extension: `CON`, `NUL`, `CON.txt` are all the device, not a file. Measured
+#: 2026-09-02: writing to `CON` raised PermissionError *after* creating a file
+#: called CON in the workspace.
+_DEVICE_NAME = re.compile(
+    r"(?i)^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$"
+)
+
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
@@ -89,6 +97,43 @@ def hard_refusal_reason(path: str) -> str | None:
         and ":" in p[2:]  # a colon is only legitimate as the drive separator (C:...)
     ):
         return "NTFS alternate data streams are not allowed"
+    if not _URI_SCHEME.match(p) and not p.lower().startswith("/vsi"):
+        # The RAW string, not the stripped one. `p = path.strip()` above would
+        # have hidden the trailing-space case entirely — and `guard` returns the
+        # caller's exact string, so the engine receives the space that the check
+        # never saw. Stripping for the scheme tests and scanning the original is
+        # the only combination that is true of what actually gets written.
+        for part in re.split(r"[\\/]", path):
+            # Empty from a doubled separator, or whitespace wrapping the whole
+            # string: neither names a file, and reporting `'  '` as the offender
+            # would point at the wrong thing.
+            if not part.strip():
+                continue
+            # `.` and `..` are navigation, not filenames, and they end in a dot
+            # by definition. Caught by `test_traversal_escape_rejected`, which
+            # was already asserting that traversal is refused for the RIGHT
+            # reason — containment — rather than for an incidental one.
+            if part in (".", ".."):
+                continue
+            # A trailing dot or space is silently stripped when Windows creates
+            # the file, so the dataset lands at a DIFFERENT path than the one
+            # the manifest is written beside — measured 2026-09-02:
+            # `out.parquet.` wrote `out.parquet` and then raised, leaving a
+            # dataset on disk with no manifest at all. That is invariant 2
+            # broken by a character nobody sees. Refused everywhere and not
+            # only on Windows, because a manifest is meant to travel: a path
+            # that names two different files on two platforms is not one.
+            if part != part.rstrip(". "):
+                return (
+                    f"a path component may not end in a dot or a space ({part!r}): "
+                    "Windows strips them when creating the file, so the data would "
+                    "be written somewhere other than where the manifest says"
+                )
+            if _DEVICE_NAME.match(part):
+                return (
+                    f"{part!r} is a reserved device name on Windows and cannot be "
+                    "a file. Choose another name"
+                )
     return None
 
 

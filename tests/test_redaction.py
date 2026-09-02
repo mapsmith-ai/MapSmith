@@ -205,3 +205,67 @@ def test_fields_assigned_after_construction_are_redacted_too(tmp_path):
     for secret in ("hunter2", "live_abc", "deadbeef"):
         assert secret not in text, secret
     assert json.loads(text)["parameters_redacted"] is True
+
+
+def test_a_credential_name_is_the_same_name_with_hyphens():
+    """`x_api_key` was masked and `x-api-key` was not, and they are one name.
+
+    The vocabulary is written with underscores because that is how SQL spells
+    it; HTTP spells the same names with hyphens, and a header is exactly the
+    shape that reaches a manifest through a remote path or a map literal. Each
+    underscore in the list now accepts either separator.
+    """
+    from mapsmith.provenance import REDACTED, redact_secrets
+
+    assert redact_secrets({"x-api-key": "SEKRIT"}) == {"x-api-key": REDACTED}
+    assert redact_secrets({"x_api_key": "SEKRIT"}) == {"x_api_key": REDACTED}
+    # And through a nesting level, which is where a header actually lives.
+    assert redact_secrets({"headers": {"x-api-key": "SEKRIT"}}) == {
+        "headers": {"x-api-key": REDACTED}
+    }
+
+
+def test_an_azure_signed_url_is_redacted_like_an_amazon_one():
+    """The same signed URL was masked from one cloud and printed from the other.
+
+    Azure spells its shared-access signature `sig`, and Microsoft's Planetary
+    Computer — a source a geospatial agent reaches for — hands out exactly that
+    form. `X-Amz-Signature` was in the vocabulary and `sig` was not, so the
+    credential travelled into `inputs[].path` in clear.
+
+    The rest of the URL has to survive: a redaction that eats everything after
+    the parameter destroys the record it was protecting.
+    """
+    from mapsmith.provenance import REDACTED, redact_secrets
+
+    azure = (
+        "https://x.blob.core.windows.net/c/f.tif?sv=2024-01&sig=Abc123DEF%2F&se=2026"
+    )
+    masked = redact_secrets(azure)
+    assert "Abc123DEF" not in masked
+    assert REDACTED in masked
+    assert masked.endswith("&se=2026"), "the redaction swallowed the rest of the URL"
+    assert "sv=2024-01" in masked
+
+    amazon = "https://s3.amazonaws.com/b/k?X-Amz-Signature=Abc123&x=1"
+    assert "Abc123" not in redact_secrets(amazon)
+
+
+def test_a_short_credential_name_does_not_fire_on_ordinary_words():
+    """`sig` is three letters, and the reason it is safe is the anchoring.
+
+    The concern when it was proposed was `design=` and `redesign=`. Both end in
+    `ign`, and every rule requires the name to be followed by `=` or a word
+    boundary, so neither matches — but a redaction that fires on ordinary fields
+    teaches its reader to distrust the mask, so it is asserted rather than
+    reasoned about.
+    """
+    from mapsmith.provenance import REDACTED, redact_secrets
+
+    assert REDACTED not in redact_secrets(
+        "https://example.com/p?design=5&redesign=blue"
+    )
+    assert redact_secrets({"design": "blue", "redesign": "green"}) == {
+        "design": "blue",
+        "redesign": "green",
+    }

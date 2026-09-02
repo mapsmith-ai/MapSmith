@@ -51,8 +51,19 @@ _SECRET_NAMES = (
     "auth", "authorization", "bearer", "client_secret", "private_key",
     "connection_string", "conninfo", "credential", "credentials", "sas",
     "signature",
+    # Azure's shared-access signature spells it `sig`, and the Planetary
+    # Computer hands out exactly that form: `?sv=...&sig=...&se=...`. Its AWS
+    # equivalent (`X-Amz-Signature`) was already covered, so the same signed URL
+    # was redacted from one cloud and printed in clear from the other. Safe to
+    # add because every rule below anchors the name — on a query parameter it
+    # must be followed by `=`, and `?design=` ends in `ign`, not `sig`.
+    "sig",
 )
-_NAMES = "|".join(_SECRET_NAMES)
+# `api_key` and `x-api-key` are the same name. The list is written with
+# underscores because that is how SQL spells it, and an HTTP header spells it
+# with hyphens — so `x_api_key` was masked and `x-api-key` went through
+# untouched. Each underscore accepts either separator.
+_NAMES = "|".join(name.replace("_", "[-_]") for name in _SECRET_NAMES)
 
 # A gap between a name and its value: whitespace, a block comment, a line
 # comment. An audit hid a secret behind `SECRET /* c */ 'shh'`, which the first

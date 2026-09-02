@@ -136,3 +136,40 @@ def test_reachable_through_run_operation(scene, tmp_path):
     )
     assert result["ran"] is True
     assert result["status"] == "ok"
+
+
+def test_a_power_tower_is_refused_before_the_file_is_opened(tmp_path):
+    """`b1*0+9**9**9**9` passed every check and hung the host.
+
+    The character whitelist allows it — only digits, `b`, and operators — and it
+    references a band, so both gates said yes. Then CPython was asked for an
+    integer power with about 370 million digits in the exponent, and the process
+    stopped responding before a single pixel was read. One call, one machine.
+    Preexisting: identical in 0.3.0.
+
+    The rule is not "no exponentiation": an index that squares a band is
+    ordinary. It is that the **exponent must be a plain small number**, which is
+    what separates `(b1 - b2) ** 2` from a tower — `**` is right-associative, so
+    the outer exponent of `9**9**9**9` is itself an expression.
+
+    Refused at parse time, so the raster argument here is never opened; the test
+    passes a path that does not exist to prove exactly that.
+    """
+    import pytest
+
+    from mapsmith.engines import raster
+
+    absent = str(tmp_path / "never-opened.tif")
+    with pytest.raises(ValueError, match="not a plain number"):
+        raster.band_math(absent, str(tmp_path / "out.tif"), "b1*0+9**9**9**9")
+    assert not (tmp_path / "out.tif").exists()
+
+    # The legitimate shapes still work, and are the reason this is a cap and
+    # not a ban.
+    raster._refuse_unevaluable_expression("(b1 - b2) / (b1 + b2)")
+    raster._refuse_unevaluable_expression("(b1 - b2) ** 2")
+    raster._refuse_unevaluable_expression("-b1 + 3.5")
+
+    # Chained small powers multiply into a large one, so the count is capped too.
+    with pytest.raises(ValueError, match="exponentiations"):
+        raster._refuse_unevaluable_expression("((((b1**8)**8)**8)**8)**8")

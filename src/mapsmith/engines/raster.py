@@ -12,6 +12,7 @@ raster CRS.
 
 from __future__ import annotations
 
+import ast
 import re
 from typing import Any
 
@@ -745,6 +746,89 @@ def reclassify(
 _BAND_REFERENCE = re.compile(r"\bb([1-9][0-9]?)\b")
 _ALLOWED_EXPRESSION = re.compile(r"^[b0-9+\-*/(). ]+$")
 
+#: A band squared or cubed is ordinary; an exponent larger than this is not an
+#: index, and the two together bound what constant folding can cost.
+_MAX_EXPONENT = 8
+_MAX_POWERS = 4
+
+
+def _refuse_unevaluable_expression(expression: str) -> None:
+    """Parse the expression and refuse anything that is not band arithmetic.
+
+    The character whitelist is not enough and never was. `b1*0+9**9**9**9`
+    matches it, references a band, and then asks CPython for an integer power
+    that exhausts the host's memory before any raster is read — one call, one
+    machine. The sandbox (`{"__builtins__": {}}`) is about *what* can be
+    reached; this is about *how much work* an accepted expression can be.
+
+    So the exponent of `**` has to be a plain number, small, and there can only
+    be a few of them. That is what separates `(b1 - b2) ** 2` from a tower:
+    `9**9**9**9` is right-associative, so its outer exponent is another
+    expression rather than a constant, and it is refused on that.
+
+    Parsing rather than pattern-matching, for the reason the SQL policy learned
+    in 0.4.0: finding structure in a string is what a parser is for.
+    """
+    try:
+        tree = ast.parse(expression, mode="eval")
+    except SyntaxError as bad:
+        raise ValueError(
+            f"expression {expression!r} is not valid arithmetic: {bad.msg}"
+        ) from bad
+
+    powers = 0
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Expression | ast.Load):
+            continue
+        if isinstance(node, ast.Add | ast.Sub | ast.Mult | ast.Div | ast.Pow):
+            continue
+        if isinstance(node, ast.UAdd | ast.USub):
+            continue
+        if isinstance(node, ast.UnaryOp):
+            continue
+        if isinstance(node, ast.Name) and _BAND_REFERENCE.fullmatch(node.id):
+            continue
+        # `not bool` because `True` is an `int` in Python, and `b1 * True` is
+        # not arithmetic anybody meant to write.
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, int | float)
+            and not isinstance(node.value, bool)
+        ):
+            continue
+        if isinstance(node, ast.BinOp):
+            if not isinstance(node.op, ast.Pow):
+                continue
+            powers += 1
+            exponent = node.right
+            legal = (
+                isinstance(exponent, ast.Constant)
+                and isinstance(exponent.value, int | float)
+                and not isinstance(exponent.value, bool)
+                and 0 <= exponent.value <= _MAX_EXPONENT
+            )
+            if not legal:
+                raise ValueError(
+                    f"expression {expression!r} raises to a power that is not a "
+                    f"plain number between 0 and {_MAX_EXPONENT}. An index that "
+                    "squares a band is ordinary; an exponent that is itself an "
+                    "expression is how `9**9**9**9` exhausts the machine before "
+                    "a single pixel is read."
+                )
+            continue
+        raise ValueError(
+            f"expression {expression!r} contains {type(node).__name__}, which is "
+            "not band arithmetic. Only band references (b1, b2, …), numbers, "
+            "+ - * / ** and parentheses are evaluated."
+        )
+
+    if powers > _MAX_POWERS:
+        raise ValueError(
+            f"expression {expression!r} uses {powers} exponentiations and at most "
+            f"{_MAX_POWERS} are allowed. Chained small powers multiply into a "
+            "large one, so the cap is on the count as well as on each exponent."
+        )
+
 
 def band_math(input_path: str, output_path: str, expression: str) -> dict[str, Any]:
     """Evaluate an arithmetic expression over a raster's bands (NDVI and friends).
@@ -784,6 +868,7 @@ def band_math(input_path: str, output_path: str, expression: str) -> dict[str, A
             "numbers, the operators + - * / ** and parentheses. Names, function "
             "calls and attribute access are rejected before the file is opened."
         )
+    _refuse_unevaluable_expression(expression)
     referenced = sorted({int(m) for m in _BAND_REFERENCE.findall(expression)})
     if not referenced:
         raise ValueError(

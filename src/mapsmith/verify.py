@@ -632,26 +632,35 @@ def audit_on_failure(record: Any, output_path: str, preconditions: list[Check]):
     overlap") is most valuable exactly when the engine blows up, so it must not
     be lost with the exception.
 
-    When there were no preconditions to record, one is recorded anyway. The
-    specification requires `verification` to hold at least one check — a record
-    with none is "a log entry wearing a manifest's clothes", in its own words —
-    and four call sites passed an empty list, so on an engine crash they wrote a
-    file the published validator rejects. Saying *that the run failed* is a true
-    check and a useful one; saying nothing is not conforming.
+    The failure check is **always appended**, not used as a fallback when there
+    are no preconditions. It was `list(preconditions) or [...]`, which fired only
+    on the empty case — so on the ~59 paths that pass a non-empty `pre`, an
+    engine crash wrote a manifest made of nothing but passing checks. Conforming
+    (an absent `output` claims nothing) and exactly the shape §1 of the
+    specification describes as the defect to remove: a record that reads like a
+    success because the only things it recorded are the things that succeeded
+    before the failure.
+
+    The specification also requires `verification` to hold at least one check —
+    a record with none is "a log entry wearing a manifest's clothes", in its own
+    words — which the old form happened to satisfy for the empty case. Appending
+    satisfies it for both.
     """
     try:
         yield
     except Exception as failure:
-        recorded = list(preconditions) or [
+        recorded = [
+            *preconditions,
             Check(
                 # Prefixed: section 3.6 closed the core vocabulary, and a
                 # producer-specific check has to say whose it is.
                 "x-mapsmith:operation_completed",
                 False,
                 (
-                    "the engine raised before any check could run: "
-                    f"{type(failure).__name__}. This record exists to say the run "
-                    "happened and did not finish; it makes no claim about the "
+                    f"the operation raised {type(failure).__name__} and did not "
+                    "finish. Any other check in this record ran BEFORE that point "
+                    "and says nothing about the result; this record exists to say "
+                    "the run happened and stopped, and it makes no claim about the "
                     "output, which may be absent or partial."
                 ),
                 hint="read the error the operation raised; this record is the "

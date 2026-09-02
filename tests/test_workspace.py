@@ -157,3 +157,53 @@ def test_server_tools_guard_paths(monkeypatch, tmp_path):
         server.describe_dataset(r"\\evil-host\share\x.gpkg")
     with pytest.raises(ValueError, match="not allowed"):
         server.preview_map([r"/vsicurl/https://evil/x.parquet"])
+
+
+def test_a_path_that_windows_will_rename_is_refused_before_anything_is_written():
+    """A dataset on disk with no manifest, caused by one invisible character.
+
+    Measured 2026-09-02 with a workspace set: `buffer_layer` to `out.parquet.`
+    wrote **`out.parquet`** and then raised `PermissionError`, and the trailing-
+    space form did the same with a different exception. Windows strips a
+    trailing dot or space when it creates a file, so the data lands at a path
+    that is not the one the manifest is written beside — invariant 2 broken by a
+    character nobody can see in a code review.
+
+    Refused in every mode and on every platform, not only on Windows: a manifest
+    is meant to travel, and a path that names two different files on two
+    operating systems is not one path.
+    """
+    from mapsmith import workspace
+
+    for bad in ("/data/out.parquet.", "/data/out.parquet ", r"C:\w\out.tif."):
+        reason = workspace.hard_refusal_reason(bad)
+        assert reason and "dot or a space" in reason, bad
+
+    # The raw string, not the stripped one: `hard_refusal_reason` strips before
+    # its other tests, and `guard` hands the engine the caller's exact string —
+    # so a check that ran on the stripped copy would pass while the space still
+    # reached GDAL.
+    assert workspace.hard_refusal_reason("/data/out.parquet ") is not None
+
+    # Ordinary paths, including dots that are not trailing, stay allowed.
+    for good in ("/data/out.parquet", "/data/v1.2/out.parquet", "/data/.hidden"):
+        assert workspace.hard_refusal_reason(good) is None, good
+
+
+def test_a_windows_device_name_is_not_a_file():
+    """Writing to `CON` created a file called CON, then raised.
+
+    `CON`, `NUL`, `PRN`, `AUX`, `COM1`-`COM9` and `LPT1`-`LPT9` are devices in
+    every directory on Windows, extension or not — `con.txt` is the device too.
+    An agent that picks an output name from a column value can produce one
+    without anybody intending it.
+    """
+    from mapsmith import workspace
+
+    for bad in ("C:/w/NUL", "C:/w/con.txt", "/data/CON/x.tif", "/w/LPT1"):
+        reason = workspace.hard_refusal_reason(bad)
+        assert reason and "device name" in reason, bad
+
+    # Names that merely start with a device name are ordinary files.
+    for good in ("/data/console.parquet", "/data/nullable.tif", "/data/aux_data.gpkg"):
+        assert workspace.hard_refusal_reason(good) is None, good

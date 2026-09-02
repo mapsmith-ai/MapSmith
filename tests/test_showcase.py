@@ -1198,7 +1198,7 @@ def test_the_retrieval_numbers_agree_between_the_readme_and_the_site():
         )
 
 
-def test_the_site_build_is_at_least_valid_python():
+def test_the_site_build_is_at_least_valid_python(tmp_path):
     """The suite stayed green with a syntax error in `site/build.py`.
 
     On 2026-08-29 a bad edit left an `if` at the wrong indentation there, and
@@ -1210,16 +1210,26 @@ def test_the_site_build_is_at_least_valid_python():
     Compiling is not building, and it deliberately stops short of running the
     thing: a real build takes minutes and needs the engines. What it buys is
     that the failure arrives from the test suite rather than from Pages.
+
+    The byte-code goes into this test's own `tmp_path`, not next to the source.
+    It used to write `build.pyc` beside `build.py` and delete it afterwards,
+    which is a **shared path**: two runs of the suite over the same checkout
+    raced on it, and on 2026-08-31 two independent parallel runs each produced a
+    different failure, both green in isolation. Two runs at once is not a
+    supported configuration, but a suite that goes red once on a shared checkout
+    will do it again on a runner with retries — where it looks like a defect in
+    the product rather than in the test. A test that writes outside `tmp_path`
+    has to justify it, and this one could not.
     """
     import py_compile
 
     for script in (SITE_BUILD, ROOT / "benchmarks" / "worked_example.py"):
         try:
-            py_compile.compile(str(script), doraise=True, cfile=str(script) + "c")
+            py_compile.compile(
+                str(script), doraise=True, cfile=str(tmp_path / f"{script.stem}.pyc")
+            )
         except py_compile.PyCompileError as broken:  # pragma: no cover
             raise AssertionError(f"{script.name} does not compile: {broken}") from None
-        finally:
-            Path(str(script) + "c").unlink(missing_ok=True)
 
 
 def test_the_manifest_on_the_front_page_conforms_to_the_specification():

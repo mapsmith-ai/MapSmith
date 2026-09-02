@@ -729,9 +729,10 @@ somebody overrides georeferencing they know to be wrong. Both readings are the l
 behaving exactly as written, and on one fixture the same file gives an area four times
 larger and an origin a hundred kilometres away. There is nothing upstream to fix and
 everything to state, so `describe_dataset` reports both sources when a raster has two, and
-**nine operations that read a raster's grid directly refuse instead** — zonal statistics,
+**twelve operations that read a raster's grid directly refuse instead** — zonal statistics,
 resampling, clipping, reclassification, band maths, reprojection, band extraction, band
-statistics and locating an extreme cell — naming both readings and saying how to choose.
+statistics, locating an extreme cell, sampling at points, the elevation profile and the line
+of sight — naming both readings and saying how to choose.
 Describing is different from computing: a file with two georeferencings is a thing to be
 told about, not a coin to flip. This is the multi-layer refusal
 ([#29](https://github.com/mapsmith-ai/MapSmith/issues/29)) on a second axis — the format's
@@ -1084,7 +1085,7 @@ Next, in the order we intend to do it. The linked items carry a written spec —
 - [x] Slope and aspect (Whitebox, closed-form tested; geographic-CRS DEMs refused)
 - [x] Stream network extraction (Whitebox, from a flow-accumulation grid; the threshold and its unit recorded in the manifest)
 - [x] More terrain & hydrology: curvature (six kinds, the kind required because profile and plan answer opposite questions), flow direction (d8/rho8/dinf/fd8, with the direction-code **table** written into the manifest — the engine's own manual documents its default table backwards, so a name would not have been enough), Euclidean distance and IDW interpolation
-- [ ] The ambiguous-georeferencing refusal on **every** raster operation rather than the nine that read the grid directly. The terrain engine stops on the same file for a different reason — its own reading of the grid disagrees with GDAL's — and its message names neither the sidecar nor the way out; sampling a raster at points does not stop at all
+- [ ] The ambiguous-georeferencing refusal on **every** raster operation rather than the twelve that read the grid directly. The three sampling operations were added on 2026-09-02 — `sample_raster_at_points` was the worst gap in the product, since the same DEM answered 10.0 and 30.0 with no sidecar and 2.0 and 6.0 with a 40 m one, five times out with no warning. What is left is the terrain engine, which stops on the same file for a different reason — its own reading of the grid disagrees with GDAL's — and whose message names neither the sidecar nor the way out
 - [ ] Map panel: MapLibre vector rendering, and an export of the panel as a self-contained HTML file you host yourself (raster OSM tiles already ship). No hosted viewer — MapSmith runs on your machine and we would rather not own your maps
 - **Not planned**, and [closed as such](https://github.com/mapsmith-ai/MapSmith/issues/7) on 2026-09-01: a sandboxed code-execution tool for the long tail. A typed plan is the same efficiency win in a shape that can be refused for a stated reason before anything runs; a model-authored script keeps the arithmetic in the engines but moves the *composition* — engine, order, units, CRS — into text nobody validated, and then emits a manifest that is true about the library and silent about the part that decided
 - [ ] QGIS Processing sidecar (subprocess-isolated): ~900 algorithms. By far the largest item on this list — parameter mapping and error handling for an external process, not an afternoon

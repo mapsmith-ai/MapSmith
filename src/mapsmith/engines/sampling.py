@@ -192,6 +192,13 @@ def sample_raster_at_points(
     is a check in the manifest.
     """
     rasterio = _require_rasterio()
+    # Two georeferencings and nobody chose: refuse rather than compute
+    # from a file the caller did not name (D-059). After the extra guard,
+    # never before it: a caller without `[raster]` has to hear about the
+    # missing extra, not about a sidecar.
+    from .. import grid
+
+    grid.refuse_ambiguous_georeferencing(raster_path, "sample_raster_at_points")
     if method not in SAMPLING_METHODS:
         raise ValueError(
             f"method must be one of {list(SAMPLING_METHODS)}, got {method!r}. "
@@ -316,6 +323,13 @@ def elevation_profile(
     profiles in a single call without the segments running together.
     """
     rasterio = _require_rasterio()
+    # Two georeferencings and nobody chose: refuse rather than compute
+    # from a file the caller did not name (D-059). After the extra guard,
+    # never before it: a caller without `[raster]` has to hear about the
+    # missing extra, not about a sidecar.
+    from .. import grid
+
+    grid.refuse_ambiguous_georeferencing(raster_path, "elevation_profile")
     if spacing <= 0:
         raise ValueError(f"spacing must be positive, got {spacing}")
     if method not in SAMPLING_METHODS:
@@ -516,6 +530,13 @@ def line_of_sight(
     is not.
     """
     rasterio = _require_rasterio()
+    # Two georeferencings and nobody chose: refuse rather than compute
+    # from a file the caller did not name (D-059). After the extra guard,
+    # never before it: a caller without `[raster]` has to hear about the
+    # missing extra, not about a sidecar.
+    from .. import grid
+
+    grid.refuse_ambiguous_georeferencing(raster_path, "line_of_sight")
     with rasterio.open(raster_path) as dataset:
         crs = dataset.crs
         if crs is None:

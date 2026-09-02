@@ -888,3 +888,50 @@ def test_the_number_of_hand_written_writers_only_goes_down():
         f"{len(inline)} writers now build the manifest by hand, up from 17. A new "
         "writer goes through verify.audited: " + ", ".join(sorted(inline))
     )
+
+
+def test_a_crash_after_passing_preconditions_still_records_the_failure(tmp_path):
+    """The `or` that made a crashed run look like a successful one.
+
+    `audit_on_failure` recorded its failure check only when the precondition
+    list was empty — `list(preconditions) or [...]`. Every operation that checks
+    its inputs first passes a non-empty list, which is about 59 paths counting
+    the ones that reach it through `verify.audited`, and on those an engine
+    crash wrote a manifest containing nothing but the checks that had already
+    passed. Conforming, and unreadable in the one way that matters: it reads
+    like a success.
+
+    The point of the test is the combination — a passing precondition AND a
+    crash — because each half alone was already fine.
+    """
+    from mapsmith.provenance import ProvenanceRecord
+
+    record = ProvenanceRecord(
+        operation="pretend_operation",
+        parameters={},
+        inputs=[],
+        engine={"name": "test", "version": "0"},
+    )
+    output = tmp_path / "out.parquet"
+    output.write_bytes(b"")
+    passed = verify.Check("input_crs_present", True, "EPSG:4326")
+
+    with (
+        pytest.raises(RuntimeError, match="the engine died"),
+        verify.audit_on_failure(record, str(output), [passed]),
+    ):
+        raise RuntimeError("the engine died")
+
+    manifest = json.loads(
+        (tmp_path / "out.parquet.provenance.json").read_text(encoding="utf-8")
+    )
+    names = [c["name"] for c in manifest["verification"]]
+    assert "input_crs_present" in names, "the precondition was dropped"
+    assert "x-mapsmith:operation_completed" in names, (
+        "the run crashed and the manifest says every check passed — this is the "
+        "record reading like a success"
+    )
+    failed = [c for c in manifest["verification"] if not c["passed"]]
+    assert len(failed) == 1 and failed[0]["name"] == "x-mapsmith:operation_completed"
+    # And it does not claim the passing checks say anything about the result.
+    assert "BEFORE that point" in failed[0]["detail"]

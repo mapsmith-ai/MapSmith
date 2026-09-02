@@ -181,19 +181,72 @@ def test_list_operations_records_what_it_delivered(tmp_path, monkeypatch):
     assert record["status"] in ("ranked", "choose", "unsure")
 
 
-def test_the_module_is_reachable_from_the_writer_path(monkeypatch):
-    """`_run` wraps every writer, which is why one hook covers 41 operations.
+def test_running_an_operation_by_name_records_that_operation(tmp_path, monkeypatch):
+    """The by-name path logged the wrapper's name instead of the operation's.
 
-    Asserted by name rather than by running an operation: the point is that the
-    call site exists in the function every writer goes through, and an engine
-    execution here would test rasterio instead.
+    `run_operation` called `_run("run_operation", ...)`, and "run_operation" is
+    not a name in the catalogue — so the row could never be paired with the
+    search that led to it and came back `chose: null`. Forty-six operations of
+    seventy-four are reachable only by name, so that was most of the log.
+
+    The previous version of this test read `server.py` **as text** and asserted
+    that one line was present. It passed for as long as the defect existed,
+    because the line it looked for was the defective one — and it went red the
+    moment the fix touched that line, which is the wrong thing for a test to
+    notice. Same lesson as the georeferencing refusal that had no callers: a
+    test that inspects a call site proves the call site exists and says nothing
+    about what it does.
     """
-    source = Path(discovery_log.__file__).with_name("server.py").read_text(encoding="utf-8")
-    body = source.split("def _run(", 1)[1].split("\ndef ", 1)[0]
-    assert "discovery_log.record_run(operation)" in body, (
-        "the writer path no longer records what was run, so every logged search "
-        "will say `chose: null` and the log stops being able to produce a case"
+    import json
+
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    from mapsmith import server
+
+    log = tmp_path / "discovery.jsonl"
+    monkeypatch.setenv("MAPSMITH_DISCOVERY_LOG", str(log))
+    monkeypatch.setenv("MAPSMITH_WORKSPACE", str(tmp_path))
+
+    source = tmp_path / "points.parquet"
+    gpd.GeoDataFrame(
+        {"i": [1, 2]},
+        geometry=[Point(500000, 5000000), Point(500100, 5000100)],
+        crs="EPSG:32632",
+    ).to_parquet(source)
+
+    # The search first, because the pairing IS the thing under test: a run is
+    # attributed to the most recent search whose delivered set held it, so with
+    # no search there is no row to complete and nothing is written at all.
+    from mapsmith import catalog
+
+    offered = server.list_operations(
+        query="buffer points by a distance in metres",
+        input_kind="vector",
+        dataset_inputs=1,
     )
+    delivered = [entry["name"] for entry in catalog.entries(offered)]
+    assert "buffer_layer" in delivered, (
+        f"the search did not offer buffer_layer ({delivered}), so this test would "
+        "pass on an unpaired run"
+    )
+
+    server.run_operation(
+        "buffer_layer",
+        {
+            "input_path": str(source),
+            "distance_meters": 10.0,
+            "output_path": str(tmp_path / "out.parquet"),
+        },
+    )
+
+    rows = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+    chosen = [r.get("chose") for r in rows if r.get("chose")]
+    assert "buffer_layer" in chosen, (
+        f"the log recorded {chosen} — the operation that ran has to be the one "
+        "written down, or the row cannot be paired with the search that led to it"
+    )
+    assert "run_operation" not in chosen, "the wrapper's name is not a catalogue name"
 
 
 def test_the_environment_variable_is_documented(monkeypatch):

@@ -90,15 +90,26 @@ def _guard(**paths: str) -> None:
         workspace.guard(value, arg)
 
 
-def _run(operation: str, params: dict[str, Any], fn, *args) -> dict[str, Any]:
-    """Execute an engine call as a durable job (no-op ledger without DATABASE_URL)."""
+def _run(
+    operation: str, params: dict[str, Any], fn, *args, chose: str | None = None
+) -> dict[str, Any]:
+    """Execute an engine call as a durable job (no-op ledger without DATABASE_URL).
+
+    `chose` is the CATALOGUE operation that actually ran, when it differs from
+    the tool that ran it. Only `run_operation` needs it, and it is the whole
+    reason the parameter exists: it passed the literal string "run_operation",
+    which is not a name in the catalogue, so every case logged through the
+    by-name path recorded `chose: null` and could never be paired with the
+    search that led to it. Forty-six operations of seventy-four are reachable
+    only by name, so that was most of the log.
+    """
     # Every writer passes through here, so one line covers the dedicated tools
     # and `run_operation` alike. Before the call rather than after: a run that
     # failed is still a choice the caller made, and a search that led to a
     # failure is a case worth keeping.
     from . import discovery_log
 
-    discovery_log.record_run(operation)
+    discovery_log.record_run(chose or operation)
     with jobs.job(operation, params) as (job_id, res):
         result = fn(*args)
         res.update(result)
@@ -913,7 +924,7 @@ def run_operation(operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
     # sells audit trails was thinning with every operation added. Validation
     # failures stay outside it — nothing ran, so there is no job to record.
     result = _run("run_operation", {"operation": operation, "arguments": arguments},
-                  executor.execute, plan)
+                  executor.execute, plan, chose=operation)
     if not result.get("executed") and "validation" in result:
         # The plan wrapper is an implementation detail; the caller asked for one
         # operation and gets one operation's diagnosis back.
