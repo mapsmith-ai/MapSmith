@@ -32,7 +32,7 @@ as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213).
 Evidence before promises: an [A/B on GABench](docs/benchmarks.md) whose headline is a null
 result — with the analysis that took our own positive number apart — a correctness suite in
 its own organisation, [**Argleton**](https://argleton.org), whose published run grades
-MapSmith on thirty traps with answers computed on paper and has already sent six defects
+MapSmith on thirty-one traps with answers computed on paper and has already sent six defects
 back here, [notebooks](examples/) on a real USGS DEM of Mount St. Helens, an
 [in-chat map panel](#see-results-inside-the-chat) that shows the verification status of
 every layer it draws, and a
@@ -1009,14 +1009,20 @@ Next, in the order we intend to do it. The linked items carry a written spec —
   vendored.
 
   Its [published results](https://argleton.org/#results) measure MapSmith, and what they say about
-  us is why they are linked from here. On the current run — all twenty-eight families — MapSmith
-  answers every trap correctly: **0.00 silent errors over 30 traps, nothing skipped**. One of the
-  thirty is not an answer at all but a refusal: a raster and the sidecar beside it declare
+  us is why they are linked from here. On the current run — all twenty-nine families — MapSmith
+  answers every trap correctly: **0.00 silent errors over 31 traps, nothing skipped**. One of the
+  thirty-one is not an answer at all but a refusal: a raster and the sidecar beside it declare
   different georeferencing, both readings are GDAL behaving as documented, and the right move is
   to stop and say so rather than pick one. That family arrived on 2026-08-31, the morning after
   the list of twenty-seven was closed, and it is the reason a manifest can now name its
-  `environment` (see the [changelog](CHANGELOG.md)). For three days the published run stayed one trap
-  behind the suite; it does not any more.
+  `environment` (see the [changelog](CHANGELOG.md)).
+
+  The twenty-ninth arrived on 2026-09-02 and is the one that reads oddly until you see it: a
+  survey plot whose easement ring is wound the same way as its outline. A shapefile carries no
+  nesting, so which ring is a hole is decided by the winding and by nothing else — the easement
+  comes back as a second shell and its area is **added**, flattering the owner by 6.9% with a
+  correct bounding box, a correct CRS and no warning. MapSmith repairs it and records the repair,
+  which is the only reason the number is right.
 
   Two of the last four caught defects here, and both are fixed. A DEM whose rows run south to
   north made a 5.7 degree slope come back as 45, with the output raster written at the origin and
