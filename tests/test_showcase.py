@@ -10,6 +10,7 @@ reachability, dead links and stale numbers can.
 import asyncio
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -187,6 +188,51 @@ def test_the_changelog_covers_the_released_version():
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     assert re.search(rf"^## \[{re.escape(__version__)}\]", changelog, re.MULTILINE), (
         f"CHANGELOG.md has no section for the current version {__version__}"
+    )
+
+
+def test_work_since_the_last_tag_is_announced_under_unreleased():
+    """`main` ahead of the last tag with nothing under `[Unreleased]` is a
+    changelog that says the project has stopped.
+
+    On 2026-09-02 there were eleven commits and 4371 insertions past v0.4.0 and
+    the file went straight from its header to `## [0.4.0]`. Among the things it
+    did not mention: a dataset written to disk with no manifest beside it —
+    invariant 2, in shipped code. `CHANGELOG.md` declares that it follows Keep a
+    Changelog, which prescribes the section; of the four public surfaces it was
+    the only one still describing the last release as the present.
+
+    This is not a one-off. Every release empties the section and every commit
+    after it refills it, so the gap reopens on a schedule.
+    """
+    tag = subprocess.run(
+        ["git", "describe", "--tags", "--abbrev=0", "--match", "v*"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if tag.returncode != 0:
+        pytest.skip("no version tag reachable from HEAD (shallow clone?)")
+    ahead = subprocess.run(
+        ["git", "rev-list", "--count", f"{tag.stdout.strip()}..HEAD"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if ahead.returncode != 0:
+        pytest.skip("cannot count commits since the tag")
+    if int(ahead.stdout.strip()) == 0:
+        return  # freshly tagged: an empty Unreleased is the correct state
+
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    heading = re.search(r"^## \[Unreleased\]", changelog, re.MULTILINE)
+    assert heading, (
+        f"{ahead.stdout.strip()} commits since {tag.stdout.strip()} and "
+        f"CHANGELOG.md has no [Unreleased] section"
+    )
+    # The section must carry entries, not just exist: an empty heading passes a
+    # presence check while saying exactly as little as no heading at all.
+    body = changelog[heading.end():].split("\n## ", 1)[0]
+    entries = [ln for ln in body.splitlines() if ln.startswith("- ")]
+    assert entries, (
+        f"{ahead.stdout.strip()} commits since {tag.stdout.strip()} and "
+        f"[Unreleased] has no entries"
     )
 
 

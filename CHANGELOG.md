@@ -4,6 +4,81 @@ All notable changes to MapSmith are documented here, in the format of
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows
 [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+Everything here is on `main` and not in a release. It is almost entirely
+defects found in shipped code by reviews that ran *after* 0.4.0 went out, and
+the shape they share is worth more than any one of them: **in every case a
+guard existed and could not fail.**
+
+### Fixed
+
+- **A dataset on disk with no manifest, from one invisible character.** With a
+  workspace set, writing to `out.parquet.` wrote `out.parquet` and *then*
+  raised: Windows strips a trailing dot when it creates a file, so the data
+  landed where the manifest was not. That is invariant 2 — provenance on every
+  writer — broken by a character nobody sees in review. The trailing-space form
+  did the same with a different exception, and `CON` did not merely fail: it
+  created a file called CON in the workspace. All of these are refused now, on
+  **every** platform rather than only on Windows, because a manifest is meant to
+  travel and a path that names two different files on two operating systems is
+  not one path.
+- **A crash could write a manifest saying everything passed.** On the ~59 code
+  paths that verify their inputs before running, `audit_on_failure` recorded its
+  failure check only when there were *no* preconditions, so an engine crash
+  produced a record made entirely of green checks — conforming, and misleading
+  in the one way that matters. The failure check is appended now, and its text
+  states that the other checks ran *before* the failure and claim nothing about
+  the result.
+- **A band-math expression could hang the host before a pixel was read.**
+  `b1*0+9**9**9**9` passes a character whitelist and names a band, then asks
+  CPython for an integer power with hundreds of millions of digits. The rule is
+  not "no exponentiation" — squaring a band is ordinary — it is that the exponent
+  must be a plain small constant, which is what separates `(b1-b2)**2` from a
+  tower: `**` is right-associative, so a tower's outer exponent is itself an
+  expression. Parsed with `ast`, for the same reason the SQL policy was.
+- **Two credentials travelled in clear.** `x_api_key` was masked and
+  `x-api-key` was not, because the vocabulary was written the way SQL spells
+  names while HTTP spells them with hyphens. And Azure's shared-access signature
+  is `sig`, absent while `X-Amz-Signature` was present — so the same signed URL
+  was redacted from one cloud and printed from the other, on a URL form
+  Microsoft's Planetary Computer hands out.
+- **The refusal of ambiguously georeferenced rasters covered nine operations of
+  twenty-five; it now covers twelve.** The three added are the ones that read
+  the grid to place a coordinate — `sample_raster_at_points` above all, which
+  answered 10.0 and 30.0 with no sidecar and 2.0 and 6.0 with a 40 m one.
+- **`run_operation` logged the wrapper instead of the operation.** It recorded
+  `"run_operation"`, which is not a catalogue name, so the row could never pair
+  with the search that preceded it and came back `chose: null` — on the 46
+  operations of 74 reachable only by name.
+- **`run_sql` wrote its manifest and never enforced it**, so a failing critical
+  check was recorded and not raised. Sixteen other hand-written writers
+  open-code the sequence correctly; this one was the exception, and two tests
+  now hold the line — one fails if any hand-written writer skips
+  `verify.enforce`, the other ratchets their count downwards only.
+
+### Changed
+
+- **Guards that enumerate are now guards that derive.** The parametrised list
+  behind the georeferencing refusal read one module; it reads all of
+  `engines/` and fails if the field it derives from is renamed — otherwise it
+  would have stopped guarding exactly when the work it protects got done. The
+  same treatment went to the notebook-gallery check (which summed across
+  notebooks, so one notebook satisfied it) and to the published-figure census,
+  which now sweeps `funding.json` too.
+- **`funding.json` says what has been delivered.** It claimed 16 tools and 336
+  tests against 28 and more than 1500, and carried two *active* plans totalling
+  €35,000 to build a trap suite and a provenance specification — both of which
+  had shipped weeks earlier and are archived with DOIs. The plans are kept
+  rather than deleted and marked inactive with what came of them: an estimate
+  beside its actual cost is a stronger thing to show than an ask that ages into
+  a lie.
+- **`CLAUDE.md` no longer tells contributors something false.** It said writers
+  go through `verify.audited` "so the audit-trail-first invariant cannot be
+  bypassed". That was untrue for seventeen writers of fifty-seven.
+- Documentation and site now quote the Argleton run that covers all
+  twenty-nine families: **0.00 silent errors over 31 traps, nothing skipped**.
+
 ## [0.4.0] — 2026-08-31
 
 ### Added
