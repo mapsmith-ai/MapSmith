@@ -30,6 +30,15 @@ guard existed and could not fail.**
   in the one way that matters. The failure check is appended now, and its text
   states that the other checks ran *before* the failure and claim nothing about
   the result.
+- **The crash manifest could fail to be written, silently.** Making the crash
+  record's *contents* honest (above) left its *existence* best-effort: the write
+  sat inside `suppress(Exception)`, so the audit trail this path exists to save
+  could vanish with nothing said. Section 3.1 of the manifest specification uses
+  a MUST, and a MUST behind a blanket suppression is not one. Hashing the output
+  is the only part of the write that reads a file the crashed engine may still
+  hold open, so that failure now falls back to writing the record *without*
+  `output` — valid, and merely uncheckable against bytes — and if even that
+  fails the loss is attached to the exception the caller already receives.
 - **A band-math expression could hang the host before a pixel was read.**
   `b1*0+9**9**9**9` passes a character whitelist and names a band, then asks
   CPython for an integer power with hundreds of millions of digits. The rule is

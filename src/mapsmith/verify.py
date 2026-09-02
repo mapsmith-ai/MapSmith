@@ -667,8 +667,35 @@ def audit_on_failure(record: Any, output_path: str, preconditions: list[Check]):
                 "audit trail, not the diagnosis",
             )
         ]
-        with suppress(Exception):
-            record.add_verification(recorded).finish().write_for(output_path)
+        # A MUST protected by `suppress(Exception)` is not protected. This used
+        # to swallow every failure of the write, so the case this whole helper
+        # exists for — the audit trail surviving the crash — could itself vanish
+        # with nothing said. The realistic ways it fails are hashing an output
+        # the engine still holds open, a parameter that will not serialise (loud
+        # on the success path, silent here), and a full disk.
+        try:
+            record.add_verification(recorded).finish()
+        except Exception as lost:  # noqa: BLE001 - the original failure must win
+            failure.add_note(
+                f"MapSmith could not even assemble the crash manifest: "
+                f"{type(lost).__name__}: {lost}"
+            )
+            raise failure from None
+        try:
+            record.write_for(output_path)
+        except Exception:  # noqa: BLE001 - retried below, reported if that fails too
+            try:
+                # Drop the one field whose computation reads the output file.
+                record.write_for(output_path, with_output_digest=False)
+            except Exception as lost:  # noqa: BLE001 - the original failure must win
+                # Never silent: the caller gets the engine's error with a note
+                # saying the trail is missing, which is the difference between
+                # "no manifest" and "no manifest and nobody knows".
+                failure.add_note(
+                    f"MapSmith could not write the crash manifest for "
+                    f"{output_path}: {type(lost).__name__}: {lost}. "
+                    f"There is no audit trail on disk for this failure."
+                )
         raise
 
 

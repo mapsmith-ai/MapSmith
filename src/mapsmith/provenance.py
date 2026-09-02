@@ -395,7 +395,7 @@ class ProvenanceRecord:
         self.finished_at = _utcnow()
         return self
 
-    def write_for(self, output_path: str | Path) -> Path:
+    def write_for(self, output_path: str | Path, *, with_output_digest: bool = True) -> Path:
         """Write the manifest next to the output it describes.
 
         The record carries the OUTPUT's digest too, computed here — the one
@@ -403,6 +403,15 @@ class ProvenanceRecord:
         have already run). Without it a consumer cannot check that the sidecar
         describes the bytes next to it, and the record could not become the
         predicate of an in-toto attestation, whose subject requires a digest.
+
+        `with_output_digest=False` drops that one field, and exists for exactly
+        one caller: `verify.audit_on_failure`, writing after an engine crash.
+        Hashing the output is the only part of this method that reads a file the
+        crashed engine may still hold open, so it is the part most likely to
+        raise — and section 3.1 says a manifest MUST be written even then. A
+        record without `output` is valid (the schema allows its absence) and
+        useless only for checking bytes; a record that was never written is
+        useless for everything.
         """
         # Section 3.8, filled here for the same reason redaction runs here: this
         # is the single point where a manifest becomes a file. `verify.audited`
@@ -414,7 +423,7 @@ class ProvenanceRecord:
         self._record_environment()
         self._redact()
         record = asdict(self)
-        if Path(output_path).exists():
+        if with_output_digest and Path(output_path).exists():
             # After `inputs`, where a reader expects it; through the same
             # redaction as everything else, because an output path can carry a
             # signed URL exactly like an input path can.

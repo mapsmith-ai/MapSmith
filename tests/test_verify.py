@@ -890,6 +890,87 @@ def test_the_number_of_hand_written_writers_only_goes_down():
     )
 
 
+def test_a_crash_manifest_that_cannot_be_written_says_so_on_the_exception(tmp_path):
+    """The MUST that was protected by `suppress(Exception)`, which protects nothing.
+
+    Section 3.1 of the manifest specification says a manifest MUST be written
+    even when verification fails. `audit_on_failure` wrapped its write in
+    `with suppress(Exception)`, so the audit trail this helper exists to save
+    could itself vanish with nothing said anywhere — the contents of the crash
+    record were made honest on 2026-09-02 while its existence stayed
+    best-effort.
+
+    Two behaviours are asserted, in the order that matters:
+
+    1. Hashing the output is the only part of the write that reads a file the
+       crashed engine may still hold, so when that raises the manifest is
+       written WITHOUT `output` rather than not at all. A record with no
+       `output` is valid and merely cannot be checked against bytes; a record
+       that does not exist cannot be checked against anything.
+    2. If even that fails, the loss is attached to the exception the caller
+       already receives. Silence is the only outcome that is not allowed.
+    """
+    from mapsmith.provenance import ProvenanceRecord
+
+    record = ProvenanceRecord(
+        operation="pretend_operation",
+        parameters={},
+        inputs=[],
+        engine={"name": "test", "version": "0"},
+    )
+    output = tmp_path / "held.parquet"
+    output.write_bytes(b"some bytes")
+    passed = verify.Check("input_crs_present", True, "EPSG:4326")
+
+    def unreadable(_path):
+        raise PermissionError("the engine still holds this file open")
+
+    import mapsmith.provenance as prov
+
+    original = prov.sha256_of
+    prov.sha256_of = unreadable
+    try:
+        with (
+            pytest.raises(RuntimeError, match="the engine died"),
+            verify.audit_on_failure(record, str(output), [passed]),
+        ):
+            raise RuntimeError("the engine died")
+    finally:
+        prov.sha256_of = original
+
+    written = tmp_path / "held.parquet.provenance.json"
+    assert written.exists(), (
+        "the output could not be hashed and the whole manifest was dropped — "
+        "this is the MUST that suppress(Exception) used to hide"
+    )
+    manifest = json.loads(written.read_text(encoding="utf-8"))
+    assert "output" not in manifest, "the digest was supposed to be the part dropped"
+    names = [c["name"] for c in manifest["verification"]]
+    assert "x-mapsmith:operation_completed" in names
+    assert "input_crs_present" in names
+
+    # 2. When nothing can be written, the caller is told on the exception it
+    #    already has, rather than being left to discover the gap later.
+    second = tmp_path / "gone" / "out.parquet"  # parent does not exist
+    record2 = ProvenanceRecord(
+        operation="pretend_operation",
+        parameters={},
+        inputs=[],
+        engine={"name": "test", "version": "0"},
+    )
+    with (
+        pytest.raises(RuntimeError) as raised,
+        verify.audit_on_failure(record2, str(second), [passed]),
+    ):
+        raise RuntimeError("the engine died again")
+    notes = " ".join(getattr(raised.value, "__notes__", []))
+    assert "could not write the crash manifest" in notes, (
+        "the manifest could not be written and nothing said so: "
+        f"notes were {getattr(raised.value, '__notes__', [])!r}"
+    )
+    assert "no audit trail on disk" in notes
+
+
 def test_a_crash_after_passing_preconditions_still_records_the_failure(tmp_path):
     """The `or` that made a crashed run look like a successful one.
 
