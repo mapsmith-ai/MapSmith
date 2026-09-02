@@ -454,8 +454,9 @@ What it says about MapSmith (all twenty-eight families, engine tier, `spec_commi
 | naive composition (read file, take statistic) | 0.9333 | 1.00 | 30 | 0 |
 
 **The family list closed on 2026-08-30**, at twenty-seven of twenty-seven, and reopened the next
-morning with a twenty-eighth that no published run covers yet — one raster carrying two
-georeferencings, which is why a manifest can now record its `environment`. The last four of the
+morning with a twenty-eighth — one raster carrying two georeferencings, which is why a manifest
+can now record its `environment`. For three days the published run stayed one trap behind the
+suite; the run above covers all twenty-eight. The last four of the
 twenty-seven cost this project two defects. A DEM whose rows run south to north — legal, and
 what a NetCDF or GRIB conversion produces — made a 5.7 degree slope come back as 45 with the output raster written at
 the origin, and **all five verification checks passed**: the coordinate system had survived and

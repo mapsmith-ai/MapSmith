@@ -280,7 +280,7 @@ def georeferencing_source(path: str) -> dict[str, str]:
     sidecar = Path(f"{path}.aux.xml")
     if not sidecar.exists():
         # Checked BEFORE importing rasterio. This function is called at the top
-        # of nine raster operations, and importing an optional dependency here
+        # of twelve raster operations, and importing an optional dependency here
         # turned a missing extra into a bare ImportError instead of the sentence
         # naming what to install. Nothing overrides the file, so there is
         # nothing to open and nothing to say.
