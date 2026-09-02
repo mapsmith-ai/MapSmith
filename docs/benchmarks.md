@@ -445,13 +445,13 @@ organisation on purpose: an evaluation that lives inside the thing it
 evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
-What it says about MapSmith (twenty-seven-family run, engine tier, `spec_commit`
-[`089a34d`](https://github.com/argleton/argleton/tree/main/results/2026-08-30-all-families)):
+What it says about MapSmith (all twenty-eight families, engine tier, `spec_commit`
+[`f419a67`](https://github.com/argleton/argleton/tree/main/results/2026-09-02-thirty-traps)):
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
-| MapSmith | **0.00** | 1.00 | 29 | 0 |
-| naive composition (read file, take statistic) | 0.931 | 1.00 | 29 | 0 |
+| MapSmith | **0.00** | 1.00 | 30 | 0 |
+| naive composition (read file, take statistic) | 0.9333 | 1.00 | 30 | 0 |
 
 **The family list closed on 2026-08-30**, at twenty-seven of twenty-seven, and reopened the next
 morning with a twenty-eighth that no published run covers yet — one raster carrying two

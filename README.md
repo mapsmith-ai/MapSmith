@@ -32,7 +32,7 @@ as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213).
 Evidence before promises: an [A/B on GABench](docs/benchmarks.md) whose headline is a null
 result — with the analysis that took our own positive number apart — a correctness suite in
 its own organisation, [**Argleton**](https://argleton.org), whose published run grades
-MapSmith on twenty-nine traps with answers computed on paper and has already sent six defects
+MapSmith on thirty traps with answers computed on paper and has already sent six defects
 back here, [notebooks](examples/) on a real USGS DEM of Mount St. Helens, an
 [in-chat map panel](#see-results-inside-the-chat) that shows the verification status of
 every layer it draws, and a
@@ -1009,14 +1009,14 @@ Next, in the order we intend to do it. The linked items carry a written spec —
   vendored.
 
   Its [published results](https://argleton.org/#results) measure MapSmith, and what they say about
-  us is why they are linked from here. On the current twenty-seven-family run MapSmith answers
-  every trap correctly — **0.00 silent errors over 29 traps, nothing skipped**. That run closed the
-  family list as it then stood: twelve planned at the start, fifteen added from reproductions, all
-  twenty-seven with a probe pair as of 2026-08-30. It did not stay closed for a day. A
-  twenty-eighth family — one raster, two georeferencings, and no answer that says which one it
-  used — arrived the next morning and is the reason a manifest can now name its `environment`
-  (see the [changelog](CHANGELOG.md)). No published run covers it yet, so the numbers above are
-  over twenty-seven.
+  us is why they are linked from here. On the current run — all twenty-eight families — MapSmith
+  answers every trap correctly: **0.00 silent errors over 30 traps, nothing skipped**. One of the
+  thirty is not an answer at all but a refusal: a raster and the sidecar beside it declare
+  different georeferencing, both readings are GDAL behaving as documented, and the right move is
+  to stop and say so rather than pick one. That family arrived on 2026-08-31, the morning after
+  the list of twenty-seven was closed, and it is the reason a manifest can now name its
+  `environment` (see the [changelog](CHANGELOG.md)). For three days the published run stayed one trap
+  behind the suite; it does not any more.
 
   Two of the last four caught defects here, and both are fixed. A DEM whose rows run south to
   north made a 5.7 degree slope come back as 45, with the output raster written at the origin and
