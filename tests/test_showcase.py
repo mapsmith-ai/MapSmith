@@ -191,6 +191,21 @@ def test_the_changelog_covers_the_released_version():
     )
 
 
+def test_the_glama_manifest_parses_and_names_the_owner():
+    """`glama.json` is read by a third party, and its own documentation lists
+    "syntax errors" as the usual reason a claim fails. Nothing else in this repo
+    would notice: it is not imported, not packaged and not executed, so a stray
+    comma would sit there being silently ignored by the one reader it has."""
+    manifest = ROOT / "glama.json"
+    assert manifest.exists(), "glama.json is a listed quality-checklist item"
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    assert data["$schema"] == "https://glama.ai/mcp/schemas/server.json"
+    assert data["maintainers"] == ["mapsmith-ai"], (
+        "the maintainer is the GitHub account that owns the listing; any other "
+        "name here fails the claim without saying why"
+    )
+
+
 def test_work_since_the_last_tag_is_announced_under_unreleased():
     """`main` ahead of the last tag with nothing under `[Unreleased]` is a
     changelog that says the project has stopped.
