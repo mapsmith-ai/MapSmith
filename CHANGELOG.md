@@ -30,6 +30,30 @@ guard existed and could not fail.**
   in the one way that matters. The failure check is appended now, and its text
   states that the other checks ran *before* the failure and claim nothing about
   the result.
+- **The datum transformation was reported wrongly, or not at all.** Argleton
+  trap 021 is the one where PROJ, having no datum shift for a pair, quietly
+  falls back to a *ballpark* operation: plausible geometry, the CRS that was
+  asked for, every check green, tens of metres out. MapSmith answered that in
+  `reproject_layer` and nowhere else — a sweep found `transformation` in one
+  manifest of fifty-eight, and no test in the suite mentioned the field at all.
+  Three things are fixed:
+  - `reproject_raster` — the head example of section 3.7 — recorded the two CRS
+    labels and nothing about the operation between them. It now records it, with
+    a non-critical `datum_shift_applied` check and a note. It reports what PROJ
+    will do rather than the best operation available, because rasterio builds
+    its own transformer: describing an operation that never ran would be worse
+    than describing none.
+  - The probe that decides *which* operation PROJ selects was handed degrees
+    where the CRS wanted metres. `area_of_use` is always in degrees, so on
+    EPSG:3003 (Gauss-Boaga) it probed nine metres from the false origin instead
+    of in Italy, found no operation there, and reported a ballpark. The default
+    for that pair is a published 4 m operation — so since 0.4.0 the manifest of
+    every reprojection **from a projected CRS** carried a note saying no datum
+    shift was applied when one was.
+  - The same pair gave different answers depending on how the caller held the
+    CRS: `area_of_use` comes from the EPSG registry and not from WKT, so a CRS
+    built from WKT (which is what rasterio hands over) lost it and fell back to
+    probing the Gulf of Guinea.
 - **The crash manifest could fail to be written, silently.** Making the crash
   record's *contents* honest (above) left its *existence* best-effort: the write
   sat inside `suppress(Exception)`, so the audit trail this path exists to save

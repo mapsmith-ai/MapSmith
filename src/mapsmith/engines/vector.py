@@ -288,105 +288,19 @@ def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
 
 
 def _datum_transformation(source_crs, target_crs) -> tuple[Any, dict[str, Any]]:
-    """Pick the transformation, then look at which one was picked.
+    """The transformation to use here, and the record of which one it is.
 
-    `to_crs` is one line and it is not enough. PROJ falls back to a BALLPARK
-    transformation when it has no datum shift for a pair -- and, measured on
-    PROJ 9.5.1, sometimes even when it does have one: on EPSG:4806 (Monte Mario
-    with the Rome prime meridian) `Transformer.from_crs` returns the ballpark
-    while `TransformerGroup` lists a real operation first. A ballpark is the
-    engine declaring that it will treat the two datums as equivalent. No shift is
-    applied, nothing is raised, nothing is logged, and the latitude comes back
-    exactly as it went in -- 74 m out in Italy, and the output CRS is genuinely
-    the one that was asked for, so every check downstream passes.
-
-    Argleton trap 021 is that case, and MapSmith fell into it exactly as the
-    naive composition does. This is the fix, and it is deliberately a
-    computation and not a disclosure: `accuracy` and `TransformerGroup` are
-    plain pyproj, so any caller can do this without a provenance format.
-
-    Returns the transformer to use and the `crs_decisions.transformation` record
-    that section 3.7 of the manifest spec asks for.
+    Thin on purpose. The reasoning, the measurements and the ballpark fallback
+    live in `mapsmith.datum`, because this was the only place in the codebase
+    that answered Argleton trap 021 and the raster side needed the same answer
+    without importing the vector engine. Vector callers *choose* their
+    transformation, so this is `best_operation`; an engine that picks its own
+    must use `datum.default_operation` instead, or the manifest describes an
+    operation that never ran.
     """
-    from pyproj import Transformer
-    from pyproj.transformer import TransformerGroup
+    from .. import datum
 
-    chosen = Transformer.from_crs(source_crs, target_crs, always_xy=True)
-    accuracy = _accuracy_of(chosen, source_crs)
-    if accuracy is not None and accuracy >= 0:
-        return chosen, {
-            "pipeline": _pipeline_of(chosen),
-            "accuracy_m": float(accuracy),
-            "is_ballpark": False,
-        }
-
-    # No `area_of_interest` here, and that is measured rather than assumed.
-    # Handing PROJ the data's own extent looks obviously right and makes the
-    # answer worse: on EPSG:4806 with the extent of the data, the group comes
-    # back holding ONLY the ballpark -- the 44 m operation disappears -- so the
-    # "better" call would fall back to no datum shift at all. Checked on
-    # PROJ 9.5.1, 2026-08-27.
-    stated = [
-        candidate
-        for candidate in TransformerGroup(source_crs, target_crs, always_xy=True).transformers
-        if candidate.accuracy is not None and candidate.accuracy >= 0
-    ]
-    if not stated:
-        # Every route is a ballpark: there is no datum shift to apply, and
-        # saying so is the only honest answer. Recording `is_ballpark: true`
-        # rather than refusing keeps the operation usable where the caller
-        # knows the datums are equivalent -- the point is that the record says
-        # which case this was.
-        return chosen, {
-            "pipeline": _pipeline_of(chosen),
-            "accuracy_m": None,
-            "is_ballpark": True,
-        }
-    best = stated[0]
-    return best, {
-        "pipeline": _pipeline_of(best),
-        "accuracy_m": float(best.accuracy),
-        "is_ballpark": False,
-        # The caller is owed this: the transformation the library would have
-        # picked by itself applied no datum shift, and this one was chosen
-        # instead. Without it the record says the right thing and hides that
-        # anything happened.
-        "default_was_ballpark": True,
-    }
-
-
-def _accuracy_of(transformer, source_crs) -> float | None:
-    """PROJ reports the operation only after one has been used, so use one.
-
-    `Transformer.accuracy` is -1 until `proj_trans` runs; the honest value comes
-    from `get_last_used_operation()` after a transform. A point inside the CRS's
-    own area of use is what gets asked, because which operation PROJ selects can
-    depend on where the coordinate is.
-    """
-    area = source_crs.area_of_use
-    x, y = (0.0, 0.0)
-    if area is not None:
-        # A bounding box that crosses the antimeridian has west > east, and a
-        # plain midpoint of it lands on the far side of the planet -- which is
-        # outside every real transformation's extent and therefore always
-        # ballpark. This cost an afternoon on 2026-08-26.
-        y = (area.south + area.north) / 2
-        x = (area.west + area.east) / 2
-        if area.west > area.east:
-            x = ((area.west + area.east + 360) / 2 + 180) % 360 - 180
-    try:
-        transformer.transform(x, y)
-        used = transformer.get_last_used_operation()
-    except Exception:  # noqa: BLE001 — no operation to inspect is itself the answer
-        return None
-    return used.accuracy
-
-
-def _pipeline_of(transformer) -> str | None:
-    try:
-        return transformer.to_proj4() or None
-    except Exception:  # noqa: BLE001 — a missing pipeline string is not a failure
-        return None
+    return datum.best_operation(source_crs, target_crs)
 
 
 def _transformed(geometry, transformer):

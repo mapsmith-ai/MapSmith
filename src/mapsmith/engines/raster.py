@@ -19,7 +19,7 @@ from typing import Any
 import geopandas as gpd
 import pandas as pd
 
-from .. import grid, readers, verify
+from .. import datum, grid, readers, verify
 from ..provenance import InputRecord, ProvenanceRecord
 
 VALID_STATS = {
@@ -425,6 +425,47 @@ def resample(
 #: micron must not lose a real one. Relative, because extents run from metres to
 #: millions of metres.
 _GRID_EPSILON = 1e-9
+
+
+def _datum_shift_check(shift: dict[str, Any]) -> Any:
+    """Say whether a datum shift was actually applied, in the manifest.
+
+    `crs_matches` passes whether or not one was: the output really is in the CRS
+    that was asked for. Those two facts together are Argleton trap 021, which
+    this repository measures in other people's software and, until 2026-09-03,
+    reproduced on its own raster side.
+    """
+    if not shift["is_ballpark"]:
+        return verify.Check(
+            "x-mapsmith:datum_shift_applied",
+            True,
+            f"{shift['pipeline'] or 'transformation'} - stated accuracy "
+            f"{shift['accuracy_m']} m",
+            critical=False,
+        )
+    better = shift.get("better_available_m")
+    return verify.Check(
+        "x-mapsmith:datum_shift_applied",
+        # Not critical: a ballpark is legitimate when the caller knows the two
+        # datums coincide. Refusing would break those callers; saying nothing
+        # is what this fixes.
+        False,
+        "PROJ applied no datum shift between these two CRSs",
+        critical=False,
+        hint=(
+            "The coordinates were carried across as if the two datums coincided, so "
+            "the result can be tens of metres from the true position while every "
+            "other check passes. "
+            + (
+                f"A published operation with a stated accuracy of {better} m exists "
+                "for this pair but its grid is not installed here: install it "
+                "(`projinfo -s <source> -t <target>` names the file) and run again."
+                if better is not None
+                else "PROJ has no published operation for this pair at all, so this "
+                "is the best that can be done - treat the result as unshifted."
+            )
+        ),
+    )
 
 
 def _cell_size_check(dataset: Any, requested: float) -> Any:
@@ -1082,13 +1123,33 @@ def reproject_raster(
             inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(src.crs))],
             engine={"name": "rasterio", "version": rasterio.__version__},
         )
+        # What PROJ will do between these two datums, reported and not chosen:
+        # rasterio builds its own transformer inside `warp`, so recording the
+        # BEST available operation here would describe one that never ran.
+        shift = datum.default_operation(src.crs, target_crs)
         record.crs_decisions = {
             "analysis_crs": str(target_crs),
             "reason": "the caller asked for this CRS; the grid was recomputed for it with "
             f"the '{resampling}' method, which the caller also chose",
             "source_crs": verify.crs_label(src.crs),
             "target_crs": str(target_crs),
+            "transformation": shift,
         }
+        if shift["is_ballpark"]:
+            better = shift.get("better_available_m")
+            record.notes.append(
+                "no datum shift was applied between these two CRSs: PROJ selected a "
+                "ballpark operation, which carries the coordinates across as if the "
+                "two datums coincided. Every pixel is correct relative to its "
+                "neighbours and the whole grid can be tens of metres from the true "
+                "position. "
+                + (
+                    f"A published operation with a stated accuracy of {better} m "
+                    "exists for this pair but its grid is not installed here."
+                    if better is not None
+                    else "PROJ has no published operation for this pair at all."
+                )
+            )
         profile = src.profile.copy()
         profile.update(crs=target_crs, transform=transform, width=width, height=height)
         for key in ("blockxsize", "blockysize", "tiled"):
@@ -1115,6 +1176,12 @@ def reproject_raster(
                 f"{verify.crs_label(out.crs)}",
             )
         )
+        # Not critical: a ballpark is legitimate when the caller knows the two
+        # datums coincide. What is not legitimate is not saying so -- and
+        # `crs_matches` above passes either way, because the output really is
+        # in the CRS that was asked for. That pair of facts IS Argleton trap
+        # 021, and it was true of this operation until 2026-09-03.
+        checks.append(_datum_shift_check(shift))
         checks.append(
             verify.Check(
                 "result_not_empty",
