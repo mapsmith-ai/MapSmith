@@ -12,9 +12,11 @@ measures that idea on a third-party benchmark, with a deterministic evaluator
 - **Benchmark**: [GABench](https://github.com/GeoX-Lab/GABench) — 57 executable
   GIS analysis tasks (urban heat, flood risk, burn scars, transit equity…)
   over a 133-tool MCP server, with expert reference toolchains. GABench is
-  used unmodified; its evaluator runs unchanged on our logs. (GABench
-  currently ships no license file, so we publish our *results* and our own
-  harness code, and link to their repository instead of redistributing it.)
+  used unmodified; its evaluator runs unchanged on our logs. (We publish our
+  *results* and our own harness code and link to their repository rather than
+  redistributing it. GABench shipped no license file when this was written;
+  we asked, and on 2026-09-03 they added Apache-2.0 —
+  [GeoX-Lab/GABench#2](https://github.com/GeoX-Lab/GABench/issues/2).)
 - **Agent**: GABench's own plan-and-react architecture, with one change kept
   identical across every arm: the planner emits a **typed plan** — a JSON
   list of `{step_id, tool, arguments}` — instead of prose, and the solver's

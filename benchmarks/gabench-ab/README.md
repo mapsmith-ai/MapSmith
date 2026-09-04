@@ -135,5 +135,9 @@ your aggregate delta against that before believing it. With several repetitions,
   whose plans were ever defective, plus a control group of never-defective tasks
   matched on domain mix and reference-toolchain length. Choosing tasks after
   seeing results is how regression to the mean gets published as an effect.
-- GABench ships no license file, so this directory contains only our own
-  code and links to their repository; nothing of theirs is redistributed.
+- This directory contains only our own code and links to their repository;
+  nothing of theirs is redistributed. When it was written that was a
+  constraint -- GABench shipped no license file -- and we asked
+  ([GeoX-Lab/GABench#2](https://github.com/GeoX-Lab/GABench/issues/2)). On
+  2026-09-03 they added Apache-2.0 and closed the issue, so redistribution is
+  now permitted; the layout stays as it is because it is the cleaner one.
