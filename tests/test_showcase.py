@@ -1266,6 +1266,51 @@ def test_the_retrieval_numbers_agree_between_the_readme_and_the_site():
         )
 
 
+def test_the_readme_and_the_site_offer_the_same_places_to_follow():
+    """Two front doors, one list of channels, and no reason for them to differ.
+
+    Added 2026-09-04 with the LinkedIn Page, which is the case that showed why
+    it was needed: the README carried the channels and the site carried none, so
+    a channel could be added to one surface and be invisible on the other with
+    nothing going red. A Page nobody can reach from anywhere converts nobody,
+    which is the same defect as a page written and not linked -- twice made
+    here already.
+
+    `UPDATE_CHANNELS` in the site build is the one place; this asserts the
+    README says the same thing, in the same order, and nothing else.
+    """
+    import ast
+    import re
+
+    tree = ast.parse(SITE_BUILD.read_text(encoding="utf-8"))
+    declared = next(
+        (
+            ast.literal_eval(node.value)
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(t, ast.Name) and t.id == "UPDATE_CHANNELS"
+                for t in node.targets
+            )
+        ),
+        None,
+    )
+    assert declared, "site/build.py no longer declares UPDATE_CHANNELS"
+
+    text = README.read_text(encoding="utf-8")
+    sentence = re.search(r"Updates:\s*(.+?)\.\s*\n", text, re.DOTALL)
+    assert sentence, "the README no longer carries an 'Updates:' line"
+    in_readme = re.findall(r"\[([^\]]+)\]\((https?://[^)]+)\)", sentence.group(1))
+    assert in_readme == [tuple(pair) for pair in declared], (
+        f"the README lists {in_readme} and site/build.py declares {declared}; "
+        "add the channel to UPDATE_CHANNELS and to the README, not to one of them"
+    )
+    assert "{{UPDATE_CHANNELS}}" in SITE_TEMPLATE.read_text(encoding="utf-8"), (
+        "the site template no longer renders UPDATE_CHANNELS, so the site build "
+        "would drop the channels while this test kept passing"
+    )
+
+
 def test_the_site_build_is_at_least_valid_python(tmp_path):
     """The suite stayed green with a syntax error in `site/build.py`.
 

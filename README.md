@@ -1115,7 +1115,9 @@ can be read against what came of it.
 Release notes are in [CHANGELOG.md](CHANGELOG.md), how to contribute in
 [CONTRIBUTING.md](CONTRIBUTING.md), how to report a vulnerability in
 [SECURITY.md](SECURITY.md). "MapSmith" is a trademark of the MapSmith project — see
-[TRADEMARKS.md](TRADEMARKS.md). Updates: [@mapsmith_ai](https://x.com/mapsmith_ai) ·
+[TRADEMARKS.md](TRADEMARKS.md). Updates:
+[LinkedIn](https://www.linkedin.com/company/mapsmith) ·
+[X](https://x.com/mapsmith_ai) ·
 [Bluesky](https://bsky.app/profile/mapsmith.bsky.social).
 
 <!-- mcp-name: io.github.mapsmith-ai/mapsmith -->

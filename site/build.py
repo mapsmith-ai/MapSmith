@@ -23,6 +23,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DEM = ROOT / "examples" / "fixtures" / "mount_st_helens_dem.tif"
 
+# Where a reader can follow the project, in one place. Two surfaces name these
+# -- the README and this page -- and until 2026-09-04 only the README did, so
+# adding a channel meant remembering a file nobody would think to open. The
+# test beside this asserts the README lists exactly these, which is what makes
+# one place true rather than merely tidy.
+UPDATE_CHANNELS = [
+    ("LinkedIn", "https://www.linkedin.com/company/mapsmith"),
+    ("X", "https://x.com/mapsmith_ai"),
+    ("Bluesky", "https://bsky.app/profile/mapsmith.bsky.social"),
+]
+
 # Muted, high-contrast, colour-blind safe. Assigned by basin index and never by
 # value, so the picture cannot imply an ordering the data does not have — the
 # same discipline the manifests apply to numbers.
@@ -362,6 +373,9 @@ def main(destination: Path) -> int:
         "{{COMMIT}}": _git("rev-parse", "--short", "HEAD") or "unknown",
         "{{WORKED_EXAMPLE}}": worked_example_html(),
         "{{BUILT}}": manifest["finished_at"][:10],
+        "{{UPDATE_CHANNELS}}": " · ".join(
+            f'<a href="{url}">{name}</a>' for name, url in UPDATE_CHANNELS
+        ),
     }.items():
         page = page.replace(placeholder, value)
     leftovers = [s for s in ("{{",) if s in page]
