@@ -273,8 +273,24 @@ def test_every_check_name_in_the_source_obeys_the_vocabulary():
         # Module-level tables of literal check names, so a lookup at the call
         # site is still statically readable. Only all-string dicts count.
         tables: dict[str, list[str]] = {}
+        # And module-level constants holding one literal name. Same reasoning as
+        # the tables, learned the hard way on 2026-09-05: moving a check name
+        # out of the call and into `VERIFICATION_ABSENT` — because two distant
+        # points had to agree on it — made it invisible to this sweep, and this
+        # test went red. Red was the right answer and the fix is here, not
+        # there: the alternative is that extracting a constant, which is the
+        # normal thing to do with a name used twice, quietly removes that name
+        # from the vocabulary rule.
+        constants: dict[str, str] = {}
         for node in tree.body:
-            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Dict):
+            if not isinstance(node, ast.Assign):
+                continue
+            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        constants[target.id] = node.value.value
+                continue
+            if not isinstance(node.value, ast.Dict):
                 continue
             values = node.value.values
             if not values or not all(
@@ -298,6 +314,12 @@ def test_every_check_name_in_the_source_obeys_the_vocabulary():
             first = node.args[0]
             if isinstance(first, ast.Constant) and isinstance(first.value, str):
                 found.setdefault(first.value, module.name)
+            elif isinstance(first, ast.Name) and first.id in constants:
+                # A module-level constant in THIS module. One imported from
+                # another falls through to `dynamic` on purpose: this sweep
+                # reads one file at a time, so a name it cannot see written out
+                # is a name it cannot police, and saying so is the point.
+                found.setdefault(constants[first.id], module.name)
             elif isinstance(first, ast.Subscript) and isinstance(first.value, ast.Name):
                 # A lookup into a module-level table of literal names. The names
                 # ARE written out, just not at the call, so the sweep reads the
@@ -764,11 +786,22 @@ def test_a_crash_writes_a_manifest_the_published_validator_accepts(tmp_path):
     assert _spec_problems(manifest) == [], _spec_problems(manifest)
 
 
-def test_an_operation_that_verifies_nothing_raises_rather_than_writing(tmp_path):
-    """The success-path half of the same rule.
+def test_an_operation_that_verifies_nothing_raises_and_still_writes_the_record(tmp_path):
+    """The success-path half of the same rule, and it used to be the other half.
 
-    An operation whose checks come back empty has verified nothing, and a
-    manifest is not the place for a caller to discover that.
+    Until 2026-09-05 this test was called `..._raises_rather_than_writing` and
+    asserted only the raise. That was deliberate — a record with no checks is
+    "a log entry wearing a manifest's clothes", so the branch refused to write
+    one — and it broke the requirement on the other side: the dataset is
+    already on disk when `audited` runs, and §4 says a conforming producer
+    emits a record for **every dataset it writes**. Raising left an orphan.
+
+    Both hold when the absence is recorded as a failed check, which is what
+    `audit_on_failure` does for a crash. So: the caller still gets its
+    VerificationError, the orphan is gone, and the record that appears is
+    conforming to both implementations — checked here, because a record
+    written to satisfy the specification that the specification rejects would
+    be worse than no record at all.
     """
     from mapsmith.provenance import ProvenanceRecord
 
@@ -778,14 +811,34 @@ def test_an_operation_that_verifies_nothing_raises_rather_than_writing(tmp_path)
         inputs=[],
         engine={"name": "test", "version": "0"},
     )
-    (tmp_path / "out.parquet").write_bytes(b"")
-    with pytest.raises(verify.VerificationError, match="no verification at all"):
+    out = tmp_path / "out.parquet"
+    out.write_bytes(b"")
+    with pytest.raises(verify.VerificationError, match="no verification at all") as raised:
         verify.audited(
             record,
-            str(tmp_path / "out.parquet"),
+            str(out),
             operation="pretend_operation",
             checks_fn=list,
         )
+
+    # The SENTENCE, not just the raise. `enforce` builds its message from the
+    # failed check names, and every name that is not an input precondition fell
+    # into the branch that says "output failed deterministic verification" —
+    # false here, and false in the direction that matters: an agent reading
+    # "output failed" retries or repairs the DATA, when the defect is in the
+    # operation and a second run produces the same nothing.
+    message = str(raised.value)
+    assert "verified nothing about its output" in message
+    assert "output failed" not in message
+
+    written = out.with_name(out.name + ".provenance.json")
+    assert written.exists(), "the dataset is on disk and its record is not"
+    manifest = json.loads(written.read_text(encoding="utf-8"))
+    assert [c["name"] for c in manifest["verification"]] == [
+        "x-mapsmith:verification_present"
+    ]
+    assert manifest["verification"][0]["passed"] is False
+    assert _spec_problems(manifest) == [], _spec_problems(manifest)
 
 
 def _writers_by_shape() -> tuple[dict[str, str], dict[str, str]]:

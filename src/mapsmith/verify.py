@@ -25,6 +25,12 @@ class VerificationError(RuntimeError):
 
 UNKNOWN_CRS = "unknown"
 
+# The check that says "this operation verified nothing". It is a constant
+# because `audited` emits it and `enforce` recognises it: two distant points
+# that have to keep agreeing, which makes it a contract rather than a repeated
+# string. Prefixed, because section 3.6 closed the core name vocabulary.
+VERIFICATION_ABSENT = "x-mapsmith:verification_present"
+
 
 def probe_crs(path: str) -> str:
     """CRS of an existing dataset from metadata only (no data scan, never raises).
@@ -660,8 +666,10 @@ def audit_on_failure(record: Any, output_path: str, preconditions: list[Check]):
                     f"the operation raised {type(failure).__name__} and did not "
                     "finish. Any other check in this record ran BEFORE that point "
                     "and says nothing about the result; this record exists to say "
-                    "the run happened and stopped, and it makes no claim about the "
-                    "output, which may be absent or partial."
+                    "the run happened and stopped. It makes no claim that the "
+                    "output is CORRECT, and the output may be absent or partial "
+                    "— any digest recorded beside it identifies whatever bytes "
+                    "exist, which is a fact and not a verification"
                 ),
                 hint="read the error the operation raised; this record is the "
                 "audit trail, not the diagnosis",
@@ -723,16 +731,43 @@ def audited(
         )
     all_checks = (preconditions or []) + checks
     if not all_checks:
-        # The specification requires at least one check, in its own words
-        # because a record with none is "a log entry wearing a manifest's
-        # clothes". Raising here rather than writing one: an operation that
-        # verified nothing and says it verified nothing is a defect in that
-        # operation, and a manifest is not the place to find out.
-        raise VerificationError(
-            f"{operation} produced no verification at all, so the manifest it "
-            "would write is not a conforming record. An operation that writes a "
-            "dataset has to check something about it."
-        )
+        # Two requirements of the specification meet here, and until 2026-09-05
+        # this branch satisfied one by breaking the other. The schema needs at
+        # least one check, "because a manifest with no checks at all is a log
+        # entry wearing a manifest's clothes" — so it raised rather than writing
+        # an empty record. But §4 says a conforming producer "emits a conforming
+        # record for every dataset it writes, including failed runs", and §3
+        # makes it a MUST: "a manifest MUST be written even when verification
+        # fails". The dataset is already on disk by the time this helper runs
+        # — every caller writes it first — so raising left it there with no
+        # record beside it, which is the one thing §4 forbids outright.
+        #
+        # Both hold if the absence is itself recorded as a failed check. That is
+        # not a compromise, it is what the two constructs on either side of this
+        # one already do: `audit_on_failure` appends a failing check when the
+        # engine crashes, and the lines below write the manifest and only then
+        # let `enforce` raise. The caller still gets a VerificationError; the
+        # difference is that the orphan dataset now has a record saying why.
+        all_checks = [
+            Check(
+                # Prefixed: §3.6 closed the core vocabulary, so a check that is
+                # about this producer's own discipline has to say whose it is.
+                VERIFICATION_ABSENT,
+                False,
+                (
+                    f"{operation} produced no verification at all. This record "
+                    "exists because the specification requires one for every "
+                    "dataset written, and NO CHECK LOOKED AT THE OUTPUT: the "
+                    "digest beside it identifies the bytes that were written, "
+                    "and nothing was verified about them"
+                ),
+                hint=(
+                    "this is a defect in the operation, not in the data — an "
+                    f"operation that writes a dataset has to check something "
+                    f"about it, and {operation} checked nothing"
+                ),
+            )
+        ]
     record.add_verification(all_checks)
     if repairs:
         record.add_repairs(repairs)
@@ -753,6 +788,21 @@ def enforce(
     if failed:
         details = "; ".join(f"{c.name}: {c.detail}" for c in failed)
         hints = " ".join(c.hint for c in failed if c.hint)
+        if [c.name for c in failed] == [VERIFICATION_ABSENT]:
+            # NOT "the output failed": nothing looked at the output. The whole
+            # point of that check is the difference between "we measured it and
+            # it is wrong" and "we measured nothing", and the sentence has to
+            # carry it — this message is read by an agent, and "output failed"
+            # is the phrasing that makes a caller retry or repair the DATA when
+            # the defect is in the operation and a second run produces the same
+            # nothing. Same class as every other false statement this module
+            # exists to prevent, one level up: a claim about a measurement that
+            # did not happen.
+            raise VerificationError(
+                f"{operation} verified nothing about its output ({details}). "
+                + (f"{hints} " if hints else "")
+                + "The provenance manifest records exactly that, and nothing more."
+            )
         repaired = ""
         if repairs:
             attempted = ", ".join(sorted({r["check"] for r in repairs}))

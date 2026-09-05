@@ -23,6 +23,25 @@ guard existed and could not fail.**
   **every** platform rather than only on Windows, because a manifest is meant to
   travel and a path that names two different files on two operating systems is
   not one path.
+- **Two requirements of the specification met in one branch, and it satisfied
+  one by breaking the other.** When an operation's checks came back empty,
+  `verify.audited` raised rather than writing a record with none — the schema
+  needs at least one check, "because a manifest with no checks at all is a log
+  entry wearing a manifest's clothes". But every caller writes its dataset
+  *before* that helper runs, so raising left the file on disk with nothing
+  beside it, and section 4 says a conforming producer emits a record for every
+  dataset it writes. Both hold now: the absence is itself recorded as a failed
+  check, the manifest is written, and `enforce` raises as it did. **No shipped
+  operation can reach that branch** — every one of them checks something — so
+  this closes a contradiction between two rules rather than an orphan anybody
+  observed. It is the guard for the writer added tomorrow.
+  Two smaller corrections came out of the same review, and both were sentences
+  rather than logic: the error `enforce` produced said "output failed
+  deterministic verification" when nothing had looked at the output, which is
+  the phrasing that makes an agent retry or repair the *data* while the defect
+  is in the operation; and two check details said a record "makes no claim
+  about the output" while the record carries the output's digest — a fact about
+  the bytes, not a verification, and now described as one.
 - **A crash could write a manifest saying everything passed.** On the ~59 code
   paths that verify their inputs before running, `audit_on_failure` recorded its
   failure check only when there were *no* preconditions, so an engine crash
