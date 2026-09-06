@@ -244,13 +244,25 @@ def _transforming_functions() -> dict[str, set[str]]:
         for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef) or node.name.startswith("_"):
                 continue
-            for inner in ast.walk(node):
-                if (
-                    isinstance(inner, ast.Call)
-                    and isinstance(inner.func, ast.Attribute)
-                    and inner.func.attr == "to_crs"
-                ):
-                    found.setdefault(path.name, set()).add(node.name)
+            reprojects = any(
+                isinstance(inner, ast.Call)
+                and isinstance(inner.func, ast.Attribute)
+                and inner.func.attr == "to_crs"
+                for inner in ast.walk(node)
+            )
+            # Silence is reprojecting WITHOUT recording, and the first version of
+            # this derivation only saw the first half. So the ratchet could never
+            # tighten for any of the twenty-one: wiring one of them up does not
+            # remove its `to_crs` call, and it stayed on the list. A list that
+            # cannot shrink is a list, not a ratchet, whatever its comment says --
+            # and this one carried the sentence "it is a ratchet, not a
+            # permission" while being unable to move in the direction it named.
+            records = any(
+                isinstance(inner, ast.Constant) and inner.value == "transformation"
+                for inner in ast.walk(node)
+            )
+            if reprojects and not records:
+                found.setdefault(path.name, set()).add(node.name)
     return found
 
 
@@ -260,7 +272,9 @@ def _transforming_functions() -> dict[str, set[str]]:
 # `datum.default_operation` and `datum.best_operation` are the two answers; the
 # work is wiring each call site to the one that matches who chooses.
 STILL_SILENT = {
-    "linework.py": {"line_intersections", "snap_layer", "transform_by_control_points"},
+    # `linework.py` came off the list on 2026-09-06: `snap_layer`,
+    # `line_intersections` and `transform_by_control_points` now record what
+    # PROJ will do, under `crs_decisions.transformation`. Eighteen left.
     "network.py": {"least_cost_path"},
     "raster.py": {"clip_raster", "zonal_statistics"},
     "sampling.py": {"elevation_profile", "sample_raster_at_points"},

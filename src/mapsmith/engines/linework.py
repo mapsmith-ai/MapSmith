@@ -28,7 +28,7 @@ import numpy as np
 from shapely.geometry import MultiPoint, Point
 from shapely.ops import transform as shapely_transform
 
-from .. import readers, verify
+from .. import datum, readers, verify
 from ..provenance import INPUTS_REPROJECTED, InputRecord, ProvenanceRecord
 
 #: The transforms that can be fitted, and how many control points each needs.
@@ -150,6 +150,15 @@ def snap_layer(
         crs_decisions[INPUTS_REPROJECTED] = [
             {"argument": "reference_path", "from": reference_crs}
         ]
+        # `default_operation` and not `best_operation`: `to_crs` reaches for
+        # PROJ itself, so the record has to describe the transformation the
+        # engine will actually get rather than one we would have preferred.
+        # Without this the manifest said a layer had been reprojected and
+        # said nothing about how -- and across two datums with no grid
+        # installed, that silence is tens of metres.
+        crs_decisions["transformation"] = datum.default_operation(
+            reference.crs, gdf.crs
+        )
         crs_decisions["reason"] = (
             "the tolerance is in the input layer's unit, so the reference is brought "
             "into that CRS rather than the other way round"
@@ -498,6 +507,9 @@ def line_intersections(
             crs_decisions[INPUTS_REPROJECTED] = [
                 {"argument": "other_path", "from": verify.crs_label(other.crs)}
             ]
+            crs_decisions["transformation"] = datum.default_operation(
+                other.crs, gdf.crs
+            )
             crs_decisions["reason"] = (
                 "crossings are computed in the first layer's CRS, so the output "
                 "coordinates are in it"
@@ -741,7 +753,13 @@ def transform_by_control_points(
     from pyproj import CRS as _CRS
 
     target = _CRS.from_user_input(target_crs)
+    control_moved: dict[str, Any] | None = None
     if not verify.same_crs(control.crs, target):
+        # The control points ARE the georeferencing, so a datum shift applied
+        # to them moves everything the fit produces. Recorded for that reason
+        # rather than for completeness.
+        control_moved = datum.default_operation(control.crs, target)
+        control_from = verify.crs_label(control.crs)
         control = control.to_crs(target)
 
     needed = TRANSFORMS[kind]
@@ -827,6 +845,17 @@ def transform_by_control_points(
             "output is declared in the control points' CRS"
         ),
     }
+    if control_moved is not None:
+        # Written by subscript rather than unpacked into the literal above: a
+        # `**{...}` whose key is a constant IMPORTED from another module is a
+        # shape the vocabulary sweep in `test_verify` cannot read, and it said
+        # so instead of passing. Restructuring here is the right answer -- the
+        # alternative was teaching the guard to resolve names across modules,
+        # which is how a guard stops being able to say "I cannot read this".
+        record.crs_decisions["transformation"] = control_moved
+        record.crs_decisions[INPUTS_REPROJECTED] = [
+            {"argument": "control_path", "from": control_from}
+        ]
     record.notes.append(
         "residual per control point, in the target CRS's unit: "
         + ", ".join(f"{value:.6g}" for value in residuals)

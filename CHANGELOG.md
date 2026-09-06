@@ -139,6 +139,24 @@ guard existed and could not fail.**
 
 ### Fixed
 
+- **Three operations reprojected an input and said nothing about how.**
+  `snap_layer`, `line_intersections` and `transform_by_control_points`
+  bring a secondary input into the analysis CRS, and the manifest recorded
+  that it happened without recording the transformation. Across two datums
+  with no grid installed that silence is tens of metres, and `is_ballpark`
+  is the boolean a consumer branches on. They now record what PROJ will
+  actually do -- `datum.default_operation`, because `to_crs` reaches for
+  PROJ itself and the record has to describe the operation the engine
+  gets, not one we would have preferred. Verified against pyproj directly
+  on a NAD27 pair: identical coordinates, so the recorded operation is the
+  one that ran. Eighteen operations still reproject in silence, and the
+  test that counts them can now go down as well as up.
+- **The ratchet over those operations could not tighten.** It derived
+  "reprojects in silence" from the presence of a `to_crs` call, and wiring
+  an operation up does not remove its `to_crs` call -- so the list carried
+  the sentence *it may only shrink: it is a ratchet, not a permission*
+  while being unable to move in the direction it named. Silence is now
+  derived as reprojecting **without** recording.
 - **The secret redaction masked GIS words, and gave one name two answers
   in one record.** `signature` is credential vocabulary and also GIS
   vocabulary -- a spectral signature file is a real thing -- and the two

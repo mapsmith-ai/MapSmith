@@ -9,6 +9,7 @@ from shapely.geometry import Point, Polygon
 from conftest import _EXTENSION_KEY, _spec_crs_keys, _spec_problems
 from mapsmith import verify
 from mapsmith.engines import vector
+from mapsmith.provenance import INPUTS_REPROJECTED
 
 
 @pytest.fixture()
@@ -225,6 +226,22 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
             assert key in spec_crs_keys or _EXTENSION_KEY.fullmatch(key), (
                 f"{name} wrote `crs_decisions.{key}`, which is neither a key section "
                 "3.7 recommends nor a MapSmith extension `x-mapsmith:<name>` (D-077)."
+            )
+        # Saying an input was reprojected and not saying how is the silence this
+        # whole line of work is about: across two datums with no grid installed
+        # it is tens of metres, and `is_ballpark` is the boolean a consumer
+        # branches on. The AST ratchet in `test_datum` reads the source and can
+        # be satisfied by the word "transformation" appearing anywhere in the
+        # function; this reads the record, so the two together mean the word has
+        # to be there AND has to have put something in the manifest.
+        decisions = record.get("crs_decisions", {})
+        if INPUTS_REPROJECTED in decisions:
+            shift = decisions.get("transformation")
+            assert isinstance(shift, dict) and isinstance(shift.get("is_ballpark"), bool), (
+                f"{name} recorded that an input was reprojected and did not record "
+                f"how: {decisions.get('transformation')!r}. Wire the call site to "
+                "`datum.default_operation` where the engine chooses, or "
+                "`datum.best_operation` where we do."
             )
         validated.append(name)
 
@@ -447,6 +464,28 @@ def test_every_crs_decisions_key_in_the_source_obeys_the_spec():
 
     fixed = _spec_crs_keys()
     root = Path(mapsmith.__file__).parent
+
+    # Module-level string constants across the whole package, so a key written
+    # as an IMPORTED name is still readable. The sibling sweep over check names
+    # deliberately gives up on those, one file at a time; here it would give up
+    # on exactly the right thing to do with a name used at three call sites --
+    # `INPUTS_REPROJECTED` lives in `provenance` and is written in `linework`.
+    # A name defined twice with different values is dropped rather than guessed.
+    package_constants: dict[str, str | None] = {}
+    for module in sorted(root.rglob("*.py")):
+        for node in ast.parse(module.read_text(encoding="utf-8")).body:
+            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Constant):
+                continue
+            if not isinstance(node.value.value, str):
+                continue
+            for target in node.targets:
+                if not isinstance(target, ast.Name):
+                    continue
+                seen = package_constants.get(target.id, node.value.value)
+                package_constants[target.id] = (
+                    node.value.value if seen == node.value.value else None
+                )
+
     found: dict[str, str] = {}
     dynamic: list[str] = []
     merged_from: set[str] = set()
@@ -476,6 +515,7 @@ def test_every_crs_decisions_key_in_the_source_obeys_the_spec():
         from_call: dict[str, list[str]] = {}
         literals: dict[str, list[ast.Dict]] = {}
         subscripts: dict[str, list[ast.Constant]] = {}
+        subscript_names: dict[str, list[ast.Name]] = {}
         for node in ast.walk(tree):
             if isinstance(node, ast.AnnAssign):
                 if isinstance(node.target, ast.Name) and isinstance(node.value, ast.Dict):
@@ -493,13 +533,21 @@ def test_every_crs_decisions_key_in_the_source_obeys_the_spec():
                             callee.attr if isinstance(callee, ast.Attribute)
                             else getattr(callee, "id", "?")
                         )
-                elif (
-                    isinstance(target, ast.Subscript)
-                    and isinstance(target.value, ast.Name)
-                    and isinstance(target.slice, ast.Constant)
-                    and isinstance(target.slice.value, str)
+                elif isinstance(target, ast.Subscript) and isinstance(
+                    target.value, ast.Name
                 ):
-                    subscripts.setdefault(target.value.id, []).append(target.slice)
+                    # The key may be a literal or a constant's name. Anything
+                    # else is recorded as unreadable rather than skipped: the
+                    # first version required a literal and silently ignored
+                    # `local[SOME_CONSTANT] = ...`, so three sites writing
+                    # `crs_decisions[INPUTS_REPROJECTED]` were invisible to this
+                    # sweep with no complaint. A guard that quietly declines to
+                    # look is worse than one that says it cannot.
+                    key = target.slice
+                    if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                        subscripts.setdefault(target.value.id, []).append(key)
+                    elif isinstance(key, ast.Name):
+                        subscript_names.setdefault(target.value.id, []).append(key)
 
         def resolve(
             value: ast.expr,
@@ -510,6 +558,7 @@ def test_every_crs_decisions_key_in_the_source_obeys_the_spec():
             # module happened to be last.
             *,
             subscripts: dict[str, list[ast.Constant]] = subscripts,
+            subscript_names: dict[str, list[ast.Name]] = subscript_names,
             literals: dict[str, list[ast.Dict]] = literals,
             constants: dict[str, str] = constants,
             from_call: dict[str, list[str]] = from_call,
@@ -535,6 +584,13 @@ def test_every_crs_decisions_key_in_the_source_obeys_the_spec():
                 seen = False
                 for key in subscripts.get(value.id, []):
                     found.setdefault(key.value, f"{where}:{key.lineno}")
+                    seen = True
+                for name in subscript_names.get(value.id, []):
+                    resolved = constants.get(name.id) or package_constants.get(name.id)
+                    if resolved is None:
+                        dynamic.append(f"{where}:{name.lineno}")
+                    else:
+                        found.setdefault(resolved, f"{where}:{name.lineno}")
                     seen = True
                 for literal in literals.get(value.id, []):
                     resolve(literal, where, depth + 1)
@@ -625,12 +681,18 @@ def test_every_crs_decisions_key_in_the_source_obeys_the_spec():
                 if not stored:
                     continue  # a read: `record.crs_decisions["k"]` on the right
                 sites += 1
-                if isinstance(parent.slice, ast.Constant) and isinstance(
-                    parent.slice.value, str
-                ):
-                    found.setdefault(parent.slice.value, spot)
-                else:
+                key = parent.slice
+                resolved = (
+                    key.value
+                    if isinstance(key, ast.Constant) and isinstance(key.value, str)
+                    else (constants.get(key.id) or package_constants.get(key.id))
+                    if isinstance(key, ast.Name)
+                    else None
+                )
+                if resolved is None:
                     dynamic.append(spot)
+                else:
+                    found.setdefault(resolved, spot)
             elif isinstance(getattr(node, "ctx", None), ast.Load):
                 continue  # the attribute read as a whole value
             else:
