@@ -707,6 +707,36 @@ def audit_on_failure(record: Any, output_path: str, preconditions: list[Check]):
         raise
 
 
+def verification_absent(operation: str) -> Check:
+    """The check that stands in for a verification that never happened.
+
+    One function because two distant places need the same words: `audited`,
+    when an operation's checks come back empty, and `ProvenanceRecord.write_for`,
+    for the seventeen writers that build their record by hand and never reach
+    `audited` at all. Two copies of this text would drift, and the thing they
+    would drift on is the sentence a reader gets instead of a verification.
+
+    Prefixed, because §3.6 closed the core vocabulary and a check about this
+    producer's own discipline has to say whose it is. Critical, because the
+    point is that `enforce` raises on it wherever `enforce` is reached.
+    """
+    return Check(
+        VERIFICATION_ABSENT,
+        False,
+        (
+            f"{operation} produced no verification at all. This record exists "
+            "because the specification requires one for every dataset written, "
+            "and NO CHECK LOOKED AT THE OUTPUT: the digest beside it identifies "
+            "the bytes that were written, and nothing was verified about them"
+        ),
+        hint=(
+            "this is a defect in the operation, not in the data — an operation "
+            f"that writes a dataset has to check something about it, and "
+            f"{operation} checked nothing"
+        ),
+    )
+
+
 def audited(
     record: Any,
     output_path: str,
@@ -748,26 +778,7 @@ def audited(
         # engine crashes, and the lines below write the manifest and only then
         # let `enforce` raise. The caller still gets a VerificationError; the
         # difference is that the orphan dataset now has a record saying why.
-        all_checks = [
-            Check(
-                # Prefixed: §3.6 closed the core vocabulary, so a check that is
-                # about this producer's own discipline has to say whose it is.
-                VERIFICATION_ABSENT,
-                False,
-                (
-                    f"{operation} produced no verification at all. This record "
-                    "exists because the specification requires one for every "
-                    "dataset written, and NO CHECK LOOKED AT THE OUTPUT: the "
-                    "digest beside it identifies the bytes that were written, "
-                    "and nothing was verified about them"
-                ),
-                hint=(
-                    "this is a defect in the operation, not in the data — an "
-                    f"operation that writes a dataset has to check something "
-                    f"about it, and {operation} checked nothing"
-                ),
-            )
-        ]
+        all_checks = [verification_absent(operation)]
     record.add_verification(all_checks)
     if repairs:
         record.add_repairs(repairs)

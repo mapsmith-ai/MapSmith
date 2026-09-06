@@ -23,6 +23,20 @@ guard existed and could not fail.**
   **every** platform rather than only on Windows, because a manifest is meant to
   travel and a path that names two different files on two operating systems is
   not one path.
+- **And the same hole, one level down, in the seventeen writers that build
+  their record by hand.** Fixing `verify.audited` (below) closed the path the
+  forty writers take. The other seventeen — `run_sql`, six raster operations,
+  the Sedona join, nine Whitebox ones — never reach it, and `verify.enforce([])`
+  does not raise, so a writer that verified nothing produced `verification: []`,
+  which both implementations of the specification reject, and handed the caller
+  `success` beside it. Strictly worse than the case below, which was at least
+  loud. `ProvenanceRecord.write_for` is the one place a manifest becomes a
+  file, so the net goes there: a record that would carry no checks gets the
+  same failed `verification_present` check instead. Appended rather than
+  raised, because raising there would leave the dataset with no record at all
+  — the defect one level further down. And a net nobody watches becomes a place
+  to land, so the conformance sweep now fails if any shipped operation reaches
+  it: today none does.
 - **Two requirements of the specification met in one branch, and it satisfied
   one by breaking the other.** When an operation's checks came back empty,
   `verify.audited` raised rather than writing a record with none — the schema

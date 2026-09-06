@@ -420,6 +420,30 @@ class ProvenanceRecord:
         # record by hand, and they are concentrated in raster, which is exactly
         # where georeferencing decides the numbers. A hook a quarter of the
         # writers bypass is not a hook.
+        #
+        # And the same sentence is why the empty-verification case is caught
+        # here. The specification wants two things that met in one place and
+        # got one at the other's expense: §3 requires at least one check ("a
+        # manifest with no checks at all is a log entry wearing a manifest's
+        # clothes") and §4 requires a record for every dataset written.
+        # `verify.audited` closed that on its own path on 2026-09-05 by
+        # recording the absence as a failed check — but those seventeen writers
+        # never reach it, and `verify.enforce([])` does not raise, so a caller
+        # was handed `success` beside a manifest BOTH implementations reject.
+        # That is strictly worse than what `audited` used to do, which was at
+        # least loud.
+        #
+        # Appending rather than raising, and the direction is the whole point:
+        # raising here would recreate the defect one level down, because the
+        # dataset is already on disk by the time any manifest is written. What
+        # stops this from becoming a quiet excuse is not politeness, it is
+        # `test_no_shipped_operation_reaches_the_absent_verification_fallback`:
+        # if a real operation ever lands here, the suite goes red rather than
+        # shipping a manifest whose only content is "nobody looked".
+        if not self.verification:
+            from .verify import verification_absent
+
+            self.verification = [verification_absent(self.operation).as_dict()]
         self._record_environment()
         self._redact()
         record = asdict(self)

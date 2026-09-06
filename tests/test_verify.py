@@ -218,6 +218,22 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
         assert _spec_problems(record) == [], f"{name} writes a manifest the spec rejects"
         assert record["operation"] == name
         assert record["spec_version"].startswith("1."), name
+        # No shipped operation may reach the fallback. `write_for` appends a
+        # failed `verification_present` check when a record would otherwise
+        # carry none, because a dataset with a non-conforming manifest beside
+        # it is worse than one with an honest "nobody looked". That net exists
+        # for the seventeen writers that build their record by hand and never
+        # pass through `verify.audited` — and a net nobody watches becomes a
+        # place to land. This is the watching: if a real operation ever writes
+        # a manifest whose only content is that nothing was checked, the sweep
+        # says so here instead of the manifest saying it to a stranger.
+        assert verify.VERIFICATION_ABSENT not in [
+            c["name"] for c in record["verification"]
+        ], (
+            f"{name} verified nothing and only the fallback in write_for kept its "
+            "manifest conforming. The fallback is a net, not a licence: give the "
+            "operation at least one real check."
+        )
         validated.append(name)
 
     # An invariant, not a threshold. `>= 32` was wrong in both directions: with
@@ -238,6 +254,52 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
         f"validated, {len(skipped)} skipped for a missing extra ({sorted(skipped)})"
     )
 
+
+
+def test_a_hand_built_record_cannot_write_a_manifest_the_spec_rejects(tmp_path):
+    """The seventeen writers that never reach `verify.audited`.
+
+    `audited` learned on 2026-09-05 to record an absent verification instead of
+    raising and leaving the dataset orphaned. Seventeen writers of fifty-seven
+    build their record by hand — `run_sql`, six in `raster.py`,
+    `sedona_engine.spatial_join`, nine in `whitebox_engine` — and they reach
+    none of that. Reproduced the day after: their exact shape wrote
+    `verification: []`, which BOTH implementations reject, and
+    `verify.enforce([])` does not raise, so the caller got `success` beside a
+    manifest that is not a manifest. Strictly worse than the case just fixed,
+    which was at least loud.
+
+    The net is in `write_for` because that is the one place every manifest
+    becomes a file. It appends rather than raising on purpose: raising there
+    would leave the dataset with no record at all, which is the defect one
+    level down and the reason the whole pair of fixes exists.
+
+    This test walks the hand-built path exactly as those writers do — no
+    `audited`, no `enforce` — and asserts the record that lands on disk is
+    conforming, says which operation failed to check anything, and does not
+    pretend the absence was a pass.
+    """
+    from mapsmith.provenance import ProvenanceRecord
+
+    out = tmp_path / "hand_built.parquet"
+    out.write_bytes(b"")
+    record = ProvenanceRecord(
+        operation="hand_built_writer",
+        parameters={},
+        inputs=[],
+        engine={"name": "test", "version": "0"},
+    )
+    # Deliberately the shape of a writer that forgot: nothing added, and
+    # `enforce` on an empty list, which does not raise and never did.
+    verify.enforce([], "hand_built_writer")
+    written = record.finish().write_for(str(out))
+
+    manifest = json.loads(written.read_text(encoding="utf-8"))
+    assert _spec_problems(manifest) == [], _spec_problems(manifest)
+    absent = [c for c in manifest["verification"] if c["name"] == verify.VERIFICATION_ABSENT]
+    assert len(absent) == 1, manifest["verification"]
+    assert absent[0]["passed"] is False
+    assert "hand_built_writer" in absent[0]["detail"]
 
 
 def test_every_check_name_in_the_source_obeys_the_vocabulary():
