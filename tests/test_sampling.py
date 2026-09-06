@@ -168,7 +168,13 @@ def test_the_points_are_reprojected_and_the_decision_is_recorded(grid, tmp_path)
     assert gpd.read_parquet(out)["value"].tolist() == [23.0]
     decisions = _manifest(out)["crs_decisions"]
     assert "32632" in decisions["analysis_crs"]
-    assert "reprojected" in decisions["reason"]
+    # Which input moved and how, not a sentence with the word "reprojected" in
+    # it. The points carry the values onto the cells, so a ballpark here puts
+    # them on the wrong cells — `is_ballpark` is the fact worth asserting.
+    assert decisions["x-mapsmith:inputs_reprojected"] == [
+        {"argument": "points_path", "from": "EPSG:4326"}
+    ]
+    assert decisions["transformation"]["is_ballpark"] is False
 
 
 def test_the_method_has_to_be_stated(grid, tmp_path):

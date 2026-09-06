@@ -320,8 +320,16 @@ STILL_SILENT = {
     # PROJ will do, under `crs_decisions.transformation`. Eighteen left.
     "network.py": {"least_cost_path"},
     "raster.py": {"clip_raster", "zonal_statistics"},
-    "sampling.py": {"elevation_profile", "sample_raster_at_points"},
-    "summaries.py": {"compare_layers", "nearest_neighbour_index"},
+    # `sampling.py` came off on 2026-09-06: both operations bring a vector input
+    # onto the raster's CRS, which is the same shape as the five in `vector.py`
+    # and now the same helper.
+    # `summaries.py` came off on 2026-09-06, and these two are the case that
+    # needed thinking about: they write no manifest, so there was nowhere to
+    # record a CRS decision. The answer is the record for them, the way it is
+    # for `locate_extreme_cell` and its registration. Worth the trouble because
+    # in `nearest_neighbour_index` the reprojected boundary IS the study area,
+    # density is n/area, and R is a ratio built on density -- a ballpark there
+    # moves the verdict between clustered, random and evenly spread.
     # `vector.py` came off entirely on 2026-09-06, all nine, in two shapes.
     # Five bring a secondary input to the analysis CRS; four compute in an
     # estimated UTM zone and write the output back where it came from. The

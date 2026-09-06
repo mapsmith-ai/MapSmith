@@ -139,6 +139,19 @@ guard existed and could not fail.**
 
 ### Fixed
 
+- **Four more, and two of them had nowhere to write it.**
+  `sample_raster_at_points` and `elevation_profile` bring a vector input
+  onto the raster's CRS, which is the shape the helper already covers.
+  `compare_layers` and `nearest_neighbour_index` write no manifest at all,
+  so for them the ANSWER is the record -- the way it already is for
+  `locate_extreme_cell` and grid registration.
+
+  Worth the trouble in `nearest_neighbour_index` because the reprojected
+  boundary **is** the study area: density is n/area and Clark-Evans R is a
+  ratio built on density, so a ballpark there does not decorate the answer,
+  it moves the verdict between clustered, random and evenly spread. In
+  `compare_layers` every geometric difference is measured after the
+  alignment, so a ballpark is a difference it would report as real.
 - **Four operations computed in another datum and came back, and said
   nothing about the trip.** `buffer_layer`, `simplify_layer`,
   `centroid_layer` and `nearest_join` need metres, so on a geographic CRS

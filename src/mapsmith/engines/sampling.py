@@ -27,7 +27,7 @@ from typing import Any
 import geopandas as gpd
 
 from .. import readers, verify
-from ..provenance import InputRecord, ProvenanceRecord
+from ..provenance import InputRecord, ProvenanceRecord, alignment_decisions
 
 #: How a value is read between cell centres.
 #:
@@ -247,18 +247,17 @@ def sample_raster_at_points(
             ],
             engine=_engine_info(),
         )
-        if not verify.same_crs(points.crs, raster_crs):
+        aligned = not verify.same_crs(points.crs, raster_crs)
+        record.crs_decisions = alignment_decisions(
+            raster_crs,
+            "points brought to the raster's CRS so each one lands on the cell it "
+            "actually falls in; the output keeps that CRS"
+            if aligned
+            else "points and raster share the same CRS",
+            [("points_path", points.crs)] if aligned else [],
+        )
+        if aligned:
             points = points.to_crs(raster_crs)
-            record.crs_decisions = {
-                "analysis_crs": verify.crs_label(raster_crs),
-                "reason": "points reprojected to the raster's CRS so each one lands "
-                "on the cell it actually falls in; the output keeps that CRS",
-            }
-        else:
-            record.crs_decisions = {
-                "analysis_crs": verify.crs_label(raster_crs),
-                "reason": "points and raster share the same CRS",
-            }
         centroids = points.geometry.representative_point()
         values = _read_at(dataset, band, centroids.x, centroids.y, method)
 
@@ -373,18 +372,17 @@ def elevation_profile(
             engine=_engine_info(),
         )
         working = lines
-        if not verify.same_crs(lines.crs, raster_crs):
+        aligned = not verify.same_crs(lines.crs, raster_crs)
+        record.crs_decisions = alignment_decisions(
+            raster_crs,
+            "lines brought to the raster's CRS before sampling, so the spacing is "
+            "measured in the unit the values are read in"
+            if aligned
+            else "line and raster share the same CRS",
+            [("line_path", lines.crs)] if aligned else [],
+        )
+        if aligned:
             working = lines.to_crs(raster_crs)
-            record.crs_decisions = {
-                "analysis_crs": verify.crs_label(raster_crs),
-                "reason": "lines reprojected to the raster's CRS before sampling, so "
-                "the spacing is measured in the unit the values are read in",
-            }
-        else:
-            record.crs_decisions = {
-                "analysis_crs": verify.crs_label(raster_crs),
-                "reason": "line and raster share the same CRS",
-            }
 
         rows = _profile_positions(working, spacing)
         values = _read_at(

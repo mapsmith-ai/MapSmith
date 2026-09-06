@@ -36,7 +36,7 @@ from typing import Any
 import geopandas as gpd
 import numpy as np
 
-from .. import readers, verify
+from .. import datum, readers, verify
 from .network import _unit
 from .spatial_stats import WEIGHT_SCHEMES, _normal_tail, _prepare, _weights
 
@@ -304,7 +304,16 @@ def nearest_neighbour_index(
         boundary = readers.read_vector(area_path)
         if boundary.crs is None:
             raise ValueError(f"{area_path} has no CRS, so its area cannot be trusted.")
-        boundary = boundary.to_crs(gdf.crs)
+        # The study area comes out of THIS reprojection, density is n/area,
+        # and R is a ratio against a distance derived from density -- so a
+        # ballpark here does not decorate the answer, it moves the verdict
+        # between clustered, random and evenly spread. This operation writes
+        # no manifest, so the answer is where it has to be said.
+        boundary_moved = not verify.same_crs(boundary.crs, gdf.crs)
+        if boundary_moved:
+            boundary_from = verify.crs_label(boundary.crs)
+            transformation = datum.default_operation(boundary.crs, gdf.crs)
+            boundary = boundary.to_crs(gdf.crs)
         area = float(boundary.geometry.area.sum())
         area_source = f"the area of {area_path}"
     else:
@@ -361,6 +370,12 @@ def nearest_neighbour_index(
         "unit": _unit(gdf.crs),
         "crs": verify.crs_label(gdf.crs),
     }
+    if area_path is not None and boundary_moved:
+        answer["boundary_reprojected"] = {
+            "argument": "area_path",
+            "from": boundary_from,
+            "transformation": transformation,
+        }
     if coincident:
         answer["coincident_points"] = coincident
         answer["note"] = (
@@ -450,7 +465,11 @@ def compare_layers(
     right = readers.read_vector(other_path)
 
     same_crs = verify.same_crs(left.crs, right.crs)
-    if not same_crs and right.crs is not None and left.crs is not None:
+    aligned = not same_crs and right.crs is not None and left.crs is not None
+    alignment = (
+        datum.default_operation(right.crs, left.crs) if aligned else None
+    )
+    if aligned:
         right = right.to_crs(left.crs)
 
     left_columns = {c for c in left.columns if c != left.geometry.name}
@@ -459,6 +478,11 @@ def compare_layers(
     answer: dict[str, Any] = {
         "same_crs": bool(same_crs),
         "crs": [verify.crs_label(left.crs), verify.crs_label(right.crs)],
+        # `same_crs: false` says the two disagreed; this says what was done
+        # about it. Every geometric difference below is measured after the
+        # alignment, so a ballpark there is a difference this operation
+        # would report as real. No manifest here: the answer is the record.
+        **({"transformation": alignment} if alignment else {}),
         "features": [len(left), len(right)],
         "columns_only_in_first": sorted(left_columns - right_columns),
         "columns_only_in_second": sorted(right_columns - left_columns),
