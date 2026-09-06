@@ -821,7 +821,7 @@ Set `MAPSMITH_WORKSPACE=/data` to confine the server to one directory:
   `MAPSMITH_DUCKDB_TEMP_LIMIT`, default 8GB), configuration locked. SQL can name any path it
   likes; the engine refuses to open it.
 
-`MAPSMITH_DISCOVERY_LOG` is the one path MapSmith writes to that no tool argument names,
+`MAPSMITH_DISCOVERY_LOG` is one of three paths MapSmith writes to that no tool argument names (the others: DuckDB's extension directory, and the scratch directory engines use inside the workspace) — SECURITY.md lists them,
 so it goes through the same check: outside the workspace it is refused, and the refusal
 disables the log and says so on stderr rather than failing the search that triggered it.
 

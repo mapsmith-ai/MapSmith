@@ -1417,16 +1417,36 @@ def contour_lines(
                 "by the latitude. Reproject the DEM to a projected CRS first."
             )
         meta = dem.metadata()
-        result = wbe.contours_from_raster(
-            dem,
-            contour_interval=float(interval),
-            base_contour=float(base),
-            smoothing_filter_size=int(smoothing),
-        )
         ws = workspace.root()
+        # The scratch directory is opened BEFORE the call, and that is the
+        # whole point of this shape. `contours_from_raster` is the one
+        # file-based tool among the fifteen Whitebox tools MapSmith calls: it
+        # writes its result and reads it back, and with no path given it
+        # writes `contours_from_raster.{shp,shx,dbf,prj}` into
+        # `WbEnvironment().working_directory`, which defaults to the PROCESS
+        # working directory. With a workspace set and the server started
+        # anywhere else, that is four files outside the jail SECURITY.md says
+        # nothing may write outside of. Measured on 2026-09-06, and invisible
+        # for weeks because `.gitignore` covers `*.shp`.
+        #
+        # `output_path=` and not `output=`: the shipped type stub declares
+        # `output`, and passing it raises TypeError. The runtime signature is
+        # the authority, read from `__text_signature__`. Fourth measured
+        # divergence between this library's declaration and its behaviour,
+        # after the TIFF predictor, the D8 table and contour registration.
         with tempfile.TemporaryDirectory(dir=str(ws) if ws else None) as tmp:
             written = Path(tmp) / "contours.shp"
-            wbe.write_vector(result, str(written))
+            wbe.contours_from_raster(
+                dem,
+                contour_interval=float(interval),
+                base_contour=float(base),
+                smoothing_filter_size=int(smoothing),
+                output_path=str(written),
+            )
+            # No `write_vector` afterwards: the tool has already written this
+            # file, and writing it a second time is a second chance to differ.
+            # Verified identical on 2026-09-06 -- same rows, same columns,
+            # same geometries, same heights.
             # Through the one reader, even though this file is three lines old
             # and we wrote it ourselves. The rule is absolute on purpose: #28
             # was "open a vector file" existing as six copies of one decision,

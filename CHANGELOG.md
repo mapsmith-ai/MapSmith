@@ -137,8 +137,38 @@ guard existed and could not fail.**
   now hold the line — one fails if any hand-written writer skips
   `verify.enforce`, the other ratchets their count downwards only.
 
+### Fixed
+
+- **`contour_lines` wrote four files outside the workspace, and SECURITY.md
+  said nothing could.** Whitebox takes its working directory from the process
+  working directory, so with `MAPSMITH_WORKSPACE` set and the server started
+  anywhere else, `contours_from_raster.{shp,shx,dbf,prj}` landed outside the
+  jail. Measured, not inferred: of the fifteen Whitebox tools MapSmith calls
+  only this one writes -- the rest return a raster in memory -- and the four
+  names are fixed, so no part of any argument reaches the filename. The
+  container image was never affected, because its working directory *is* the
+  workspace. No advisory, and the reasoning is public rather than assumed:
+  the operator chooses the directory, the caller chooses nothing, what leaks
+  is a derivative of the caller's own input, and the HTTP transport has no
+  authentication anyway -- so a reader would not act on one.
+
+  It hid for weeks in the repository root because `.gitignore` covers
+  `*.shp`. The guard is behavioural and derived from the catalogue: every
+  writing operation now runs with the working directory forced outside the
+  workspace, and the directory has to be empty afterwards. A lexical check
+  would have been anchored to a line of source, and there is nothing to
+  read -- the Whitebox package ships a taxonomy of 775 tools and neither of
+  its two fields says whether a tool writes.
+
 ### Changed
 
+- **The workspace promise now states its two exceptions.** `SECURITY.md`
+  said no tool call may read or write outside the workspace, without
+  reservation, while two paths did: the scratch above, and DuckDB's one-time
+  install of its `spatial` extension under `~/.duckdb`. Both are named there
+  now, the residual promise is tied to the test that can falsify it, and
+  the README no longer calls the discovery log *the one* path MapSmith
+  writes that no tool argument names.
 - **BREAKING — `crs_decisions` keys now follow the specification's vocabulary.**
   Two keys were synonyms of keys section 3.7 of the manifest specification
   already recommends; the other six were extensions of ours wearing

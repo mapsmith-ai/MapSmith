@@ -8,11 +8,27 @@ MapSmith executes tool calls written by LLM agents against local data. Its
 security promises are precise, and we treat any break of them as a
 vulnerability:
 
-- **Workspace containment**: with `MAPSMITH_WORKSPACE` set, no tool call and
-  no `run_sql` statement may read or write outside the workspace (path jail
-  at the MCP boundary + sandboxed DuckDB connection). Any escape —
-  traversal, symlink trick under the documented threat model, GDAL virtual
-  filesystem, SQL — is a vulnerability.
+- **Workspace containment**: with `MAPSMITH_WORKSPACE` set, no path an agent
+  can name — no tool argument, no `run_sql` statement — may read or write
+  outside the workspace (path jail at the MCP boundary + sandboxed DuckDB
+  connection). Any escape by a caller-reachable path — traversal, symlink
+  trick under the documented threat model, GDAL virtual filesystem, SQL —
+  is a vulnerability.
+
+  **Two paths are written that no agent names, and they are stated here
+  rather than left to be found.** MapSmith's one-time install of the DuckDB
+  `spatial` extension lands in DuckDB's own extension directory
+  (`~/.duckdb/extensions`, about 15 MB, once per environment); and engine
+  scratch files go in a temporary directory inside the workspace when there
+  is one. An engine that drops a working file anywhere else — the process
+  working directory included — is a bug in that engine binding, and
+  `tests/test_path_containment.py` fails when one does, by running every
+  writing operation with the working directory forced outside the
+  workspace. Until 2026-09-06 this bullet said *no tool call* may write
+  outside, without reservation, and `contour_lines` had been writing four
+  files into the process working directory since 0.4.0. A sentence with its
+  exceptions written down can be checked; an absolute one about a process
+  that loads five third-party engines will be wrong again.
 - **Provenance integrity**: a `<output>.provenance.json` manifest must
   faithfully record what produced the dataset. A way to make MapSmith write
   a misleading manifest is a vulnerability.

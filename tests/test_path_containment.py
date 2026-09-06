@@ -363,3 +363,83 @@ def test_an_operation_declares_every_kind_of_data_it_reads():
         "these operations read a kind of data they do not declare, so a caller "
         f"who says they are holding it is never offered them: {wrong}"
     )
+
+
+def test_no_writing_operation_leaves_a_file_in_the_working_directory(tmp_path):
+    """The paths MapSmith's engines choose for themselves, not the ones a caller names.
+
+    Everything above this line checks a path the caller can name. Nothing checked
+    what an operation leaves behind, and on 2026-09-06 that turned out to matter:
+    `contour_lines` wrote four files -- `contours_from_raster.{shp,shx,dbf,prj}`
+    -- into the PROCESS working directory, because `WbEnvironment()` takes its
+    `working_directory` from there and eleven call sites never set it. With
+    `MAPSMITH_WORKSPACE` set and the server started anywhere else, that is four
+    files outside the jail SECURITY.md promises nothing writes outside of. They
+    had been sitting in the repository root for days, invisible to `git status`
+    because `.gitignore` covers `*.shp`.
+
+    **A behavioural check and not a lexical one, deliberately.** The obvious guard
+    -- "no bare `wb.WbEnvironment()`" -- is anchored to a line of source rather
+    than to behaviour: green the moment somebody writes `cls = wb.WbEnvironment;
+    cls()`, and blind to the next engine that inherits a working directory. And
+    there is nothing to read: the Whitebox package ships a taxonomy of 775 tools
+    with two keys, neither of which says whether a tool is file-based. The only
+    source is what the tool does.
+
+    **Forcing the working directory outside the workspace is the load-bearing
+    part.** The container image runs with `WORKDIR` equal to `MAPSMITH_WORKSPACE`,
+    so a test that inherited the ambient directory would pass by construction --
+    a guard that cannot fail, in the same shape this project has now found five
+    times.
+
+    The list comes from the catalogue, not from here: `test_verify` builds one
+    real call per writing operation, and this reuses it rather than keeping a
+    parallel set that would cover less the day an operation is added.
+
+    Known exception, stated rather than discovered: DuckDB writes its `spatial`
+    extension under `$HOME/.duckdb` on first use, ~15 MB, and does it with a
+    workspace set. That is a second escape from the same sentence in
+    SECURITY.md, it is deliberate on DuckDB's part, and it has a board entry of
+    its own -- so this test watches the working directory and says so, instead
+    of pretending HOME is covered.
+    """
+    import json
+    import os
+
+    from test_verify import _spec_fixtures
+
+    workspace_dir = tmp_path / "workspace"
+    elsewhere = tmp_path / "elsewhere"
+    workspace_dir.mkdir()
+    elsewhere.mkdir()
+
+    fixtures = _spec_fixtures(workspace_dir)
+    assert len(fixtures) >= 20, f"only {len(fixtures)} fixtures: the sweep would prove little"
+
+    previous = Path.cwd()
+    offenders: dict[str, list[str]] = {}
+    ran = 0
+    try:
+        os.chdir(elsewhere)
+        for name, call in sorted(fixtures.items()):
+            try:
+                call()
+            except ImportError:
+                continue  # an absent extra, as in the conformance sweep
+            ran += 1
+            left = sorted(p.name for p in elsewhere.iterdir())
+            if left:
+                offenders[name] = left
+                for p in elsewhere.iterdir():
+                    p.unlink() if p.is_file() else None
+    finally:
+        os.chdir(previous)
+
+    assert ran >= 20, f"only {ran} operations actually ran"
+    assert not offenders, (
+        "these operations wrote into the process working directory, which is "
+        f"outside the workspace: {json.dumps(offenders)}. An engine that drops a "
+        "working file anywhere but a temporary directory inside the workspace is "
+        "a bug in that engine binding -- SECURITY.md promises no tool call writes "
+        "outside the workspace, and that promise is what this test is for."
+    )
