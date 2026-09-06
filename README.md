@@ -27,7 +27,11 @@ The manifest is a [specified format](https://github.com/mapsmith-ai/manifest-spe
 MapSmith's private output: JSON Schema, a toolchain-free validator, a conformance suite, and a
 hundred-line emitter that never imports MapSmith. Records carry `spec_version`, and CI validates
 real MapSmith output against the spec's own validator. The specification is archived and citable
-as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213).
+as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213). The names MapSmith puts
+in a record beyond the ones the specification defines — every extension check name, and every
+extension field in `crs_decisions` with the reason it is not a synonym of a key the specification
+already has — are listed in [`docs/manifest-vocabulary.md`](docs/manifest-vocabulary.md),
+generated from the source rather than maintained by hand.
 
 Evidence before promises: an [A/B on GABench](docs/benchmarks.md) whose headline is a null
 result — with the analysis that took our own positive number apart — a correctness suite in

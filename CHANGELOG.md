@@ -137,6 +137,23 @@ guard existed and could not fail.**
   now hold the line — one fails if any hand-written writer skips
   `verify.enforce`, the other ratchets their count downwards only.
 
+### Added
+
+- **`docs/manifest-vocabulary.md`: the names MapSmith writes that the
+  specification does not define.** Section 3.6 makes `verification[].name`
+  something a consumer can branch on rather than parse, and MapSmith obeys
+  it everywhere -- but the vocabulary that produces was written nowhere
+  outside the engines, which makes mechanical only half of what section 3.6
+  set out to make mechanical. Generated from the source, so it includes the
+  names on branches no test reaches: a check that fires only on a defect is
+  precisely the one no fixture triggers.
+
+  The two names about the RUN rather than the output --
+  `x-mapsmith:operation_completed` and `x-mapsmith:verification_present` --
+  are at the top, because they are how a consumer asks whether this system
+  verified anything at all, and it has to be able to ask that before it
+  knows what else to look for.
+
 ### Changed
 
 - **Every `crs_decisions` key MapSmith adds is declared in one place, with

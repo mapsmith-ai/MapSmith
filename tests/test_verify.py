@@ -330,30 +330,19 @@ def test_a_hand_built_record_cannot_write_a_manifest_the_spec_rejects(tmp_path):
     assert "hand_built_writer" in absent[0]["detail"]
 
 
-def test_every_check_name_in_the_source_obeys_the_vocabulary():
-    """Not only the names a fixture happens to trigger.
+def _check_names_in_source() -> tuple[dict[str, str], list[str]]:
+    """Every `Check` name written in the source, and the ones it cannot read.
 
-    The conformance sweep above sees the checks that actually fire on its
-    fixtures, which on 2026-08-26 was 12 of the 16 extension names in the
-    source: four live on conditional branches -- the axis-order probe in
-    `run_sql`, the invented-class-code guard, the flat-length warning on 3D
-    geometries, the repair-path input check -- and no fixture reaches them. All
-    four turned out to be well formed, checked by hand. The next one might not
-    be, and "checked by hand" is not a control.
-
-    Read from the source with `ast` rather than by executing anything: a name on
-    a branch nothing takes is exactly the case that matters here.
+    Extracted on 2026-09-06 when a second caller appeared: the generator behind
+    `docs/manifest-vocabulary.md` reads the same set to LIST it, and a test
+    compares the two. Two copies of one reading is how a rule quietly becomes
+    two rules -- this repository has watched that happen to a validator and its
+    schema, which had drifted on every recommended field.
     """
     import ast
-    import sys
     from pathlib import Path
 
     import mapsmith
-
-    # The rule is read from the vendored spec copy, not from a local
-    # restatement of it: two copies of one mistake agree perfectly.
-    sys.path.insert(0, str(Path(__file__).parent / "data"))
-    from manifest_spec_validator import CORE_CHECK_NAMES, EXTENSION_CHECK_NAME
 
     root = Path(mapsmith.__file__).parent
     found: dict[str, str] = {}
@@ -428,6 +417,33 @@ def test_every_check_name_in_the_source_obeys_the_vocabulary():
                 # luck. Refusing outright is stronger than half-evaluating an
                 # f-string, and it costs nothing: a check name is short.
                 dynamic.append(f"{module.name}:{getattr(first, 'lineno', '?')}")
+
+    return found, dynamic
+
+
+def test_every_check_name_in_the_source_obeys_the_vocabulary():
+    """Not only the names a fixture happens to trigger.
+
+    The conformance sweep above sees the checks that actually fire on its
+    fixtures, which on 2026-08-26 was 12 of the 16 extension names in the
+    source: four live on conditional branches -- the axis-order probe in
+    `run_sql`, the invented-class-code guard, the flat-length warning on 3D
+    geometries, the repair-path input check -- and no fixture reaches them. All
+    four turned out to be well formed, checked by hand. The next one might not
+    be, and "checked by hand" is not a control.
+
+    Read from the source with `ast` rather than by executing anything: a name on
+    a branch nothing takes is exactly the case that matters here.
+    """
+    import sys
+    from pathlib import Path
+
+    # The rule is read from the vendored spec copy, not from a local
+    # restatement of it: two copies of one mistake agree perfectly.
+    sys.path.insert(0, str(Path(__file__).parent / "data"))
+    from manifest_spec_validator import CORE_CHECK_NAMES, EXTENSION_CHECK_NAME
+
+    found, dynamic = _check_names_in_source()
 
     assert not dynamic, (
         f"these check names are built at runtime rather than written out: {dynamic}. "
@@ -1737,4 +1753,49 @@ def test_every_declared_extension_is_actually_written_somewhere():
     assert not thin, (
         f"these are declared with no real reason: {thin}. The sentence is the point "
         "of the registry: it is what a prefix cannot supply."
+    )
+
+
+def test_the_published_vocabulary_is_what_the_source_says_today():
+    """The page of names, and the two derivations of them that must agree.
+
+    A vocabulary a consumer has to read the engines to learn is half a
+    vocabulary, so `docs/manifest-vocabulary.md` lists it — generated, because
+    a hand-written list of sixty names is worth what whoever last remembered to
+    update it was worth.
+
+    The assertion that earns its place is the second one. There are now two
+    readings of the same set: the generator's, which lists, and the sweep
+    above, which polices. Two copies of one rule is how a rule quietly becomes
+    two rules — and this project has watched exactly that happen to a manifest
+    validator and its schema, which had drifted on every recommended field. So
+    the two are compared, and a name either derivation finds alone is a
+    failure.
+    """
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(root / "benchmarks"))
+    import manifest_vocabulary as vocabulary
+
+    published = (root / "docs" / "manifest-vocabulary.md").read_text(encoding="utf-8")
+    assert published == vocabulary.page(), (
+        "docs/manifest-vocabulary.md is not what the source says now. Regenerate "
+        "with `python benchmarks/manifest_vocabulary.py --write` and read the diff: "
+        "a name that appeared or vanished is a change to what a consumer can "
+        "branch on."
+    )
+
+    # The two derivations, compared. `_check_names_in_source` is the policing
+    # one — it refuses names it cannot read rather than skipping them, so it is
+    # the stricter of the two and the generator must not see more than it does.
+    listed = set(vocabulary.check_names())
+    policed, _ = _check_names_in_source()
+    policed = set(policed)
+    assert listed == policed, (
+        "the generator and the vocabulary guard disagree about which check names "
+        f"exist. Only the generator: {sorted(listed - policed)}. Only the guard: "
+        f"{sorted(policed - listed)}. One rule, two readings, and they have "
+        "started to drift."
     )

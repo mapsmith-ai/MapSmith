@@ -1,0 +1,206 @@
+"""Every name MapSmith puts in a manifest that the specification does not define.
+
+Run it:
+
+    python benchmarks/manifest_vocabulary.py --write
+
+Writes `docs/manifest-vocabulary.md`. In `benchmarks/` because that is where
+this repository keeps the scripts that recompute what it publishes, not because
+this is a benchmark.
+
+## Why the page exists
+
+Section 3.6 of the manifest specification makes `verification[].name` a closed
+core plus extensions named `x-<producer>:<name>`, so that a consumer can branch
+on it. MapSmith obeys that everywhere. But obeying it produces a vocabulary of
+its own, and until 2026-09-06 **that vocabulary existed nowhere outside the
+source** — a consumer branching on a check name had to read the engines to learn
+what names there are, which makes mechanical only half of the thing section 3.6
+set out to make mechanical.
+
+## Why it is generated
+
+A hand-written list of sixty names is worth what whoever last remembered to
+update it was worth. The names are read from the source with `ast`, including
+the ones on branches no test reaches — which is most of the interesting ones,
+since a check that only fires on a defect is exactly the check nobody's fixture
+triggers.
+
+Two derivations of the same set now exist: this one and the vocabulary sweep in
+`tests/test_verify.py`, which polices rather than lists. A test asserts they
+agree. Two copies of one rule is how the rule quietly becomes two rules.
+"""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+PACKAGE = ROOT / "src" / "mapsmith"
+PAGE = ROOT / "docs" / "manifest-vocabulary.md"
+
+#: The two names that describe the RUN rather than the output, and the reason
+#: they are called out separately on the page. Every other check is a
+#: proposition about the dataset — `every_point_lies_on_its_line` — while these
+#: two answer "did this system verify anything at all?", which is a question a
+#: consumer has to be able to ask *before* it knows what else to look for.
+ABOUT_THE_RUN = {
+    "x-mapsmith:operation_completed": (
+        "The engine finished. Recorded as a failed check when it did not, so a "
+        "crash leaves a conforming manifest saying what went wrong instead of a "
+        "dataset with no record beside it."
+    ),
+    "x-mapsmith:verification_present": (
+        "Nothing looked at the output. It exists because the specification "
+        "requires a record for every dataset written and requires at least one "
+        "check in it; the absence of verification is itself recorded as a failed "
+        "check rather than papered over. No shipped operation emits it, and a "
+        "test fails if one starts to."
+    ),
+}
+
+
+def check_names() -> dict[str, str]:
+    """Every `Check` name written in the source, mapped to the module writing it.
+
+    Literals, module-level constants and module-level tables of literals, which
+    is the same reading `tests/test_verify.py` does when it polices the
+    vocabulary — deliberately, so that the two can be compared.
+    """
+    found: dict[str, str] = {}
+    for module in sorted(PACKAGE.rglob("*.py")):
+        tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
+        constants: dict[str, str] = {}
+        tables: dict[str, list[str]] = {}
+        for node in tree.body:
+            if not isinstance(node, ast.Assign):
+                continue
+            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        constants[target.id] = node.value.value
+            elif isinstance(node.value, ast.Dict):
+                values = node.value.values
+                if values and all(
+                    isinstance(v, ast.Constant) and isinstance(v.value, str)
+                    for v in values
+                ):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name):
+                            tables[target.id] = [v.value for v in values]
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            callee = node.func
+            name = (
+                callee.attr if isinstance(callee, ast.Attribute)
+                else getattr(callee, "id", None)
+            )
+            if name != "Check":
+                continue
+            first = node.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                found.setdefault(first.value, module.stem)
+            elif isinstance(first, ast.Name) and first.id in constants:
+                found.setdefault(constants[first.id], module.stem)
+            elif isinstance(first, ast.Subscript) and isinstance(first.value, ast.Name):
+                for literal in tables.get(first.value.id, []):
+                    found.setdefault(literal, module.stem)
+    return found
+
+
+def page() -> str:
+    """The page, from the source. No number in it is typed by hand."""
+    sys.path.insert(0, str(ROOT / "src"))
+    from mapsmith.provenance import CRS_EXTENSIONS, SPEC_VERSION
+
+    names = check_names()
+    ours = {n: m for n, m in sorted(names.items()) if n.startswith("x-mapsmith:")}
+    core = sorted(n for n in names if not n.startswith("x-mapsmith:"))
+    run = {n: m for n, m in ours.items() if n in ABOUT_THE_RUN}
+    output = {n: m for n, m in ours.items() if n not in ABOUT_THE_RUN}
+
+    lines = [
+        "<!-- generated by benchmarks/manifest_vocabulary.py; do not edit -->",
+        "",
+        "# The names MapSmith writes into a manifest",
+        "",
+        f"Against `{SPEC_VERSION}` of the "
+        "[manifest specification](https://github.com/mapsmith-ai/manifest-spec).",
+        "",
+        "Section 3.6 of that specification makes `verification[].name` a closed core",
+        "plus extensions spelled `x-<producer>:<name>`, so a consumer can branch on it",
+        "rather than parse prose. That works only if the extensions are written down",
+        "somewhere: a vocabulary you have to read the engines to learn is half a",
+        "vocabulary. This page is generated from the source, including the names on",
+        "branches no test reaches — which is most of the interesting ones, because a",
+        "check that fires only on a defect is the one no fixture triggers.",
+        "",
+        "## Two names to know before the others",
+        "",
+        "Every other check below is a proposition about the **output**. These two are",
+        "about the **run**, and a consumer needs them first: they are how you ask",
+        "whether this system verified anything at all.",
+        "",
+        "| name | what it says |",
+        "|---|---|",
+    ]
+    for name in sorted(run):
+        lines.append(f"| `{name}` | {ABOUT_THE_RUN[name]} |")
+
+    lines += [
+        "",
+        f"## Extension check names ({len(output)})",
+        "",
+        "Each is a proposition about the dataset that was written. A failed one is",
+        "recorded, never suppressed — the audit trail has to survive the error it",
+        "documents.",
+        "",
+        "| name | written by |",
+        "|---|---|",
+    ]
+    lines += [f"| `{name}` | `{module}` |" for name, module in sorted(output.items())]
+
+    lines += [
+        "",
+        f"## Core check names in use ({len(core)})",
+        "",
+        "Defined by section 3.6, not by MapSmith. Listed so the page is the whole",
+        "vocabulary a reader will meet, not only our half of it.",
+        "",
+        "".join(f"`{name}` · " for name in core).rstrip(" ·"),
+        "",
+        f"## Extension fields in `crs_decisions` ({len(CRS_EXTENSIONS)})",
+        "",
+        "Section 3.7 recommends the keys of that object and permits more. These are",
+        "MapSmith's, and each one carries the reason it is **not** a synonym of a key",
+        "the specification already has — because a prefix cannot answer that question,",
+        "and two keys that started as synonyms are why this list exists.",
+        "",
+        "| key | why it is not a synonym |",
+        "|---|---|",
+    ]
+    lines += [
+        f"| `{key}` | {why} |" for key, why in sorted(CRS_EXTENSIONS.items())
+    ]
+    lines.append("")
+    return "\n".join(lines)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--write", action="store_true", help="write docs/manifest-vocabulary.md")
+    written = page()
+    if parser.parse_args().write:
+        PAGE.write_text(written, encoding="utf-8", newline="\n")
+        print(f"written: {PAGE}")
+    else:
+        print(written)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
