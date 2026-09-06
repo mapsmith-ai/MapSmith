@@ -167,8 +167,9 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
                     # chosen is a record that contradicts itself, and a machine
                     # reading the key gets EPSG:4326 as the analysis CRS of a
                     # geodesic computation. The key is omitted; a separate one
-                    # says what happened instead.
-                    "computed_in": verify.crs_label(original_crs),
+                    # says what happened instead -- prefixed, because it is ours
+                    # and its neighbours in this object are the specification's.
+                    "x-mapsmith:computed_in": verify.crs_label(original_crs),
                     "reason": "buffered in the input's own geographic CRS by the "
                     "requested stack, which interprets a distance in metres "
                     "geodesically there rather than reprojecting — so there was no "

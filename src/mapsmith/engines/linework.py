@@ -29,7 +29,7 @@ from shapely.geometry import MultiPoint, Point
 from shapely.ops import transform as shapely_transform
 
 from .. import readers, verify
-from ..provenance import InputRecord, ProvenanceRecord
+from ..provenance import INPUTS_REPROJECTED, InputRecord, ProvenanceRecord
 
 #: The transforms that can be fitted, and how many control points each needs.
 #: Named for what they preserve, because that is the choice the caller is making.
@@ -126,11 +126,30 @@ def snap_layer(
         raise ValueError(
             readers.no_crs_message(reference, f"{reference_path} has no CRS.")
         )
-    crs_decisions: dict[str, Any] = {}
+    # Captured BEFORE the alignment below rebinds `reference`. Until 2026-09-06
+    # the input record and the preconditions were built from the reprojected
+    # copy, so a manifest said `inputs[].crs: EPSG:32632` about a file that
+    # declares EPSG:4326 and, three lines lower, that the same input had been
+    # reprojected FROM EPSG:4326 -- a record contradicting itself beside the
+    # sha256 of the file it misdescribes. `line_intersections` below does it in
+    # the right order, which is what proves this was an accident rather than a
+    # convention.
+    reference_as_read = reference
+    reference_crs = verify.crs_label(reference.crs)
+    # Recorded whether or not anything was reprojected. This object used to
+    # exist only on the reprojection branch, so a reader of the ordinary
+    # manifest could not tell "snapped in the input's CRS" from "nobody
+    # recorded it" -- the two claims `grid.describe` refuses to conflate one
+    # file over.
+    crs_decisions: dict[str, Any] = {
+        "analysis_crs": verify.crs_label(gdf.crs),
+        "reason": "the tolerance is in the input layer's unit, so the snapping "
+        "runs in the input layer's own CRS",
+    }
     if not verify.same_crs(gdf.crs, reference.crs):
-        crs_decisions["reference_reprojected"] = (
-            f"{verify.crs_label(reference.crs)} -> {verify.crs_label(gdf.crs)}"
-        )
+        crs_decisions[INPUTS_REPROJECTED] = [
+            {"argument": "reference_path", "from": reference_crs}
+        ]
         crs_decisions["reason"] = (
             "the tolerance is in the input layer's unit, so the reference is brought "
             "into that CRS rather than the other way round"
@@ -189,12 +208,11 @@ def snap_layer(
         },
         inputs=[
             InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs)),
-            InputRecord.from_path(reference_path, crs=verify.crs_label(reference.crs)),
+            InputRecord.from_path(reference_path, crs=reference_crs),
         ],
         engine=_engine_info(),
     )
-    if crs_decisions:
-        record.crs_decisions = crs_decisions
+    record.crs_decisions = crs_decisions
     largest = max(moves) if moves else 0.0
     if moves:
         record.notes.append(
@@ -213,7 +231,7 @@ def snap_layer(
         output_path,
         operation="snap_layer",
         preconditions=verify.verify_loaded_inputs(
-            "snap_layer", input_path=gdf, reference_path=reference
+            "snap_layer", input_path=gdf, reference_path=reference_as_read
         ),
         checks_fn=lambda: [
             *verify.verify_vector_output(
@@ -341,7 +359,7 @@ def points_along_lines(
         engine=_engine_info(),
     )
     record.crs_decisions = {
-        "measurement_crs": verify.crs_label(gdf.crs),
+        "analysis_crs": verify.crs_label(gdf.crs),
         "reason": "spacing and distance_along are in this CRS's linear unit; the "
         "geometry is not reprojected, so the numbers are the layer's own",
     }
@@ -460,7 +478,15 @@ def line_intersections(
         raise ValueError(readers.no_crs_message(gdf, f"{input_path} has no CRS."))
     _lines_of(gdf, input_path, "line_intersections")
 
-    crs_decisions: dict[str, Any] = {}
+    # Recorded unconditionally, for the reason given in `snap_layer`. No
+    # `_projected` call here and that is right: crossings are topological, so a
+    # geographic CRS is a legitimate answer rather than a violation -- which is
+    # exactly why the manifest has to say which one it was.
+    crs_decisions: dict[str, Any] = {
+        "analysis_crs": verify.crs_label(gdf.crs),
+        "reason": "crossings are computed in the input layer's own CRS, so the "
+        "output coordinates are in it",
+    }
     inputs = [InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))]
     if other_path is not None:
         other = readers.read_vector(other_path)
@@ -469,9 +495,9 @@ def line_intersections(
         _lines_of(other, other_path, "line_intersections")
         inputs.append(InputRecord.from_path(other_path, crs=verify.crs_label(other.crs)))
         if not verify.same_crs(gdf.crs, other.crs):
-            crs_decisions["second_layer_reprojected"] = (
-                f"{verify.crs_label(other.crs)} -> {verify.crs_label(gdf.crs)}"
-            )
+            crs_decisions[INPUTS_REPROJECTED] = [
+                {"argument": "other_path", "from": verify.crs_label(other.crs)}
+            ]
             crs_decisions["reason"] = (
                 "crossings are computed in the first layer's CRS, so the output "
                 "coordinates are in it"
@@ -558,8 +584,7 @@ def line_intersections(
         inputs=inputs,
         engine=_engine_info(),
     )
-    if crs_decisions:
-        record.crs_decisions = crs_decisions
+    record.crs_decisions = crs_decisions
     if collinear:
         record.notes.append(
             f"{collinear} pair(s) overlap along a stretch rather than crossing at a "
@@ -767,11 +792,37 @@ def transform_by_control_points(
         engine=_engine_info(),
     )
     record.crs_decisions = {
-        "declared_output_crs": verify.crs_label(target),
-        "reason": "the input carried a local or assumed system; the fit onto the "
-        "control points IS the georeferencing, so the output is declared in the "
-        "control points' CRS and the input's own declaration (if any) is discarded",
-        "input_crs_before": verify.crs_label(gdf.crs),
+        # `analysis_crs` and not a name of our own. The least-squares functional
+        # is a sum of squared discrepancies in TARGET coordinates -- the design
+        # matrix is built from the input's local coordinates and the right-hand
+        # side from the control points -- so the fit weighs the control points
+        # in the unit of their CRS, which is why the residuals recorded below
+        # are in it. (NOT "the normal equations are solved in the control
+        # points' units", which is what this comment said for an hour on
+        # 2026-09-06 and is false: the equations mix the two units, and so does
+        # the solution vector.)
+        "analysis_crs": verify.crs_label(target),
+        # `target_crs` because the coordinates really were put into it. NOT
+        # `source_crs` for the other half: everywhere else in MapSmith that pair
+        # appears it comes with `transformation`, describing a real PROJ
+        # reprojection, and there was none here -- a consumer who learned the
+        # pattern from `reproject_layer` would read a datum transformation that
+        # never happened. What the input declared goes under a name of ours,
+        # which can say the true thing: it existed, and it was overruled.
+        "target_crs": verify.crs_label(target),
+        "x-mapsmith:input_crs_discarded": (
+            None if gdf.crs is None else verify.crs_label(gdf.crs)
+        ),
+        "reason": (
+            (
+                "the input carried no coordinate reference system"
+                if gdf.crs is None
+                else f"the input declared {verify.crs_label(gdf.crs)}, which this "
+                "operation exists to overrule"
+            )
+            + "; the fit onto the control points IS the georeferencing, so the "
+            "output is declared in the control points' CRS"
+        ),
     }
     record.notes.append(
         "residual per control point, in the target CRS's unit: "

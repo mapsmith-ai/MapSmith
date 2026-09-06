@@ -16,6 +16,8 @@ it as one teaches people to ignore red builds.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 
@@ -69,3 +71,34 @@ def _spec_problems(record: dict) -> list[str]:
     checker = jsonschema.Draft202012Validator(schema)
     found += [f"schema: {error.message}" for error in checker.iter_errors(record)]
     return found
+
+
+def _spec_crs_keys() -> frozenset[str]:
+    """The `crs_decisions` keys section 3.7 fixes, read from the normative schema.
+
+    Not restated here. A test that polices a vocabulary against its own copy of
+    that vocabulary polices nothing -- and this one exists precisely because two
+    operations wrote synonyms of these names for a week without anything
+    noticing.
+    """
+    import json
+    from pathlib import Path
+
+    schema = json.loads(
+        (Path(__file__).parent / "data" / "manifest-v1.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    keys = frozenset(schema["properties"]["crs_decisions"]["properties"])
+    assert {"analysis_crs", "reason", "source_crs", "target_crs"} <= keys, sorted(keys)
+    return keys
+
+
+#: The shape D-077 requires of a `crs_decisions` key that is MapSmith's own.
+#: The syntax is the one section 3.6 of the specification makes a MUST for
+#: check names; applying it to FIELDS is a MapSmith rule that the specification
+#: only recommends (section 3.5 says a producer prefix "does this well", and
+#: says it as a SHOULD). Both guards import this so that one rule has one
+#: predicate: the first version wrote `startswith` in one and a regex in the
+#: other, and they disagreed on `x-mapsmith:Bad Name!`.
+_EXTENSION_KEY = re.compile(r"^x-mapsmith:[a-z0-9][a-z0-9_]*$")

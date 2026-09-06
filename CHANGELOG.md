@@ -139,6 +139,46 @@ guard existed and could not fail.**
 
 ### Changed
 
+- **BREAKING — `crs_decisions` keys now follow the specification's vocabulary.**
+  Three keys were synonyms of keys section 3.7 of the manifest specification
+  already recommends, and five were extensions of ours wearing unprefixed
+  names. A consumer asking those records *"what did you compute in?"* read
+  `analysis_crs`, found nothing, and had no way to know the answer sat under
+  another name. Nothing had compared the writing sites to each other, and each
+  one is defensible alone.
+
+  | was | is | operation |
+  |---|---|---|
+  | `measurement_crs` | `analysis_crs` | `points_along_lines` |
+  | `declared_output_crs` | `target_crs` | `transform_by_control_points` |
+  | `input_crs_before` | `x-mapsmith:input_crs_discarded` | `transform_by_control_points` |
+  | `reference_reprojected` | `x-mapsmith:inputs_reprojected` | `snap_layer` |
+  | `second_layer_reprojected` | `x-mapsmith:inputs_reprojected` | `line_intersections` |
+  | `computed_in` | `x-mapsmith:computed_in` | `buffer_layer`, Esri stack |
+  | `raster_registration` | `x-mapsmith:raster_registration` | `zonal_statistics`, `least_cost_path` |
+  | `raster_registration_reason` | `x-mapsmith:raster_registration_reason` | the same two |
+
+  The last four rows are the rule: a key that is a producer's own says so in
+  its name, so that a reader holding a manifest and not the specification can
+  tell the format's vocabulary from one implementation's. `input_crs_discarded`
+  is not `source_crs` on purpose — everywhere else that key comes with
+  `transformation`, describing a real reprojection, and there was none here.
+  The two reprojection keys became one, with a structured value instead of the
+  sentence `"EPSG:4326 -> EPSG:32632"`: two names for one fact is the defect
+  this entry removes, one level down.
+
+  **`spec_version` cannot carry this change** — the specification did not move
+  — so this entry is the only notice a consumer gets.
+- **`snap_layer` recorded its reference input's CRS after reprojecting it.**
+  The record said `inputs[].crs: EPSG:32632` about a file declaring EPSG:4326
+  and, three lines lower, that the same input had been reprojected *from*
+  EPSG:4326 — a manifest contradicting itself beside the digest of the file it
+  misdescribed. Its twin `line_intersections` had the order right, which is
+  what makes this an accident rather than a convention.
+- **`snap_layer` and `line_intersections` record `analysis_crs` on every run**,
+  not only when something was reprojected. *"Computed in the input's CRS"* and
+  *"nobody recorded it"* are different claims, and an empty object made them
+  the same one.
 - **Guards that enumerate are now guards that derive.** The parametrised list
   behind the georeferencing refusal read one module; it reads all of
   `engines/` and fails if the field it derives from is renamed — otherwise it

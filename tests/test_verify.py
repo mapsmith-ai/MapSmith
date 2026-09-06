@@ -6,7 +6,7 @@ import geopandas as gpd
 import pytest
 from shapely.geometry import Point, Polygon
 
-from conftest import _spec_problems
+from conftest import _EXTENSION_KEY, _spec_crs_keys, _spec_problems
 from mapsmith import verify
 from mapsmith.engines import vector
 
@@ -163,6 +163,7 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
     from mapsmith.plans.registry import BINDINGS
 
     fixtures = _spec_fixtures(tmp_path)
+    spec_crs_keys = _spec_crs_keys()
     writing = [
         entry["name"]
         for entry in catalog.OPERATIONS
@@ -208,6 +209,23 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
             "manifest conforming. The fallback is a net, not a licence: give the "
             "operation at least one real check."
         )
+        # The other half of the `crs_decisions` rule. The AST sweep reads the
+        # keys written out at the 68 sites, including the branches no fixture
+        # takes; this reads the keys that are actually in the record, including
+        # the ones a merged dict put there -- `grid.describe` contributes two
+        # that no literal at a call site shows. Neither sees what the other
+        # sees, and the drift they caught on 2026-09-06 was invisible to both
+        # until one of them existed.
+        for key in record.get("crs_decisions", {}):
+            # The SAME predicate the AST sweep uses, imported rather than
+            # restated. The first version wrote `key.startswith("x-mapsmith:")`
+            # here and used the section 3.6 regex there, so the two halves of
+            # one rule disagreed: this one accepted `x-mapsmith:Bad Name!` and
+            # that one did not.
+            assert key in spec_crs_keys or _EXTENSION_KEY.fullmatch(key), (
+                f"{name} wrote `crs_decisions.{key}`, which is neither a key section "
+                "3.7 recommends nor a MapSmith extension `x-mapsmith:<name>` (D-077)."
+            )
         validated.append(name)
 
     # An invariant, not a threshold. `>= 32` was wrong in both directions: with
@@ -392,6 +410,271 @@ def test_every_check_name_in_the_source_obeys_the_vocabulary():
         f"extension `x-<producer>:<name>`: {offenders}. An unconstrained vocabulary makes "
         "two records incomparable, which is the point of having a format."
     )
+
+
+def test_every_crs_decisions_key_in_the_source_obeys_the_spec():
+    """The same rule as the sweep above, for the object beside it. D-077.
+
+    **This is a MapSmith rule, stricter than the specification, and saying so is
+    part of it.** Section 3.6 makes the check-name vocabulary a MUST with the
+    syntax `x-<producer>:<name>`; that MUST is about `verification[].name` and
+    nothing else. For FIELDS, section 3.5 only recommends -- "a producer prefix
+    does this well", a SHOULD with no syntax -- and section 3.7 permits extra
+    keys in `crs_decisions` under that rule. So a third-party producer reading
+    only the specification would not emit our prefix, and this test is house
+    policy rather than conformance until the specification says otherwise.
+
+    What made the policy worth having is what a SHOULD with nothing reading it
+    did. Derived from the source on 2026-09-06: **two sites had invented
+    synonyms of keys section 3.7 already recommends and MapSmith already used
+    everywhere else** -- `measurement_crs` in `points_along_lines`,
+    `declared_output_crs` and `input_crs_before` in
+    `transform_by_control_points`. A consumer asking those two records "what did
+    you compute in?" read `analysis_crs`, found nothing, and had no way to know
+    the answer sat under another name.
+
+    Nothing could have caught it, because nothing compared the sites to each
+    other -- each one is defensible alone. So the recommended keys are read from
+    the vendored schema rather than restated here, the prefix predicate is
+    shared with the runtime half in `conftest`, and the sites are read from the
+    source rather than from the fixtures: a key on a branch no fixture reaches
+    is exactly the case that produced this.
+    """
+    import ast
+    from pathlib import Path
+
+    import mapsmith
+
+    fixed = _spec_crs_keys()
+    root = Path(mapsmith.__file__).parent
+    found: dict[str, str] = {}
+    dynamic: list[str] = []
+    merged_from: set[str] = set()
+    sites = 0
+    for module in sorted(root.rglob("*.py")):
+        tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
+        # Module-level string constants only, as in the sweep above: a
+        # function-local name that happens to match one is a different name.
+        constants: dict[str, str] = {
+            target.id: node.value.value
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+            for target in node.targets
+            if isinstance(target, ast.Name)
+        }
+        # ALL three tables map a name to a LIST, and every association is
+        # resolved. The first version used dict comprehensions, so two functions
+        # in one module that use the same local name collapsed into one and the
+        # last won -- and `linework.py` binds a literal to `crs_decisions`
+        # twice, in `snap_layer` and in `line_intersections`. An illegal key
+        # injected into the first was invisible, which is to say this sweep was
+        # blind exactly where it had just been used to find something. Two
+        # reviewers found it independently on the day it was written; it was
+        # only `subscripts`, written last, that already accumulated.
+        from_call: dict[str, list[str]] = {}
+        literals: dict[str, list[ast.Dict]] = {}
+        subscripts: dict[str, list[ast.Constant]] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.AnnAssign):
+                if isinstance(node.target, ast.Name) and isinstance(node.value, ast.Dict):
+                    literals.setdefault(node.target.id, []).append(node.value)
+                continue
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    if isinstance(node.value, ast.Dict):
+                        literals.setdefault(target.id, []).append(node.value)
+                    elif isinstance(node.value, ast.Call):
+                        callee = node.value.func
+                        from_call.setdefault(target.id, []).append(
+                            callee.attr if isinstance(callee, ast.Attribute)
+                            else getattr(callee, "id", "?")
+                        )
+                elif (
+                    isinstance(target, ast.Subscript)
+                    and isinstance(target.value, ast.Name)
+                    and isinstance(target.slice, ast.Constant)
+                    and isinstance(target.slice.value, str)
+                ):
+                    subscripts.setdefault(target.value.id, []).append(target.slice)
+
+        def resolve(
+            value: ast.expr,
+            where: str,
+            depth: int = 0,
+            # Bound here rather than closed over: this is redefined once per
+            # module, and a closure over the loop's tables would read whichever
+            # module happened to be last.
+            *,
+            subscripts: dict[str, list[ast.Constant]] = subscripts,
+            literals: dict[str, list[ast.Dict]] = literals,
+            constants: dict[str, str] = constants,
+            from_call: dict[str, list[str]] = from_call,
+        ) -> None:
+            """The keys this expression puts into `crs_decisions`, or a blind spot."""
+            if depth > 3:  # pragma: no cover - a chain that deep is a defect anyway
+                dynamic.append(f"{where}:{getattr(value, 'lineno', '?')}")
+                return
+            if isinstance(value, ast.IfExp):
+                resolve(value.body, where, depth + 1)
+                resolve(value.orelse, where, depth + 1)
+                return
+            if isinstance(value, ast.Call):
+                # A dict this cannot read, built by a function. Named rather
+                # than ignored: see the ratchet below.
+                callee = value.func
+                merged_from.add(
+                    callee.attr if isinstance(callee, ast.Attribute)
+                    else getattr(callee, "id", "?")
+                )
+                return
+            if isinstance(value, ast.Name):
+                seen = False
+                for key in subscripts.get(value.id, []):
+                    found.setdefault(key.value, f"{where}:{key.lineno}")
+                    seen = True
+                for literal in literals.get(value.id, []):
+                    resolve(literal, where, depth + 1)
+                    seen = True
+                for callee_name in from_call.get(value.id, []):
+                    merged_from.add(callee_name)
+                    seen = True
+                if not seen:
+                    dynamic.append(f"{where}:{value.lineno}")
+                return
+            if not isinstance(value, ast.Dict):
+                dynamic.append(f"{where}:{getattr(value, 'lineno', '?')}")
+                return
+            for position, key in enumerate(value.keys):
+                if key is None:
+                    # `**something` inside the literal. Its keys are not here;
+                    # name what built it, same as a merged call.
+                    resolve(value.values[position], where, depth + 1)
+                elif isinstance(key, ast.Constant) and isinstance(key.value, str):
+                    found.setdefault(key.value, f"{where}:{key.lineno}")
+                elif isinstance(key, ast.Name) and key.id in constants:
+                    found.setdefault(constants[key.id], f"{where}:{key.lineno}")
+                else:
+                    dynamic.append(f"{where}:{getattr(key, 'lineno', '?')}")
+
+        # Closed, not enumerative. The first version listed the three shapes it
+        # knew -- assignment, keyword, `.update(dict)` -- and said nothing about
+        # any other, so `record.crs_decisions["k"] = v`, `|= {...}`,
+        # `.update(k=v)` and `.setdefault("k", v)` were all invisible rather
+        # than red. That is the guard-that-cannot-fail turned on the guard's own
+        # input: it could only ever report what it already understood. Now every
+        # mention of the attribute is classified, and a shape with no branch
+        # here fails the test instead of being skipped.
+        parents: dict[int, ast.AST] = {
+            id(child): node
+            for node in ast.walk(tree)
+            for child in ast.iter_child_nodes(node)
+        }
+        #: Methods that cannot introduce a key. Anything else on the attribute
+        #: is reported rather than assumed harmless.
+        reading = {"get", "items", "keys", "values", "copy"}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.keyword) and node.arg == "crs_decisions":
+                sites += 1
+                resolve(node.value, module.name)
+                continue
+            if not (isinstance(node, ast.Attribute) and node.attr == "crs_decisions"):
+                continue
+            spot = f"{module.name}:{node.lineno}"
+            parent = parents.get(id(node))
+            # `record.crs_decisions = {...}` and `record.crs_decisions |= {...}`:
+            # both hand the whole object over, so both resolve the right side.
+            if (
+                isinstance(parent, ast.Assign)
+                and any(t is node for t in parent.targets)
+            ) or (isinstance(parent, ast.AugAssign) and parent.target is node):
+                sites += 1
+                resolve(parent.value, module.name)
+            elif isinstance(parent, ast.Attribute):
+                call = parents.get(id(parent))
+                if parent.attr in reading:
+                    continue
+                if parent.attr == "update" and isinstance(call, ast.Call):
+                    sites += 1
+                    for argument in call.args:
+                        resolve(argument, module.name)
+                    for keyword in call.keywords:
+                        # `.update(analysis_crs=...)`: the key is the argument
+                        # name, and `**other` has no name at all.
+                        if keyword.arg is None:
+                            resolve(keyword.value, module.name)
+                        else:
+                            found.setdefault(keyword.arg, spot)
+                elif parent.attr == "setdefault" and isinstance(call, ast.Call):
+                    sites += 1
+                    first = call.args[0] if call.args else None
+                    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                        found.setdefault(first.value, spot)
+                    else:
+                        dynamic.append(spot)
+                else:
+                    dynamic.append(spot)
+            elif isinstance(parent, ast.Subscript):
+                grandparent = parents.get(id(parent))
+                stored = isinstance(grandparent, ast.Assign) and any(
+                    t is parent for t in grandparent.targets
+                )
+                if not stored:
+                    continue  # a read: `record.crs_decisions["k"]` on the right
+                sites += 1
+                if isinstance(parent.slice, ast.Constant) and isinstance(
+                    parent.slice.value, str
+                ):
+                    found.setdefault(parent.slice.value, spot)
+                else:
+                    dynamic.append(spot)
+            elif isinstance(getattr(node, "ctx", None), ast.Load):
+                continue  # the attribute read as a whole value
+            else:
+                dynamic.append(spot)
+
+    assert not dynamic, (
+        f"these `crs_decisions` writes are not in a shape this can read: {dynamic}. "
+        "Write the keys literally, or as a module-level constant -- and if the shape "
+        "itself is new, teach this sweep about it rather than letting it pass."
+    )
+    # A smoke floor, and it says what it is: the control is `dynamic` being
+    # empty, not this number. `len(found)` would not have moved if the sweep had
+    # stopped reading sixty sites out of seventy, because it counts DISTINCT
+    # keys -- so the floor is on the sites visited.
+    assert sites >= 60, f"only {sites} write sites of `crs_decisions` seen in the source"
+
+    offenders = {
+        key: where
+        for key, where in found.items()
+        if key not in fixed and not _EXTENSION_KEY.fullmatch(key)
+    }
+    assert not offenders, (
+        f"these `crs_decisions` keys are neither recommended by section 3.7 of the "
+        f"spec nor a MapSmith extension `x-mapsmith:<name>`: {offenders}. If the key "
+        "means what a recommended one means, use the recommended one -- a synonym "
+        "makes the record unreadable to a consumer holding the specification. If it "
+        "is genuinely ours, prefix it, so that a reader holding the manifest and not "
+        "the specification can tell which is which (D-077)."
+    )
+
+    # A ratchet, not an allowlist: an entry is a blind spot, not a thing to
+    # check, and the two here are blind for reasons that were verified rather
+    # than assumed. `grid.manifest_decisions` returns keys this sweep cannot
+    # read and the conformance sweep over real records does. `redact_secrets`
+    # cannot introduce a key at all: on a dict it rebuilds `{k: ...}` for the
+    # keys it was given, so it re-emits whatever reached it and nothing else.
+    # A third such function turns this red, so whoever adds it decides which
+    # sweep covers it instead of discovering later that neither did.
+    assert merged_from <= {"manifest_decisions", "redact_secrets"}, (
+        f"a dict is merged into `crs_decisions` from {sorted(merged_from)}, whose keys "
+        "this sweep cannot read. Either write them out, or confirm the conformance "
+        "sweep reaches every branch of it and add it here."
+    )
+
 
 def _spec_fixtures(tmp_path):
     """One real call per writing operation, for the conformance sweep.

@@ -324,8 +324,21 @@ def test_the_output_is_declared_in_the_control_points_crs_and_says_why(tmp_path)
 
     assert verify.same_crs(gpd.read_parquet(out).crs, "EPSG:32632")
     decisions = _manifest(result)["crs_decisions"]
-    assert decisions["declared_output_crs"] == "EPSG:32632"
-    assert "EPSG:3857" in decisions["input_crs_before"]
+    # The spec's names where the spec has one. Until 2026-09-06 this operation
+    # wrote `declared_output_crs`, which means exactly `target_crs` and was
+    # readable by nobody holding the specification. `analysis_crs` is the
+    # target because the least-squares functional is a sum of squared
+    # discrepancies in target coordinates -- the same unit the residuals below
+    # are recorded in.
+    assert decisions["target_crs"] == "EPSG:32632"
+    assert decisions["analysis_crs"] == "EPSG:32632"
+    # And NOT `source_crs`, deliberately: everywhere else in MapSmith that key
+    # comes with `transformation`, describing a reprojection, and no
+    # reprojection happened here. What the input declared is recorded under a
+    # name of ours, which can say the thing that is true of it.
+    assert "source_crs" not in decisions
+    assert decisions["x-mapsmith:input_crs_discarded"] == "EPSG:3857"
+    assert "EPSG:3857" in decisions["reason"]
 
 
 def _manifest(result: dict) -> dict:
@@ -412,9 +425,18 @@ def test_a_survey_with_no_crs_is_the_case_this_operation_exists_for(tmp_path):
     ).to_parquet(control)
 
     out = tmp_path / "placed.parquet"
-    linework.transform_by_control_points(
+    result = linework.transform_by_control_points(
         str(survey), str(control), str(out), "EPSG:32632"
     )
+
+    # The reason is DERIVED from the input, not asserted about it. It used to
+    # say "the input carried a local or assumed system" on every run, including
+    # the runs where the input declared a perfectly good CRS -- the one field
+    # whose whole job is the *why*, stating a fact about the input that nobody
+    # had checked. Here there really is no CRS, and the record says so.
+    decisions = _manifest(result)["crs_decisions"]
+    assert decisions["x-mapsmith:input_crs_discarded"] is None
+    assert "carried no coordinate reference system" in decisions["reason"]
 
     placed = gpd.read_parquet(out)
     assert placed.crs.to_epsg() == 32632

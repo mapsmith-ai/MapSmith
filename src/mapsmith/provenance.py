@@ -23,6 +23,20 @@ from . import __version__
 # repository, and a CI test validates real MapSmith output against them.
 SPEC_VERSION = "1.0.0-draft.3"
 
+#: One `crs_decisions` key for "a secondary input was brought into the analysis
+#: CRS", and a structured value rather than a sentence.
+#:
+#: Written here rather than at the two call sites because there were two names
+#: for it — `reference_reprojected` in `snap_layer`, `second_layer_reprojected`
+#: in `line_intersections` — which is the defect D-077 removed from the
+#: specification's vocabulary, reappearing one level down in our own. The value
+#: is a list of `{"argument": ..., "from": ...}`: section 3.7 argues at length
+#: that `is_ballpark` is a boolean because a consumer has to branch on it, and
+#: `"EPSG:4326 -> EPSG:32632"` is prose in a key for the same reason it should
+#: not be. Where it went is already `analysis_crs`, so only where it came from
+#: is worth recording.
+INPUTS_REPROJECTED = "x-mapsmith:inputs_reprojected"
+
 
 def _utcnow() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")

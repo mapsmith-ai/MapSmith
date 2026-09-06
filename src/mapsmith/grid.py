@@ -56,6 +56,14 @@ OFFSET = {"area": 0.5, "point": 0.0}
 #: that a search for it finds every use.
 TAG = "AREA_OR_POINT"
 
+#: The two `crs_decisions` keys this module contributes, and the only two
+#: MapSmith adds to that object beyond the ones section 3.7 of the manifest
+#: specification fixes. Prefixed for the reason `describe` gives; named here so
+#: that the guard in the test suite can read the vocabulary instead of being
+#: told it.
+REGISTRATION_KEY = "x-mapsmith:raster_registration"
+REGISTRATION_REASON_KEY = "x-mapsmith:raster_registration_reason"
+
 
 def registration(dataset: Any) -> str:
     """`"area"` or `"point"` for an open rasterio dataset, or a literal kind.
@@ -109,12 +117,20 @@ def offset(dataset: Any) -> float:
 
 
 def describe(dataset: Any) -> dict[str, Any]:
-    """The registration as a manifest entry: what it is and what it changed.
+    """The registration as an entry in one of OUR objects: what it is and what
+    it changed.
 
     Recorded on every operation that converts between cells and coordinates,
-    including the ordinary case. A manifest that mentions the convention only
+    including the ordinary case. A record that mentions the convention only
     when it is unusual leaves a reader unable to tell "area" from "nobody
     looked", and those are different claims.
+
+    Plain, unprefixed keys, because the places this lands are ours: the answer
+    `locate_extreme_cell` hands back, and the `parameters` of `contour_lines`.
+    For the manifest's `crs_decisions`, whose other keys belong to the
+    specification, use `manifest_decisions`. (`least_cost_path` was named here
+    too until 2026-09-06 -- in the same commit that stopped it calling this
+    function, so the sentence was written false rather than made false.)
     """
     kind = registration(dataset)
     return {
@@ -132,6 +148,33 @@ def describe(dataset: Any) -> dict[str, Any]:
             else "the file does not declare point registration, so each value "
             "describes the cell it fills and its position is the cell's centre"
         ),
+    }
+
+
+def manifest_decisions(dataset: Any) -> dict[str, Any]:
+    """The same two facts, named for the manifest's `crs_decisions`.
+
+    Prefixed, and that is the whole difference from `describe`. Section 3.7 of
+    the manifest specification recommends the keys of `crs_decisions` and
+    permits more under section 3.5's extension rule. The reason that decided
+    the prefix is the reader's rather than the registry's: MapSmith already
+    prefixes its check names, for exactly this -- so that a consumer can tell
+    the format's vocabulary from one producer's -- and a field is no different.
+    Someone holding a manifest and not the specification could not tell
+    `raster_registration` from `analysis_crs` before 2026-09-06. (No count
+    here on purpose: the first version said "48 check names", the number was
+    54, and nothing in the tree derives it.)
+
+    A separate function and not a flag on `describe`, because the two callers
+    are answering different questions. `describe` fills objects that are ours
+    all the way down, where a prefix would be noise an agent has to read past;
+    this fills one whose other keys are the format's, where the absence of a
+    prefix is a claim that the key is the format's too.
+    """
+    plain = describe(dataset)
+    return {
+        REGISTRATION_KEY: plain["raster_registration"],
+        REGISTRATION_REASON_KEY: plain["raster_registration_reason"],
     }
 
 

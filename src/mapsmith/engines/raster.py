@@ -174,7 +174,7 @@ def zonal_statistics(
         # own geometry.
         dx, dy = grid.shift_for_area_tools(ds)
         asked = zones.translate(xoff=dx, yoff=dy) if (dx or dy) else zones.geometry
-        record.crs_decisions.update(grid.describe(ds))
+        record.crs_decisions.update(grid.manifest_decisions(ds))
         if dx or dy:
             record.notes.append(
                 f"the raster declares AREA_OR_POINT=Point, so each value is a sample "

@@ -957,7 +957,9 @@ def least_cost_path(
         # every file were area-registered, which puts the whole route half a
         # cell south-east on a DEM that says otherwise.
         coordinates = [grid.sample_xy(src, row, column) for row, column in path_cells]
-        registration = grid.describe(src)
+        # `manifest_decisions` and not `describe`: this one goes into
+        # `crs_decisions`, where the neighbouring keys are the specification's.
+        registration = grid.manifest_decisions(src)
         cell_width, cell_height = abs(src.transform.a), abs(src.transform.e)
     if len(coordinates) < 2:
         # Both endpoints landed in the same cell, so there is no route to draw:

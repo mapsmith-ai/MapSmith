@@ -106,9 +106,19 @@ def test_the_registration_is_recorded_under_its_own_key(tmp_path):
     """
     with rasterio.open(hollow(tmp_path, "Point")) as src:
         described = grid.describe(src)
+        # And the manifest's copy of the same two facts, which differs only in
+        # the prefix. Asserted against `describe` rather than spelled out, so
+        # that a change to the sentence cannot make the two drift apart in
+        # silence. Inside the `with`, because `registration` refuses a closed
+        # dataset on purpose and a test that opens a second one without closing
+        # it argues against that discipline while relying on it.
+        for_manifest = grid.manifest_decisions(src)
     assert "reason" not in described
     assert described["raster_registration"] == "point"
     assert "AREA_OR_POINT=Point" in described["raster_registration_reason"]
+    assert for_manifest == {
+        f"x-mapsmith:{key}": value for key, value in described.items()
+    }
 
 
 # --- the operation that answers where ---------------------------------------
@@ -397,7 +407,10 @@ def test_zonal_statistics_weights_cells_around_their_own_samples(tmp_path):
     assert gpd.read_parquet(out)["mean"].iloc[0] == pytest.approx(300.0, abs=1e-4)
 
     manifest = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
-    assert manifest["crs_decisions"]["raster_registration"] == "point"
+    # Prefixed here and bare in the tool answer above, and the difference is
+    # the point: this object's other keys belong to the manifest specification,
+    # that one's are ours all the way down.
+    assert manifest["crs_decisions"][grid.REGISTRATION_KEY] == "point"
     assert any("offset by" in note for note in manifest["notes"])
     # The geometry handed back is the caller's, not the shifted copy.
     assert gpd.read_parquet(out).geometry.iloc[0].bounds == pytest.approx(
