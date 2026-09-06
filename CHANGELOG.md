@@ -140,9 +140,10 @@ guard existed and could not fail.**
 ### Changed
 
 - **BREAKING — `crs_decisions` keys now follow the specification's vocabulary.**
-  Three keys were synonyms of keys section 3.7 of the manifest specification
-  already recommends, and five were extensions of ours wearing unprefixed
-  names. A consumer asking those records *"what did you compute in?"* read
+  Two keys were synonyms of keys section 3.7 of the manifest specification
+  already recommends; the other six were extensions of ours wearing
+  unprefixed names, one of them a third synonym that became an extension
+  rather than a specification key, for the reason given below. A consumer asking those records *"what did you compute in?"* read
   `analysis_crs`, found nothing, and had no way to know the answer sat under
   another name. Nothing had compared the writing sites to each other, and each
   one is defensible alone.

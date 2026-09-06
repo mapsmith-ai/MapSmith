@@ -24,7 +24,7 @@ ruff check .
 
 1. **Deterministic outputs only.** No geometry or numeric result may originate from an LLM.
 2. **Every writer emits provenance.** If your operation writes a dataset, it writes a manifest (`ProvenanceRecord`) — inputs with checksums, parameters, CRS decisions, engine versions.
-3. **No silent CRS decisions.** Reprojections and unit assumptions must be recorded in `crs_decisions`.
+3. **No silent CRS decisions.** Reprojections and unit assumptions must be recorded in `crs_decisions` — and under the names [the manifest specification](https://github.com/mapsmith-ai/manifest-spec) recommends (`analysis_crs`, `source_crs`, `target_crs`, `transformation`, `reason`). Anything the specification does not name is MapSmith's own and says so: `x-mapsmith:<name>`. Inventing a synonym is the defect this rule was written for — two operations recorded `measurement_crs` and `declared_output_crs`, each defensible alone, and a consumer asking those records what they computed in read `analysis_crs` and found nothing. A test in `tests/test_verify.py` sweeps every writing site, so review is not the only thing holding this.
 4. **GPL isolation.** GPL engines (QGIS, GRASS) may only be invoked as external processes (CLI/files/JSON). Never `import qgis` or link GPL libraries in-process.
 5. **Few semantic tools.** New MCP tools need a strong case; prefer extending the catalog + existing tools.
 

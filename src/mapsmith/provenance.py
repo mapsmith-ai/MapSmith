@@ -264,7 +264,12 @@ class ProvenanceRecord:
     # First among the defaulted fields on purpose: a reader meeting the record
     # needs the format version before anything else means anything.
     spec_version: str = SPEC_VERSION
-    crs_decisions: dict[str, str] = field(default_factory=dict)
+    # `Any` and not `str`: since 2026-09-06 one value is a list of objects
+    # (`x-mapsmith:inputs_reprojected`), and section 3.7 permits that on
+    # purpose -- only `analysis_crs` and `reason` are strings there, because
+    # the question a consumer most needs answered (`is_ballpark`) has to be a
+    # boolean it can branch on. The annotation said `str` for a day.
+    crs_decisions: dict[str, Any] = field(default_factory=dict)
     engine: dict[str, str] = field(default_factory=dict)
     verification: list[dict[str, Any]] = field(default_factory=list)
     # deterministic repair attempts (issue #3): empty unless something was fixed

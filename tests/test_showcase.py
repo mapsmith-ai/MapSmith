@@ -702,13 +702,61 @@ def test_the_readme_says_which_release_it_describes():
         "reworded or removed; update this test with it rather than dropping it"
     )
     stated = match.group(1)
+    nearby = text[match.start() : match.start() + 800]
+    # NOT the word "ahead". The paragraph's own promise is the sentence "when
+    # `main` runs ahead of the published artifact this paragraph says so", so a
+    # substring check for "ahead of" matches the boilerplate and passes on a page
+    # that says nothing -- which is what the first version of this check did,
+    # green on a README twenty-one commits behind its own tree. The marker is
+    # the thing the promise actually owes a reader: a pointer to the list of
+    # what is different, which no conditional sentence carries by accident.
+    UNRELEASED = "CHANGELOG.md#unreleased"
+    says_ahead = UNRELEASED in nearby
     if stated != __version__:
-        nearby = text[match.start() : match.start() + 400]
-        ahead = "ahead" in nearby
-        assert ahead, (
+        assert says_ahead, (
             f"the README says it describes {stated} and this checkout is "
             f"{__version__}. That is allowed only while the paragraph also says "
             "main is ahead and names the difference -- it does not."
+        )
+
+    # The half the version comparison cannot see, and the reason it could not
+    # fail. `__version__` does not move between releases, so a page describing
+    # 0.4.0 on a checkout of 0.4.0 satisfied the check above no matter how far
+    # `main` had run past the tag -- and the sentence promises more than the
+    # number: it promises to SAY SO when it has. Twenty-one commits past v0.4.0,
+    # including eight renamed manifest keys, the paragraph still read as though
+    # the tag and the tree were the same thing. The condition is the tag, so the
+    # guard now fails from the first commit after a release rather than from a
+    # version bump that happens at the end.
+    tag = subprocess.run(
+        ["git", "describe", "--tags", "--abbrev=0", "--match", "v*"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if tag.returncode != 0:
+        pytest.skip("no version tag reachable from HEAD (shallow clone?)")
+    counted = subprocess.run(
+        ["git", "rev-list", "--count", f"{tag.stdout.strip()}..HEAD"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if counted.returncode != 0:
+        pytest.skip("cannot count commits since the tag")
+    commits = int(counted.stdout.strip())
+
+    if commits:
+        assert says_ahead, (
+            f"{commits} commits since {tag.stdout.strip()} and the paragraph "
+            f"does not say main is ahead and link {UNRELEASED}. It promises to, "
+            "and the reader it is written for is the one installing the release "
+            "while reading a page written against the tree."
+        )
+    else:
+        # And the other direction, because the sentence is emptied by a release
+        # rather than by a person: freshly tagged, "main is ahead" is false, and
+        # a false reassurance survives longer than a missing one.
+        assert not says_ahead, (
+            f"HEAD is {tag.stdout.strip()} itself and the paragraph still "
+            f"points at {UNRELEASED} as a difference from the release. Remove "
+            "the sentence as part of the release."
         )
 
 
@@ -1392,6 +1440,51 @@ def test_the_manifest_on_the_front_page_conforms_to_the_specification():
             f"the manifest on the front page is not a conforming record: "
             f"{problems}. It is what an implementer copies."
         )
+
+
+def test_every_manifest_a_reader_can_see_obeys_the_key_rule():
+    """D-077 on the surfaces, not only in the source.
+
+    `test_every_crs_decisions_key_in_the_source_obeys_the_spec` sweeps the
+    writing sites. It cannot see these: the record on the front page is typed
+    by hand, and the ones in the gallery are frozen output from a run that has
+    already happened. Both are what an implementer copies, and the two
+    conformance guards beside this one cannot catch a wrong key, because the
+    schema permits extra keys in `crs_decisions` on purpose — a record carrying
+    `measurement_crs` validates against both implementations and is still the
+    defect the Unreleased entry is about.
+
+    The vocabulary is read from the vendored schema and the prefix predicate is
+    shared with the runtime half, so one rule has one definition here too.
+    """
+    from conftest import _EXTENSION_KEY, _spec_crs_keys
+
+    allowed = _spec_crs_keys()
+    shown: list[tuple[str, dict]] = []
+    for block in re.findall(r"```json\n(.*?)\n```", README.read_text(encoding="utf-8"), re.DOTALL):
+        if '"operation"' in block and '"engine"' in block:
+            shown.append(("README.md", json.loads(block)))
+    for notebook in sorted((ROOT / "examples").glob("*.ipynb")):
+        shown += [(notebook.name, m) for m in _manifests_shown_in(notebook)]
+
+    # Positive first: a sweep over nothing is the shape of guard this file
+    # keeps finding. Every surface named above has to produce a record with a
+    # `crs_decisions` object, or the reader is being shown something else.
+    with_decisions = [(where, m) for where, m in shown if m.get("crs_decisions")]
+    assert with_decisions, (
+        "no manifest with `crs_decisions` is visible on the README or in the "
+        "gallery, so this test compared nothing. If a page stopped showing one, "
+        "that is the finding."
+    )
+    for where, manifest in with_decisions:
+        for key in manifest["crs_decisions"]:
+            assert key in allowed or _EXTENSION_KEY.fullmatch(key), (
+                f"{where} shows a manifest whose `crs_decisions` carries {key!r}, "
+                f"which is neither a key section 3.7 recommends ({sorted(allowed)}) "
+                "nor an extension named `x-mapsmith:<name>`. This is the record a "
+                "third-party implementer copies, so a key here teaches the format "
+                "wrongly. Re-run the notebook rather than editing its output."
+            )
 
 
 def test_the_published_doi_is_the_concept_doi():

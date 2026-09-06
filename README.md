@@ -82,7 +82,13 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 
 This page describes **0.4.0**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there.
+have to find out by calling a tool that is not there. **`main` is ahead of 0.4.0 today**, by
+defects found in shipped code and by one change a reader of this page would notice: eight
+`crs_decisions` keys are spelled differently on `main`, because 0.4.0 had invented names of
+its own where the specification already fixes one, and left the keys that really are
+MapSmith's own looking like the format's. No tool, operation or count has moved.
+[`[Unreleased]` in the changelog](CHANGELOG.md#unreleased) has the old-to-new table and the
+rest of the list.
 
 Then ask your agent things like:
 

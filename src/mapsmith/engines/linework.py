@@ -802,13 +802,16 @@ def transform_by_control_points(
         # 2026-09-06 and is false: the equations mix the two units, and so does
         # the solution vector.)
         "analysis_crs": verify.crs_label(target),
-        # `target_crs` because the coordinates really were put into it. NOT
-        # `source_crs` for the other half: everywhere else in MapSmith that pair
-        # appears it comes with `transformation`, describing a real PROJ
-        # reprojection, and there was none here -- a consumer who learned the
-        # pattern from `reproject_layer` would read a datum transformation that
-        # never happened. What the input declared goes under a name of ours,
-        # which can say the true thing: it existed, and it was overruled.
+        # `target_crs` and NOT `source_crs`, and the asymmetry is about truth
+        # rather than symmetry. The specification defines `target_crs` as the
+        # system the coordinates were PUT INTO when the operation transformed
+        # them: they were, and it did. It defines `source_crs` as the system
+        # they WERE IN before -- and that is the one claim this operation
+        # exists to deny. A traverse on an assumed grid was never in the CRS
+        # its file declared; writing that declaration into `source_crs` would
+        # use a key of the format to make a statement the run contradicts,
+        # which is worse than a synonym. Under a name of ours it can say the
+        # thing that is true: the declaration existed, and it was overruled.
         "target_crs": verify.crs_label(target),
         "x-mapsmith:input_crs_discarded": (
             None if gdf.crs is None else verify.crs_label(gdf.crs)
