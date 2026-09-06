@@ -1576,9 +1576,6 @@ def test_every_reprojected_input_names_a_real_argument():
         for function in ast.walk(tree):
             if not isinstance(function, ast.FunctionDef):
                 continue
-            own = {a.arg for a in function.args.args} | {
-                a.arg for a in function.args.kwonlyargs
-            }
             declares = [
                 keyword.value.value
                 for call in ast.walk(function)
