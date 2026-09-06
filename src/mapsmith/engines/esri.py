@@ -198,7 +198,13 @@ def run(operation: str, source: Any, arguments: dict[str, Any],
             **arguments,
         }), encoding="utf-8")
 
-        done = stacks.esri_run(str(probe_file), [str(request_file)], timeout=timeout)
+        # `cwd` inside the same scratch the bridge already built: anything
+        # ArcPy writes relative to its working directory then lands inside
+        # the workspace with the rest, instead of wherever the server was
+        # started from.
+        done = stacks.esri_run(
+            str(probe_file), [str(request_file)], timeout=timeout, cwd=str(area)
+        )
         lines = [r for r in (done.stdout or "").strip().splitlines() if r.strip()]
         if not lines:
             return {"status": "failed", "detail": (done.stderr or "no output")[-300:]}

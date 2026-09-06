@@ -240,13 +240,27 @@ def fallback_note(operation: str, reason: str, detail: str = "") -> str:
     )
 
 
-def esri_run(script: str, arguments: list[str], timeout: int = 900) -> subprocess.CompletedProcess:
+def esri_run(
+    script: str,
+    arguments: list[str],
+    timeout: int = 900,
+    cwd: str | None = None,
+) -> subprocess.CompletedProcess:
     """Run a script inside ArcGIS Pro's Python.
 
     A subprocess for two independent reasons, and it is worth knowing both:
     ArcPy lives in Pro's own conda environment, so `import arcpy` is not
     available to the interpreter MapSmith runs in; and keeping foreign engines
     behind a process boundary is already the rule for the GPL ones.
+
+    **`cwd` is not decoration.** A child inherits the parent's working
+    directory, and an engine that writes a scratch file relative to it puts
+    that file wherever the server happened to be started -- outside the
+    workspace SECURITY.md says nothing writes outside of. That is exactly
+    how `contour_lines` leaked four files for a release before anyone
+    noticed, and Whitebox is in-process while this is a process boundary,
+    which makes it easier to get wrong and impossible to see. The caller
+    passes the scratch directory it already made inside the workspace.
     """
     if not installed()["esri"]["available"]:
         raise RuntimeError(
@@ -256,7 +270,7 @@ def esri_run(script: str, arguments: list[str], timeout: int = 900) -> subproces
     return subprocess.run(
         [str(PRO_PYTHON), script, *arguments],
         capture_output=True, text=True, timeout=timeout,
-        encoding="utf-8", errors="replace", check=False,
+        encoding="utf-8", errors="replace", check=False, cwd=cwd,
     )
 
 

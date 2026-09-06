@@ -443,3 +443,52 @@ def test_no_writing_operation_leaves_a_file_in_the_working_directory(tmp_path):
         "a bug in that engine binding -- SECURITY.md promises no tool call writes "
         "outside the workspace, and that promise is what this test is for."
     )
+
+
+def test_no_subprocess_inherits_the_working_directory():
+    """A child process writes where it was started, and that is not our choice.
+
+    `stacks.esri_run` spawned the ArcPy sidecar with no `cwd=`, so it inherited
+    whatever directory the server was started in. Nothing has leaked through it
+    yet -- it needs ArcGIS Pro installed, and this machine has none, so the
+    behavioural sweep above cannot reach it. That is precisely why this one is
+    lexical: the alternative is to wait for a machine that can run it, and the
+    QGIS/GRASS sidecar is on the list.
+
+    The measured cousin is `contour_lines`, which leaked four files for a whole
+    release because Whitebox took its working directory from the process. In
+    process it was at least visible in `git status` once you knew to look; a
+    subprocess writing relative paths on someone else's machine is not.
+
+    Read from the source rather than from a list of call sites: the point is
+    that the NEXT engine behind a process boundary meets this test before it
+    meets a bug report.
+    """
+    import ast
+
+    import mapsmith
+
+    root = Path(mapsmith.__file__).parent
+    naked: list[str] = []
+    for module in sorted(root.rglob("*.py")):
+        tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            callee = node.func
+            if not isinstance(callee, ast.Attribute) or callee.attr not in {
+                "run", "Popen", "check_call", "check_output", "call",
+            }:
+                continue
+            if getattr(callee.value, "id", None) != "subprocess":
+                continue
+            if not any(keyword.arg == "cwd" for keyword in node.keywords):
+                naked.append(f"{module.name}:{node.lineno}")
+
+    assert not naked, (
+        f"these spawn a process without saying where it should run: {naked}. A "
+        "child inherits the server's working directory, so anything it writes "
+        "relative to it lands wherever the operator happened to start MapSmith "
+        "— outside the workspace SECURITY.md promises nothing writes outside of. "
+        "Pass `cwd=` pointing at a scratch directory inside the workspace."
+    )

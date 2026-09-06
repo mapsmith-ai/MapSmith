@@ -139,6 +139,15 @@ guard existed and could not fail.**
 
 ### Fixed
 
+- **The ArcPy sidecar inherited the server's working directory.**
+  `stacks.esri_run` spawned it with no `cwd=`, so anything ArcPy wrote
+  relative to its working directory would land wherever MapSmith happened
+  to be started -- outside the workspace, and on someone else's machine
+  where nobody would see it. It now runs in the scratch directory the
+  bridge already builds inside the workspace. Not reachable without ArcGIS
+  Pro installed, which is why the guard for it reads the source instead of
+  running anything: the QGIS sidecar is next on the list, and it should
+  meet this test before it meets a bug report.
 - **`environment` mixed two vocabularies without saying which was which,
   and nothing in the suite ever saw the field filled.** Four keys in there
   are MapSmith's own readings -- `georeferencing_source` and its three
