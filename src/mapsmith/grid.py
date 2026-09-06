@@ -56,13 +56,15 @@ OFFSET = {"area": 0.5, "point": 0.0}
 #: that a search for it finds every use.
 TAG = "AREA_OR_POINT"
 
-#: The two `crs_decisions` keys this module contributes, and the only two
-#: MapSmith adds to that object beyond the ones section 3.7 of the manifest
-#: specification fixes. Prefixed for the reason `describe` gives; named here so
-#: that the guard in the test suite can read the vocabulary instead of being
-#: told it.
-REGISTRATION_KEY = "x-mapsmith:raster_registration"
-REGISTRATION_REASON_KEY = "x-mapsmith:raster_registration_reason"
+#: The two `crs_decisions` keys this module contributes. Declared in
+#: `provenance.CRS_EXTENSIONS` with every other extension MapSmith adds to
+#: that object, each with the sentence saying why it is not a synonym of a
+#: key the specification already has -- one place, so the ratchet has
+#: something to be a ratchet over.
+from .provenance import (
+    REGISTRATION_KEY,
+    REGISTRATION_REASON_KEY,
+)
 
 
 def registration(dataset: Any) -> str:

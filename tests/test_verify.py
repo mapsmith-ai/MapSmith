@@ -728,6 +728,26 @@ def test_every_crs_decisions_key_in_the_source_obeys_the_spec():
     # keys -- so the floor is on the sites visited.
     assert sites >= 60, f"only {sites} write sites of `crs_decisions` seen in the source"
 
+    # A key of ours has to be DECLARED, with the sentence saying why it is not a
+    # synonym. The prefix rule above cannot ask that: `x-mapsmith:measurement_crs`
+    # passes it, and `measurement_crs` is one of the two synonyms that started
+    # all of this. Whether a name means what `source_crs` means is not a
+    # mechanical question, so the ratchet does the only thing available -- it
+    # makes whoever adds a key write the answer down.
+    from mapsmith.provenance import CRS_EXTENSIONS
+
+    undeclared = {
+        key: where
+        for key, where in found.items()
+        if key.startswith("x-mapsmith:") and key not in CRS_EXTENSIONS
+    }
+    assert not undeclared, (
+        f"these `crs_decisions` keys are ours and undeclared: {undeclared}. Add "
+        "each to `provenance.CRS_EXTENSIONS` with the sentence that says why it is "
+        "not a synonym of a key section 3.7 already recommends -- that sentence is "
+        "the whole point, and a prefix does not supply it."
+    )
+
     offenders = {
         key: where
         for key, where in found.items()
@@ -1655,4 +1675,66 @@ def test_every_reprojected_input_names_a_real_argument():
         "The point of the key is that a reader can find the argument in their own "
         "call; a local variable's name sends them looking for something that is "
         "not there."
+    )
+
+
+def test_every_declared_extension_is_actually_written_somewhere():
+    """The other half of the registry, asked where it can be answered.
+
+    The AST sweep cannot ask it: three of the six keys are written inside
+    `alignment_decisions` and `manifest_decisions`, which it records as blind
+    spots by design rather than reading through. Comparing the registry against
+    what that sweep sees therefore called three live keys stale -- the check was
+    wrong, not the code.
+
+    So the question is asked of the source as a whole: a declared key that no
+    line writes is a name nobody emits, and a registry of those is a list that
+    grows and never shrinks. The reason each key exists is in the registry; this
+    only asks that the key still does.
+    """
+    # The registry's OWN declaration is cut out of the text first, and without
+    # that this test cannot fail: declaring a key is what puts it in the source,
+    # so every entry would find itself. Fourth guard-that-cannot-fail written
+    # today, and the sabotage found it in seconds (D-079).
+    import ast
+    from pathlib import Path
+
+    import mapsmith
+    from mapsmith.provenance import CRS_EXTENSIONS
+
+    root = Path(mapsmith.__file__).parent
+    home = root / "provenance.py"
+    lines = home.read_text(encoding="utf-8").splitlines(keepends=True)
+    for node in ast.parse("".join(lines)).body:
+        targets = getattr(node, "targets", []) or [getattr(node, "target", None)]
+        if any(getattr(t, "id", None) == "CRS_EXTENSIONS" for t in targets if t):
+            del lines[node.lineno - 1 : node.end_lineno]
+            break
+    else:  # pragma: no cover - the registry moved and this test is now blind
+        raise AssertionError("CRS_EXTENSIONS is no longer a module-level assignment")
+
+    source = "".join(lines) + chr(10).join(
+        module.read_text(encoding="utf-8")
+        for module in sorted(root.rglob("*.py"))
+        if module != home
+    )
+    unwritten = [
+        key
+        for key, name in (
+            (key, key.removeprefix("x-mapsmith:")) for key in CRS_EXTENSIONS
+        )
+        if key not in source and name not in source
+    ]
+    assert not unwritten, (
+        f"these are declared in CRS_EXTENSIONS and written by no line: {unwritten}. "
+        "Remove them — a registry of names nobody emits is a list that only grows, "
+        "and the next reader believes it."
+    )
+    assert len(CRS_EXTENSIONS) >= 5, (
+        f"only {len(CRS_EXTENSIONS)} extensions declared, which cannot be right"
+    )
+    thin = [key for key, why in CRS_EXTENSIONS.items() if len(why) < 80]
+    assert not thin, (
+        f"these are declared with no real reason: {thin}. The sentence is the point "
+        "of the registry: it is what a prefix cannot supply."
     )

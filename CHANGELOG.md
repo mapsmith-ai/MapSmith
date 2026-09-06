@@ -137,6 +137,18 @@ guard existed and could not fail.**
   now hold the line — one fails if any hand-written writer skips
   `verify.enforce`, the other ratchets their count downwards only.
 
+### Changed
+
+- **Every `crs_decisions` key MapSmith adds is declared in one place, with
+  the sentence that says why it is not a synonym.** The prefix rule cannot
+  ask that question: `x-mapsmith:measurement_crs` passes it exactly as
+  `x-mapsmith:computed_in` does, and `measurement_crs` is one of the two
+  synonyms this whole line of work started from -- with a prefix in front
+  of it, it would have sailed through. Whether a name means what
+  `source_crs` means is not mechanical, so the registry does the only
+  thing available: a key that is not declared fails the suite until
+  somebody writes the reason down. `provenance.CRS_EXTENSIONS`.
+
 ### Fixed
 
 - **The ArcPy sidecar inherited the server's working directory.**

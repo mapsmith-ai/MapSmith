@@ -45,6 +45,62 @@ INPUTS_REPROJECTED = "x-mapsmith:inputs_reprojected"
 #: caller's moved permanently, and the transformation was applied twice.
 ROUND_TRIP = "x-mapsmith:round_trip"
 
+#: The two `crs_decisions` keys `grid` contributes. Here rather than there so
+#: that every extension MapSmith adds to that object is declared in one place.
+REGISTRATION_KEY = "x-mapsmith:raster_registration"
+REGISTRATION_REASON_KEY = "x-mapsmith:raster_registration_reason"
+
+#: **Every `crs_decisions` key MapSmith adds, with the sentence that says why
+#: it is not a synonym of one the specification already has.**
+#:
+#: D-077 rule 1 forbids inventing a second name for a key section 3.7 already
+#: recommends, and the guards derive the rest of that rule from the schema --
+#: but they cannot derive THIS half. A prefixed key passes the prefix check
+#: whether or not it means what `source_crs` means, so the two synonyms that
+#: started all of this (`measurement_crs`, `declared_output_crs`) would have
+#: sailed through with an `x-mapsmith:` in front of them.
+#:
+#: So this is a ratchet on the SET, not a derivation of the judgement: a key
+#: that is not here fails the suite until somebody adds it **with the reason**.
+#: It does not decide whether a name is a synonym; it makes the decision be
+#: written down by the person making it, which is the only mechanism available
+#: for a question that is not mechanical.
+CRS_EXTENSIONS: dict[str, str] = {
+    INPUTS_REPROJECTED: (
+        "Not `source_crs`: that says where the OPERATION's coordinates were, and "
+        "these are other inputs brought to meet them. The output never was in "
+        "the CRS named here."
+    ),
+    ROUND_TRIP: (
+        "Not `target_crs`: nothing ended up there. The coordinates went out to "
+        "`analysis_crs` and came back, so the specification's pair would describe "
+        "a move that was undone."
+    ),
+    "x-mapsmith:input_crs_discarded": (
+        "Not `source_crs`, which the specification defines as the system the "
+        "coordinates WERE IN. This operation exists because that declaration is "
+        "wrong: a traverse on an assumed grid was never in the CRS its file "
+        "claimed, so the spec key would state what the run denies."
+    ),
+    "x-mapsmith:computed_in": (
+        "Not `analysis_crs`, and its absence is the point. The Esri stack buffers "
+        "geodesically in the input's own geographic CRS, so no analysis CRS was "
+        "chosen; naming one would let a consumer read EPSG:4326 as the CRS a "
+        "metric computation happened in."
+    ),
+    REGISTRATION_KEY: (
+        "Cell registration is not a coordinate system. Section 3.7 has no key for "
+        "it, and section 3.8 lists AREA_OR_POINT under `environment` -- which is a "
+        "tag INSIDE the file, not configuration beside it, so that list and this "
+        "key disagree and the specification is the one to fix."
+    ),
+    REGISTRATION_REASON_KEY: (
+        "Not `reason`, which belongs to the CRS decision and is already taken. Two "
+        "different reasons under one key silently replaced each other once, and a "
+        "test caught it."
+    ),
+}
+
 
 def alignment_decisions(
     analysis_crs: Any,
