@@ -61,7 +61,14 @@ def test_merge_count_is_the_sum_and_partial_columns_are_named(two_layers, tmp_pa
     manifest = _manifest(out)
     assert manifest["operation"] == "merge_layers"
     assert any("'b'" in note and "null-filled" in note for note in manifest["notes"])
-    assert "no reprojection needed" in manifest["crs_decisions"]["reason"]
+    # The ordinary branch says which CRS it worked in, and says that nothing
+    # moved by carrying no `inputs_reprojected` at all. Until 2026-09-06 several
+    # sibling operations left `crs_decisions` empty here, which cannot be told
+    # apart from nobody having looked.
+    decisions = manifest["crs_decisions"]
+    assert decisions["analysis_crs"] == "EPSG:32632"
+    assert "nothing was reprojected" in decisions["reason"]
+    assert "x-mapsmith:inputs_reprojected" not in decisions
 
 
 def test_merge_reprojects_to_the_first_layer_and_records_it(two_layers, tmp_path):
@@ -74,7 +81,17 @@ def test_merge_reprojects_to_the_first_layer_and_records_it(two_layers, tmp_path
     frame = gpd.read_parquet(out)
     assert frame.crs.to_epsg() == 32632
     manifest = _manifest(out)
-    assert "reprojected to the first" in manifest["crs_decisions"]["reason"]
+    # Which layer moved, and from where — not a count. "1 of 2 were
+    # reprojected" leaves the reader to work out which one, and the answer is
+    # not recoverable from the output.
+    decisions = manifest["crs_decisions"]
+    assert decisions["analysis_crs"] == "EPSG:32632"
+    assert decisions["x-mapsmith:inputs_reprojected"] == [
+        {"argument": "input_2", "from": "EPSG:4326"}
+    ]
+    # And how. One layer moved, so the transformation goes in the key the
+    # specification has for it.
+    assert decisions["transformation"]["is_ballpark"] is False
     # The reprojection round-trip costs float precision, not correctness.
     assert float(frame.area.sum()) == pytest.approx(5.0, abs=1e-6)
 

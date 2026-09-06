@@ -139,6 +139,20 @@ guard existed and could not fail.**
 
 ### Fixed
 
+- **Five more operations stopped reprojecting in silence, and five
+  manifests stopped being empty where a decision had been made.**
+  `clip_layer`, `overlay_layers`, `merge_layers`, `spatial_join` and
+  `count_in_polygons` bring a secondary input to one CRS. Each wrote
+  `crs_decisions` only when something had to move -- so the ordinary
+  manifest was `{}`, and *computed in the input's CRS* could not be told
+  from *nobody recorded it*. None recorded the transformation, and none
+  named which input had moved. All five now share one helper, for the
+  reason `readers.py` exists: the same decision in nine copies is nine
+  chances for one to be missing a branch.
+
+  The worked example on the front page shows the difference: the CRS
+  decision column for `clip_layer` said a dash, in the example published
+  as evidence that this format records decisions.
 - **The image fetched 15 MB of DuckDB on its first query, in the mode that
   promises no network egress.** The `spatial` extension is a first-use
   download, and the image already bakes the embedding weights for exactly

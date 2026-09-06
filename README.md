@@ -597,7 +597,7 @@ flowchart TB
   BAD:::bad
   BUFFER["<b>buffer_layer</b><br/>74 operations &rarr; 29 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
   PLAN --> BUFFER
-  NEAR["<b>clip_layer</b><br/>74 operations &rarr; 14 candidates &rarr; chosen<br/>12/12 checks"]
+  NEAR["<b>clip_layer</b><br/>74 operations &rarr; 14 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>12/12 checks"]
   BUFFER --> NEAR
   HEIGHT["<b>zonal_statistics</b><br/>74 operations &rarr; 4 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
   NEAR --> HEIGHT
@@ -621,7 +621,7 @@ flowchart TB
 | step | operation | arguments that mattered | CRS decision, recorded | checks |
 |---|---|---|---|---|
 | buffer | `buffer_layer` | `distance_meters=1500` | `EPSG:32610` — estimated UTM zone for metric buffering on a geographic CRS | 9/9 |
-| near | `clip_layer` | `mask_path=$buffer` | — | 12/12 |
+| near | `clip_layer` | `mask_path=$buffer` | `EPSG:4326` — the mask is already in the input layer's CRS; nothing was reprojected | 12/12 |
 | height | `zonal_statistics` | `zones_path=$near`, `stats=['mean', 'min']` | `EPSG:4326` — zones and raster share the same CRS | 7/7 |
 | area | `measure_area` | `input_path=$height`, `method=geodesic` | `WGS 84 (ellipsoidal)` — ground area computed on the ellipsoid the layer's CRS names; no map plane is involved, so no projection distortion enters | 10/10 |
 | filter | `select_features` | `input_path=$area`, `by=field_between`, `field=mean`, `maximum=120` | `EPSG:4326` — no CRS change: selecting rows does not touch coordinates | 10/10 |

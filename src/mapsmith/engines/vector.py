@@ -18,7 +18,7 @@ import pandas as pd
 import shapely
 
 from .. import antimeridian, readers, stacks, verify
-from ..provenance import InputRecord, ProvenanceRecord
+from ..provenance import InputRecord, ProvenanceRecord, alignment_decisions
 
 
 def _engine_info() -> dict[str, str]:
@@ -248,12 +248,16 @@ def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
     if verify.has_critical_failure(pre):
         record.add_verification(pre).finish().write_for(output_path)
         verify.enforce(pre, "clip_layer")
-    if gdf.crs != mask.crs:
+    aligned = gdf.crs != mask.crs
+    record.crs_decisions = alignment_decisions(
+        gdf.crs,
+        "the mask is brought to the input layer's CRS before clipping"
+        if aligned
+        else "the mask is already in the input layer's CRS; nothing was reprojected",
+        [("mask_path", mask.crs)] if aligned else [],
+    )
+    if aligned:
         mask = mask.to_crs(gdf.crs)
-        record.crs_decisions = {
-            "analysis_crs": verify.crs_label(gdf.crs),
-            "reason": "mask reprojected to the input layer CRS before clipping",
-        }
     # extents can only be compared once both layers share a CRS
     pre += verify.verify_input_pairs("clip_layer", input_path=gdf, mask_path=mask)
     with verify.audit_on_failure(record, output_path, pre):
@@ -435,12 +439,16 @@ def overlay(
     if verify.has_critical_failure(pre):
         record.add_verification(pre).finish().write_for(output_path)
         verify.enforce(pre, "overlay_layers")
-    if left.crs != right.crs:
+    aligned = left.crs != right.crs
+    record.crs_decisions = alignment_decisions(
+        left.crs,
+        "the overlay layer is brought to the input CRS before overlaying"
+        if aligned
+        else "both layers are already in this CRS; nothing was reprojected",
+        [("overlay_path", right.crs)] if aligned else [],
+    )
+    if aligned:
         right = right.to_crs(left.crs)
-        record.crs_decisions = {
-            "analysis_crs": verify.crs_label(left.crs),
-            "reason": "overlay layer reprojected to the input CRS before overlaying",
-        }
     else:
         record.crs_decisions = {
             "analysis_crs": verify.crs_label(left.crs),
@@ -714,22 +722,28 @@ def merge(input_paths: list[str], output_path: str) -> dict[str, Any]:
         record.add_verification(pre).finish().write_for(output_path)
         verify.enforce(pre, "merge_layers")
     target = frames[0].crs
-    moved = sum(1 for frame in frames[1:] if not verify.same_crs(frame.crs, target))
+    # Named and paired with the CRS each one was in, not counted: 'three of
+    # five were reprojected' does not tell a reader WHICH three, and with
+    # several source CRSs there is no single transformation to report -- so
+    # each entry carries its own.
+    moved = [
+        (f"input_{i}", frame.crs)
+        for i, frame in enumerate(frames, start=1)
+        if not verify.same_crs(frame.crs, target)
+    ]
+    record.crs_decisions = alignment_decisions(
+        target,
+        f"{len(moved)} of {len(frames)} layers are brought to the first "
+        "layer's CRS before merging"
+        if moved
+        else "all layers share the first layer's CRS; nothing was reprojected",
+        moved,
+    )
     if moved:
         frames = [
             frame if verify.same_crs(frame.crs, target) else frame.to_crs(target)
             for frame in frames
         ]
-        record.crs_decisions = {
-            "analysis_crs": verify.crs_label(target),
-            "reason": f"{moved} of {len(frames)} layers reprojected to the first "
-            "layer's CRS before merging",
-        }
-    else:
-        record.crs_decisions = {
-            "analysis_crs": verify.crs_label(target),
-            "reason": "all layers share the first layer's CRS; no reprojection needed",
-        }
     # A column missing from one input becomes nulls in its rows — data that
     # looks measured and is actually absent. The manifest names those columns.
     per_layer = [set(frame.columns) - {frame.geometry.name} for frame in frames]
@@ -1289,12 +1303,16 @@ def spatial_join(
     if verify.has_critical_failure(pre):
         record.add_verification(pre).finish().write_for(output_path)
         verify.enforce(pre, "spatial_join")
-    if left.crs != right.crs:
+    aligned = left.crs != right.crs
+    record.crs_decisions = alignment_decisions(
+        left.crs,
+        "the right layer is brought to the left layer's CRS before joining"
+        if aligned
+        else "both layers are already in this CRS; nothing was reprojected",
+        [("right_path", right.crs)] if aligned else [],
+    )
+    if aligned:
         right = right.to_crs(left.crs)
-        record.crs_decisions = {
-            "analysis_crs": verify.crs_label(left.crs),
-            "reason": "right layer reprojected to the left layer CRS before joining",
-        }
     pre += verify.verify_input_pairs("spatial_join", left_path=left, right_path=right)
     with verify.audit_on_failure(record, output_path, pre):
         joined = gpd.sjoin(left, right, predicate=predicate, how="inner")
@@ -2344,12 +2362,16 @@ def count_in_polygons(
     if verify.has_critical_failure(pre):
         record.add_verification(pre).finish().write_for(output_path)
         verify.enforce(pre, "count_in_polygons")
-    if not verify.same_crs(points.crs, polygons.crs):
+    aligned = not verify.same_crs(points.crs, polygons.crs)
+    record.crs_decisions = alignment_decisions(
+        polygons.crs,
+        "the points are brought onto the polygons' CRS before counting"
+        if aligned
+        else "the points are already in the polygons' CRS; nothing was reprojected",
+        [("points_path", points.crs)] if aligned else [],
+    )
+    if aligned:
         points = points.to_crs(polygons.crs)
-        record.crs_decisions = {
-            "analysis_crs": verify.crs_label(polygons.crs),
-            "reason": "points reprojected onto the polygons' CRS before counting",
-        }
     else:
         record.crs_decisions = {
             "analysis_crs": verify.crs_label(polygons.crs),

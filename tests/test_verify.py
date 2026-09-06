@@ -724,14 +724,22 @@ def test_every_crs_decisions_key_in_the_source_obeys_the_spec():
     )
 
     # A ratchet, not an allowlist: an entry is a blind spot, not a thing to
-    # check, and the two here are blind for reasons that were verified rather
-    # than assumed. `grid.manifest_decisions` returns keys this sweep cannot
+    # check, and the three here are blind for reasons that were verified
+    # rather than assumed. `alignment_decisions` builds the object for the
+    # operations that bring a secondary input to one CRS, and its own keys
+    # are pinned by `test_alignment_decisions_writes_only_conforming_keys`
+    # below -- which exercises BOTH its branches, where the conformance
+    # sweep only reaches the one where nothing moved. `grid.manifest_decisions` returns keys this sweep cannot
     # read and the conformance sweep over real records does. `redact_secrets`
     # cannot introduce a key at all: on a dict it rebuilds `{k: ...}` for the
     # keys it was given, so it re-emits whatever reached it and nothing else.
     # A third such function turns this red, so whoever adds it decides which
     # sweep covers it instead of discovering later that neither did.
-    assert merged_from <= {"manifest_decisions", "redact_secrets"}, (
+    assert merged_from <= {
+        "manifest_decisions",
+        "redact_secrets",
+        "alignment_decisions",
+    }, (
         f"a dict is merged into `crs_decisions` from {sorted(merged_from)}, whose keys "
         "this sweep cannot read. Either write them out, or confirm the conformance "
         "sweep reaches every branch of it and add it here."
@@ -1450,3 +1458,63 @@ def test_a_crash_after_passing_preconditions_still_records_the_failure(tmp_path)
     assert len(failed) == 1 and failed[0]["name"] == "x-mapsmith:operation_completed"
     # And it does not claim the passing checks say anything about the result.
     assert "BEFORE that point" in failed[0]["detail"]
+
+
+def test_alignment_decisions_writes_only_conforming_keys():
+    """The keys of the one helper both sweeps have to take on trust.
+
+    `alignment_decisions` is a function, so the AST sweep records it as a blind
+    spot rather than reading through it, and the conformance sweep only reaches
+    its quiet branch — the fixtures hand every operation inputs that already
+    share a CRS, so nothing is ever reprojected in them. Between the two, the
+    branch that emits the most keys is seen by neither.
+
+    So it is pinned here, on both branches, against the same predicate the
+    other two use. Not a list of expected keys: whatever it emits has to be a
+    key section 3.7 recommends or a MapSmith extension, and a key added
+    tomorrow is judged by the rule rather than by whether somebody remembered
+    to add it to an assertion.
+    """
+    from mapsmith.provenance import alignment_decisions
+
+    fixed = _spec_crs_keys()
+    cases = {
+        "nothing moved": alignment_decisions("EPSG:32632", "already aligned"),
+        "one moved": alignment_decisions(
+            "EPSG:32632", "the mask was aligned", [("mask_path", "EPSG:4267")]
+        ),
+        "several moved": alignment_decisions(
+            "EPSG:32632",
+            "two layers were aligned",
+            [("input_2", "EPSG:4326"), ("input_3", "EPSG:4267")],
+        ),
+    }
+    for label, decisions in cases.items():
+        offenders = [
+            key
+            for key in decisions
+            if key not in fixed and not _EXTENSION_KEY.fullmatch(key)
+        ]
+        assert not offenders, f"{label}: {offenders}"
+
+    # And the substance, because conforming keys with nothing in them would
+    # pass the paragraph above. One input moved: the transformation goes in the
+    # specification's own key. Several: there is no single transformation, so
+    # each entry carries its own and the top-level key is absent rather than
+    # holding one of them and implying it covers both.
+    one = cases["one moved"]
+    assert isinstance(one["transformation"]["is_ballpark"], bool)
+    assert one[INPUTS_REPROJECTED] == [{"argument": "mask_path", "from": "EPSG:4267"}]
+
+    several = cases["several moved"]
+    assert "transformation" not in several
+    assert [entry["argument"] for entry in several[INPUTS_REPROJECTED]] == [
+        "input_2",
+        "input_3",
+    ]
+    assert all(
+        isinstance(entry["transformation"]["is_ballpark"], bool)
+        for entry in several[INPUTS_REPROJECTED]
+    )
+
+    assert INPUTS_REPROJECTED not in cases["nothing moved"]

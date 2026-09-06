@@ -70,7 +70,15 @@ def test_overlay_records_the_reprojection_decision(two_squares, tmp_path):
     result = vector.overlay(a, str(b_geo), str(out))
     assert result["feature_count"] == 1
     manifest = _manifest(out)
-    assert "reprojected" in manifest["crs_decisions"]["reason"]
+    # Which input moved and how, rather than a sentence containing the word.
+    # A prose assertion passes on any rewording and fails on every rewording,
+    # which is the wrong way round: it survives a change of meaning and breaks
+    # on a change of style.
+    decisions = manifest["crs_decisions"]
+    assert decisions["x-mapsmith:inputs_reprojected"] == [
+        {"argument": "overlay_path", "from": "EPSG:4326"}
+    ]
+    assert decisions["transformation"]["is_ballpark"] is False
     # The reprojection round-trip costs float precision, not correctness.
     assert float(gpd.read_parquet(out).area.sum()) == pytest.approx(25.0, abs=1e-6)
 

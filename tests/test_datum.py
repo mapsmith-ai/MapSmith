@@ -238,6 +238,40 @@ def _transforming_functions() -> dict[str, set[str]]:
     times over: a hand-written list is worth exactly what somebody remembered to
     put in it, and stops guarding the moment a new operation is added.
     """
+    # Functions anywhere in the package that put a `transformation` key into a
+    # dictionary. Derived, because "records the transformation" stopped meaning
+    # "contains the word" the moment the recording was factored into a helper --
+    # which is the ordinary thing to do with a decision made in nine places, and
+    # it silently un-recorded five operations that had just been wired up. Same
+    # shape as 2026-09-05, when extracting a check name into a constant removed
+    # it from the vocabulary rule: the fix belongs in the derivation.
+    recorders: set[str] = set()
+    for path in sorted(ENGINES.parent.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            writes_key = any(
+                isinstance(key, ast.Constant) and key.value == "transformation"
+                for inner in ast.walk(node)
+                if isinstance(inner, ast.Dict)
+                for key in inner.keys
+                if key is not None
+            ) or any(
+                isinstance(target, ast.Subscript)
+                and isinstance(target.slice, ast.Constant)
+                and target.slice.value == "transformation"
+                for inner in ast.walk(node)
+                if isinstance(inner, ast.Assign)
+                for target in inner.targets
+            )
+            if writes_key:
+                recorders.add(node.name)
+    assert "alignment_decisions" in recorders, (
+        "the derivation of what counts as recording found nothing that records - "
+        f"it matched {sorted(recorders)}"
+    )
+
     found: dict[str, set[str]] = {}
     for path in sorted(ENGINES.glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -260,6 +294,15 @@ def _transforming_functions() -> dict[str, set[str]]:
             records = any(
                 isinstance(inner, ast.Constant) and inner.value == "transformation"
                 for inner in ast.walk(node)
+            ) or any(
+                isinstance(inner, ast.Call)
+                and (
+                    inner.func.attr
+                    if isinstance(inner.func, ast.Attribute)
+                    else getattr(inner.func, "id", None)
+                )
+                in recorders
+                for inner in ast.walk(node)
             )
             if reprojects and not records:
                 found.setdefault(path.name, set()).add(node.name)
@@ -279,10 +322,13 @@ STILL_SILENT = {
     "raster.py": {"clip_raster", "zonal_statistics"},
     "sampling.py": {"elevation_profile", "sample_raster_at_points"},
     "summaries.py": {"compare_layers", "nearest_neighbour_index"},
-    "vector.py": {
-        "buffer", "centroid", "clip", "count_in_polygons", "merge",
-        "nearest_join", "overlay", "simplify", "spatial_join",
-    },
+    # Five came off on 2026-09-06 — `clip`, `overlay`, `merge`, `spatial_join`,
+    # `count_in_polygons` — all of them the same shape: bring a secondary input
+    # to the analysis CRS. They share `provenance.alignment_decisions` now, so
+    # the decision is made once instead of nine times. The four left are the
+    # other shape: a round trip out to a metric CRS and back, where there are
+    # two transformations and the output lands in the CRS it started in.
+    "vector.py": {"buffer", "centroid", "nearest_join", "simplify"},
     "whitebox_engine.py": {"viewshed", "watershed"},
 }
 

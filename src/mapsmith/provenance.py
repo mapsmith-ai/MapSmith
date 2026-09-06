@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path, PurePath
@@ -36,6 +37,64 @@ SPEC_VERSION = "1.0.0-draft.3"
 #: not be. Where it went is already `analysis_crs`, so only where it came from
 #: is worth recording.
 INPUTS_REPROJECTED = "x-mapsmith:inputs_reprojected"
+
+
+def alignment_decisions(
+    analysis_crs: Any,
+    reason: str,
+    moved: Sequence[tuple[str, Any]] = (),
+) -> dict[str, Any]:
+    """`crs_decisions` for an operation that brings its other inputs to one CRS.
+
+    Nine operations in `vector` and several elsewhere do the same three things
+    and each did them differently, or not at all. Written once, for the reason
+    `readers.py` exists: the same decision in nine copies is nine chances for
+    one of them to be missing a branch.
+
+    Three things, and each was wrong somewhere before 2026-09-06:
+
+    * **It is written on both branches.** Most of these built `crs_decisions`
+      only when something had to move, so the ordinary manifest was `{}` — and
+      a reader cannot tell "computed in the input's CRS" from "nobody recorded
+      it". Those are different claims.
+    * **It says which input moved**, under `INPUTS_REPROJECTED`, rather than
+      leaving the reader to guess from a sentence.
+    * **It says how.** `to_crs` reaches for PROJ itself, so the record carries
+      what the engine will actually get. Across two datums with no grid on the
+      machine that is tens of metres, and `is_ballpark` is the boolean a
+      consumer branches on.
+
+    `moved` is `(argument name, the CRS it was in)` for each input that really
+    was reprojected. The transformation lands in the specification's own
+    `transformation` key when exactly one input moved, and inside each entry
+    when several did with different pairs — once, in the place able to hold it,
+    rather than twice.
+    """
+    from . import datum
+
+    decisions: dict[str, Any] = {
+        "analysis_crs": _crs_label(analysis_crs),
+        "reason": reason,
+    }
+    if not moved:
+        return decisions
+    entries = [
+        {"argument": argument, "from": _crs_label(source)} for argument, source in moved
+    ]
+    shifts = [datum.default_operation(source, analysis_crs) for _, source in moved]
+    if len(moved) == 1:
+        decisions["transformation"] = shifts[0]
+    else:
+        for entry, shift in zip(entries, shifts, strict=True):
+            entry["transformation"] = shift
+    decisions[INPUTS_REPROJECTED] = entries
+    return decisions
+
+
+def _crs_label(crs: Any) -> str:
+    from . import verify
+
+    return verify.crs_label(crs)
 
 
 def _utcnow() -> str:
