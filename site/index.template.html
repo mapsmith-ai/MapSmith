@@ -244,7 +244,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
       <li><span class="field">engine.version</span>
         <p>Which build produced the numbers. Terrain algorithms change between releases, and so do their outputs.</p></li>
       <li><span class="field">verification[]</span>
-        <p>Deterministic checks, recorded whether they passed or failed. Written <em>before</em> a critical failure raises, so the audit trail survives the error.</p></li>
+        <p>Deterministic checks, recorded whether they passed or failed. Written <em>before</em> a critical failure raises, so the audit trail survives the error. Every name one can carry — the format's own, and MapSmith's <code>x-mapsmith:</code> extensions — is <a href="https://github.com/mapsmith-ai/MapSmith/blob/main/docs/manifest-vocabulary.md">written down</a>, generated from the source, so a consumer can branch on the name instead of reading prose.</p></li>
       <li><span class="field">started_at / finished_at</span>
         <p>UTC, from the process that ran it — not from whoever is reading it later.</p></li>
     </ul>

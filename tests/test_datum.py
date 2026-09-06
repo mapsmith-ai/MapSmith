@@ -274,11 +274,18 @@ def _transforming_functions() -> dict[str, set[str]]:
 
     found: dict[str, set[str]] = {}
     reprojecting: dict[str, set[str]] = {}
+    calls: dict[str, dict[str, set[str | None]]] = {}
+    recorded_here: dict[tuple[str, str], bool] = {}
     for path in sorted(ENGINES.glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
-            if not isinstance(node, ast.FunctionDef) or node.name.startswith("_"):
+            if not isinstance(node, ast.FunctionDef):
                 continue
+            # Private functions are NOT exempt, and skipping them was a hole with
+            # two occupants: `_geodesic_areas` and `_geodesic_lengths` both cross
+            # a datum with `to_crs("EPSG:4326")` and record nothing. A helper is
+            # where a decision goes to stop being visible, which is the reason
+            # the sweep above learned to follow them.
             reprojects = any(
                 isinstance(inner, ast.Call)
                 and isinstance(inner.func, ast.Attribute)
@@ -309,6 +316,33 @@ def _transforming_functions() -> dict[str, set[str]]:
                 reprojecting.setdefault(path.name, set()).add(node.name)
             if reprojects and not records:
                 found.setdefault(path.name, set()).add(node.name)
+            calls.setdefault(path.name, {})[node.name] = {
+                (inner.func.attr if isinstance(inner.func, ast.Attribute)
+                 else getattr(inner.func, "id", None))
+                for inner in ast.walk(node)
+                if isinstance(inner, ast.Call)
+            }
+            recorded_here[(path.name, node.name)] = records
+
+    # A private helper that reprojects is not silent if every public function
+    # that calls it records. It computes the transformation and hands it up --
+    # `_geodesic_areas` and `_geodesic_lengths` do exactly that -- and the
+    # operation writes it. Judging the helper alone was wrong in both
+    # directions: the first version exempted every private function outright,
+    # which hid these two for weeks; judging them in isolation calls them
+    # silent when the record is complete.
+    for module, functions in calls.items():
+        for name in list(found.get(module, set())):
+            if not name.startswith("_"):
+                continue
+            callers = [
+                caller for caller, called in functions.items()
+                if name in called and not caller.startswith("_")
+            ]
+            if callers and all(recorded_here.get((module, c)) for c in callers):
+                found[module].discard(name)
+        if not found.get(module):
+            found.pop(module, None)
     return found, reprojecting
 
 

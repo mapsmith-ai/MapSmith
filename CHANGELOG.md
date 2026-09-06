@@ -13,6 +13,17 @@ guard existed and could not fail.**
 
 ### Fixed
 
+- **The manifest on the front page had stopped being the manifest MapSmith
+  writes.** It showed `buffer_layer` reprojecting a geographic layer to
+  EPSG:32632 and back, with no `x-mapsmith:round_trip` in `crs_decisions` -- the
+  key documented the same day in `docs/manifest-vocabulary.md` as the one that
+  says the coordinates came back -- and two verification entries where the
+  operation emits nine. Both conformance guards beside it passed, because both
+  ask whether what is shown is permitted and the schema permits an absent
+  extension key on purpose. The record is now copied from a real run, and
+  `tests/test_showcase.py` re-runs that operation and compares the
+  `crs_decisions` key sets rather than checking against a list that would need
+  editing every time a key is added.
 - **A dataset on disk with no manifest, from one invisible character.** With a
   workspace set, writing to `out.parquet.` wrote `out.parquet` and *then*
   raised: Windows strips a trailing dot when it creates a file, so the data
@@ -168,6 +179,27 @@ guard existed and could not fail.**
 
 ### Fixed
 
+- **`measure_length(method="geodesic")` measured WGS 84 coordinates on the
+  source CRS's ellipsoid, and said the opposite.** On NAD27 that is Clarke
+  1866 arithmetic applied to numbers that are already WGS 84 -- 2.61 m per
+  100 km, small as a number and wrong as a statement. Its twin
+  `measure_area` had been corrected for exactly this, with the lesson
+  written beside the fix, and the second copy was never touched.
+  `measure_area`'s own `reason` still carried the old sentence too,
+  contradicting the `analysis_crs` two lines above it.
+- **`nearest_join` reprojected in silence on its projected branch, and
+  described a transformation the engine never ran on the other.** It brings
+  its right layer to the left layer's CRS and only then takes both out to an
+  estimated UTM zone: the record named the pair (right, UTM), which PROJ was
+  never asked for, and on NAD27 came out `is_ballpark: true` for a run that
+  had applied a seven-metre shift. **A manifest accusing an engine of
+  skipping a datum shift it did not skip is the worst direction to be wrong
+  in**, and it is the one this module exists to prevent.
+- **Both geodesic measurements now record the transformation that puts the
+  coordinates on WGS 84**, which crosses a datum on anything else. The
+  ratchet had been exempting private helpers outright, which hid these two
+  for weeks; it follows the callers now -- a helper is not silent when every
+  public function that calls it records.
 - **The ArcPy sidecar inherited the server's working directory.**
   `stacks.esri_run` spawned it with no `cwd=`, so anything ArcPy wrote
   relative to its working directory would land wherever MapSmith happened

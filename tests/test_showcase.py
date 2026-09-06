@@ -1487,6 +1487,80 @@ def test_every_manifest_a_reader_can_see_obeys_the_key_rule():
             )
 
 
+def test_the_front_page_record_carries_the_keys_the_operation_really_writes():
+    """The two guards above cannot see a key that is MISSING.
+
+    Both of them ask whether what is shown is permitted. Neither asks whether
+    it is complete, and the schema permits an absent extension key by design —
+    so a hand-typed record can quietly stop being the record the software
+    writes, which is what happened twice. It lacked `spec_version` for two
+    releases; and on 2026-09-06, the day `docs/manifest-vocabulary.md` was
+    published to tell implementers that a metric operation on a geographic CRS
+    records `x-mapsmith:round_trip`, the front page was still showing exactly
+    that operation with no such key.
+
+    So this one does not compare the page against a list. It RUNS the operation
+    the page names, with the parameters the page shows, and compares the key
+    set — the only version of this check that cannot itself go stale when the
+    next extension key is added.
+    """
+    pytest.importorskip("geopandas")
+    import tempfile
+
+    blocks = re.findall(r"```json\n(.*?)\n```", README.read_text(encoding="utf-8"), re.DOTALL)
+    shown = [
+        json.loads(block)
+        for block in blocks
+        if '"operation"' in block and '"engine"' in block
+    ]
+    shown = [m for m in shown if m.get("operation") == "buffer_layer" and m.get("crs_decisions")]
+    assert shown, (
+        "the README no longer shows a `buffer_layer` record with `crs_decisions`. "
+        "If the front page moved to another operation, point this test at it — "
+        "do not delete it, or the page goes back to being unchecked."
+    )
+
+    import geopandas
+    from shapely.geometry import LineString
+
+    from mapsmith import server
+
+    workspace = Path(tempfile.mkdtemp())
+    source = workspace / "rivers.gpkg"
+    geopandas.GeoDataFrame(
+        {"id": [1]},
+        geometry=[LineString([(9.0, 45.0), (9.01, 45.01)])],
+        crs="EPSG:4326",
+    ).to_file(source, driver="GPKG")
+
+    import os
+
+    previous = os.environ.get("MAPSMITH_WORKSPACE")
+    os.environ["MAPSMITH_WORKSPACE"] = str(workspace)
+    try:
+        run = getattr(server.buffer_layer, "fn", server.buffer_layer)
+        for manifest in shown:
+            distance = manifest["parameters"]["distance_meters"]
+            output = workspace / "out.gpkg"
+            run(input_path=str(source), distance_meters=distance, output_path=str(output))
+            emitted = json.loads(
+                (workspace / "out.gpkg.provenance.json").read_text(encoding="utf-8")
+            )
+            missing = set(emitted["crs_decisions"]) - set(manifest["crs_decisions"])
+            assert not missing, (
+                f"the record on the front page is missing {sorted(missing)} from "
+                f"`crs_decisions`, which `buffer_layer` writes for this very call. "
+                "It is typed by hand and it has drifted. Copy the emitted record "
+                "rather than editing around the gap, and note the change in "
+                "docs/manifest-vocabulary.md if the key is new."
+            )
+    finally:
+        if previous is None:
+            os.environ.pop("MAPSMITH_WORKSPACE", None)
+        else:
+            os.environ["MAPSMITH_WORKSPACE"] = previous
+
+
 def test_the_published_doi_is_the_concept_doi():
     """Two DOIs exist per release and only one is safe to write down.
 

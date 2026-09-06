@@ -17,7 +17,7 @@ import geopandas as gpd
 import pandas as pd
 import shapely
 
-from .. import antimeridian, readers, stacks, verify
+from .. import antimeridian, datum, readers, stacks, verify
 from ..provenance import InputRecord, ProvenanceRecord, alignment_decisions
 
 
@@ -602,15 +602,22 @@ def nearest_join(
                 "estimated UTM zone for metric nearest-distance on a geographic CRS; "
                 "output geometries are returned in the input CRS",
                 moved_right,
+                # The right layer went to the LEFT layer's CRS, not to the UTM
+                # zone: both are taken out to UTM together on the next line.
+                moved_to=original_crs,
                 returned_to=original_crs,
             ),
         }
         left_m, right_m = left.to_crs(analysis_crs), right.to_crs(analysis_crs)
     else:
-        record.crs_decisions = {
-            "analysis_crs": verify.crs_label(original_crs),
-            "reason": "nearest distances measured in the layers' native projected CRS",
-        }
+        record.crs_decisions = alignment_decisions(
+            original_crs,
+            "nearest distances measured in the input layers' own projected CRS"
+            if not moved_right
+            else "the right layer is brought to the left layer's CRS, and the "
+            "distances are measured there",
+            moved_right,
+        )
         left_m, right_m = left, right
     pre += verify.verify_input_pairs("nearest_join", left_path=left_m, right_path=right_m)
     with verify.audit_on_failure(record, output_path, pre):
@@ -1048,7 +1055,7 @@ AREA_METHODS = {"planar", "geodesic"}
 _DISTORTION_TOLERANCE = 0.01
 
 
-def _geodesic_areas(gdf: gpd.GeoDataFrame) -> list[float]:
+def _geodesic_areas(gdf: gpd.GeoDataFrame) -> tuple[list[float], dict[str, Any] | None]:
     """Ground area per feature, on the ellipsoid the layer's own CRS names.
 
     Rings are measured one at a time and holes are subtracted explicitly.
@@ -1075,7 +1082,9 @@ def _geodesic_areas(gdf: gpd.GeoDataFrame) -> list[float]:
     # about a WGS 84 computation is precisely the kind of statement a manifest
     # exists to make true. `.ellipsoid` can also be None on an engineering CRS,
     # which raised an AttributeError instead of saying anything.
-    lonlat = gdf.to_crs("EPSG:4326") if not verify.same_crs(gdf.crs, "EPSG:4326") else gdf
+    moved = not verify.same_crs(gdf.crs, "EPSG:4326")
+    shift = datum.default_operation(gdf.crs, "EPSG:4326") if moved else None
+    lonlat = gdf.to_crs("EPSG:4326") if moved else gdf
     ellipsoid = lonlat.crs.ellipsoid
     if ellipsoid is None:  # pragma: no cover - WGS 84 always names one
         raise ValueError(
@@ -1106,7 +1115,7 @@ def _geodesic_areas(gdf: gpd.GeoDataFrame) -> list[float]:
             # them before this runs, and returning 0 keeps that the only place
             # the refusal lives.
             areas.append(0.0)
-    return areas
+    return areas, shift
 
 
 def measure_area(
@@ -1169,7 +1178,7 @@ def measure_area(
         }]
         record.add_repairs(input_repairs)
 
-    geodesic = _geodesic_areas(gdf)
+    geodesic, geodesic_shift = _geodesic_areas(gdf)
     if method == "planar":
         # The unit comes from the CRS, exactly once, and is not assumed to be
         # the metre: a layer in US survey feet is 0.0929 m2 per square foot.
@@ -1188,8 +1197,12 @@ def measure_area(
             # the coordinates are moved there first. Naming the source CRS's
             # ellipsoid here described a computation that did not happen.
             "analysis_crs": "WGS 84 (ellipsoidal)",
-            "reason": "ground area computed on the ellipsoid the layer's CRS names; "
-            "no map plane is involved, so no projection distortion enters",
+            "reason": "ground area computed on the WGS 84 ellipsoid, which is where "
+            "the coordinates are put first; no map plane is involved, so no "
+            "projection distortion enters",
+            # Putting them there crosses a datum on anything but WGS 84, and
+            # the measurement is made AFTER that move.
+            **({"transformation": geodesic_shift} if geodesic_shift else {}),
         }
     planar_total = float(sum(areas)) if method == "planar" else None
     geodesic_total = float(sum(geodesic))
@@ -1598,11 +1611,17 @@ def measure_length(
                 "Reproject to a projected CRS first (reproject_layer)."
             )
     elif method == "geodesic":
-        lengths = _geodesic_lengths(gdf)
+        lengths, geodesic_shift = _geodesic_lengths(gdf)
         record.crs_decisions = {
-            "analysis_crs": verify.crs_label(gdf.crs),
-            "reason": "measured on the ellipsoid the layer's CRS names; the plane "
-            "is not consulted",
+            # WGS 84's ellipsoid, because that is the one the coordinates are on
+            # by the time the measurement runs -- see `_geodesic_lengths`. Naming
+            # the source CRS here described a computation that did not happen, and
+            # the sibling `measure_area` had already been corrected for it.
+            "analysis_crs": "WGS 84 (ellipsoidal)",
+            "reason": "measured on the WGS 84 ellipsoid, which is where the "
+            "coordinates are put first; the map plane is not consulted, so no "
+            "projection distortion enters",
+            **({"transformation": geodesic_shift} if geodesic_shift else {}),
         }
     else:
         factor = 1.0 if gdf.crs.is_geographic else gdf.crs.axis_info[0].unit_conversion_factor
@@ -1685,17 +1704,29 @@ def _length_3d(geom: Any) -> float:
     return total
 
 
-def _geodesic_lengths(gdf: gpd.GeoDataFrame) -> list[float]:
-    """Length per feature on the ellipsoid the layer's CRS names."""
+def _geodesic_lengths(gdf: gpd.GeoDataFrame) -> tuple[list[float], dict[str, Any] | None]:
+    """Length per feature on the ellipsoid the COORDINATES are on."""
     from pyproj import Geod
 
-    ellipsoid = gdf.crs.ellipsoid
+    # The same defect `_geodesic_areas` describes two hundred lines above,
+    # left standing in the twin. It took `gdf.crs.ellipsoid` and then measured
+    # coordinates that the next line had already turned into WGS 84 ones: on
+    # NAD27 that is Clarke 1866 arithmetic on WGS 84 numbers, 2.61 m per
+    # 100 km (26 ppm, measured 2026-09-06). Small as a number and wrong as a
+    # statement, which is the half a manifest exists to get right.
+    #
+    # The lesson was written beside the fix in the other copy and the second
+    # copy was never touched -- the shape #28 is about, and the reason
+    # `readers.py` exists.
+    moved = not verify.same_crs(gdf.crs, "EPSG:4326")
+    shift = datum.default_operation(gdf.crs, "EPSG:4326") if moved else None
+    lonlat = gdf.to_crs("EPSG:4326") if moved else gdf
+    ellipsoid = lonlat.crs.ellipsoid
     geod = Geod(a=ellipsoid.semi_major_metre, rf=ellipsoid.inverse_flattening)
-    lonlat = gdf.to_crs("EPSG:4326") if not verify.same_crs(gdf.crs, "EPSG:4326") else gdf
     return [
         float(geod.geometry_length(geom)) if geom is not None and not geom.is_empty else 0.0
         for geom in lonlat.geometry
-    ]
+    ], shift
 
 
 def aggregate_weighted(

@@ -108,6 +108,7 @@ def alignment_decisions(
     moved: Sequence[tuple[str, Any]] = (),
     *,
     returned_to: Any = None,
+    moved_to: Any = None,
 ) -> dict[str, Any]:
     """`crs_decisions` for an operation that brings its other inputs to one CRS.
 
@@ -162,7 +163,15 @@ def alignment_decisions(
     entries = [
         {"argument": argument, "from": _crs_label(source)} for argument, source in moved
     ]
-    shifts = [datum.default_operation(source, analysis_crs) for _, source in moved]
+    # Where the moved inputs ACTUALLY went, which is not always the analysis
+    # CRS. `nearest_join` brings its right layer to the left layer's CRS and
+    # only then takes both out to an estimated UTM zone: recording the pair
+    # (right, UTM) described a transformation PROJ was never asked for, and
+    # on NAD27 it came out `is_ballpark: true` for a run that had applied a
+    # seven-metre shift. A manifest accusing an engine of skipping a datum
+    # shift it did not skip is the worst direction to be wrong in.
+    destination = analysis_crs if moved_to is None else moved_to
+    shifts = [datum.default_operation(source, destination) for _, source in moved]
     if len(moved) == 1:
         decisions["transformation"] = shifts[0]
     else:

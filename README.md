@@ -127,22 +127,48 @@ for it:
     "sha256": "b24b884f49eee431133d443d842557d3ed21f3978e2c4b1e8e072fd1240effe8",
     "crs": "EPSG:4326"
   }],
-  "crs_decisions": {"analysis_crs": "EPSG:32632", "reason": "estimated UTM zone for metric buffering"},
+  "crs_decisions": {
+    "analysis_crs": "EPSG:32632",
+    "reason": "estimated UTM zone for metric buffering on a geographic CRS",
+    "x-mapsmith:round_trip": {
+      "output_crs": "EPSG:4326",
+      "applied_twice": true,
+      "transformation": {
+        "pipeline": "+proj=pipeline +step +proj=unitconvert +xy_in=deg +xy_out=rad +step +proj=utm +zone=32 +ellps=WGS84",
+        "accuracy_m": 0.0,
+        "is_ballpark": false
+      }
+    }
+  },
   "engine": {"name": "geopandas", "version": "1.0.1"},
   "environment": {},
   "verification": [
+    {"name": "input_crs_present", "passed": true, "detail": "'input_path': EPSG:4326"},
+    {"name": "input_not_empty", "passed": true, "detail": "'input_path': 1 features"},
+    {"name": "result_not_empty", "passed": true, "detail": "1 features"},
+    {"name": "crs_present", "passed": true, "detail": "EPSG:4326"},
     {"name": "crs_matches", "passed": true, "detail": "expected EPSG:4326, got EPSG:4326"},
-    {"name": "feature_count_exact", "passed": true, "detail": "expected 1, got 1"}
+    {"name": "geometry_valid", "passed": true, "detail": "all valid"},
+    {"name": "x-mapsmith:no_geometry_is_empty", "passed": true, "detail": "none empty"},
+    {"name": "feature_count_exact", "passed": true, "detail": "expected 1, got 1"},
+    {"name": "geometry_types", "passed": true, "detail": "expected subset of ['MultiPolygon', 'Polygon'], got ['Polygon']"}
   ],
   "started_at": "2026-08-18T10:15:03Z",
   "finished_at": "2026-08-18T10:15:04Z"
 }
 ```
 
-This block is checked against the specification's own validator by
-`tests/test_showcase.py`, because the page that says records carry `spec_version`
-had an example without one for two releases — and this is the record a third-party
-implementer copies.
+The checksum and the timestamps are made up; everything else — the CRS decision, the
+transformation, every check name and detail — is copied from a record `buffer_layer` emits
+for exactly this call. The real file also carries `output`, `repairs`, `notes` and a
+`critical` flag on each check, left out here for length.
+`tests/test_showcase.py` validates this block against
+the specification's own validator and re-runs the operation to compare its `crs_decisions`
+keys with the emitted ones, because a record typed by hand drifts silently while every
+generated surface stays correct: it lacked `spec_version` for two releases, and on
+2026-09-06 it was still recording a round trip without the
+[`x-mapsmith:round_trip`](docs/manifest-vocabulary.md) key that says the coordinates came
+back. This is the record a third-party implementer copies.
 
 Trimmed for the page, not for the file: the real record also carries the output's own path
 and hash, any geometry MapSmith had to repair, and the notes it made about how the inputs
@@ -627,7 +653,7 @@ flowchart TB
 | buffer | `buffer_layer` | `distance_meters=1500` | `EPSG:32610` — estimated UTM zone for metric buffering on a geographic CRS | 9/9 |
 | near | `clip_layer` | `mask_path=$buffer` | `EPSG:4326` — the mask is already in the input layer's CRS; nothing was reprojected | 12/12 |
 | height | `zonal_statistics` | `zones_path=$near`, `stats=['mean', 'min']` | `EPSG:4326` — zones and raster share the same CRS | 7/7 |
-| area | `measure_area` | `input_path=$height`, `method=geodesic` | `WGS 84 (ellipsoidal)` — ground area computed on the ellipsoid the layer's CRS names; no map plane is involved, so no projection distortion enters | 10/10 |
+| area | `measure_area` | `input_path=$height`, `method=geodesic` | `WGS 84 (ellipsoidal)` — ground area computed on the WGS 84 ellipsoid, which is where the coordinates are put first; no map plane is involved, so no projection distortion enters | 10/10 |
 | filter | `select_features` | `input_path=$area`, `by=field_between`, `field=mean`, `maximum=120` | `EPSG:4326` — no CRS change: selecting rows does not touch coordinates | 10/10 |
 
 Every step is inside the plan, the last one included: `select_features` took 4 rows and returned 3, with a manifest like every other write. This step used to run outside the plan, because the only operation that could answer it was run_sql — which takes its inputs inside a SQL string, declares zero datasets, and therefore cannot join the plan's dataflow. That boundary is deliberate and has not moved: substituting `$step` into arbitrary strings would be a grammar in which a planner assembles a path out of text. What changed is that it is no longer the only way to ask.
@@ -825,9 +851,13 @@ Set `MAPSMITH_WORKSPACE=/data` to confine the server to one directory:
   `MAPSMITH_DUCKDB_TEMP_LIMIT`, default 8GB), configuration locked. SQL can name any path it
   likes; the engine refuses to open it.
 
-`MAPSMITH_DISCOVERY_LOG` is one of three paths MapSmith writes to that no tool argument names (the others: DuckDB's extension directory, and the scratch directory engines use inside the workspace) — SECURITY.md lists them,
-so it goes through the same check: outside the workspace it is refused, and the refusal
-disables the log and says so on stderr rather than failing the search that triggered it.
+`MAPSMITH_DISCOVERY_LOG` is one of three paths MapSmith writes to that no tool argument
+names. The other two are written whether or not anyone asks — DuckDB's extension directory
+and the scratch directory engines use inside the workspace — and SECURITY.md names them
+in its *Workspace containment* promise; this one is off unless you set it, and SECURITY.md
+covers it under *What MapSmith records*. It goes through the same check as a tool
+argument: outside the workspace it is refused, and the refusal disables the log and says
+so on stderr rather than failing the search that triggered it.
 
 Without a workspace, *file* access is deliberately unconfined — fine for a local stdio
 server on your own files — and plan validation flags `run_sql` steps with a
