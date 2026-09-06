@@ -508,7 +508,7 @@ class ProvenanceRecord:
 
         for entry in self.inputs:
             try:
-                found = grid.georeferencing_source(entry.path)
+                found = grid.manifest_environment(entry.path)
             except Exception:  # noqa: BLE001, S112 — see below
                 # An input that is not a raster has nothing to disambiguate, and
                 # a failure to LOOK is not a finding. Swallowing cannot hide a

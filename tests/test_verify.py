@@ -6,7 +6,12 @@ import geopandas as gpd
 import pytest
 from shapely.geometry import Point, Polygon
 
-from conftest import _EXTENSION_KEY, _spec_crs_keys, _spec_problems
+from conftest import (
+    _EXTENSION_KEY,
+    _SETTING_NAME,
+    _spec_crs_keys,
+    _spec_problems,
+)
 from mapsmith import verify
 from mapsmith.engines import vector
 from mapsmith.provenance import INPUTS_REPROJECTED
@@ -234,6 +239,20 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
         # be satisfied by the word "transformation" appearing anywhere in the
         # function; this reads the record, so the two together mean the word has
         # to be there AND has to have put something in the manifest.
+        # And the object next door, under the same rule with one difference:
+        # section 3.8 asks for the configuration AS THE ENGINE REPORTS IT, so a
+        # real setting name stays exactly as the engine spells it and only our
+        # own readings carry the prefix. UPPER_SNAKE is the shape of a setting
+        # -- `PROJ_NETWORK`, `GDAL_PAM_ENABLED`, `AREA_OR_POINT`, all three
+        # named by the specification itself -- and it is derived from the key
+        # rather than checked against a list of variables somebody keeps
+        # filling in.
+        for key in record.get("environment", {}):
+            assert _SETTING_NAME.fullmatch(key) or _EXTENSION_KEY.fullmatch(key), (
+                f"{name} wrote `environment.{key}`, which is neither a setting "
+                "named the way an engine names one nor a MapSmith reading "
+                "prefixed `x-mapsmith:` (D-077)."
+            )
         decisions = record.get("crs_decisions", {})
         if INPUTS_REPROJECTED in decisions:
             shift = decisions.get("transformation")
@@ -988,6 +1007,18 @@ def _spec_fixtures(tmp_path):
     ) as ds:
         ds.write(np.arange(16, dtype="int16").reshape(4, 4), 1)
         ds.write(np.arange(16, 32, dtype="int16").reshape(4, 4), 2)
+
+    # An AGREEING `.aux.xml` beside the raster, so that at least one record in
+    # this sweep carries a non-empty `environment`. Until 2026-09-06 not one of
+    # the fifty-eight did: the field that answers the first of the two silent
+    # error classes -- the configuration nobody named -- had its shape covered
+    # by nothing, and a guard written for its keys passed with the keys wrong.
+    # Agreeing rather than contradicting on purpose: a disagreement is refused
+    # outright by twelve operations (D-059), so it would test the refusal
+    # instead of the record.
+    (grid.parent / f"{grid.name}.aux.xml").write_text(
+        "<PAMDataset><SRS>EPSG:32632</SRS></PAMDataset>", encoding="utf-8"
+    )
     query = (
         f"SELECT * FROM read_parquet('{str(layer).replace(chr(92), '/')}')"
     )

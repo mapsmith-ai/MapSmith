@@ -295,6 +295,20 @@ def preserve(source: Any, destination: Any) -> str | None:
 #: mattered, and its reader would learn to skip the field.
 GEOREF_VARIABLES = ("GDAL_PAM_ENABLED", "GDAL_GEOREF_SOURCES")
 
+#: The keys `georeferencing_source` contributes that are MapSmith's own
+#: statements rather than the name of a setting. Section 3.8 asks for the
+#: configuration *as the engine reports it* -- `PROJ_NETWORK`, the `GDAL_*`
+#: variables, `AREA_OR_POINT` -- so a real variable name stays exactly as the
+#: engine spells it, and anything we worked out ourselves carries the prefix
+#: (D-077). Inside one object the difference is visible at a glance: an
+#: UPPER_SNAKE key is a setting, a prefixed one is our reading of it.
+DERIVED_ENVIRONMENT = (
+    "georeferencing_source",
+    "georeferencing_sidecar_present",
+    "georeferencing_supplied_by_sidecar",
+    "georeferencing_internal_would_give",
+)
+
 
 def georeferencing_source(path: str) -> dict[str, str]:
     """Which georeferencing produced the numbers, when more than one exists.
@@ -394,6 +408,28 @@ def georeferencing_source(path: str) -> dict[str, str]:
             )
         entry["georeferencing_internal_would_give"] = "; ".join(parts)
     return entry
+
+
+def manifest_environment(path: str) -> dict[str, str]:
+    """The same facts, named for the manifest's `environment`.
+
+    Section 3.8 asks for the configuration *as the engine reports it*, and
+    lists `PROJ_NETWORK`, the `GDAL_*` variables and `AREA_OR_POINT` -- so a
+    real variable name is left exactly as the engine spells it. The four keys
+    MapSmith works out for itself are not settings, they are our reading of
+    them, and they carry the prefix (D-077). Inside one object the difference
+    is then visible without the specification in hand: UPPER_SNAKE is a
+    setting, `x-mapsmith:` is us.
+
+    A separate function rather than a flag, for the reason
+    `manifest_decisions` gives: `georeferencing_source` fills the answer
+    `describe_dataset` hands back, which is ours all the way down and where a
+    prefix would be noise an agent reads past.
+    """
+    return {
+        (f"x-mapsmith:{key}" if key in DERIVED_ENVIRONMENT else key): value
+        for key, value in georeferencing_source(path).items()
+    }
 
 
 def _same_crs(left: Any, right: Any) -> bool:

@@ -139,6 +139,22 @@ guard existed and could not fail.**
 
 ### Fixed
 
+- **`environment` mixed two vocabularies without saying which was which,
+  and nothing in the suite ever saw the field filled.** Four keys in there
+  are MapSmith's own readings -- `georeferencing_source` and its three
+  companions -- and they sat unprefixed among real setting names. Section
+  3.8 asks for the configuration *as the engine reports it*, so a variable
+  keeps the name the engine gives it (`GDAL_PAM_ENABLED`, `AREA_OR_POINT`)
+  and our readings now carry `x-mapsmith:`. In one object the difference is
+  visible without the specification in hand.
+
+  The second half is the one worth reading: **not one of the 58 records in
+  the conformance sweep had a non-empty `environment`**, so the field that
+  answers *the configuration nobody named* had its shape checked by
+  nothing, and the guard written for these keys passed with the keys
+  deliberately wrong. The sweep's raster now carries an agreeing `.aux.xml`
+  -- agreeing, because a disagreement is refused outright by twelve
+  operations and would test the refusal instead of the record.
 - **No operation reprojects in silence any more.** The last five --
   `zonal_statistics`, `clip_raster`, `least_cost_path`, `viewshed`,
   `watershed` -- bring a vector input onto a raster's grid, and now record

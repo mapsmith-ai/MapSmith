@@ -164,8 +164,15 @@ def test_a_writer_that_bypasses_audited_still_records_it(agreeing_sidecar, tmp_p
 
     result = raster.resample(str(source), str(tmp_path / "out.tif"), 40, "nearest")
     record = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
-    assert record["environment"]["georeferencing_source"] == "internal"
-    assert record["environment"]["georeferencing_sidecar_present"] == "in.tif.aux.xml"
+    # Prefixed in the MANIFEST and bare in the answer `describe_dataset`
+    # returns, and the difference is the rule: section 3.8 asks for the
+    # configuration as the engine reports it, so `GDAL_PAM_ENABLED` keeps its
+    # own name while our reading of it says whose reading it is.
+    assert record["environment"]["x-mapsmith:georeferencing_source"] == "internal"
+    assert (
+        record["environment"]["x-mapsmith:georeferencing_sidecar_present"]
+        == "in.tif.aux.xml"
+    )
 
 
 def test_a_record_with_a_filled_environment_conforms_to_the_spec(agreeing_sidecar, tmp_path):
@@ -287,17 +294,19 @@ def test_an_operation_can_say_more_than_this_does(two_georeferencings, tmp_path)
         operation="x",
         parameters={},
         inputs=[InputRecord.from_path(two_georeferencings)],
-        environment={"georeferencing_source": "internal, forced by the operation"},
+        environment={
+            "x-mapsmith:georeferencing_source": "internal, forced by the operation"
+        },
     )
     output = tmp_path / "out.txt"
     output.write_text("x", encoding="utf-8")
     record.write_for(str(output))
 
-    assert record.environment["georeferencing_source"] == (
+    assert record.environment["x-mapsmith:georeferencing_source"] == (
         "internal, forced by the operation"
     )
     # And the rest is still added: keeping one key is not skipping the sweep.
-    assert "georeferencing_sidecar_present" in record.environment
+    assert "x-mapsmith:georeferencing_sidecar_present" in record.environment
 
 
 def test_the_refusal_stays_quiet_when_there_is_nothing_to_refuse(one_georeferencing):

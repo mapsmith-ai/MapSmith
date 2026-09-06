@@ -102,3 +102,12 @@ def _spec_crs_keys() -> frozenset[str]:
 #: predicate: the first version wrote `startswith` in one and a regex in the
 #: other, and they disagreed on `x-mapsmith:Bad Name!`.
 _EXTENSION_KEY = re.compile(r"^x-mapsmith:[a-z0-9][a-z0-9_]*$")
+
+
+#: The shape of a key in `environment` that names a setting rather than one of
+#: our readings of it. Section 3.8 asks for the configuration as the ENGINE
+#: reports it and its own examples are `PROJ_NETWORK`, the `GDAL_*` variables
+#: and `AREA_OR_POINT` — all three of that shape. Derived from the key instead
+#: of checked against a list of variable names, which would be a list somebody
+#: has to remember to fill in.
+_SETTING_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
