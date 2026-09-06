@@ -108,18 +108,19 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
     on_a_geographic_crs = bool(original_crs.is_geographic)
     if on_a_geographic_crs:
         analysis_crs = gdf.estimate_utm_crs()
-        open_source_decision = {
-            "analysis_crs": str(analysis_crs),
-            "reason": "estimated UTM zone for metric buffering on a geographic CRS",
-        }
+        open_source_decision = alignment_decisions(
+            analysis_crs,
+            "estimated UTM zone for metric buffering on a geographic CRS",
+            returned_to=original_crs,
+        )
         buffered = gdf.to_crs(analysis_crs)
         buffered["geometry"] = buffered.geometry.buffer(distance_meters)
         buffered = buffered.to_crs(original_crs)
     else:
-        open_source_decision = {
-            "analysis_crs": verify.crs_label(original_crs),
-            "reason": "input CRS is already projected; distance interpreted in its units",
-        }
+        open_source_decision = alignment_decisions(
+            original_crs,
+            "input CRS is already projected; distance interpreted in its units",
+        )
         buffered = gdf.copy()
         buffered["geometry"] = buffered.geometry.buffer(distance_meters)
     # NOT assigned yet. The Esri branch below discards `buffered` and, in the
@@ -587,7 +588,8 @@ def nearest_join(
         verify.enforce(pre, "nearest_join")
 
     original_crs = left.crs
-    if right.crs != left.crs:
+    moved_right = [] if verify.same_crs(right.crs, left.crs) else [("right_path", right.crs)]
+    if moved_right:
         right = right.to_crs(left.crs)
     if original_crs.is_geographic:
         # The distance column is in METERS, always: nearest-in-degrees is the
@@ -595,10 +597,12 @@ def nearest_join(
         # a degree of latitude, and neither is a metre).
         analysis_crs = left.estimate_utm_crs()
         record.crs_decisions = {
-            "analysis_crs": str(analysis_crs),
-            "reason": (
+            **alignment_decisions(
+                analysis_crs,
                 "estimated UTM zone for metric nearest-distance on a geographic CRS; "
-                "output geometries are returned in the input CRS"
+                "output geometries are returned in the input CRS",
+                moved_right,
+                returned_to=original_crs,
             ),
         }
         left_m, right_m = left.to_crs(analysis_crs), right.to_crs(analysis_crs)
@@ -820,20 +824,21 @@ def simplify(input_path: str, tolerance_meters: float, output_path: str) -> dict
     # its own CRS with the reason recorded, instead of crashing without a manifest.
     if original_crs.is_geographic and len(gdf):
         analysis_crs = gdf.estimate_utm_crs()
-        record.crs_decisions = {
-            "analysis_crs": str(analysis_crs),
-            "reason": "estimated UTM zone for metric simplification on a geographic "
-            "CRS; output geometries are returned in the input CRS",
-        }
+        record.crs_decisions = alignment_decisions(
+            analysis_crs,
+            "estimated UTM zone for metric simplification on a geographic CRS; "
+            "output geometries are returned in the input CRS",
+            returned_to=original_crs,
+        )
         work = gdf.to_crs(analysis_crs)
         restore = True
     else:
-        record.crs_decisions = {
-            "analysis_crs": verify.crs_label(original_crs),
-            "reason": "empty input layer: no UTM zone to estimate, nothing to simplify"
+        record.crs_decisions = alignment_decisions(
+            original_crs,
+            "empty input layer: no UTM zone to estimate, nothing to simplify"
             if original_crs.is_geographic
             else "input CRS is already projected; tolerance interpreted in its units",
-        }
+        )
         work = gdf.copy()
         restore = False
     vertices_before = int(shapely.get_num_coordinates(work.geometry.values).sum())
@@ -912,20 +917,21 @@ def centroid(input_path: str, output_path: str) -> dict[str, Any]:
         # A planar centroid of degree coordinates lands in the wrong place —
         # quietly, and by more the farther from the equator the data sits.
         analysis_crs = gdf.estimate_utm_crs()
-        record.crs_decisions = {
-            "analysis_crs": str(analysis_crs),
-            "reason": "estimated UTM zone for planar centroids on a geographic CRS; "
+        record.crs_decisions = alignment_decisions(
+            analysis_crs,
+            "estimated UTM zone for planar centroids on a geographic CRS; "
             "output points are returned in the input CRS",
-        }
+            returned_to=original_crs,
+        )
         work = gdf.to_crs(analysis_crs)
         restore = True
     else:
-        record.crs_decisions = {
-            "analysis_crs": verify.crs_label(original_crs),
-            "reason": "empty input layer: no UTM zone to estimate, nothing to measure"
+        record.crs_decisions = alignment_decisions(
+            original_crs,
+            "empty input layer: no UTM zone to estimate, nothing to measure"
             if original_crs.is_geographic
             else "centroids computed in the layer's native projected CRS",
-        }
+        )
         work = gdf.copy()
         restore = False
     record.notes.append(

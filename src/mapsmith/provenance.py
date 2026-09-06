@@ -39,10 +39,19 @@ SPEC_VERSION = "1.0.0-draft.3"
 INPUTS_REPROJECTED = "x-mapsmith:inputs_reprojected"
 
 
+#: The output was computed in one CRS and written in another, because the
+#: operation needed metres and the caller's data is in degrees. Its own key
+#: because it is a different fact from `INPUTS_REPROJECTED`: nothing of the
+#: caller's moved permanently, and the transformation was applied twice.
+ROUND_TRIP = "x-mapsmith:round_trip"
+
+
 def alignment_decisions(
     analysis_crs: Any,
     reason: str,
     moved: Sequence[tuple[str, Any]] = (),
+    *,
+    returned_to: Any = None,
 ) -> dict[str, Any]:
     """`crs_decisions` for an operation that brings its other inputs to one CRS.
 
@@ -69,6 +78,16 @@ def alignment_decisions(
     `transformation` key when exactly one input moved, and inside each entry
     when several did with different pairs — once, in the place able to hold it,
     rather than twice.
+
+    `returned_to` is for the other shape: the operation computed somewhere else
+    because it needed metres, and wrote its output back in the caller's CRS.
+    Recorded because the round trip is not free and the manifest said nothing
+    about it. `estimate_utm_crs()` answers with a **WGS 84** UTM zone whatever
+    the input's datum is — measured on 2026-09-06 — so buffering a NAD27 layer
+    crosses a datum on the way out and again on the way back, seven metres each
+    way. The two legs largely cancel over the extent of one feature, which is
+    why nothing looked wrong; the record says it happened rather than leaving a
+    reader to assume it did not.
     """
     from . import datum
 
@@ -76,6 +95,12 @@ def alignment_decisions(
         "analysis_crs": _crs_label(analysis_crs),
         "reason": reason,
     }
+    if returned_to is not None and not _same_crs(returned_to, analysis_crs):
+        decisions[ROUND_TRIP] = {
+            "output_crs": _crs_label(returned_to),
+            "applied_twice": True,
+            "transformation": datum.default_operation(returned_to, analysis_crs),
+        }
     if not moved:
         return decisions
     entries = [
@@ -95,6 +120,12 @@ def _crs_label(crs: Any) -> str:
     from . import verify
 
     return verify.crs_label(crs)
+
+
+def _same_crs(a: Any, b: Any) -> bool:
+    from . import verify
+
+    return bool(verify.same_crs(a, b))
 
 
 def _utcnow() -> str:

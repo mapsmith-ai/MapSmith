@@ -139,6 +139,18 @@ guard existed and could not fail.**
 
 ### Fixed
 
+- **Four operations computed in another datum and came back, and said
+  nothing about the trip.** `buffer_layer`, `simplify_layer`,
+  `centroid_layer` and `nearest_join` need metres, so on a geographic CRS
+  they work in an estimated UTM zone and write the output back where it
+  came from. Measured on 2026-09-06: **`estimate_utm_crs()` answers with a
+  WGS 84 zone whatever the input's datum is** -- so buffering a NAD27 layer
+  crosses a datum on the way out and again on the way back, seven metres
+  each way (four on NAD83). The two legs largely cancel over one feature,
+  which is exactly why nothing ever looked wrong; the manifest said
+  *estimated UTM zone for metric buffering* and left a reader to conclude
+  the trip was free. It now records where the output was returned to, the
+  transformation, and that it was applied twice.
 - **Five more operations stopped reprojecting in silence, and five
   manifests stopped being empty where a decision had been made.**
   `clip_layer`, `overlay_layers`, `merge_layers`, `spatial_join` and

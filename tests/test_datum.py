@@ -322,13 +322,13 @@ STILL_SILENT = {
     "raster.py": {"clip_raster", "zonal_statistics"},
     "sampling.py": {"elevation_profile", "sample_raster_at_points"},
     "summaries.py": {"compare_layers", "nearest_neighbour_index"},
-    # Five came off on 2026-09-06 — `clip`, `overlay`, `merge`, `spatial_join`,
-    # `count_in_polygons` — all of them the same shape: bring a secondary input
-    # to the analysis CRS. They share `provenance.alignment_decisions` now, so
-    # the decision is made once instead of nine times. The four left are the
-    # other shape: a round trip out to a metric CRS and back, where there are
-    # two transformations and the output lands in the CRS it started in.
-    "vector.py": {"buffer", "centroid", "nearest_join", "simplify"},
+    # `vector.py` came off entirely on 2026-09-06, all nine, in two shapes.
+    # Five bring a secondary input to the analysis CRS; four compute in an
+    # estimated UTM zone and write the output back where it came from. The
+    # round trip is the one that was worth finding: `estimate_utm_crs()`
+    # answers with a WGS 84 zone whatever the input's datum is, so buffering a
+    # NAD27 layer crosses a datum on the way out and again on the way back --
+    # seven metres each way, largely cancelling, and unmentioned.
     "whitebox_engine.py": {"viewshed", "watershed"},
 }
 
