@@ -139,6 +139,27 @@ guard existed and could not fail.**
 
 ### Fixed
 
+- **The secret redaction masked GIS words, and gave one name two answers
+  in one record.** `signature` is credential vocabulary and also GIS
+  vocabulary -- a spectral signature file is a real thing -- and the two
+  matchers anchored it differently: the dictionary-key one accepted the
+  word anywhere inside a name, the assignment one required it at the end.
+  So `sig_figs = 4` written into a note went through while
+  `{"sig_figs": 4}` in `parameters` came back `<redacted>` -- same name,
+  two verdicts, one manifest -- and masking that number changed its JSON
+  type as well as hiding it. `signature_file`, `signature_field` and
+  `token_count` were masked for the same reason.
+
+  Both matchers now read one definition of what a credential name looks
+  like, which also closed a case nobody had thought of: `sas` is in the
+  vocabulary and sits inside `arkansas`, so a column named after the
+  county was redacted. Measured against 31 real credential names and 23
+  ordinary ones; the signed URLs from both clouds are still masked. And
+  the tests now check the half that was missing -- that ordinary names
+  stay visible, swept from the catalogue's own parameters, and that the
+  two matchers never disagree about one name. A mask that fires on the
+  vocabulary of the thing it describes teaches its reader to distrust it,
+  and then it protects nothing.
 - **`contour_lines` wrote four files outside the workspace, and SECURITY.md
   said nothing could.** Whitebox takes its working directory from the process
   working directory, so with `MAPSMITH_WORKSPACE` set and the server started

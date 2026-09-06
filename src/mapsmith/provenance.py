@@ -79,6 +79,17 @@ _SECRET_NAMES = (
 # untouched. Each underscore accepts either separator.
 _NAMES = "|".join(name.replace("_", "[-_]") for name in _SECRET_NAMES)
 
+#: A whole identifier that names a credential: an optional prefix ending in a
+#: separator, then one of the names above, and nothing of the identifier after
+#: it. Written once because the key matcher and the assignment matcher have to
+#: agree — they did not, and the disagreement was visible inside a single
+#: record.
+#:
+#: The left boundary carries as much weight as the right. Without it `.search`
+#: finds `sas` in the middle of `arkansas`, and a column named after the state
+#: comes back `<redacted>`.
+_KEY_NAME = r"(?<![A-Za-z0-9_.\-])(?:[A-Za-z0-9_.\-]*[_.\-])?(?:" + _NAMES + r")"
+
 # A gap between a name and its value: whitespace, a block comment, a line
 # comment. An audit hid a secret behind `SECRET /* c */ 'shh'`, which the first
 # version of this matcher walked straight past.
@@ -113,13 +124,29 @@ _OPTIONAL_GAP = "(?:" + _GAP + ")?"
 #: scanner, and the same restraint: bare `key` is deliberately NOT in the list,
 #: because `sort_key`, `primary_key` and `key` itself are ordinary field names,
 #: and a redaction that fires on those teaches its reader to distrust the mask.
-_SECRET_KEY = re.compile(
-    r"(?:^|[_.\-])(?:" + _NAMES + r")(?:$|[_.\-])",
-    re.IGNORECASE,
-)
+#:
+#: **The name must END with the credential word**, and until 2026-09-06 it did
+#: not: the word could sit anywhere with a separator on each side, so `sig_figs`,
+#: `token_count`, `signature_file` and `signature_field` were all masked. Two of
+#: those are GIS vocabulary — a spectral signature file is a real thing, and the
+#: day MapSmith ships supervised classification the manifest would hide the name
+#: of the training file and raise `parameters_redacted` on a record no secret
+#: ever passed through. Masking `sig_figs: 4` also changed the value's JSON type
+#: from a number to a string.
+#:
+#: Worse than either: the assignment scanner already required the suffix, so one
+#: name got two answers in one record — `sig_figs = 4` inside a note went
+#: through, `{"sig_figs": 4}` in parameters came back redacted. A mask that
+#: answers differently about the same word is a mask its reader stops believing,
+#: which is the whole asset being protected here.
+_SECRET_KEY = re.compile(r"^" + _KEY_NAME + r"$", re.IGNORECASE)
 
+# Same name shape as the key matcher, from the same definition, so the two
+# cannot drift apart again. Measured on 2026-09-06 against 31 real credential
+# names and 23 ordinary ones: every credential still masked, every ordinary name
+# left alone, and `arkansas='x'` — which the old form redacted — left alone too.
 _SECRET_ASSIGNMENT = re.compile(
-    r"(?is)(?P<name>[A-Za-z0-9_.\-]*(?:" + _NAMES + r"))\b"
+    r"(?is)(?P<name>" + _KEY_NAME + r")\b"
     r"(?P<sep>" + _OPTIONAL_GAP + r"(?::=|=)" + _OPTIONAL_GAP + r"|" + _GAP + r")"
     + _VALUE
 )

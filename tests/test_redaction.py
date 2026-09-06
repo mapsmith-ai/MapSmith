@@ -269,3 +269,106 @@ def test_a_short_credential_name_does_not_fire_on_ordinary_words():
         "design": "blue",
         "redesign": "green",
     }
+
+
+def test_the_two_matchers_never_disagree_about_one_name():
+    """A mask that answers differently about the same word is not believed.
+
+    Until 2026-09-06 they disagreed, and the disagreement was visible inside a
+    single record: `_SECRET_KEY` accepted the credential word anywhere with a
+    separator on each side, `_SECRET_ASSIGNMENT` required it at the end. So
+    `sig_figs = 4` written into a note went through untouched while
+    `{"sig_figs": 4}` in `parameters` came back `<redacted>` — same name, two
+    answers, one manifest.
+
+    A property and not a list: the two are compared on every name below rather
+    than on the handful somebody thought of. They share one definition now, so
+    this passes by construction — which is the point of writing it down. The day
+    someone tunes one of them, this says so.
+    """
+    from mapsmith import catalog
+    from mapsmith.provenance import _SECRET_ASSIGNMENT, _SECRET_KEY
+
+    names = {
+        parameter["name"] if isinstance(parameter, dict) else str(parameter)
+        for entry in catalog.OPERATIONS
+        for parameter in entry.get("parameters", [])
+    }
+    names |= set(_GIS_WORDS) | set(_CREDENTIAL_NAMES)
+    assert len(names) > 100, f"only {len(names)} names: the property would prove little"
+
+    disagreeing = {
+        name: (bool(_SECRET_KEY.search(name)), bool(_SECRET_ASSIGNMENT.search(f"{name}='v'")))
+        for name in sorted(names)
+        if bool(_SECRET_KEY.search(name)) != bool(_SECRET_ASSIGNMENT.search(f"{name}='v'"))
+    }
+    assert not disagreeing, (
+        f"these names get one answer as a dictionary key and another as an "
+        f"assignment: {disagreeing}. One name, one verdict — a reader who finds "
+        "the mask inconsistent stops trusting it, and the mask's only asset is "
+        "being trusted."
+    )
+
+
+#: Words that belong to the GIS vocabulary and merely contain a credential word.
+#: `signature` is the one that matters: a spectral signature file is a real
+#: thing, and the day MapSmith ships supervised classification a manifest that
+#: masks the name of the training file raises `parameters_redacted` on a record
+#: no secret ever passed through.
+_GIS_WORDS = (
+    "design", "designation", "design_flow", "key_column", "sort_key",
+    "primary_key", "authority", "author", "nodata", "signal", "signed_area",
+    "sigma", "significant_digits", "tokenizer", "sig_figs", "token_count",
+    "signature_file", "signature_field", "tokens_per_cell", "spectral_band",
+    # A county in Arkansas is a plausible layer name, and `sas` is in the
+    # vocabulary. The old matcher found it in the middle of the word.
+    "arkansas", "kansas",
+)
+
+#: Real credential names, so the test below cannot pass by masking nothing.
+_CREDENTIAL_NAMES = (
+    "secret", "password", "api_key", "x-api-key", "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN", "token", "Authorization", "client_secret",
+    "private_key", "connection_string", "credentials", "X-Amz-Signature",
+    "sig", "sas", "my_password", "db-password",
+)
+
+
+def test_the_words_a_gis_manifest_carries_are_not_masked():
+    """The other half of a mask, and there was no test for it.
+
+    A redaction test that only checks what IS hidden cannot fail by hiding
+    everything. This checks what must stay visible, and the list is not a
+    preference: every name here was measured against the matchers on
+    2026-09-06, and five of them were being masked.
+
+    The catalogue's own parameter names are swept too, so an operation added
+    tomorrow with an unlucky parameter name fails here rather than shipping a
+    manifest with a hole in it.
+    """
+    from mapsmith import catalog
+    from mapsmith.provenance import REDACTED, redact_secrets
+
+    catalogue_names = {
+        parameter["name"] if isinstance(parameter, dict) else str(parameter)
+        for entry in catalog.OPERATIONS
+        for parameter in entry.get("parameters", [])
+    }
+    masked = {
+        name: redact_secrets({name: "vegetation"})[name]
+        for name in sorted(catalogue_names | set(_GIS_WORDS))
+    }
+    offenders = {n: v for n, v in masked.items() if v != "vegetation"}
+    assert not offenders, (
+        f"these ordinary names were redacted: {offenders}. A mask that fires on "
+        "the vocabulary of the thing being described teaches its reader to "
+        "distrust it, and then it protects nothing."
+    )
+
+    # And the type survives: masking a number would turn 4 into a string, which
+    # is a second, quieter way of making the record differ from what ran.
+    assert redact_secrets({"sig_figs": 4})["sig_figs"] == 4
+
+    # The control: with the same call, real credential names still go.
+    for name in _CREDENTIAL_NAMES:
+        assert redact_secrets({name: "shh"})[name] == REDACTED, name
