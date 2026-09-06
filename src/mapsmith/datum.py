@@ -37,7 +37,65 @@ from typing import Any
 
 # A ballpark operation reports accuracy -1 (or nothing at all). Anything >= 0 is
 # a real, published operation with a stated accuracy in metres.
+#
+# That reading is true of the EPSG database, which is where the number comes
+# from for a published operation, and it is NOT enough on its own: see
+# `shares_a_datum`, whose comment records the day the same value started
+# meaning two different things.
 _STATED = 0.0
+
+
+def shares_a_datum(source_crs: Any, target_crs: Any) -> bool:
+    """Do these two CRSs sit on the same datum, so there is no shift to apply?
+
+    Asked of the datums rather than inferred from an accuracy, and that is the
+    whole point of this function existing.
+
+    PROJ used to report a stated accuracy of 0.0 for a projection change within
+    one datum, so `accuracy >= 0` happened to mean "not a ballpark". PROJ 9.8
+    reports **-1.0** for the same pair — the value it also uses for a ballpark —
+    so the discriminator stopped discriminating, and MapSmith on a current
+    pyproj wrote `is_ballpark: true` into the manifest of a plain UTM
+    projection. That is not a cosmetic slip: a record saying a datum shift was
+    skipped, on an operation where none was ever needed, accuses the engine of
+    something it did not do, and this module exists to prevent exactly that
+    sentence in the other direction.
+
+    Measured 2026-09-06 on EPSG:4326 -> EPSG:32633, the same call on two
+    builds::
+
+        PROJ 9.5.1   get_last_used_operation().accuracy ==  0.0
+        PROJ 9.8.1   get_last_used_operation().accuracy == -1.0
+
+    while `CRS.datum == CRS.datum` answers True on both. It was found by CI
+    going red on Python 3.14, which resolves pyproj to 3.8 — the weekly
+    "latest versions" job this repository has on its list precisely to tell
+    "broken by us" from "broken by them" apart, arriving here by accident
+    before it was built.
+
+    Returns False whenever the question cannot be answered — a CRS with no
+    datum, a comparison that raises — because the caller then falls back to
+    asking PROJ, which is the behaviour that was there before.
+    """
+    from contextlib import suppress
+
+    with suppress(Exception):
+        source_datum = getattr(_as_crs(source_crs), "datum", None)
+        target_datum = getattr(_as_crs(target_crs), "datum", None)
+        if source_datum is not None and target_datum is not None:
+            return bool(source_datum == target_datum)
+    return False
+
+
+def _within_one_datum(pipeline: str | None) -> dict[str, Any]:
+    """The record for a pair that needs no datum shift at all.
+
+    Accuracy 0.0 rather than None: a projection change within one datum is
+    exact to floating point, it is what PROJ itself reported until 9.8, and it
+    is what section 3.7 wants — a number, not an absence a reader has to
+    interpret.
+    """
+    return {"pipeline": pipeline, "accuracy_m": 0.0, "is_ballpark": False}
 
 
 def _as_crs(value: Any) -> Any:
@@ -170,6 +228,8 @@ def best_operation(source_crs: Any, target_crs: Any) -> tuple[Any, dict[str, Any
 
     source_crs, target_crs = _as_crs(source_crs), _as_crs(target_crs)
     chosen = Transformer.from_crs(source_crs, target_crs, always_xy=True)
+    if shares_a_datum(source_crs, target_crs):
+        return chosen, _within_one_datum(pipeline_of(chosen))
     accuracy = accuracy_of(chosen, source_crs)
     if accuracy is not None and accuracy >= _STATED:
         return chosen, {
@@ -219,6 +279,8 @@ def default_operation(source_crs: Any, target_crs: Any) -> dict[str, Any]:
 
     source_crs, target_crs = _as_crs(source_crs), _as_crs(target_crs)
     chosen = Transformer.from_crs(source_crs, target_crs, always_xy=True)
+    if shares_a_datum(source_crs, target_crs):
+        return _within_one_datum(pipeline_of(chosen))
     accuracy = accuracy_of(chosen, source_crs)
     if accuracy is not None and accuracy >= _STATED:
         return {

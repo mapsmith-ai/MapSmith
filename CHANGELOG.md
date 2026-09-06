@@ -23,6 +23,20 @@ guard existed and could not fail.**
   **every** platform rather than only on Windows, because a manifest is meant to
   travel and a path that names two different files on two operating systems is
   not one path.
+- **On PROJ 9.8, MapSmith called a plain UTM projection a ballpark.** Two
+  different situations arrived at the same number and a discriminator stopped
+  discriminating: PROJ reported a stated accuracy of `0.0` for a projection
+  change inside one datum, so `accuracy >= 0` happened to mean "not a
+  ballpark", and **PROJ 9.8 reports `-1.0` for that pair** — the value it also
+  uses for a ballpark. The manifest then said a datum shift had been skipped on
+  an operation where none was ever needed, which is the accusation this module
+  exists to avoid making in the other direction. The verdict now comes from the
+  datums (`CRS.datum == CRS.datum`, True on both builds) rather than from a
+  number upstream is free to change, and a test forces the ballpark accuracy to
+  prove the answer no longer depends on it. Measured on `EPSG:4326 →
+  EPSG:32633`: 0.0 on PROJ 9.5.1, -1.0 on PROJ 9.8.1. Trap 021's own pair is
+  unaffected on either build — the default still lands 74 m out and
+  `allow_ballpark=False` still takes the 44 m operation.
 - **And the same hole, one level down, in the seventeen writers that build
   their record by hand.** Fixing `verify.audited` (below) closed the path the
   forty writers take. The other seventeen — `run_sql`, six raster operations,

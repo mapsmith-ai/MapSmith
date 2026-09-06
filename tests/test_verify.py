@@ -6,6 +6,7 @@ import geopandas as gpd
 import pytest
 from shapely.geometry import Point, Polygon
 
+from conftest import _spec_problems
 from mapsmith import verify
 from mapsmith.engines import vector
 
@@ -103,33 +104,6 @@ def test_a_manifest_path_does_not_depend_on_the_host(tmp_path):
     assert recorded.path == PurePath(source).as_posix()
 
 
-
-def _spec_problems(record: dict) -> list[str]:
-    """Every way this record fails the spec, according to BOTH implementations.
-
-    The standalone validator alone is not enough, and until 2026-08-26 it was
-    all this file used: the schema is the NORMATIVE implementation, and the two
-    had drifted on every recommended field. A CI that says "conforming" using
-    the lenient one of two implementations is worse than one that says nothing,
-    because it is the sentence a reader trusts.
-    """
-    import json
-    import sys
-    from pathlib import Path
-
-    data = Path(__file__).parent / "data"
-    sys.path.insert(0, str(data))
-    from manifest_spec_validator import problems
-
-    found = list(problems(record))
-    try:
-        import jsonschema
-    except ImportError:  # pragma: no cover - jsonschema is in the test extra
-        return found
-    schema = json.loads((data / "manifest-v1.schema.json").read_text(encoding="utf-8"))
-    checker = jsonschema.Draft202012Validator(schema)
-    found += [f"schema: {error.message}" for error in checker.iter_errors(record)]
-    return found
 
 def test_every_manifest_mapsmith_writes_conforms_to_the_spec(tmp_path):
     """MapSmith is an implementation of the manifest spec, not its definition.

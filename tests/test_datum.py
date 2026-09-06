@@ -113,6 +113,40 @@ def test_the_answer_does_not_depend_on_how_the_caller_holds_the_crs():
     )
 
 
+def test_one_datum_is_not_a_ballpark_whatever_PROJ_reports_as_accuracy(monkeypatch):
+    """The verdict must not depend on a number upstream is free to change.
+
+    It did, and CI found out before this test existed. PROJ reported a stated
+    accuracy of 0.0 for a projection change inside one datum, so
+    `accuracy >= 0` happened to mean "not a ballpark"; **PROJ 9.8 reports -1.0
+    for the same pair**, which is the value it also uses for a ballpark. Two
+    different situations arrived at the same number and the discriminator
+    stopped discriminating — so MapSmith on a current pyproj wrote
+    `is_ballpark: true` into the manifest of a plain UTM projection, accusing
+    the engine of skipping a datum shift that was never needed.
+
+    Measured 2026-09-06, EPSG:4326 -> EPSG:32633: 0.0 on PROJ 9.5.1, -1.0 on
+    PROJ 9.8.1, while `CRS.datum == CRS.datum` says True on both.
+
+    Forcing the ballpark value here rather than pinning a pyproj version: the
+    fix is that the answer comes from the datums, and the way to prove that is
+    to make the accuracy say the opposite and watch the answer hold. A test
+    that only ran the current build would go green on the machine that has the
+    old PROJ, which is exactly what happened for a day.
+    """
+    monkeypatch.setattr(datum, "accuracy_of", lambda *_: -1.0)
+    record = datum.default_operation(*SHIFTLESS_PAIR)
+    assert record["is_ballpark"] is False
+    assert record["accuracy_m"] == 0.0
+
+    _, chosen = datum.best_operation(*SHIFTLESS_PAIR)
+    assert chosen["is_ballpark"] is False, "best_operation shares the defect and the fix"
+
+    # And the other half of the pair: a real ballpark must still be one, or
+    # this fix would have bought silence instead of accuracy.
+    assert datum.default_operation(*BALLPARK_PAIR)["is_ballpark"] is True
+
+
 def test_a_rasterio_crs_does_not_get_reported_as_a_ballpark():
     """The bug this nearly shipped with.
 

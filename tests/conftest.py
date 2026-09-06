@@ -35,3 +35,37 @@ def vector_engine():
     except Exception as failure:  # noqa: BLE001 - any failure to load is a skip
         pytest.skip(f"the embedding model could not be loaded: {failure}")
     return retrieval
+
+# --------------------------------------------------------------------------
+# Conformance, shared: moved here on 2026-09-06 when a second test file needed
+# it. It lived in `test_verify.py`, and the rule it encodes -- validate against
+# BOTH implementations -- is exactly the kind that gets re-implemented halfway
+# by whoever needs it next.
+
+
+def _spec_problems(record: dict) -> list[str]:
+    """Every way this record fails the spec, according to BOTH implementations.
+
+    The standalone validator alone is not enough, and until 2026-08-26 it was
+    all this file used: the schema is the NORMATIVE implementation, and the two
+    had drifted on every recommended field. A CI that says "conforming" using
+    the lenient one of two implementations is worse than one that says nothing,
+    because it is the sentence a reader trusts.
+    """
+    import json
+    import sys
+    from pathlib import Path
+
+    data = Path(__file__).parent / "data"
+    sys.path.insert(0, str(data))
+    from manifest_spec_validator import problems
+
+    found = list(problems(record))
+    try:
+        import jsonschema
+    except ImportError:  # pragma: no cover - jsonschema is in the test extra
+        return found
+    schema = json.loads((data / "manifest-v1.schema.json").read_text(encoding="utf-8"))
+    checker = jsonschema.Draft202012Validator(schema)
+    found += [f"schema: {error.message}" for error in checker.iter_errors(record)]
+    return found

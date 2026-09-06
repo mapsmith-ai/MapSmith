@@ -23,6 +23,7 @@ import pytest
 import rasterio
 from rasterio.transform import Affine
 
+from conftest import _spec_problems
 from mapsmith import grid
 from mapsmith.engines import raster, sampling
 from mapsmith.provenance import REDACTED, InputRecord, ProvenanceRecord
@@ -165,6 +166,44 @@ def test_a_writer_that_bypasses_audited_still_records_it(agreeing_sidecar, tmp_p
     record = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
     assert record["environment"]["georeferencing_source"] == "internal"
     assert record["environment"]["georeferencing_sidecar_present"] == "in.tif.aux.xml"
+
+
+def test_a_record_with_a_filled_environment_conforms_to_the_spec(agreeing_sidecar, tmp_path):
+    """The field is checked for its CONTENT everywhere and for conformance nowhere.
+
+    Found on 2026-09-05 by the `conformita-manifest` agent, counting rather than
+    reading: this file asserts what `environment` holds and never calls the
+    validators, and the conformance sweep in `test_verify.py` validates
+    fifty-eight real manifests that all carry `environment: {}` — no fixture
+    there has a sidecar. So the only field of the record that answers "was the
+    answer decided by configuration nobody can see" had its shape verified by
+    nothing.
+
+    It matters because the validator makes a demand the schema does not: section
+    3.8 records configuration *as the engine reports it*, so **every value must
+    be a string**. The values are built by formatting coordinates by hand in
+    `grid.georeferencing_source`, and that function already carries a `plain()`
+    helper written to keep `5.03e+06` out of a northing — which is the same
+    place a float would escape as a float. Both halves are correct today; the
+    point is that until now nothing would have said so.
+    """
+    from mapsmith.engines import raster
+
+    source = tmp_path / "in.tif"
+    shutil.copy(agreeing_sidecar, source)
+    shutil.copy(f"{agreeing_sidecar}.aux.xml", f"{source}.aux.xml")
+
+    result = raster.resample(str(source), str(tmp_path / "out.tif"), 40, "nearest")
+    record = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+
+    assert record["environment"], (
+        "this test is worthless without a filled environment: the fixture no "
+        "longer produces one, so the conformance assertion below proves nothing"
+    )
+    assert _spec_problems(record) == [], _spec_problems(record)
+    assert all(isinstance(v, str) for v in record["environment"].values()), (
+        f"section 3.8 wants strings: {record['environment']}"
+    )
 
 
 def test_an_ordinary_raster_leaves_the_field_empty(one_georeferencing, tmp_path):
