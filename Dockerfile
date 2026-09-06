@@ -29,6 +29,24 @@ ENV HF_HOME=/home/mapsmith/.cache/huggingface
 RUN python -c "from mapsmith import retrieval; retrieval.warm_cache()"
 RUN chown -R mapsmith:mapsmith /home/mapsmith/.cache
 
+# The DuckDB `spatial` extension is a first-use download too, and the argument
+# above applies to it word for word — it was simply missed. Without it baked in,
+# the first `run_sql` in a container fetches about 15 MB, in the mode SECURITY.md
+# describes as having no network egress; the install is excused there, but a
+# confined deployment that needs the network to answer its first query is not
+# what the promise leads a reader to expect. It also lands in `$HOME/.duckdb`,
+# outside the declared workspace, on an ephemeral filesystem — so every container
+# start paid for it again.
+#
+# `HOME` inline rather than as `ENV`: the extension directory is derived from it
+# and there is no environment variable for it (checked — `extension_directory` is
+# a SQL setting and defaults to `$HOME/.duckdb`), and moving the `ENV` up here
+# would change what every later build step sees.
+RUN HOME=/home/mapsmith python -c "\
+import duckdb; c = duckdb.connect(); c.install_extension('spatial'); \
+c.load_extension('spatial'); print('spatial baked in')" \
+    && chown -R mapsmith:mapsmith /home/mapsmith/.duckdb
+
 # Workspace for datasets: mount your data here. Confined BY DEFAULT — the
 # supported path used to start unconfined unless the operator remembered `-e`,
 # which is the wrong way round for a default.

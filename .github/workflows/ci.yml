@@ -148,6 +148,22 @@ jobs:
         run: |
           docker run --rm --entrypoint python mapsmith:ci -c "import os, mapsmith; skip = os.environ.get('GDAL_SKIP', ''); assert 'VRT' in skip, f'GDAL_SKIP={skip!r}'; print('GDAL policy installed:', skip)"
 
+      - name: SQL must work with no network at all
+        # `--network none`, and that is the whole assertion. The image bakes the
+        # DuckDB `spatial` extension for the same reason it bakes the embedding
+        # weights: a confined deployment that needs the network to answer its
+        # first query is not what SECURITY.md leads a reader to expect. Written
+        # as a behaviour rather than as a grep of the Dockerfile, because a line
+        # in a Dockerfile proves the intention and not the result — and this is
+        # also what stops the download reappearing quietly under a workspace.
+        run: |
+          docker run --rm --network none -v "$PWD/smoke:/data" --entrypoint python mapsmith:ci -c "
+          import duckdb
+          con = duckdb.connect()
+          con.load_extension('spatial')
+          print(con.execute(\"SELECT ST_AsText(ST_Point(1, 2))\").fetchone()[0])
+          "
+
       - name: The server must answer an MCP handshake as that user
         # Proves the wheels resolved and the server starts in the image, which a
         # successful `docker build` does not: every dependency is imported lazily.

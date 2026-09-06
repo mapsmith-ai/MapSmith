@@ -139,6 +139,15 @@ guard existed and could not fail.**
 
 ### Fixed
 
+- **The image fetched 15 MB of DuckDB on its first query, in the mode that
+  promises no network egress.** The `spatial` extension is a first-use
+  download, and the image already bakes the embedding weights for exactly
+  this reason -- the argument written next to them applies word for word,
+  and this one was simply missed. It also landed in `$HOME/.duckdb`,
+  outside the declared workspace and on an ephemeral filesystem, so every
+  container start paid for it again. Baked in at build time now, and the
+  CI image job runs a spatial query with `--network none`: a line in a
+  Dockerfile proves an intention, and this proves the result.
 - **Three operations reprojected an input and said nothing about how.**
   `snap_layer`, `line_intersections` and `transform_by_control_points`
   bring a secondary input into the analysis CRS, and the manifest recorded
