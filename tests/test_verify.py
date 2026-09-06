@@ -1518,3 +1518,113 @@ def test_alignment_decisions_writes_only_conforming_keys():
     )
 
     assert INPUTS_REPROJECTED not in cases["nothing moved"]
+
+
+def test_every_reprojected_input_names_a_real_argument():
+    """A wrong argument name in the record is worse than no name at all.
+
+    `INPUTS_REPROJECTED` exists so a reader knows WHICH input was moved. On
+    2026-09-06 `watershed` recorded `points_path` and the operation's argument
+    is `pour_points_path` -- the local variable's name, written down instead of
+    the caller's. A reader looking for `points_path` in their own call finds
+    nothing and concludes the record is about some other run.
+
+    **Read from the source, and the first version of this test was not.** It
+    ran every operation and inspected the records, which sounds stronger and is
+    weaker: the fixtures hand every operation inputs that already share a CRS,
+    so no reprojection branch is ever taken and there was nothing to inspect.
+    Restoring the wrong name left it green. That is the guard-that-cannot-fail
+    again, written by the person who spent the day removing them -- and it is
+    why the sabotage runs before the test is believed.
+    """
+    import ast
+    from pathlib import Path
+
+    import mapsmith
+    from mapsmith import catalog
+    from mapsmith.plans.registry import BINDINGS
+
+    # The names a caller can actually pass, per engine function. The catalogue
+    # is keyed by operation name and the engine function may be called something
+    # else (`buffer` implements `buffer_layer`), so the binding is what joins
+    # them -- the same join `test_path_containment` makes.
+    parameters = {
+        entry["name"]: {
+            parameter["name"] if isinstance(parameter, dict) else str(parameter)
+            for parameter in entry.get("parameters", [])
+        }
+        for entry in catalog.OPERATIONS
+    }
+    # The binding carries the caller-facing names too, and they are the
+    # authority: `input_args` is what the plan validator checks and what an
+    # agent writes. Joined to the engine function by the operation the function
+    # NAMES ITSELF -- `ProvenanceRecord(operation="clip_layer")` -- because the
+    # binding's `loader` is a wrapper, not the engine function, and matching on
+    # `__name__` joined nothing at all.
+    allowed: dict[str, set[str]] = {}
+    for operation, binding in BINDINGS.items():
+        allowed[operation] = (
+            set(parameters.get(operation, ()))
+            | set(getattr(binding, "input_args", ()) or ())
+            | set(getattr(binding, "list_input_args", ()) or ())
+        )
+
+    root = Path(mapsmith.__file__).parent
+    named: list[tuple[str, str, str]] = []
+    for module in sorted(root.rglob("*.py")):
+        tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
+        for function in ast.walk(tree):
+            if not isinstance(function, ast.FunctionDef):
+                continue
+            own = {a.arg for a in function.args.args} | {
+                a.arg for a in function.args.kwonlyargs
+            }
+            declares = [
+                keyword.value.value
+                for call in ast.walk(function)
+                if isinstance(call, ast.Call)
+                and getattr(call.func, "id", None) == "ProvenanceRecord"
+                for keyword in call.keywords
+                if keyword.arg == "operation"
+                and isinstance(keyword.value, ast.Constant)
+            ]
+            uses_helper = any(
+                isinstance(call, ast.Call)
+                and (
+                    call.func.attr if isinstance(call.func, ast.Attribute)
+                    else getattr(call.func, "id", None)
+                )
+                == "alignment_decisions"
+                for call in ast.walk(function)
+            )
+            if not uses_helper:
+                continue
+            # Every two-tuple with a string literal first, anywhere in a function
+            # that calls the helper. Reading only the third positional argument
+            # found nothing: at the real call sites `moved` is a conditional
+            # expression, a comprehension or a variable built earlier, and a
+            # sweep that only understands a list literal understands none of the
+            # twelve.
+            for node in ast.walk(function):
+                if not isinstance(node, ast.Tuple) or len(node.elts) != 2:
+                    continue
+                first = node.elts[0]
+                if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                    for operation in declares:
+                        named.append((module.name, operation, first.value))
+
+    assert len(named) >= 8, (
+        f"only {len(named)} argument names read from the source: the sweep is not "
+        "finding the call sites any more"
+    )
+    wrong = [
+        f"{module}:{operation} names {argument!r}"
+        for module, operation, argument in named
+        if argument not in allowed.get(operation, set())
+    ]
+    assert not wrong, (
+        f"these name an input that is not an argument of their operation: {wrong}. "
+        "The point of the key is that a reader can find the argument in their own "
+        "call; a local variable's name sends them looking for something that is "
+        "not there."
+    )

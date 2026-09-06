@@ -139,6 +139,20 @@ guard existed and could not fail.**
 
 ### Fixed
 
+- **No operation reprojects in silence any more.** The last five --
+  `zonal_statistics`, `clip_raster`, `least_cost_path`, `viewshed`,
+  `watershed` -- bring a vector input onto a raster's grid, and now record
+  which one moved and what PROJ did to it. The ratchet that counted them
+  started the day at twenty-one and is empty.
+- **`watershed` named the wrong argument.** It recorded `points_path`,
+  which is its local variable; the argument a caller passes is
+  `pour_points_path`. Someone looking for that name in their own call
+  finds nothing and concludes the record describes a different run -- a
+  wrong name is worse than no name. Every site is now checked against the
+  operation's declared arguments, read from the source rather than from a
+  run: the fixtures give every operation inputs that already share a CRS,
+  so a check that inspected records never reached a reprojection branch
+  and stayed green with the wrong name restored.
 - **Four more, and two of them had nowhere to write it.**
   `sample_raster_at_points` and `elevation_profile` bring a vector input
   onto the raster's CRS, which is the shape the helper already covers.

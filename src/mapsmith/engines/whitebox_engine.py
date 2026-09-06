@@ -27,7 +27,7 @@ import numpy as np
 from pyproj import CRS
 
 from .. import grid, readers, verify, workspace
-from ..provenance import InputRecord, ProvenanceRecord
+from ..provenance import InputRecord, ProvenanceRecord, alignment_decisions
 
 HILLSHADE_MAX = 32767  # upstream scales hillshade to 0-32767 (basic_terrain_tools.rs)
 
@@ -614,17 +614,16 @@ def watershed(
         # PROJJSON for any GeoParquet input, so this was true even when the
         # points were already on the DEM's grid — and the manifest then recorded
         # a reprojection that never happened.
-        if not verify.same_crs(points.crs, crs):
+        aligned = not verify.same_crs(points.crs, crs)
+        record.crs_decisions = alignment_decisions(
+            crs,
+            "pour points brought to the DEM CRS to align with the flow grid"
+            if aligned
+            else "pour points and DEM share the same CRS",
+            [("pour_points_path", points.crs)] if aligned else [],
+        )
+        if aligned:
             points = points.to_crs(crs)
-            record.crs_decisions = {
-                "analysis_crs": crs,
-                "reason": "pour points reprojected to the DEM CRS to align with the flow grid",
-            }
-        else:
-            record.crs_decisions = {
-                "analysis_crs": crs,
-                "reason": "pour points and DEM share the same CRS",
-            }
 
         filled = wbe.hydrology.depressions_storage.fill_depressions(dem=dem)
         pointer = wbe.hydrology.flow_routing.d8_pointer(dem=filled)
@@ -1178,18 +1177,17 @@ def viewshed(
             ],
             engine=_engine_info(),
         )
-        if not verify.same_crs(stations.crs, crs):
+        aligned = not verify.same_crs(stations.crs, crs)
+        record.crs_decisions = alignment_decisions(
+            crs,
+            "stations brought to the DEM CRS so each one stands on the cell it "
+            "actually occupies"
+            if aligned
+            else "stations and DEM share the same CRS",
+            [("stations_path", stations.crs)] if aligned else [],
+        )
+        if aligned:
             stations = stations.to_crs(crs)
-            record.crs_decisions = {
-                "analysis_crs": crs,
-                "reason": "stations reprojected to the DEM CRS so each one stands on "
-                "the cell it actually occupies",
-            }
-        else:
-            record.crs_decisions = {
-                "analysis_crs": crs,
-                "reason": "stations and DEM share the same CRS",
-            }
 
         ws = workspace.root()
         with tempfile.TemporaryDirectory(dir=str(ws) if ws else None) as tmp:

@@ -68,7 +68,11 @@ def test_clip_returns_exactly_the_masked_cells(grid, quadrant, tmp_path):
         assert ds.crs.to_epsg() == 32633
     manifest = _manifest(out)
     assert manifest["operation"] == "clip_raster"
-    assert "no reprojection needed" in manifest["crs_decisions"]["reason"]
+    # Nothing moved, and the record says so by carrying no `inputs_reprojected`
+    # rather than by being empty — those are different claims.
+    decisions = manifest["crs_decisions"]
+    assert "nothing was reprojected" in decisions["reason"]
+    assert "x-mapsmith:inputs_reprojected" not in decisions
 
 
 def test_clip_reprojects_the_mask_and_records_it(grid, quadrant, tmp_path):
@@ -79,7 +83,13 @@ def test_clip_reprojects_the_mask_and_records_it(grid, quadrant, tmp_path):
     out = tmp_path / "clip_geo.tif"
     result = raster.clip_raster(grid, str(geographic), str(out))
     manifest = _manifest(out)
-    assert "reprojected" in manifest["crs_decisions"]["reason"]
+    # Which input moved and how. `rasterio.mask` does not check CRS, so a
+    # ballpark here clips the wrong area and says nothing.
+    decisions = manifest["crs_decisions"]
+    assert decisions["x-mapsmith:inputs_reprojected"] == [
+        {"argument": "mask_path", "from": "EPSG:4326"}
+    ]
+    assert decisions["transformation"]["is_ballpark"] is False
     # The round trip through degrees costs a fraction of a cell at the edges,
     # so the clip may keep one extra row or column — never a different area.
     assert result["shape"][0] <= 3 and result["shape"][1] <= 3

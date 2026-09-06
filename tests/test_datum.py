@@ -273,6 +273,7 @@ def _transforming_functions() -> dict[str, set[str]]:
     )
 
     found: dict[str, set[str]] = {}
+    reprojecting: dict[str, set[str]] = {}
     for path in sorted(ENGINES.glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
@@ -304,9 +305,11 @@ def _transforming_functions() -> dict[str, set[str]]:
                 in recorders
                 for inner in ast.walk(node)
             )
+            if reprojects:
+                reprojecting.setdefault(path.name, set()).add(node.name)
             if reprojects and not records:
                 found.setdefault(path.name, set()).add(node.name)
-    return found
+    return found, reprojecting
 
 
 # Measured on 2026-09-03. These reproject a layer internally to align it with
@@ -314,12 +317,26 @@ def _transforming_functions() -> dict[str, set[str]]:
 # still silent. The list may only SHRINK: it is a ratchet, not a permission.
 # `datum.default_operation` and `datum.best_operation` are the two answers; the
 # work is wiring each call site to the one that matches who chooses.
-STILL_SILENT = {
-    # `linework.py` came off the list on 2026-09-06: `snap_layer`,
-    # `line_intersections` and `transform_by_control_points` now record what
-    # PROJ will do, under `crs_decisions.transformation`. Eighteen left.
-    "network.py": {"least_cost_path"},
-    "raster.py": {"clip_raster", "zonal_statistics"},
+STILL_SILENT: dict[str, set[str]] = {
+    # EMPTY, as of 2026-09-06 — and it took the whole day to get here from
+    # twenty-one. Every operation that hands two coordinate systems to PROJ now
+    # records what PROJ will do with them, so a ballpark inside one of them is
+    # a fact in the record instead of tens of metres nobody mentioned.
+    #
+    # The order they came off, because the shapes are the interesting part:
+    # `linework` (3) and then five of `vector` bring a secondary input to the
+    # analysis CRS; four more of `vector` compute in an estimated UTM zone and
+    # come back, which is where `estimate_utm_crs()` turned out to answer in
+    # WGS 84 whatever the input's datum is — seven metres out and seven back on
+    # NAD27, cancelling, unmentioned; `sampling` (2) is the raster-alignment
+    # shape; `summaries` (2) write no manifest at all, so their ANSWER became
+    # the record, which matters because in `nearest_neighbour_index` the
+    # reprojected boundary IS the study area that R is computed from; and the
+    # last five are raster and third-party engines.
+    #
+    # **Do not add to this dictionary.** It is the ratchet's memory of work
+    # finished, and the assertion below says a new silent operation is a defect
+    # rather than a new entry here.
     # `sampling.py` came off on 2026-09-06: both operations bring a vector input
     # onto the raster's CRS, which is the same shape as the five in `vector.py`
     # and now the same helper.
@@ -337,21 +354,34 @@ STILL_SILENT = {
     # answers with a WGS 84 zone whatever the input's datum is, so buffering a
     # NAD27 layer crosses a datum on the way out and again on the way back --
     # seven metres each way, largely cancelling, and unmentioned.
-    "whitebox_engine.py": {"viewshed", "watershed"},
 }
 
 
 def test_no_new_operation_transforms_coordinates_in_silence():
     """A ratchet over the operations that still reproject without recording.
 
-    The assertion that matters is the first one: a derivation that finds nothing
-    passes every subset test ever written, which is the failure this suite spent
-    2026-09-02 finding in four disguises.
+    **The list is empty as of 2026-09-06**, and getting there broke the guard's
+    own sanity check, which is worth writing down. It asserted `found` was
+    non-empty, because a derivation that matches nothing passes every subset
+    test ever written — the failure this suite spent 2026-09-02 finding in four
+    disguises. But `found` is *the silent ones*, and an empty `found` is the
+    goal. The check could not tell "the derivation broke" from "the work is
+    done", so it fired on success.
+
+    Two questions now, because they were always two: **does the derivation
+    still see anything at all** (asked of the reprojecting functions, which
+    stay in the dozens), and **is any of them silent** (asked of `found`, which
+    should stay empty forever).
     """
-    found = _transforming_functions()
-    assert found, (
+    found, reprojecting = _transforming_functions()
+    assert reprojecting, (
         "the derivation matched no call sites at all - `.to_crs` was renamed or "
         "the engines moved, and this guard is now vacuous"
+    )
+    assert sum(len(names) for names in reprojecting.values()) >= 15, (
+        f"only {sum(len(n) for n in reprojecting.values())} reprojecting functions "
+        "found, where there were twenty-one this morning: the derivation is seeing "
+        "less than it did, which is how a guard goes quiet without going red"
     )
     new = {
         module: sorted(names - STILL_SILENT.get(module, set()))

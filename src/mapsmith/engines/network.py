@@ -802,7 +802,7 @@ def least_cost_path(
     from shapely.geometry import LineString, Point
 
     from .. import grid, readers, verify
-    from ..provenance import InputRecord, ProvenanceRecord
+    from ..provenance import InputRecord, ProvenanceRecord, alignment_decisions
 
     def one_point(path: str, what: str):
         frame = readers.read_vector(path)
@@ -853,10 +853,15 @@ def least_cost_path(
         pixel_y = abs(transform.e)
         bounds = src.bounds
 
-        moved = []
-        for frame, name in ((starts, "start"), (ends, "end")):
-            if not verify.same_crs(frame.crs, src.crs):
-                moved.append(f"{name}: {verify.crs_label(frame.crs)} -> {crs_label}")
+        # Named pairs rather than sentences: two endpoints can arrive in two
+        # different CRSs, and each then has its own transformation. A cost
+        # surface is walked cell by cell, so an endpoint that lands on the
+        # wrong cell starts the route in the wrong place.
+        moved = [
+            (name, frame.crs)
+            for frame, name in ((starts, "start_path"), (ends, "end_path"))
+            if not verify.same_crs(frame.crs, src.crs)
+        ]
         if not verify.same_crs(starts.crs, src.crs):
             start_point = starts.to_crs(src.crs).geometry.iloc[0]
         if not verify.same_crs(ends.crs, src.crs):
@@ -1012,10 +1017,12 @@ def least_cost_path(
         engine=_engine_info(),
     )
     record.crs_decisions = {
-        "analysis_crs": crs_label,
-        "reason": "the search runs on the cost surface's own grid; the endpoints are "
-        "brought to it so that each one lands on the cell it occupies"
-        + (f" ({'; '.join(moved)})" if moved else ""),
+        **alignment_decisions(
+            crs_label,
+            "the search runs on the cost surface's own grid; the endpoints are "
+            "brought to it so that each one lands on the cell it occupies",
+            moved,
+        ),
         **registration,
     }
     if not diagonal:

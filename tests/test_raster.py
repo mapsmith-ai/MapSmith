@@ -69,7 +69,13 @@ def test_zonal_crs_realignment_recorded(dem, zone, tmp_path):
     out = tmp_path / "stats2.parquet"
     result = raster.zonal_statistics(dem, str(z_path), str(out), ["count", "mean"])
     manifest = json.loads((tmp_path / "stats2.parquet.provenance.json").read_text())
-    assert "reprojected" in manifest["crs_decisions"]["reason"]
+    # The zones carry the pixel footprints, so a ballpark here weights the
+    # wrong cells — named, with its transformation, rather than described.
+    decisions = manifest["crs_decisions"]
+    assert decisions["x-mapsmith:inputs_reprojected"] == [
+        {"argument": "zones_path", "from": "EPSG:4326"}
+    ]
+    assert decisions["transformation"]["is_ballpark"] is False
     gdf = gpd.read_parquet(out)
     assert gdf.iloc[0]["mean"] == pytest.approx(22.0, abs=0.5)  # round-trip tolerance
     assert result["feature_count"] == 1

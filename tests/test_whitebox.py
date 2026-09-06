@@ -179,7 +179,13 @@ def test_watershed_reprojects_pour_points_and_records_it(valley_dem, tmp_path):
     out = tmp_path / "ws2.tif"
     result = whitebox_engine.watershed(valley_dem, str(pts_path), str(out))
     manifest = json.loads((tmp_path / "ws2.tif.provenance.json").read_text())
-    assert "reprojected" in manifest["crs_decisions"]["reason"]
+    # A pour point on the wrong cell delineates a different watershed, so the
+    # transformation that put it there belongs in the record by name.
+    decisions = manifest["crs_decisions"]
+    assert decisions["x-mapsmith:inputs_reprojected"] == [
+        {"argument": "pour_points_path", "from": "EPSG:4326"}
+    ]
+    assert decisions["transformation"]["is_ballpark"] is False
     assert result["verified"] is True
 
 

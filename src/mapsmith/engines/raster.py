@@ -20,7 +20,7 @@ import geopandas as gpd
 import pandas as pd
 
 from .. import datum, grid, readers, verify
-from ..provenance import InputRecord, ProvenanceRecord
+from ..provenance import InputRecord, ProvenanceRecord, alignment_decisions
 
 VALID_STATS = {
     "count",
@@ -152,18 +152,19 @@ def zonal_statistics(
             ],
             engine=_engine_info(),
         )
-        if raster_crs is not None and not verify.same_crs(zones.crs, raster_crs):
+        aligned = raster_crs is not None and not verify.same_crs(zones.crs, raster_crs)
+        record.crs_decisions.update(
+            alignment_decisions(
+                raster_crs,
+                "zones brought to the raster CRS for exact pixel alignment; the "
+                "output is kept in the raster CRS"
+                if aligned
+                else "zones and raster share the same CRS",
+                [("zones_path", zones.crs)] if aligned else [],
+            )
+        )
+        if aligned:
             zones = zones.to_crs(raster_crs)
-            record.crs_decisions = {
-                "analysis_crs": verify.crs_label(raster_crs),
-                "reason": "zones reprojected to the raster CRS for exact pixel "
-                "alignment; output kept in the raster CRS",
-            }
-        else:
-            record.crs_decisions = {
-                "analysis_crs": str(raster_crs),
-                "reason": "zones and raster share the same CRS",
-            }
         # exactextract takes the cell footprint from the transform and cannot
         # be told otherwise, so on a point-registered raster it would weight
         # every cell half a cell south-east of where its value actually sits.
@@ -548,21 +549,18 @@ def clip_raster(
         if verify.has_critical_failure(pre):
             record.add_verification(pre).finish().write_for(output_path)
             verify.enforce(pre, "clip_raster")
-        if verify.same_crs(frame.crs, src.crs):
-            record.crs_decisions = {
-                "analysis_crs": verify.crs_label(src.crs),
-                "reason": "mask and raster already share a CRS; no reprojection needed",
-            }
-        else:
+        aligned = not verify.same_crs(frame.crs, src.crs)
+        record.crs_decisions = alignment_decisions(
+            src.crs,
+            "the mask is brought to the raster CRS before clipping; rasterio.mask "
+            "does not check CRS and would have clipped the wrong area without "
+            "saying so"
+            if aligned
+            else "mask and raster already share a CRS; nothing was reprojected",
+            [("mask_path", frame.crs)] if aligned else [],
+        )
+        if aligned:
             frame = frame.to_crs(src.crs)
-            record.crs_decisions = {
-                "analysis_crs": verify.crs_label(src.crs),
-                "reason": (
-                    f"mask reprojected from {verify.crs_label(record.inputs[1].crs)} to "
-                    "the raster CRS before clipping; rasterio.mask does not check CRS "
-                    "and would have clipped the wrong area without saying so"
-                ),
-            }
         # nodata: rasterio.mask falls back to 0 when the raster declares none,
         # and 0 is a valid elevation, reflectance and temperature. Refuse to
         # let that be implicit.
