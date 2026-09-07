@@ -936,6 +936,9 @@ Claims about agent performance are cheap, so
 [GABench](https://github.com/GeoX-Lab/GABench) — 57 executable GIS tasks over a
 133-tool server, scored by its deterministic evaluator — where the *only*
 variable is whether the agent's typed plan is validated before the solver runs.
+GABench is by Bo Yu et al. ([arXiv:2604.13888](https://arxiv.org/abs/2604.13888));
+the counts here are of the checkout we ran and differ from the paper's, which
+[docs/benchmarks.md](docs/benchmarks.md) states side by side.
 
 The honest headline is a **null result**, on a frontier model and on a small
 one, and the interesting part is why:

@@ -17,6 +17,22 @@ measures that idea on a third-party benchmark, with a deterministic evaluator
   redistributing it. GABench shipped no license file when this was written;
   we asked, and on 2026-09-03 they added Apache-2.0 —
   [GeoX-Lab/GABench#2](https://github.com/GeoX-Lab/GABench/issues/2).)
+
+  **Cite GABench itself, not us**: Bo Yu, Cheng Yang, Dongyang Hou, Chengfu Liu,
+  Jiayao Liu, Chi Wang, Zhiming Zhang, Haifeng Li and Wentao Yang,
+  *GeoAgentBench: A Dynamic Execution Benchmark for Tool-Augmented Agents in
+  Spatial Analysis*, arXiv:2604.13888, 15 April 2026
+  ([doi:10.48550/arXiv.2604.13888](https://doi.org/10.48550/arXiv.2604.13888)).
+
+  **Their counts and ours differ, and both are stated rather than quietly
+  reconciled.** The paper describes 117 atomic tools and 53 tasks across 6 GIS
+  domains. The checkout we ran in August 2026 served **133** tools and **57**
+  tasks, and those are the numbers used throughout this page: the 133 is the set
+  the extension-rule figure below is taken over, and the 57 is the task range our
+  four A/B runs covered (ids reach 56, of which 48 passed plan validation in all
+  four). We have not established which of the two describes the repository as it
+  stands today, and we are not going to guess -- a reader comparing this page
+  with the paper meets the difference here instead of finding it.
 - **Agent**: GABench's own plan-and-react architecture, with one change kept
   identical across every arm: the planner emits a **typed plan** — a JSON
   list of `{step_id, tool, arguments}` — instead of prose, and the solver's
