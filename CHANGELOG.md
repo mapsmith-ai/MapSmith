@@ -150,6 +150,40 @@ guard existed and could not fail.**
 
 ### Added
 
+- **`x-mapsmith:round_trip` now records BOTH legs, and `applied_twice` is
+  gone.** *This changes the shape of an extension field: a consumer reading
+  `applied_twice` will no longer find it.* The object carried the outbound
+  transformation and `"applied_twice": true` -- a constant, written on every
+  round trip and computed on none. It was also a description rather than a
+  measurement: PROJ is free to choose a different operation for the reverse
+  pair, and where it names them at all the two are visibly not the same, the
+  way back carrying `+inv`. There is now a `return_transformation` beside
+  `transformation`, each asked of PROJ on its own pair, so the manifest shows
+  "twice" instead of asserting it. Covered by a test that buffers a **NAD27**
+  layer -- the branch four operations take and no fixture had ever taken, which
+  is why the key shipped with nothing reading it.
+- **`environment` and `repairs[].check` are on the vocabulary page.** The page
+  argues that a vocabulary you have to read the engines to learn is half a
+  vocabulary, and listed only `verification[].name` and `crs_decisions` -- so it
+  omitted the field answering *which georeferencing produced these numbers*,
+  which is the first of the two silent-error classes this product exists for.
+  `grid.DERIVED_ENVIRONMENT` is now a mapping from key to the sentence saying
+  what it claims, in the same shape as `CRS_EXTENSIONS`, and a ratchet refuses
+  an `x-mapsmith:` key in `environment` that is not declared there --
+  `x-mapsmith:area_or_point` would have passed the prefix rule and is a synonym
+  of a setting section 3.8 names itself.
+- **The manifest specification is cited, and so is GABench.** `docs/benchmarks.md`
+  linked the benchmark's repository and never named its paper
+  (arXiv:2604.13888). The paper's counts and ours differ -- 117 tools and 53
+  tasks there, 133 and 57 in the checkout we ran -- and both are now stated,
+  because a reader comparing the two pages should meet the difference rather
+  than find it.
+- **`SECURITY.md` says when a break becomes an advisory.** It called every break
+  of its promises a vulnerability, which is true, and never said which ones get
+  a GHSA -- so it named a policy we do not follow. The criterion is now written
+  with the worked example that tests it: a reader would *do something
+  different*, or the defect is recorded in the CHANGELOG and beside the promise
+  it broke, with no third option.
 - **`docs/manifest-vocabulary.md`: the names MapSmith writes that the
   specification does not define.** Section 3.6 makes `verification[].name`
   something a consumer can branch on rather than parse, and MapSmith obeys

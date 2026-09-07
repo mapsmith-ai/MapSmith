@@ -278,17 +278,35 @@ def test_buffering_a_geographic_layer_records_the_round_trip_it_makes(tmp_path):
         "a trip that ends where it started is not the thing this key records"
     )
 
-    # The substantive claim, and the reason the key is not `target_crs`: coming
-    # back is a datum crossing with a cost, not a free relabelling.
-    shift = trip["transformation"]
-    assert shift["is_ballpark"] is False, (
-        "PROJ has a real operation for this pair; if this ever reports a "
-        "ballpark, the seven metres stopped being applied and the record must "
-        f"say so: {shift}"
+    # BOTH legs, each measured. Until 2026-09-07 the record carried the outbound
+    # one and `"applied_twice": True` -- a constant that called an operation and
+    # its inverse the same operation. They are not: the way back carries `+inv`.
+    outbound = trip["transformation"]
+    inbound = trip["return_transformation"]
+    for leg, shift in (("outbound", outbound), ("return", inbound)):
+        assert shift["is_ballpark"] is False, (
+            f"PROJ has a real operation for this pair; if the {leg} leg ever "
+            "reports a ballpark the seven metres stopped being applied, and the "
+            f"record has to say so: {shift}"
+        )
+        assert shift["accuracy_m"] and shift["accuracy_m"] > 0, (
+            f"the {leg} leg crossed a datum and the record prices it at "
+            f"nothing: {shift}"
+        )
+    # For NAD27 PROJ reports no pipeline string either way, so this fixture
+    # cannot show that the legs are distinct operations. A pair where it does
+    # can, and it is the pair in the README's example manifest: the way back
+    # carries `+inv`. That is the evidence `applied_twice` was a description and
+    # not a measurement -- it called an operation and its inverse the same one.
+    from mapsmith.provenance import alignment_decisions
+
+    wgs = alignment_decisions("EPSG:32632", "worked example", returned_to="EPSG:4326")
+    legs = wgs[ROUND_TRIP]
+    assert legs["transformation"]["pipeline"] != legs["return_transformation"]["pipeline"], (
+        "the two legs were asked of PROJ separately, so where it names them at "
+        f"all they must not come back identical: {legs}"
     )
-    assert shift["accuracy_m"] and shift["accuracy_m"] > 0, (
-        f"a datum was crossed twice and the record prices it at nothing: {shift}"
-    )
+    assert "+inv" in legs["return_transformation"]["pipeline"], legs
 
     assert gpd.read_file(out).crs.to_epsg() == 4267, (
         "the output has to come back in the caller's CRS, or the key describes "

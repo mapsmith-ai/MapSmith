@@ -132,9 +132,13 @@ for it:
     "reason": "estimated UTM zone for metric buffering on a geographic CRS",
     "x-mapsmith:round_trip": {
       "output_crs": "EPSG:4326",
-      "applied_twice": true,
       "transformation": {
         "pipeline": "+proj=pipeline +step +proj=unitconvert +xy_in=deg +xy_out=rad +step +proj=utm +zone=32 +ellps=WGS84",
+        "accuracy_m": 0.0,
+        "is_ballpark": false
+      },
+      "return_transformation": {
+        "pipeline": "+proj=pipeline +step +inv +proj=utm +zone=32 +ellps=WGS84 +step +proj=unitconvert +xy_in=rad +xy_out=deg",
         "accuracy_m": 0.0,
         "is_ballpark": false
       }

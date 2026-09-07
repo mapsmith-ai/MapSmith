@@ -144,7 +144,9 @@ def alignment_decisions(
     crosses a datum on the way out and again on the way back, seven metres each
     way. The two legs largely cancel over the extent of one feature, which is
     why nothing looked wrong; the record says it happened rather than leaving a
-    reader to assume it did not.
+    reader to assume it did not. Both legs are recorded, each asked of PROJ
+    on its own pair: whether the way back is the same operation as the way
+    out has an answer, and is not something to assert.
     """
     from . import datum
 
@@ -153,10 +155,16 @@ def alignment_decisions(
         "reason": reason,
     }
     if returned_to is not None and not _same_crs(returned_to, analysis_crs):
+        # BOTH legs, each asked of PROJ, because the trip is two operations and
+        # not one applied twice. Until 2026-09-07 this wrote the outbound leg and
+        # `"applied_twice": True` -- a constant, never computed, and an inference:
+        # PROJ is free to pick a different operation for the reverse pair. A field
+        # whose value is always the same is not a field, it is part of what the key
+        # means. Two measured legs say "twice" by showing it.
         decisions[ROUND_TRIP] = {
             "output_crs": _crs_label(returned_to),
-            "applied_twice": True,
             "transformation": datum.default_operation(returned_to, analysis_crs),
+            "return_transformation": datum.default_operation(analysis_crs, returned_to),
         }
     if not moved:
         return decisions
