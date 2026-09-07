@@ -22,7 +22,7 @@ from . import __version__
 # implementation of that format, not its definition: the spec, its schema, a
 # toolchain-free validator and the conformance suite live in their own
 # repository, and a CI test validates real MapSmith output against them.
-SPEC_VERSION = "1.0.0-draft.3"
+SPEC_VERSION = "1.0.0-draft.4"
 
 #: One `crs_decisions` key for "a secondary input was brought into the analysis
 #: CRS", and a structured value rather than a sentence.

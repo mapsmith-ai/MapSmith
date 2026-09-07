@@ -159,6 +159,11 @@ def problems(record: object) -> list[str]:
                 out_field["sha256"]
             ):
                 out.append("`output.sha256` must be 64 lowercase hex characters")
+            # New in 1.0.0-draft.4. Section 3.7 had pointed here since draft.2
+            # for the output CRS, and there was nowhere here to point at.
+            crs = out_field.get("crs")
+            if crs is not None and not isinstance(crs, str):
+                out.append("`output.crs` must be a string or null")
 
     # The RECOMMENDED fields of section 3.4. Optional to emit, typed once
     # emitted: a consumer that finds `notes` holding a bare string instead of a
@@ -208,6 +213,16 @@ def problems(record: object) -> list[str]:
                 isinstance(accuracy, bool) or not isinstance(accuracy, (int, float))
             ):
                 out.append("`crs_decisions.transformation.accuracy_m` must be a number or null")
+            # New in 1.0.0-draft.4, and the reason it exists is in section 3.7:
+            # it is the only field that tells "no operation exists for this pair"
+            # apart from "one does and this machine has not got the grid".
+            better = shift.get("better_available_m")
+            if better is not None and (
+                isinstance(better, bool) or not isinstance(better, (int, float))
+            ):
+                out.append(
+                    "`crs_decisions.transformation.better_available_m` must be a number or null"
+                )
     if _optional(out, record, "environment", dict):
         for key, value in record["environment"].items():
             if not isinstance(value, str):

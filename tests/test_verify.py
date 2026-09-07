@@ -1941,3 +1941,113 @@ def test_no_new_operation_writes_a_dataset_without_a_net():
         "Lower the numbers in WRITES_WITHOUT_AN_AUDIT -- a ratchet that is not "
         "tightened is a list of things somebody once meant to do."
     )
+
+
+def test_the_version_the_writers_declare_is_the_one_the_vendored_schema_carries():
+    """The one place `SPEC_VERSION` can be checked without the spec repository.
+
+    `provenance.SPEC_VERSION` is a hand-typed string, and until 2026-09-07 there
+    was nothing on this side of the fence to compare it against: the vendored
+    schema accepts any `1.x.y` by design, so it said nothing about which draft
+    it was, and the only check on the version compared the code with the
+    CHANGELOG -- two files in the same repository, which drift together.
+
+    The specification's schema now declares its own version in `x-spec-version`,
+    a keyword every JSON Schema validator ignores. That makes this comparison
+    possible in CI, with no sibling checkout: re-vendoring the schema and
+    forgetting to move the string now fails here, which is the mistake this is
+    for.
+    """
+    import json
+    from pathlib import Path
+
+    from mapsmith import provenance
+
+    schema = json.loads(
+        (Path(__file__).parent / "data" / "manifest-v1.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    declared = schema.get("x-spec-version")
+    assert declared, (
+        "the vendored schema carries no `x-spec-version`. Either it was vendored "
+        "from a copy older than 1.0.0-draft.3, or the keyword was dropped in the "
+        "specification -- and in both cases nothing on this side can tell which "
+        "draft the fixtures are checking against."
+    )
+    assert provenance.SPEC_VERSION == declared, (
+        f"the writers declare spec_version {provenance.SPEC_VERSION!r} and the "
+        f"vendored schema is {declared!r}. Whichever moved, the records this "
+        "suite validates are being checked against a different draft than they "
+        "claim to target."
+    )
+
+
+def test_the_vendored_schema_and_validator_are_the_published_ones():
+    """Skipped without the sibling checkout, and that is why it is not the only one.
+
+    A test that can only run on a developer's disk is not a guard in CI, so the
+    version tie above does the work that has to happen on every push. This one
+    catches the other half: a vendored copy edited here instead of upstream, or
+    an upstream change never brought across. Bodies are compared with line
+    endings normalised, because those are decided by whichever checkout wrote
+    the file and not by either project.
+    """
+    from pathlib import Path
+
+    import pytest
+
+    # parents[2] and not [3]: this file is <workspace>/mapsmith/tests/, so the
+    # sibling checkouts are two levels up. Written as [3] first, which resolved
+    # to the drive root and would have made this test skip in silence for ever
+    # -- a guard that cannot fail, in the act of writing one.
+    workspace = Path(__file__).resolve().parents[2]
+    spec_repo = workspace / "manifest-spec"
+    if not spec_repo.is_dir():
+        pytest.skip(f"no manifest-spec checkout beside this one, looked in {workspace}")
+
+    here = Path(__file__).parent / "data"
+    def body_after_the_docstring(path: Path) -> list[str]:
+        """Everything below the module docstring, normalised for line endings.
+
+        The vendored validator's docstring is deliberately NOT the published
+        one: it says it is a copy, where it came from, and that drift is a
+        finding rather than something to merge. Comparing whole files fails on
+        the single difference that is supposed to be there, and the usual repair
+        for a test like that is to delete it.
+        """
+        import ast
+
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        first = tree.body[0] if tree.body else None
+        is_docstring = (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        )
+        start = first.end_lineno if is_docstring else 0
+        return source.splitlines()[start:]
+
+    schema_here = here / "manifest-v1.schema.json"
+    schema_there = spec_repo / "schema" / "manifest-v1.schema.json"
+    assert schema_there.is_file(), f"{schema_there} is missing from the spec checkout"
+    assert schema_here.read_text(encoding="utf-8").splitlines() == schema_there.read_text(
+        encoding="utf-8"
+    ).splitlines(), (
+        "the vendored schema differs from the published one. Copy the published "
+        "one across rather than editing the copy: this suite validates against "
+        "the vendored file, so an edit here makes the tests agree with "
+        "themselves and with nothing else."
+    )
+
+    validator_here = here / "manifest_spec_validator.py"
+    validator_there = spec_repo / "validator" / "validate.py"
+    assert validator_there.is_file(), f"{validator_there} is missing from the spec checkout"
+    assert body_after_the_docstring(validator_here) == body_after_the_docstring(
+        validator_there
+    ), (
+        "the vendored validator differs from the published one BELOW its "
+        "docstring. Copy the published body across: the header here is ours and "
+        "says so, everything under it is theirs."
+    )

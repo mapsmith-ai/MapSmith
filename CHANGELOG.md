@@ -212,6 +212,23 @@ guard existed and could not fail.**
 
 ### Changed
 
+- **Records declare `spec_version` `1.0.0-draft.4`**, and the two fields that draft
+  adds are ones this producer was already emitting in the wrong place or not at
+  all. `crs_decisions.transformation.better_available_m` was ours, unprefixed,
+  inside an object the specification defines -- and it is the only field in the
+  format that separates *no datum transformation exists for this pair* from *one
+  does and this machine has not got the grid*, which are different problems with
+  different fixes. It is now the specification's, described, and checked by both
+  implementations. `output.crs` exists for the first time: section 3.7 had said
+  since `draft.2` that the output CRS belongs in `output`, at a field nobody had
+  built, which is why it ended up in `crs_decisions` where a producer states it
+  before the file exists.
+
+  The vendored schema and validator moved with it, and that is now something a
+  test says rather than something somebody remembers: the schema declares its own
+  version, and re-vendoring without moving `SPEC_VERSION` fails the suite. It
+  failed exactly that way while this change was being made.
+
 - **`x-mapsmith:round_trip` lost two fields, and both losses are breaking for a
   consumer that read them.** The object was
   `{output_crs, applied_twice, transformation}`; it is now

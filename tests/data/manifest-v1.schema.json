@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mapsmith.dev/spec/manifest-v1.schema.json",
+  "x-spec-version": "1.0.0-draft.4",
   "title": "Provenance manifest for a geospatial dataset",
   "description": "One record, written next to one output dataset, complete enough that someone who was not there can re-run the operation and disagree with it. A manifest records what was done; it does not certify that it was right — those are different claims, and this format only makes the first.",
   "type": "object",
@@ -87,6 +88,13 @@
           "type": "string",
           "pattern": "^[0-9a-f]{64}$",
           "description": "SHA-256 of the output's bytes at the moment the manifest was written."
+        },
+        "crs": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "RECOMMENDED. The coordinate reference system the written dataset declares. Section 3.7 says the output CRS belongs here and not in crs_decisions; before 1.0.0-draft.4 there was nowhere here to put it. Omit it rather than predict it: a producer that has not written the file yet does not know."
         }
       },
       "description": "RECOMMENDED. The digest of the dataset this record sits beside. Without it, a consumer cannot verify that the sidecar describes the bytes next to it — and the record cannot be wrapped in an in-toto attestation, whose subject requires a digest. Recommended rather than mandatory only because a producer may emit the manifest before the output is durably on disk; when it can be computed, it should be."
@@ -236,6 +244,13 @@
             "is_ballpark": {
               "type": "boolean",
               "description": "True when no datum transformation was available and the engine treated the datums as equivalent. A boolean and not prose: a consumer has to be able to branch on it."
+            },
+            "better_available_m": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "The stated accuracy, in metres, of a published operation that exists for this pair but was not used - normally because the grid file is not installed. Meaningful only when is_ballpark is true. It is the only field that separates 'no datum transformation exists for this pair' from 'one exists and this machine has not got it': the first is a fact about the world, the second is a download."
             }
           },
           "description": "How the coordinates were transformed. Section 3.7."
