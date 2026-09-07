@@ -273,8 +273,11 @@ def test_buffering_a_geographic_layer_records_the_round_trip_it_makes(tmp_path):
         "the operation went out to an estimated UTM zone and came back, and the "
         f"manifest said nothing about the trip: {sorted(decisions)}"
     )
-    assert trip["output_crs"] == "EPSG:4267", trip
-    assert decisions["analysis_crs"] != trip["output_crs"], (
+    # Deliberately NOT asserting an `output_crs` inside this object: section 3.7
+    # says the output CRS belongs in `output`, and a claim about a file written
+    # by code that has not written it yet is false on every failing path. The
+    # CRS the output really ended in is checked below, from the file.
+    assert decisions["analysis_crs"] != "EPSG:4267", (
         "a trip that ends where it started is not the thing this key records"
     )
 

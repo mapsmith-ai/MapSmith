@@ -834,6 +834,20 @@ def _spec_fixtures(tmp_path):
     gpd.GeoDataFrame({"k": ["x"], "v": [1]}, geometry=[square], crs=crs).to_parquet(layer)
     second = tmp_path / "b.parquet"
     gpd.GeoDataFrame({"j": [2]}, geometry=[other], crs=crs).to_parquet(second)
+    # One fixture on a GEOGRAPHIC datum, and NAD27 rather than WGS 84 on
+    # purpose. Every other layer here is already projected, so until 2026-09-07
+    # not one of the fifty-eight records this sweep collects had ever taken the
+    # branch that reprojects and comes back -- which means `x-mapsmith:round_trip`
+    # shipped, was declared, was documented, and was read by nothing. NAD27
+    # crosses a datum in both directions (`estimate_utm_crs()` answers with a
+    # WGS 84 zone whatever the input datum is), so the record here carries two
+    # real transformations rather than two free relabellings.
+    geographic = tmp_path / "nad27.parquet"
+    gpd.GeoDataFrame(
+        {"k": ["x"]},
+        geometry=[Polygon([(-93.1, 34.5), (-93.0, 34.5), (-93.0, 34.6), (-93.1, 34.6)])],
+        crs="EPSG:4267",
+    ).to_parquet(geographic)
     points = tmp_path / "p.parquet"
     gpd.GeoDataFrame(
         {"n": [1, 2]}, geometry=[Point(10, 10), Point(90, 90)], crs=crs
@@ -968,7 +982,8 @@ def _spec_fixtures(tmp_path):
             [str(layer), str(second)], out("merge.parquet")
         ),
         "simplify_layer": lambda: vector.simplify(str(layer), 1.0, out("simp.parquet")),
-        "centroid_layer": lambda: vector.centroid(str(layer), out("cent.parquet")),
+        # On the geographic fixture, so this sweep sees `x-mapsmith:round_trip`.
+        "centroid_layer": lambda: vector.centroid(str(geographic), out("cent.parquet")),
         # `streets` and not `layer`: the single-polygon layer kept 1 of 1, so the
         # conformance sweep validated the manifest of a filter that filtered
         # nothing — output bytes identical to input, no `SUBSET` note, no

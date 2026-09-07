@@ -1546,7 +1546,24 @@ def test_the_front_page_record_carries_the_keys_the_operation_really_writes():
             emitted = json.loads(
                 (workspace / "out.gpkg.provenance.json").read_text(encoding="utf-8")
             )
-            missing = set(emitted["crs_decisions"]) - set(manifest["crs_decisions"])
+            # RECURSIVE, since 2026-09-07. It compared top-level keys only, and
+            # on that day `x-mapsmith:round_trip` gained a sub-key and lost two:
+            # this assertion would have stayed green with `applied_twice` still
+            # on the front page and `return_transformation` missing from it.
+            # A guard whose docstring says it exists because "a hand-typed
+            # record can quietly stop being the record the software writes"
+            # cannot stop at the first level of an object the software nests.
+            def missing_paths(written, shown_here, prefix=""):
+                gaps = []
+                for key, value in written.items():
+                    here = f"{prefix}{key}"
+                    if key not in shown_here:
+                        gaps.append(here)
+                    elif isinstance(value, dict) and isinstance(shown_here[key], dict):
+                        gaps += missing_paths(value, shown_here[key], f"{here}.")
+                return gaps
+
+            missing = missing_paths(emitted["crs_decisions"], manifest["crs_decisions"])
             assert not missing, (
                 f"the record on the front page is missing {sorted(missing)} from "
                 f"`crs_decisions`, which `buffer_layer` writes for this very call. "

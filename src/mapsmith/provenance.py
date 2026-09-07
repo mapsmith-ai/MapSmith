@@ -74,7 +74,12 @@ CRS_EXTENSIONS: dict[str, str] = {
     ROUND_TRIP: (
         "Not `target_crs`: nothing ended up there. The coordinates went out to "
         "`analysis_crs` and came back, so the specification's pair would describe "
-        "a move that was undone."
+        "a move that was undone. Both legs are recorded -- `transformation` for "
+        "the way out and `return_transformation` for the way back -- because they "
+        "are an operation and its inverse, not one applied twice. The CRS the "
+        "output ended in is deliberately NOT here: section 3.7 says that belongs "
+        "in `output`, and a claim about a file, made by code that has not yet "
+        "written one, is false on every path that fails before it does."
     ),
     "x-mapsmith:input_crs_discarded": (
         "Not `source_crs`, which the specification defines as the system the "
@@ -162,7 +167,6 @@ def alignment_decisions(
         # whose value is always the same is not a field, it is part of what the key
         # means. Two measured legs say "twice" by showing it.
         decisions[ROUND_TRIP] = {
-            "output_crs": _crs_label(returned_to),
             "transformation": datum.default_operation(returned_to, analysis_crs),
             "return_transformation": datum.default_operation(analysis_crs, returned_to),
         }

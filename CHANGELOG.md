@@ -150,18 +150,6 @@ guard existed and could not fail.**
 
 ### Added
 
-- **`x-mapsmith:round_trip` now records BOTH legs, and `applied_twice` is
-  gone.** *This changes the shape of an extension field: a consumer reading
-  `applied_twice` will no longer find it.* The object carried the outbound
-  transformation and `"applied_twice": true` -- a constant, written on every
-  round trip and computed on none. It was also a description rather than a
-  measurement: PROJ is free to choose a different operation for the reverse
-  pair, and where it names them at all the two are visibly not the same, the
-  way back carrying `+inv`. There is now a `return_transformation` beside
-  `transformation`, each asked of PROJ on its own pair, so the manifest shows
-  "twice" instead of asserting it. Covered by a test that buffers a **NAD27**
-  layer -- the branch four operations take and no fixture had ever taken, which
-  is why the key shipped with nothing reading it.
 - **`environment` and `repairs[].check` are on the vocabulary page.** The page
   argues that a vocabulary you have to read the engines to learn is half a
   vocabulary, and listed only `verification[].name` and `crs_decisions` -- so it
@@ -200,6 +188,29 @@ guard existed and could not fail.**
   knows what else to look for.
 
 ### Changed
+
+- **`x-mapsmith:round_trip` lost two fields, and both losses are breaking for a
+  consumer that read them.** The object was
+  `{output_crs, applied_twice, transformation}`; it is now
+  `{transformation, return_transformation}`.
+  - `applied_twice` was the constant `true`, written on every round trip and
+    computed on none -- and a wrong description besides: PROJ chooses each
+    direction separately, and where it names them the two are visibly an
+    operation and its inverse, the way back carrying `+inv`. Both legs are now
+    asked of PROJ and recorded, so the manifest *shows* "twice" instead of
+    asserting it.
+  - `output_crs` named the CRS the output ended in. Section 3.7 of the
+    specification says in as many words that the output CRS belongs in `output`
+    and not among the CRS decisions -- and the field was written *before the
+    file existed*, so on any path that failed afterwards it described a dataset
+    that was never written, or a stale one left by an earlier run. What it
+    claimed is already recorded where it can be checked: the `crs_matches` entry
+    of `verification[]`, which is absent exactly when the operation did not
+    finish.
+
+  Covered by a test that buffers a **NAD27** layer -- the branch four operations
+  take and no fixture had ever taken, which is why the key shipped with nothing
+  reading it.
 
 - **Every `crs_decisions` key MapSmith adds is declared in one place, with
   the sentence that says why it is not a synonym.** The prefix rule cannot
