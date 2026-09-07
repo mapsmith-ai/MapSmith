@@ -195,10 +195,12 @@ def zonal_statistics(
         geometry=zones.geometry.name,
         crs=zones.crs,
     )
-    if str(output_path).endswith(".parquet"):
-        out.to_parquet(output_path)
-    else:
-        out.to_file(output_path)
+    pre = verify.verify_loaded_inputs("zonal_statistics", zones_path=zones)
+    with verify.audit_on_failure(record, output_path, pre):
+        if str(output_path).endswith(".parquet"):
+            out.to_parquet(output_path)
+        else:
+            out.to_file(output_path)
 
     # the zone geometries are carried through verbatim, so an invalid input
     # yields an invalid output: mechanical repair applies here
@@ -206,7 +208,7 @@ def zonal_statistics(
         record,
         output_path,
         operation="zonal_statistics",
-        preconditions=verify.verify_loaded_inputs("zonal_statistics", zones_path=zones),
+        preconditions=pre,
         checks_fn=lambda: verify.verify_vector_output(
             output_path,
             expect_crs=zones.crs,

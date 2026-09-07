@@ -207,7 +207,10 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
             )
     # MapSmith's writer always writes, whichever engine computed: the canonical
     # format stays canonical and verification runs over a file we produced.
-    _write(buffered, output_path)
+    # Inside the net since 2026-09-07: measured, a `_write` that touched the file
+    # and then raised left 516 bytes on disk and no manifest at all.
+    with verify.audit_on_failure(record, output_path, pre):
+        _write(buffered, output_path)
     manifest, extras = verify.audited(
         record,
         output_path,
@@ -1925,7 +1928,8 @@ def parse_coordinates(
         geometry=gpd.points_from_xy(longitudes, latitudes),
         crs=crs,
     )
-    _write(points, output_path)
+    with verify.audit_on_failure(record, output_path, []):
+        _write(points, output_path)
     manifest, extras = verify.audited(
         record,
         output_path,

@@ -1829,3 +1829,116 @@ def test_the_published_vocabulary_is_what_the_source_says_today():
         f"{sorted(policed - listed)}. One rule, two readings, and they have "
         "started to drift."
     )
+
+
+#: Operations that write their dataset OUTSIDE `audit_on_failure`, with the
+#: number of uncovered write sites in each. Measured on 2026-09-07 and meant to
+#: go down: see `test_no_new_operation_writes_a_dataset_without_a_net`.
+WRITES_WITHOUT_AN_AUDIT: dict[tuple[str, str], int] = {
+    ("engines/linework.py", "snap_layer"): 1,
+    ("engines/linework.py", "points_along_lines"): 1,
+    ("engines/linework.py", "line_intersections"): 1,
+    ("engines/linework.py", "transform_by_control_points"): 1,
+    ("engines/network.py", "least_cost_path"): 2,
+    ("engines/spatial_stats.py", "hot_spots"): 1,
+    ("engines/spatial_stats.py", "smooth_rates"): 1,
+    ("engines/spatial_stats.py", "aggregate_to_threshold"): 1,
+    ("engines/spatial_stats.py", "thin_points"): 1,
+}
+
+
+def _writes_outside_the_net() -> tuple[dict[tuple[str, str], int], int]:
+    """Where a writing operation writes its dataset with no audit around it.
+
+    Invariant 2 is *provenance on every writer*, and `audit_on_failure` is what
+    makes it survive an exception: the manifest is written with the failure
+    recorded instead of being lost with the traceback. A write outside that
+    block has the opposite property. Measured on 2026-09-07 by making `_write`
+    leave 516 bytes and raise: **the partial dataset stayed on disk and no
+    manifest was written at all** -- the data landing where the manifest is not,
+    which is the same shape as the trailing-dot defect of 2026-09-02 with a
+    different cause.
+
+    Returns the uncovered sites per (module, function), and the number of
+    covered ones -- which is the anti-vacuity number. Asserting on the uncovered
+    count alone would pass the day this sweep stops reading the source at all.
+    """
+    import ast
+    from pathlib import Path
+
+    package = Path(verify.__file__).parent
+    writers = {"_write", "to_parquet", "to_file"}
+
+    def holds(block: ast.With, node: ast.AST) -> bool:
+        last = max(getattr(x, "lineno", block.lineno) for x in ast.walk(block))
+        return block.lineno <= node.lineno <= last
+
+    uncovered: dict[tuple[str, str], int] = {}
+    covered = 0
+    for module in sorted(package.rglob("*.py")):
+        tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            calls = [c for c in ast.walk(fn) if isinstance(c, ast.Call)]
+            # A writing operation is one that goes through `verify.audited`.
+            if not any("audited" in ast.unparse(c.func) for c in calls):
+                continue
+            nets = [
+                w for w in ast.walk(fn)
+                if isinstance(w, ast.With)
+                and any("audit_on_failure" in ast.unparse(i.context_expr) for i in w.items)
+            ]
+            for call in calls:
+                name = getattr(call.func, "attr", getattr(call.func, "id", None))
+                if name not in writers:
+                    continue
+                if any(holds(w, call) for w in nets):
+                    covered += 1
+                else:
+                    key = (module.relative_to(package).as_posix(), fn.name)
+                    uncovered[key] = uncovered.get(key, 0) + 1
+    return uncovered, covered
+
+
+def test_no_new_operation_writes_a_dataset_without_a_net():
+    """A ratchet on invariant 2: the list above may shrink, never grow.
+
+    Ten of the eighteen sites need the `ProvenanceRecord` moved above the write
+    before they can be wrapped, which is a change to each operation and not a
+    sweep -- so they are declared here rather than left to be rediscovered. The
+    eight that only needed a `with` were fixed on the day this was written.
+    """
+    uncovered, covered = _writes_outside_the_net()
+
+    # ANTI-VACUITY, and it is on what the sweep must SEE rather than on what it
+    # must find: if the derivation breaks, `uncovered` goes empty and every
+    # assertion below passes. `covered` going to zero is the tell.
+    assert covered >= 20, (
+        f"the sweep found only {covered} writes INSIDE an audit block, and there "
+        "were 22 when it was written. It has stopped reading the source, and an "
+        "empty list of offenders below would mean nothing."
+    )
+
+    new = {
+        where: count
+        for where, count in uncovered.items()
+        if count > WRITES_WITHOUT_AN_AUDIT.get(where, 0)
+    }
+    assert not new, (
+        f"these operations write a dataset with no `audit_on_failure` around it: "
+        f"{new}. If the write raises after touching the file, the dataset is on "
+        "disk and the manifest is not -- invariant 2, measured. Wrap the write, "
+        "moving the ProvenanceRecord above it if it is built after."
+    )
+
+    fixed = {
+        where: WRITES_WITHOUT_AN_AUDIT[where]
+        for where in WRITES_WITHOUT_AN_AUDIT
+        if uncovered.get(where, 0) < WRITES_WITHOUT_AN_AUDIT[where]
+    }
+    assert not fixed, (
+        f"these are covered now, and the ratchet still lists them: {fixed}. "
+        "Lower the numbers in WRITES_WITHOUT_AN_AUDIT -- a ratchet that is not "
+        "tightened is a list of things somebody once meant to do."
+    )

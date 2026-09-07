@@ -438,19 +438,19 @@ def network_shortest_path(
         cumulative.append(running)
     route["cumulative_cost"] = cumulative
 
-    if str(output_path).endswith(".parquet"):
-        route.to_parquet(output_path)
-    else:
-        route.to_file(output_path)
+    pre = verify.verify_loaded_inputs("network_shortest_path", network_path=lines)
+    with verify.audit_on_failure(record, output_path, pre):
+        if str(output_path).endswith(".parquet"):
+            route.to_parquet(output_path)
+        else:
+            route.to_file(output_path)
 
     total = best[target]
     manifest, extras = verify.audited(
         record,
         output_path,
         operation="network_shortest_path",
-        preconditions=verify.verify_loaded_inputs(
-            "network_shortest_path", network_path=lines
-        ),
+        preconditions=pre,
         checks_fn=lambda: [
             *verify.verify_vector_output(
                 output_path,
@@ -639,16 +639,18 @@ def service_area(
         geometry=[p["geometry"] for p in pieces],
         crs=lines.crs,
     )
-    if str(output_path).endswith(".parquet"):
-        out.to_parquet(output_path)
-    else:
-        out.to_file(output_path)
+    pre = verify.verify_loaded_inputs("service_area", network_path=lines)
+    with verify.audit_on_failure(record, output_path, pre):
+        if str(output_path).endswith(".parquet"):
+            out.to_parquet(output_path)
+        else:
+            out.to_file(output_path)
 
     manifest, extras = verify.audited(
         record,
         output_path,
         operation="service_area",
-        preconditions=verify.verify_loaded_inputs("service_area", network_path=lines),
+        preconditions=pre,
         checks_fn=lambda: [
             *verify.verify_vector_output(
                 output_path,

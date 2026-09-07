@@ -13,6 +13,23 @@ guard existed and could not fail.**
 
 ### Fixed
 
+- **Eighteen operations wrote their dataset with no net under the write, and a
+  failed write left the file with no manifest at all.** Invariant 2 is
+  provenance on every writer, and `audit_on_failure` is what makes it survive an
+  exception -- the manifest is written with the failure recorded instead of
+  being lost with the traceback. Eighteen write sites sat outside that block.
+  Measured rather than reasoned about: a `_write` made to touch the file and
+  then raise left **516 bytes of a partial dataset on disk and no manifest**,
+  which is the data landing where the manifest is not -- the same shape as the
+  trailing-dot defect fixed in 0.4.0, with a different cause. Eight of the
+  eighteen only needed the `with`, and are fixed: `buffer_layer`,
+  `parse_coordinates`, `zonal_statistics`, `network_shortest_path`,
+  `service_area`. The other ten build their `ProvenanceRecord` *after* the
+  write, so there is nothing to audit with until each operation is reordered;
+  they are named in a ratchet that fails on any new one and on any of them
+  quietly becoming covered without the list being tightened. The same partial
+  write now produces a manifest whose `x-mapsmith:operation_completed` is false
+  and critical, and whose detail says the output may be absent or partial.
 - **The manifest on the front page had stopped being the manifest MapSmith
   writes.** It showed `buffer_layer` reprojecting a geographic layer to
   EPSG:32632 and back, with no `x-mapsmith:round_trip` in `crs_decisions` -- the
