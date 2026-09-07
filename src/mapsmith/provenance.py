@@ -664,9 +664,39 @@ class ProvenanceRecord:
             # After `inputs`, where a reader expects it; through the same
             # redaction as everything else, because an output path can carry a
             # signed URL exactly like an input path can.
-            entry = redact_secrets(
-                {"path": posix_path(output_path), "sha256": sha256_of(output_path)}
-            )
+            #
+            # `crs` since 1.0.0-draft.4 of the specification, and it is written
+            # HERE for the same reason the digest is: this is the one moment the
+            # final bytes certainly exist. Section 3.7 has said since draft.2
+            # that the output CRS belongs in `output`, and until draft.4 there
+            # was nowhere here to put it -- so this producer had put it in
+            # `crs_decisions`, under `x-mapsmith:round_trip.output_crs`, where
+            # the code writing it had not yet written the file. That made it
+            # false on every path that failed in between, and in the worst case
+            # it described a stale output left by an earlier run whose digest
+            # this method then computed. Removed on 2026-09-07; this is the same
+            # fact stated from the only place that can state it truthfully.
+            #
+            # And it is what the FILE declares, not what the operation intended:
+            # `expect_crs` is already the subject of `crs_matches`, so a second
+            # copy of the expectation would add nothing a consumer could not
+            # already read. This is the other side of that comparison.
+            from .verify import UNKNOWN_CRS, probe_crs
+
+            found = probe_crs(str(output_path))
+            fields = {"path": posix_path(output_path), "sha256": sha256_of(output_path)}
+            if found != UNKNOWN_CRS:
+                # OMITTED and not null when unknown, deliberately. The schema
+                # allows null, and null would be the stronger statement -- "we
+                # looked, and this file declares no CRS". `probe_crs` cannot
+                # support it: it answers `unknown` both for a file that declares
+                # none and for one it failed to read, and the specification says
+                # a producer that cannot compute this SHOULD omit it rather than
+                # predict it. Writing null would turn "we could not tell" into
+                # "there is none", which is the class of defect this format
+                # exists to remove.
+                fields["crs"] = found
+            entry = redact_secrets(fields)
             record = {}
             for key, value in asdict(self).items():
                 record[key] = value

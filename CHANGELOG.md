@@ -173,6 +173,23 @@ guard existed and could not fail.**
 
 ### Added
 
+- **`output.crs`: what the written file declares, read from the file.** New in
+  `1.0.0-draft.4` of the specification, and filled by `write_for` -- the one
+  moment the final bytes certainly exist, which is the same reason the digest is
+  computed there and not in `verify.audited`, where seventeen of the fifty-eight
+  writers never go. It closes a hole this release opened on purpose: the output
+  CRS used to sit in `crs_decisions` under `x-mapsmith:round_trip.output_crs`,
+  where section 3.7 says it must not, written by code that had not yet written
+  the file.
+
+  It is what the file *declares*, not what the operation intended: the intention
+  is already the subject of `crs_matches`, and a second copy of an expectation
+  tells a consumer nothing it could not already read. When the CRS cannot be
+  determined the field is **omitted rather than null** -- null would say "this
+  file declares none", and the probe cannot tell that apart from "could not read
+  it". All 58 writing operations record it, measured; an operation that stops
+  has to be declared with its reason rather than the check being loosened.
+
 - **`environment` and `repairs[].check` are on the vocabulary page.** The page
   argues that a vocabulary you have to read the engines to learn is half a
   vocabulary, and listed only `verification[].name` and `crs_decisions` -- so it

@@ -180,6 +180,7 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
     ]
     validated: list[str] = []
     skipped: list[str] = []
+    with_crs: list[str] = []
     for entry in catalog.OPERATIONS:
         if entry["status"] != "available":
             continue
@@ -200,6 +201,22 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
         assert _spec_problems(record) == [], f"{name} writes a manifest the spec rejects"
         assert record["operation"] == name
         assert record["spec_version"].startswith("1."), name
+        # `output.crs`, and checked against a SECOND reading of the file rather
+        # than against the same one. `write_for` fills it from
+        # `verify.probe_crs`, which answers from metadata alone; here the file
+        # is opened properly, the way a consumer would. Two paths to one fact,
+        # which is the only form of this check worth running -- calling
+        # `probe_crs` again would agree with itself.
+        declared = (record.get("output") or {}).get("crs")
+        if declared is not None:
+            with_crs.append(name)
+            opened = _crs_by_a_second_route(result["output"])
+            assert opened is not None and verify.same_crs(opened, declared), (
+                f"{name} writes `output.crs` = {declared!r}, and opening the "
+                f"file gives {verify.crs_label(opened) if opened else None!r}. "
+                "One of the two readings is wrong, and the record is the one a "
+                "stranger believes."
+            )
         # No shipped operation may reach the fallback. `write_for` appends a
         # failed `verification_present` check when a record would otherwise
         # carry none, because a dataset with a non-conforming manifest beside
@@ -292,6 +309,26 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
         f"unaccounted for: {sorted(set(writing) - set(validated) - set(skipped))}"
     )
     assert validated, "the sweep validated nothing at all"
+    # ANTI-VACUITY on `output.crs`, and a ratchet rather than a floor. The
+    # cross-check above runs only where the field is present, so the day
+    # `write_for` stops writing it every one of those assertions passes by never
+    # running -- the shape this project keeps finding. A floor was the first
+    # form of this, with a number in the message that had been typed rather than
+    # measured; measured, it is **58 of 58**. Every operation that writes a
+    # dataset writes a georeferenced one, so "all of them" is a property and not
+    # a coincidence, and asserting the property is stronger than asserting most.
+    #
+    # An operation that legitimately has no output CRS -- a table of statistics
+    # with no geometry, say -- belongs in the set below, declared, rather than
+    # quietly lowering a threshold.
+    without_a_crs = set(validated) - set(with_crs) - NO_OUTPUT_CRS
+    assert not without_a_crs, (
+        f"these operations write a dataset and record no `output.crs`: "
+        f"{sorted(without_a_crs)}. Either `write_for` stopped filling it, or "
+        "`probe_crs` no longer recognises what they write, or the output really "
+        "has no CRS -- and that last one is a fact to declare in "
+        "`NO_OUTPUT_CRS`, not a reason to check less."
+    )
     print(
         f"conformance sweep: {len(validated)} of {len(writing)} writing operations "
         f"validated, {len(skipped)} skipped for a missing extra ({sorted(skipped)})"
@@ -814,6 +851,36 @@ def test_every_crs_decisions_key_in_the_source_obeys_the_spec():
         "this sweep cannot read. Either write them out, or confirm the conformance "
         "sweep reaches every branch of it and add it here."
     )
+
+
+def _crs_by_a_second_route(output_path: str):
+    """The CRS of a written dataset, read properly rather than probed.
+
+    `verify.probe_crs` -- which is what fills `output.crs` -- answers from
+    metadata only and never raises, both of which are right for a producer and
+    wrong for a check on that producer. This opens the file: rasterio for a
+    raster, geopandas for everything it can read. It returns None when it
+    cannot read the file at all, and a caller that finds None where the record
+    claimed a CRS has learnt something either way.
+
+    The CRS comes back as the OBJECT, not as a label. Comparing labels would
+    turn this into a test of how two libraries spell the same system, and
+    geopandas spells it as the whole PROJJSON document: `verify.same_crs` is
+    the comparison that means what it says.
+    """
+    lower = str(output_path).lower()
+    try:
+        if lower.endswith((".tif", ".tiff")):
+            import rasterio
+
+            with rasterio.open(output_path) as dataset:
+                return dataset.crs or None
+        frame = gpd.read_parquet(output_path) if lower.endswith(".parquet") else gpd.read_file(
+            output_path
+        )
+    except Exception:  # noqa: BLE001 -- an unreadable output is the caller's finding
+        return None
+    return frame.crs
 
 
 def _spec_fixtures(tmp_path):
@@ -1830,6 +1897,12 @@ def test_the_published_vocabulary_is_what_the_source_says_today():
         "started to drift."
     )
 
+
+#: Writing operations whose output legitimately declares no CRS. Empty, and
+#: measured: all 58 write a georeferenced dataset. A table of statistics with no
+#: geometry would belong here -- declared, with the reason, rather than lowering
+#: a threshold until it passes.
+NO_OUTPUT_CRS: set[str] = set()
 
 #: Operations that write their dataset OUTSIDE `audit_on_failure`, with the
 #: number of uncovered write sites in each. **Empty**, and it stays a ratchet
