@@ -6,7 +6,9 @@
 
 MapSmith executes tool calls written by LLM agents against local data. Its
 security promises are precise, and we treat any break of them as a
-vulnerability:
+vulnerability. Whether a break also gets a published advisory is a separate
+question with a criterion of its own, under *When a break becomes an advisory*
+below:
 
 - **Workspace containment**: with `MAPSMITH_WORKSPACE` set, no path an agent
   can name — no tool argument, no `run_sql` statement — may read or write
@@ -240,6 +242,41 @@ Out of scope: issues requiring a hostile local process on the same machine
 (the jail assumes a single trusted writer of the workspace filesystem —
 documented in the README), and anything reachable only by running MapSmith
 without a workspace, which is deliberately unconfined.
+
+## When a break becomes an advisory
+
+Every break of the promises above is a vulnerability. Not every one gets a
+GitHub advisory, and keeping the two apart is deliberate: the first statement is
+about the defect, the second about the channel.
+
+We open a GHSA advisory when a reader would **do something different** after
+reading it -- upgrade in a hurry, rotate a secret, close a port, go looking for
+signs it was used. When the answer is no, the defect is still written in two
+public places: the CHANGELOG entry of the release that fixes it, and this file,
+in the paragraph of the promise it broke. There is no third option where a break
+is neither advised nor mentioned.
+
+The criterion exists because the alternative spends the signal. Both advisories
+listed at the top are ones a reader acts on -- GHSA-g95f-6vxv-mgv7 asks you to
+rotate a credential, GHSA-3rcc-xpw3-r4xh to upgrade off a version that fetches
+URLs an attacker chose. A third advisory of much smaller weight, filed next to
+those, teaches a reader to skip the next one.
+
+A worked example, so the criterion can be checked instead of trusted. On
+2026-09-06 `contour_lines` was found writing four files into the process working
+directory, outside the workspace: a break of the first promise, shipped since
+0.4.0. It did not get an advisory, on four grounds that were measured rather
+than argued -- the working directory is chosen by whoever starts the server and
+not by the caller; the four basenames are fixed and do not derive from the input
+(checked with hostile names); what lands outside is a derivative of the caller's
+own data, not a credential; and the HTTP transport carries no authentication, so
+anyone who can reach the endpoint already holds more than the leak grants. It is
+recorded in the containment bullet above and in the CHANGELOG.
+
+The criterion is re-applied, never inherited. If a defect of that shape becomes
+influenced by the input -- the caller picking the directory or the basename --
+it gets the other answer, and that call is made again from the measurements
+rather than by citing this paragraph.
 
 ## Reporting
 
