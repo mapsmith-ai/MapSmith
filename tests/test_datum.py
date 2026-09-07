@@ -179,8 +179,10 @@ def test_choosing_and_reporting_are_different_answers():
     if not chosen["is_ballpark"]:
         # It found a better route and says so out loud rather than quietly
         # producing a different number from the one PROJ would have produced.
-        assert chosen.get("default_was_ballpark") is True
-    assert "chosen_by" in reported and "MapSmith" in reported["chosen_by"]
+        assert chosen.get("x-mapsmith:default_was_ballpark") is True
+    assert "x-mapsmith:chosen_by" in reported and (
+        "MapSmith" in reported["x-mapsmith:chosen_by"]
+    )
 
 
 def test_reproject_raster_records_the_operation_and_not_only_the_two_crs_labels(tmp_path):

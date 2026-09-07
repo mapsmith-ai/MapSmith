@@ -354,7 +354,7 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
         "target_crs": verify.crs_label(target),
         "transformation": shift,
     }
-    if shift.get("default_was_ballpark"):
+    if shift.get("x-mapsmith:default_was_ballpark"):
         record.notes.append(
             "the transformation this library selects by default for this pair is a "
             "ballpark one, which applies no datum shift at all; a published operation "

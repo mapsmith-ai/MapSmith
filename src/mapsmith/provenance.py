@@ -107,6 +107,34 @@ CRS_EXTENSIONS: dict[str, str] = {
 }
 
 
+#: Our own keys INSIDE `crs_decisions.transformation`, which is an object the
+#: specification defines -- four keys since `1.0.0-draft.4`. D-077 rule 3: the
+#: prefix follows the container and not the datum, so a key of ours in there has
+#: to say it is ours. The sentence beside each is the part a prefix cannot
+#: supply, exactly as in `CRS_EXTENSIONS`: a prefix says whose a key is, never
+#: that it is not a renamed version of one the format already has.
+#:
+#: `better_available_m` was in this list until 2026-09-07 and is not any more --
+#: it entered the specification that day, so it belongs to the format and stands
+#: unprefixed by right. That is the direction this list is supposed to move in.
+TRANSFORMATION_EXTENSIONS: dict[str, str] = {
+    "x-mapsmith:chosen_by": (
+        "Not `pipeline`, which says WHAT will run: this says WHO picked it, and "
+        "it is written only where the answer is `the engine, not MapSmith`. The "
+        "specification has no key for agency because it assumes one producer "
+        "reporting one choice; here the engine reaches for PROJ on its own and "
+        "this module can only report what it will get."
+    ),
+    "x-mapsmith:default_was_ballpark": (
+        "Not `is_ballpark`, and the two are opposites in the same record: this "
+        "appears when `is_ballpark` is FALSE precisely because MapSmith declined "
+        "the default. Without it the record says the right thing -- a real datum "
+        "shift, with its accuracy -- and hides that the library's own choice "
+        "would have applied none."
+    ),
+}
+
+
 def alignment_decisions(
     analysis_crs: Any,
     reason: str,

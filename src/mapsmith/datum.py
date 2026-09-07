@@ -259,7 +259,7 @@ def best_operation(source_crs: Any, target_crs: Any) -> tuple[Any, dict[str, Any
         # picked by itself applied no datum shift, and this one was chosen
         # instead. Without it the record says the right thing and hides that
         # anything happened.
-        "default_was_ballpark": True,
+        "x-mapsmith:default_was_ballpark": True,
     }
 
 
@@ -296,7 +296,7 @@ def default_operation(source_crs: Any, target_crs: Any) -> dict[str, Any]:
         # Deliberately not "chosen_by": the engine chose, and this module is
         # only reporting. Naming us as the chooser is how a manifest starts
         # describing an operation that never ran.
-        "chosen_by": "the engine, not MapSmith",
+        "x-mapsmith:chosen_by": "the engine, not MapSmith",
     }
     stated = _stated_operations(source_crs, target_crs)
     if stated:

@@ -140,3 +140,16 @@ and two keys that started as synonyms are why this list exists.
 | `x-mapsmith:raster_registration` | Cell registration is not a coordinate system. Section 3.7 has no key for it, and section 3.8 lists AREA_OR_POINT under `environment` -- which is a tag INSIDE the file, not configuration beside it, so that list and this key disagree and the specification is the one to fix. |
 | `x-mapsmith:raster_registration_reason` | Not `reason`, which belongs to the CRS decision and is already taken. Two different reasons under one key silently replaced each other once, and a test caught it. |
 | `x-mapsmith:round_trip` | Not `target_crs`: nothing ended up there. The coordinates went out to `analysis_crs` and came back, so the specification's pair would describe a move that was undone. Both legs are recorded -- `transformation` for the way out and `return_transformation` for the way back -- because they are an operation and its inverse, not one applied twice. The CRS the output ended in is deliberately NOT here: section 3.7 says that belongs in `output`, and a claim about a file, made by code that has not yet written one, is false on every path that fails before it does. |
+
+## Extension fields inside `crs_decisions.transformation` (2)
+
+One level further down, and it is the same rule read again: the prefix follows
+the container. `transformation` is an object section 3.7 defines — four keys
+since `1.0.0-draft.4` — so a key of ours in there has to say so. A key of ours
+directly inside `x-mapsmith:round_trip` does not, because that whole object is
+already ours: the difference is the container, never the datum.
+
+| key | why it is not one section 3.7 already has |
+|---|---|
+| `x-mapsmith:chosen_by` | Not `pipeline`, which says WHAT will run: this says WHO picked it, and it is written only where the answer is `the engine, not MapSmith`. The specification has no key for agency because it assumes one producer reporting one choice; here the engine reaches for PROJ on its own and this module can only report what it will get. |
+| `x-mapsmith:default_was_ballpark` | Not `is_ballpark`, and the two are opposites in the same record: this appears when `is_ballpark` is FALSE precisely because MapSmith declined the default. Without it the record says the right thing -- a real datum shift, with its accuracy -- and hides that the library's own choice would have applied none. |

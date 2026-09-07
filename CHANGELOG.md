@@ -229,6 +229,27 @@ guard existed and could not fail.**
 
 ### Changed
 
+- **Two keys inside `crs_decisions.transformation` gained the `x-mapsmith:`
+  prefix, which is breaking for anyone who read them.** `chosen_by` and
+  `default_was_ballpark` are now `x-mapsmith:chosen_by` and
+  `x-mapsmith:default_was_ballpark`. That object belongs to section 3.7 of the
+  specification -- four keys since `1.0.0-draft.4` -- and the prefix follows the
+  container, not the datum: a statement of ours living among the format's has to
+  say whose it is. The third key that was in the same position,
+  `better_available_m`, went the other way on the same day: it entered the
+  specification, so it is the format's now and stands unprefixed by right.
+
+  Both are declared in `provenance.TRANSFORMATION_EXTENSIONS` with the sentence
+  saying why each is not one section 3.7 already has, and both are on
+  `docs/manifest-vocabulary.md`. The guard that polices this used to stop at the
+  first level of `crs_decisions`, which is how the two went unnoticed; it
+  descends now, and it caught nothing at first because **no fixture reached
+  either branch of the datum module that writes them**. Two do now, on the
+  EPSG:4806 pair section 3.7 uses as its own headline example: one where
+  MapSmith picks a better transformation than the library's default, one where
+  the engine reaches for PROJ itself and MapSmith can only report what it will
+  get.
+
 - **Records declare `spec_version` `1.0.0-draft.4`**, and the two fields that draft
   adds are ones this producer was already emitting in the wrong place or not at
   all. `crs_decisions.transformation.better_available_m` was ours, unprefixed,

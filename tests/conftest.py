@@ -93,6 +93,28 @@ def _spec_crs_keys() -> frozenset[str]:
     assert {"analysis_crs", "reason", "source_crs", "target_crs"} <= keys, sorted(keys)
     return keys
 
+def _spec_transformation_keys() -> frozenset[str]:
+    """The keys section 3.7 fixes INSIDE `transformation`, from the same schema.
+
+    A second level, and it needed its own reader because the guards above stop
+    at the first: `crs_decisions.transformation` is an object the specification
+    defines, so a key of ours in there falls under D-077 rule 3 -- the prefix
+    follows the container -- and until 2026-09-07 two of them did not carry it.
+    Derived rather than restated, for the reason `_spec_crs_keys` is.
+    """
+    import json
+    from pathlib import Path
+
+    schema = json.loads(
+        (Path(__file__).parent / "data" / "manifest-v1.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    inner = schema["properties"]["crs_decisions"]["properties"]["transformation"]
+    keys = frozenset(inner["properties"])
+    assert {"pipeline", "accuracy_m", "is_ballpark"} <= keys, sorted(keys)
+    return keys
+
 
 #: The shape D-077 requires of a `crs_decisions` key that is MapSmith's own.
 #: The syntax is the one section 3.6 of the specification makes a MUST for

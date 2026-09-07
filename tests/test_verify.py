@@ -11,11 +11,12 @@ from conftest import (
     _SETTING_NAME,
     _spec_crs_keys,
     _spec_problems,
+    _spec_transformation_keys,
 )
 from mapsmith import verify
 from mapsmith.engines import vector
 from mapsmith.grid import DERIVED_ENVIRONMENT
-from mapsmith.provenance import INPUTS_REPROJECTED
+from mapsmith.provenance import INPUTS_REPROJECTED, TRANSFORMATION_EXTENSIONS
 
 
 @pytest.fixture()
@@ -171,6 +172,7 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
 
     fixtures = _spec_fixtures(tmp_path)
     spec_crs_keys = _spec_crs_keys()
+    spec_transformation_keys = _spec_transformation_keys()
     writing = [
         entry["name"]
         for entry in catalog.OPERATIONS
@@ -250,6 +252,30 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
                 f"{name} wrote `crs_decisions.{key}`, which is neither a key section "
                 "3.7 recommends nor a MapSmith extension `x-mapsmith:<name>` (D-077)."
             )
+        # ONE LEVEL DOWN, since 2026-09-07, and the rule changes with the
+        # container rather than repeating. D-077 rule 3: the prefix follows the
+        # container, not the datum.
+        #
+        # Inside `transformation` -- an object the SPECIFICATION defines -- a key
+        # of ours has to say it is ours and be declared. Two were neither for
+        # weeks (`chosen_by`, `default_was_ballpark`), and they passed because
+        # the schema has `additionalProperties: true` and every guard here
+        # stopped at the first level. Inside a container of OURS, by the same
+        # rule, sub-keys carry no prefix and there is nothing to check: the whole
+        # object already said whose it is.
+        inner = (record.get("crs_decisions") or {}).get("transformation")
+        if isinstance(inner, dict):
+            for key in inner:
+                assert key in spec_transformation_keys or (
+                    _EXTENSION_KEY.fullmatch(key) and key in TRANSFORMATION_EXTENSIONS
+                ), (
+                    f"{name} wrote `crs_decisions.transformation.{key}`. That object "
+                    "belongs to section 3.7, so a key of ours in it must be spelled "
+                    "`x-mapsmith:<name>` AND declared in "
+                    "`provenance.TRANSFORMATION_EXTENSIONS` with the sentence saying "
+                    "why it is not one the specification already has -- a prefix says "
+                    "whose a key is and never that."
+                )
         # Saying an input was reprojected and not saying how is the silence this
         # whole line of work is about: across two datums with no grid installed
         # it is tens of metres, and `is_ballpark` is the boolean a consumer
@@ -909,6 +935,18 @@ def _spec_fixtures(tmp_path):
     # crosses a datum in both directions (`estimate_utm_crs()` answers with a
     # WGS 84 zone whatever the input datum is), so the record here carries two
     # real transformations rather than two free relabellings.
+    # EPSG:4806, Monte Mario with the Rome meridian: the pair section 3.7 of the
+    # specification uses as its headline ballpark, and the one branch of
+    # `datum.default_operation` no fixture reached. PROJ's own choice for
+    # 4806 -> 4326 applies no datum shift, and a three-parameter Helmert exists
+    # -- so the record carries `x-mapsmith:chosen_by` and `better_available_m`,
+    # which is what makes the ratchet on that object able to fail at all.
+    rome = tmp_path / "rome.parquet"
+    gpd.GeoDataFrame(
+        {"k": ["x"]},
+        geometry=[Polygon([(-3.0, 41.9), (-2.9, 41.9), (-2.9, 42.0), (-3.0, 42.0)])],
+        crs="EPSG:4806",
+    ).to_parquet(rome)
     geographic = tmp_path / "nad27.parquet"
     gpd.GeoDataFrame(
         {"k": ["x"]},
@@ -1067,8 +1105,10 @@ def _spec_fixtures(tmp_path):
             str(container), "roads", out("extracted.parquet")
         ),
         "convert_format": lambda: vector.convert(str(layer), out("conv.gpkg")),
+        # From the Rome meridian, so this sweep sees a ballpark transformation
+        # and the keys only that branch writes.
         "reproject_layer": lambda: vector.reproject(
-            str(layer), "EPSG:4326", out("rep.parquet")
+            str(rome), "EPSG:4326", out("rep.parquet")
         ),
         "spatial_join": lambda: vector.spatial_join(
             str(points), str(layer), out("sj.parquet")
@@ -1141,6 +1181,18 @@ def _spec_fixtures(tmp_path):
         ds.write(np.arange(16, dtype="int16").reshape(4, 4), 1)
         ds.write(np.arange(16, 32, dtype="int16").reshape(4, 4), 2)
 
+    # The raster twin of the Rome-meridian layer above, and it exercises the
+    # OTHER branch: `reproject_raster` hands the pair to rasterio, which reaches
+    # for PROJ itself, so `datum.default_operation` reports what the engine will
+    # get rather than choosing -- and that is the branch writing
+    # `x-mapsmith:chosen_by`. Nothing in this sweep reached it before.
+    rome_grid = tmp_path / "rome.tif"
+    with rasterio.open(
+        rome_grid, "w", driver="GTiff", height=4, width=4, count=1, dtype="float32",
+        crs="EPSG:4806", transform=from_origin(-3.0, 42.0, 0.01, 0.01), nodata=-9999.0,
+    ) as ds:
+        ds.write(np.arange(16, dtype="float32").reshape(4, 4), 1)
+
     # An AGREEING `.aux.xml` beside the raster, so that at least one record in
     # this sweep carries a non-empty `environment`. Until 2026-09-06 not one of
     # the fifty-eight did: the field that answers the first of the two silent
@@ -1174,7 +1226,7 @@ def _spec_fixtures(tmp_path):
             str(grid), str(layer), out("zs.parquet"), stats=["mean"]
         ),
         "reproject_raster": lambda: raster.reproject_raster(
-            str(grid), out("repr.tif"), "EPSG:4326", "nearest"
+            str(rome_grid), out("repr.tif"), "EPSG:4326", "nearest"
         ),
         "extract_band": lambda: raster.extract_band(str(grid), out("band2.tif"), 2),
     })

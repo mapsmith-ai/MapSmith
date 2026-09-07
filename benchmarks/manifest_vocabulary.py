@@ -142,7 +142,11 @@ def page() -> str:
     """The page, from the source. No number in it is typed by hand."""
     sys.path.insert(0, str(ROOT / "src"))
     from mapsmith.grid import DERIVED_ENVIRONMENT, GEOREF_VARIABLES
-    from mapsmith.provenance import CRS_EXTENSIONS, SPEC_VERSION
+    from mapsmith.provenance import (
+        CRS_EXTENSIONS,
+        SPEC_VERSION,
+        TRANSFORMATION_EXTENSIONS,
+    )
 
     names = check_names()
     repairs_only = {
@@ -259,6 +263,25 @@ def page() -> str:
     ]
     lines += [
         f"| `{key}` | {why} |" for key, why in sorted(CRS_EXTENSIONS.items())
+    ]
+
+    lines += [
+        "",
+        f"## Extension fields inside `crs_decisions.transformation` "
+        f"({len(TRANSFORMATION_EXTENSIONS)})",
+        "",
+        "One level further down, and it is the same rule read again: the prefix follows",
+        "the container. `transformation` is an object section 3.7 defines — four keys",
+        "since `1.0.0-draft.4` — so a key of ours in there has to say so. A key of ours",
+        "directly inside `x-mapsmith:round_trip` does not, because that whole object is",
+        "already ours: the difference is the container, never the datum.",
+        "",
+        "| key | why it is not one section 3.7 already has |",
+        "|---|---|",
+    ]
+    lines += [
+        f"| `{key}` | {why} |"
+        for key, why in sorted(TRANSFORMATION_EXTENSIONS.items())
     ]
     lines.append("")
     return "\n".join(lines)
