@@ -231,6 +231,71 @@ def test_reproject_raster_records_the_operation_and_not_only_the_two_crs_labels(
     )
 
 
+def test_buffering_a_geographic_layer_records_the_round_trip_it_makes(tmp_path):
+    """The branch four operations take, that no fixture had ever taken.
+
+    `x-mapsmith:round_trip` was written on 2026-09-06 and until this test
+    nothing touched it: no test named it, and none of the fifty-eight records
+    the conformance sweep collects contained it, because every fixture hands
+    its operation inputs that already share a projected CRS. The declaration
+    ratchet checks that the key is declared, not that the record it produces
+    has a shape anyone has seen. A vocabulary entry for a claim no test has
+    read is the same thing as no entry.
+
+    NAD27 on purpose. `estimate_utm_crs()` answers with a **WGS 84** zone
+    whatever the input's datum is, so this layer crosses a datum on the way out
+    and again on the way back -- about seven metres each way, and the two legs
+    largely cancel over one feature. That cancellation is exactly why the round
+    trip went unrecorded for so long, and stating it is what the key is for.
+    """
+    gpd = pytest.importorskip("geopandas")
+    pytest.importorskip("shapely")
+    from shapely.geometry import Point
+
+    from mapsmith.engines import vector
+    from mapsmith.provenance import ROUND_TRIP
+
+    source = tmp_path / "wells.gpkg"
+    gpd.GeoDataFrame(
+        {"name": ["a", "b"]},
+        geometry=[Point(-93.10, 34.50), Point(-93.00, 34.60)],
+        crs="EPSG:4267",
+    ).to_file(source, driver="GPKG")
+
+    out = tmp_path / "buffered.gpkg"
+    vector.buffer(str(source), 100.0, str(out))
+
+    manifest = json.loads(Path(f"{out}.provenance.json").read_text(encoding="utf-8"))
+    decisions = manifest["crs_decisions"]
+
+    trip = decisions.get(ROUND_TRIP)
+    assert trip is not None, (
+        "the operation went out to an estimated UTM zone and came back, and the "
+        f"manifest said nothing about the trip: {sorted(decisions)}"
+    )
+    assert trip["output_crs"] == "EPSG:4267", trip
+    assert decisions["analysis_crs"] != trip["output_crs"], (
+        "a trip that ends where it started is not the thing this key records"
+    )
+
+    # The substantive claim, and the reason the key is not `target_crs`: coming
+    # back is a datum crossing with a cost, not a free relabelling.
+    shift = trip["transformation"]
+    assert shift["is_ballpark"] is False, (
+        "PROJ has a real operation for this pair; if this ever reports a "
+        "ballpark, the seven metres stopped being applied and the record must "
+        f"say so: {shift}"
+    )
+    assert shift["accuracy_m"] and shift["accuracy_m"] > 0, (
+        f"a datum was crossed twice and the record prices it at nothing: {shift}"
+    )
+
+    assert gpd.read_file(out).crs.to_epsg() == 4267, (
+        "the output has to come back in the caller's CRS, or the key describes "
+        "a trip that did not end where it claims"
+    )
+
+
 def _transforming_functions() -> dict[str, set[str]]:
     """Public engine functions that hand two CRSs to PROJ, derived from source.
 
