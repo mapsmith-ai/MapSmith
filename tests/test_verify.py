@@ -14,6 +14,7 @@ from conftest import (
 )
 from mapsmith import verify
 from mapsmith.engines import vector
+from mapsmith.grid import DERIVED_ENVIRONMENT
 from mapsmith.provenance import INPUTS_REPROJECTED
 
 
@@ -253,6 +254,20 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
                 "named the way an engine names one nor a MapSmith reading "
                 "prefixed `x-mapsmith:` (D-077)."
             )
+            # And DECLARED, for the reason `CRS_EXTENSIONS` is declared: the
+            # prefix says a key is ours and cannot say it is not a synonym.
+            # `AREA_OR_POINT` is named by section 3.8 itself, so
+            # `x-mapsmith:area_or_point` passes the shape rule above and is
+            # precisely the mistake that produced D-077 -- one object over. The
+            # ratchet cannot judge synonymy; it makes whoever adds a key write
+            # the answer down next to the declaration.
+            if key.startswith("x-mapsmith:"):
+                assert key.removeprefix("x-mapsmith:") in DERIVED_ENVIRONMENT, (
+                    f"{name} wrote `environment.{key}`, which is ours and "
+                    "undeclared. Add it to `grid.DERIVED_ENVIRONMENT` with the "
+                    "sentence saying what it claims -- and why a setting the "
+                    "engine already reports does not say it."
+                )
         decisions = record.get("crs_decisions", {})
         if INPUTS_REPROJECTED in decisions:
             shift = decisions.get("transformation")

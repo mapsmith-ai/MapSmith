@@ -112,12 +112,44 @@ def check_names() -> dict[str, str]:
     return found
 
 
+def repair_check_names() -> dict[str, str]:
+    """Names written into `repairs[].check`, which are not `verification[]` names.
+
+    A repair says which check it was made for. When the repair happens to the
+    INPUT, before anything is verified, that name belongs to no entry of
+    `verification[]` and appears nowhere else in the source -- so a consumer who
+    meets it in a manifest has nothing to look it up in. That is the exact
+    failure this page exists to prevent, one field over.
+    """
+    found: dict[str, str] = {}
+    for module in sorted(PACKAGE.rglob("*.py")):
+        tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Dict):
+                continue
+            for key, value in zip(node.keys, node.values, strict=False):
+                if (
+                    isinstance(key, ast.Constant)
+                    and key.value == "check"
+                    and isinstance(value, ast.Constant)
+                    and isinstance(value.value, str)
+                ):
+                    found.setdefault(value.value, module.stem)
+    return found
+
+
 def page() -> str:
     """The page, from the source. No number in it is typed by hand."""
     sys.path.insert(0, str(ROOT / "src"))
+    from mapsmith.grid import DERIVED_ENVIRONMENT, GEOREF_VARIABLES
     from mapsmith.provenance import CRS_EXTENSIONS, SPEC_VERSION
 
     names = check_names()
+    repairs_only = {
+        name: module
+        for name, module in repair_check_names().items()
+        if name not in names
+    }
     ours = {n: m for n, m in sorted(names.items()) if n.startswith("x-mapsmith:")}
     core = sorted(n for n in names if not n.startswith("x-mapsmith:"))
     run = {n: m for n, m in ours.items() if n in ABOUT_THE_RUN}
@@ -172,6 +204,48 @@ def page() -> str:
         "vocabulary a reader will meet, not only our half of it.",
         "",
         "".join(f"`{name}` · " for name in core).rstrip(" ·"),
+        "",
+        f"## Names that appear only in `repairs[].check` ({len(repairs_only)})",
+        "",
+        "A repair entry says which check it was made for. When the repair is made to",
+        "the **input**, before anything has been verified, that name belongs to no",
+        "entry of `verification[]` — so a reader who meets it in a manifest has",
+        "nowhere to look it up. Listed here for that reason, and marked so nobody",
+        "reads them as check results.",
+        "",
+        "| name | written by |",
+        "|---|---|",
+    ]
+    lines += [f"| `{name}` | `{module}` |" for name, module in sorted(repairs_only.items())]
+
+    lines += [
+        "",
+        f"## Extension fields in `environment` ({len(DERIVED_ENVIRONMENT)})",
+        "",
+        "Section 3.8 asks for the configuration **as the engine reports it**, and its",
+        "examples are `PROJ_NETWORK`, the `GDAL_*` variables and `AREA_OR_POINT`. So a",
+        "real setting keeps the engine's own spelling and anything MapSmith worked out",
+        "carries the prefix. Inside one object the difference is visible without a",
+        "lookup: an UPPER_SNAKE key is a setting, a prefixed one is our reading of it.",
+        "",
+        "These answer the first of the two silent-error classes this product exists",
+        "for — *which georeferencing produced these numbers* — so a page that listed",
+        "only `crs_decisions` was missing the half that makes its own case.",
+        "",
+        "| key | what it claims |",
+        "|---|---|",
+    ]
+    lines += [
+        f"| `x-mapsmith:{key}` | {why} |"
+        for key, why in sorted(DERIVED_ENVIRONMENT.items())
+    ]
+
+    lines += [
+        "",
+        "The settings read straight from the engine, unprefixed because they are its",
+        "words and not ours: "
+        + "".join(f"`{name}` · " for name in sorted(GEOREF_VARIABLES)).rstrip(" ·")
+        + ".",
         "",
         f"## Extension fields in `crs_decisions` ({len(CRS_EXTENSIONS)})",
         "",

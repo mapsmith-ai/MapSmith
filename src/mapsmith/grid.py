@@ -304,12 +304,35 @@ GEOREF_VARIABLES = ("GDAL_PAM_ENABLED", "GDAL_GEOREF_SOURCES")
 #: engine spells it, and anything we worked out ourselves carries the prefix
 #: (D-077). Inside one object the difference is visible at a glance: an
 #: UPPER_SNAKE key is a setting, a prefixed one is our reading of it.
-DERIVED_ENVIRONMENT = (
-    "georeferencing_source",
-    "georeferencing_sidecar_present",
-    "georeferencing_supplied_by_sidecar",
-    "georeferencing_internal_would_give",
-)
+#: A dictionary and not a tuple since 2026-09-07, for the reason
+#: `CRS_EXTENSIONS` is one: the sentence saying what a key claims lives beside
+#: the declaration, and `docs/manifest-vocabulary.md` derives the page from
+#: here. A second list kept by hand is a list that goes stale in one place.
+DERIVED_ENVIRONMENT = {
+    "georeferencing_source": (
+        "Which of two georeferencings the reader actually resolved, `internal` "
+        "or `sidecar (.aux.xml)`. Not a GDAL setting: it is our comparison of "
+        "what the file's own tags give against what came back, transform and "
+        "CRS both."
+    ),
+    "georeferencing_sidecar_present": (
+        "The name of the `.aux.xml` sitting beside the raster. A fact about the "
+        "directory, not about the configuration -- a reader who sees only the "
+        "GDAL variables cannot tell that a second georeferencing was there."
+    ),
+    "georeferencing_supplied_by_sidecar": (
+        "Written only when the file carries no georeferencing of its own, to "
+        "say that nothing was overridden because there was only ever one. "
+        "Without it `georeferencing_source: sidecar` reads as an override that "
+        "did not happen."
+    ),
+    "georeferencing_internal_would_give": (
+        "The cell size and origin the other branch would have produced, in "
+        "plain decimals so they can be compared with the ones in front of you. "
+        "A counterfactual we computed, which is why it cannot be spelled like a "
+        "setting: `there was a choice` is weaker than `here is the other answer`."
+    ),
+}
 
 
 def georeferencing_source(path: str) -> dict[str, str]:

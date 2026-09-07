@@ -91,6 +91,40 @@ vocabulary a reader will meet, not only our half of it.
 
 `crs_matches` · `crs_present` · `extent_within_expected` · `feature_count_bounded` · `feature_count_exact` · `geometry_types` · `geometry_valid` · `input_crs_present` · `input_not_empty` · `inputs_may_intersect` · `inputs_share_crs` · `result_not_empty` · `shape_preserved` · `values_in_expected_range`
 
+## Names that appear only in `repairs[].check` (1)
+
+A repair entry says which check it was made for. When the repair is made to
+the **input**, before anything has been verified, that name belongs to no
+entry of `verification[]` — so a reader who meets it in a manifest has
+nowhere to look it up. Listed here for that reason, and marked so nobody
+reads them as check results.
+
+| name | written by |
+|---|---|
+| `x-mapsmith:input_geometry_valid` | `vector` |
+
+## Extension fields in `environment` (4)
+
+Section 3.8 asks for the configuration **as the engine reports it**, and its
+examples are `PROJ_NETWORK`, the `GDAL_*` variables and `AREA_OR_POINT`. So a
+real setting keeps the engine's own spelling and anything MapSmith worked out
+carries the prefix. Inside one object the difference is visible without a
+lookup: an UPPER_SNAKE key is a setting, a prefixed one is our reading of it.
+
+These answer the first of the two silent-error classes this product exists
+for — *which georeferencing produced these numbers* — so a page that listed
+only `crs_decisions` was missing the half that makes its own case.
+
+| key | what it claims |
+|---|---|
+| `x-mapsmith:georeferencing_internal_would_give` | The cell size and origin the other branch would have produced, in plain decimals so they can be compared with the ones in front of you. A counterfactual we computed, which is why it cannot be spelled like a setting: `there was a choice` is weaker than `here is the other answer`. |
+| `x-mapsmith:georeferencing_sidecar_present` | The name of the `.aux.xml` sitting beside the raster. A fact about the directory, not about the configuration -- a reader who sees only the GDAL variables cannot tell that a second georeferencing was there. |
+| `x-mapsmith:georeferencing_source` | Which of two georeferencings the reader actually resolved, `internal` or `sidecar (.aux.xml)`. Not a GDAL setting: it is our comparison of what the file's own tags give against what came back, transform and CRS both. |
+| `x-mapsmith:georeferencing_supplied_by_sidecar` | Written only when the file carries no georeferencing of its own, to say that nothing was overridden because there was only ever one. Without it `georeferencing_source: sidecar` reads as an override that did not happen. |
+
+The settings read straight from the engine, unprefixed because they are its
+words and not ours: `GDAL_GEOREF_SOURCES` · `GDAL_PAM_ENABLED`.
+
 ## Extension fields in `crs_decisions` (6)
 
 Section 3.7 recommends the keys of that object and permits more. These are
