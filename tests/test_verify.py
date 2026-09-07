@@ -1832,19 +1832,14 @@ def test_the_published_vocabulary_is_what_the_source_says_today():
 
 
 #: Operations that write their dataset OUTSIDE `audit_on_failure`, with the
-#: number of uncovered write sites in each. Measured on 2026-09-07 and meant to
-#: go down: see `test_no_new_operation_writes_a_dataset_without_a_net`.
-WRITES_WITHOUT_AN_AUDIT: dict[tuple[str, str], int] = {
-    ("engines/linework.py", "snap_layer"): 1,
-    ("engines/linework.py", "points_along_lines"): 1,
-    ("engines/linework.py", "line_intersections"): 1,
-    ("engines/linework.py", "transform_by_control_points"): 1,
-    ("engines/network.py", "least_cost_path"): 2,
-    ("engines/spatial_stats.py", "hot_spots"): 1,
-    ("engines/spatial_stats.py", "smooth_rates"): 1,
-    ("engines/spatial_stats.py", "aggregate_to_threshold"): 1,
-    ("engines/spatial_stats.py", "thin_points"): 1,
-}
+#: number of uncovered write sites in each. **Empty**, and it stays a ratchet
+#: rather than an assertion of zero because the useful question is not "is it
+#: zero today" but "did a new one appear". It was eighteen sites in nine
+#: operations when this was measured on 2026-09-07, and zero by the end of the
+#: same day: the eight that only needed a `with`, then the ten whose write had
+#: to move down into the net. See
+#: `test_no_new_operation_writes_a_dataset_without_a_net`.
+WRITES_WITHOUT_AN_AUDIT: dict[tuple[str, str], int] = {}
 
 
 def _writes_outside_the_net() -> tuple[dict[tuple[str, str], int], int]:
@@ -1904,20 +1899,24 @@ def _writes_outside_the_net() -> tuple[dict[tuple[str, str], int], int]:
 def test_no_new_operation_writes_a_dataset_without_a_net():
     """A ratchet on invariant 2: the list above may shrink, never grow.
 
-    Ten of the eighteen sites need the `ProvenanceRecord` moved above the write
-    before they can be wrapped, which is a change to each operation and not a
-    sweep -- so they are declared here rather than left to be rediscovered. The
-    eight that only needed a `with` were fixed on the day this was written.
+    The list is empty, and the test is still worth its runtime for the other two
+    assertions: a NEW uncovered write fails it, and so does the derivation
+    quietly stopping. The eighteen sites it was written for were closed the same
+    day -- eight by wrapping the write where it stood, ten by moving the write
+    down to just before the verification that reads it, which was safe because
+    nothing those records hold depends on the write and nothing between the two
+    positions touches the file.
     """
     uncovered, covered = _writes_outside_the_net()
 
     # ANTI-VACUITY, and it is on what the sweep must SEE rather than on what it
     # must find: if the derivation breaks, `uncovered` goes empty and every
     # assertion below passes. `covered` going to zero is the tell.
-    assert covered >= 20, (
+    assert covered >= 30, (
         f"the sweep found only {covered} writes INSIDE an audit block, and there "
-        "were 22 when it was written. It has stopped reading the source, and an "
-        "empty list of offenders below would mean nothing."
+        "were 40 when this floor was set. It has stopped reading the source, and "
+        "an empty list of offenders below would then mean nothing -- which is the "
+        "whole failure mode this floor exists for."
     )
 
     new = {

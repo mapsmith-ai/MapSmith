@@ -205,7 +205,6 @@ def snap_layer(
     ]
     invalid_before = int((~gdf.geometry.is_valid).sum())
     invalid_after = int((~out.geometry.is_valid).sum())
-    _write(out, output_path)
 
     record = ProvenanceRecord(
         operation="snap_layer",
@@ -235,13 +234,20 @@ def snap_layer(
             "tolerance is too small for this pair, or they already line up."
         )
 
+    # The write is INSIDE the net since 2026-09-07, and it moved down here
+    # rather than the record moving up: nothing this record holds depends on
+    # the write, and nothing between the two positions touches the file. A
+    # write that raises after opening the file left the dataset on disk with
+    # no manifest beside it -- measured, 516 bytes of a partial dataset.
+    pre = verify.verify_loaded_inputs("snap_layer", input_path=gdf, reference_path=reference_as_read)
+    with verify.audit_on_failure(record, output_path, pre):
+        _write(out, output_path)
+
     manifest, extras = verify.audited(
         record,
         output_path,
         operation="snap_layer",
-        preconditions=verify.verify_loaded_inputs(
-            "snap_layer", input_path=gdf, reference_path=reference_as_read
-        ),
+        preconditions=pre,
         checks_fn=lambda: [
             *verify.verify_vector_output(
                 output_path,
@@ -352,7 +358,6 @@ def points_along_lines(
             "space out."
         )
     out = gpd.GeoDataFrame(rows, geometry="geometry", crs=gdf.crs)
-    _write(out, output_path)
 
     total_length = float(gdf.geometry.length.sum())
     record = ProvenanceRecord(
@@ -378,11 +383,20 @@ def points_along_lines(
             "contribute their start point and (with include_endpoint) their end."
         )
 
+    # The write is INSIDE the net since 2026-09-07, and it moved down here
+    # rather than the record moving up: nothing this record holds depends on
+    # the write, and nothing between the two positions touches the file. A
+    # write that raises after opening the file left the dataset on disk with
+    # no manifest beside it -- measured, 516 bytes of a partial dataset.
+    pre = verify.verify_loaded_inputs("points_along_lines", input_path=gdf)
+    with verify.audit_on_failure(record, output_path, pre):
+        _write(out, output_path)
+
     manifest, extras = verify.audited(
         record,
         output_path,
         operation="points_along_lines",
-        preconditions=verify.verify_loaded_inputs("points_along_lines", input_path=gdf),
+        preconditions=pre,
         checks_fn=lambda: [
             *verify.verify_vector_output(
                 output_path,
@@ -583,7 +597,6 @@ def line_intersections(
         {"kind": [], "first_index": [], "second_index": [], "x": [], "y": []},
         geometry=gpd.GeoSeries([], crs=gdf.crs),
     )
-    _write(out, output_path)
 
     record = ProvenanceRecord(
         operation="line_intersections",
@@ -613,11 +626,20 @@ def line_intersections(
             "count, so this is not a claim that every geometry is simple."
         )
 
+    # The write is INSIDE the net since 2026-09-07, and it moved down here
+    # rather than the record moving up: nothing this record holds depends on
+    # the write, and nothing between the two positions touches the file. A
+    # write that raises after opening the file left the dataset on disk with
+    # no manifest beside it -- measured, 516 bytes of a partial dataset.
+    pre = verify.verify_loaded_inputs("line_intersections", input_path=gdf)
+    with verify.audit_on_failure(record, output_path, pre):
+        _write(out, output_path)
+
     manifest, extras = verify.audited(
         record,
         output_path,
         operation="line_intersections",
-        preconditions=verify.verify_loaded_inputs("line_intersections", input_path=gdf),
+        preconditions=pre,
         checks_fn=lambda: [
             *verify.verify_vector_output(
                 output_path,
@@ -792,7 +814,6 @@ def transform_by_control_points(
         for geometry in gdf.geometry
     ]
     out = out.set_crs(target, allow_override=True)
-    _write(out, output_path)
 
     record = ProvenanceRecord(
         operation="transform_by_control_points",
@@ -868,6 +889,15 @@ def transform_by_control_points(
             "whether the fit is right. Add one more point to learn anything."
         )
 
+    # The write is INSIDE the net since 2026-09-07, and it moved down here
+    # rather than the record moving up: nothing this record holds depends on
+    # the write, and nothing between the two positions touches the file. A
+    # write that raises after opening the file left the dataset on disk with
+    # no manifest beside it -- measured, 516 bytes of a partial dataset.
+    pre = verify.verify_loaded_inputs("transform_by_control_points", control_path=control)
+    with verify.audit_on_failure(record, output_path, pre):
+        _write(out, output_path)
+
     manifest, extras = verify.audited(
         record,
         output_path,
@@ -878,9 +908,7 @@ def transform_by_control_points(
         # CRS first" is advice to do the thing it replaces. It was checked, so
         # the operation wrote a correct output and a correct manifest and then
         # raised on the one input it was built for.
-        preconditions=verify.verify_loaded_inputs(
-            "transform_by_control_points", control_path=control
-        ),
+        preconditions=pre,
         checks_fn=lambda: [
             *verify.verify_vector_output(
                 output_path,

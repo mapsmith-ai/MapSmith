@@ -244,7 +244,6 @@ def hot_spots(
         for z, flag in zip(z_scores, significant, strict=True)
     ]
     out["neighbours"] = [len(row) for row in neighbourhoods]
-    _write(out, output_path)
 
     record = ProvenanceRecord(
         operation="hot_spots",
@@ -274,11 +273,20 @@ def hot_spots(
             "sliver, with a distance band it means the band is too small."
         )
 
+    # The write is INSIDE the net since 2026-09-07, and it moved down here
+    # rather than the record moving up: nothing this record holds depends on
+    # the write, and nothing between the two positions touches the file. A
+    # write that raises after opening the file left the dataset on disk with
+    # no manifest beside it -- measured, 516 bytes of a partial dataset.
+    pre = verify.verify_loaded_inputs("hot_spots", input_path=gdf)
+    with verify.audit_on_failure(record, output_path, pre):
+        _write(out, output_path)
+
     manifest, extras = verify.audited(
         record,
         output_path,
         operation="hot_spots",
-        preconditions=verify.verify_loaded_inputs("hot_spots", input_path=gdf),
+        preconditions=pre,
         checks_fn=lambda: [
             *verify.verify_vector_output(
                 output_path,
@@ -402,7 +410,6 @@ def smooth_rates(
     out["raw_rate"] = [r * per for r in raw]
     out["smoothed_rate"] = [s * per for s in smoothed]
     out["shrinkage"] = shrinkage
-    _write(out, output_path)
 
     record = ProvenanceRecord(
         operation="smooth_rates",
@@ -430,11 +437,20 @@ def smooth_rates(
             "differences you can see are not evidence of differences in risk."
         )
 
+    # The write is INSIDE the net since 2026-09-07, and it moved down here
+    # rather than the record moving up: nothing this record holds depends on
+    # the write, and nothing between the two positions touches the file. A
+    # write that raises after opening the file left the dataset on disk with
+    # no manifest beside it -- measured, 516 bytes of a partial dataset.
+    pre = verify.verify_loaded_inputs("smooth_rates", input_path=gdf)
+    with verify.audit_on_failure(record, output_path, pre):
+        _write(out, output_path)
+
     manifest, extras = verify.audited(
         record,
         output_path,
         operation="smooth_rates",
-        preconditions=verify.verify_loaded_inputs("smooth_rates", input_path=gdf),
+        preconditions=pre,
         checks_fn=lambda: [
             *verify.verify_vector_output(
                 output_path,
@@ -583,7 +599,6 @@ def aggregate_to_threshold(
             }
         )
     out = gpd.GeoDataFrame(records, geometry="geometry", crs=gdf.crs)
-    _write(out, output_path)
 
     record = ProvenanceRecord(
         operation="aggregate_to_threshold",
@@ -602,13 +617,20 @@ def aggregate_to_threshold(
         "unit-free",
     }
 
+    # The write is INSIDE the net since 2026-09-07, and it moved down here
+    # rather than the record moving up: nothing this record holds depends on
+    # the write, and nothing between the two positions touches the file. A
+    # write that raises after opening the file left the dataset on disk with
+    # no manifest beside it -- measured, 516 bytes of a partial dataset.
+    pre = verify.verify_loaded_inputs("aggregate_to_threshold", input_path=gdf)
+    with verify.audit_on_failure(record, output_path, pre):
+        _write(out, output_path)
+
     manifest, extras = verify.audited(
         record,
         output_path,
         operation="aggregate_to_threshold",
-        preconditions=verify.verify_loaded_inputs(
-            "aggregate_to_threshold", input_path=gdf
-        ),
+        preconditions=pre,
         checks_fn=lambda: [
             *verify.verify_vector_output(
                 output_path,
@@ -720,7 +742,6 @@ def thin_points(
             kept_points.append(candidate)
 
     out = gdf.iloc[sorted(kept)].copy()
-    _write(out, output_path)
 
     # Once, into a name. Both arguments of a `Check` are evaluated eagerly, so
     # calling this in the predicate AND in the detail ran an O(k^2) sweep twice:
@@ -750,11 +771,20 @@ def thin_points(
         "thinning, not of the data."
     )
 
+    # The write is INSIDE the net since 2026-09-07, and it moved down here
+    # rather than the record moving up: nothing this record holds depends on
+    # the write, and nothing between the two positions touches the file. A
+    # write that raises after opening the file left the dataset on disk with
+    # no manifest beside it -- measured, 516 bytes of a partial dataset.
+    pre = verify.verify_loaded_inputs("thin_points", input_path=gdf)
+    with verify.audit_on_failure(record, output_path, pre):
+        _write(out, output_path)
+
     manifest, extras = verify.audited(
         record,
         output_path,
         operation="thin_points",
-        preconditions=verify.verify_loaded_inputs("thin_points", input_path=gdf),
+        preconditions=pre,
         checks_fn=lambda: [
             *verify.verify_vector_output(
                 output_path,

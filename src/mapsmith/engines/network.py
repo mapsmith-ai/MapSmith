@@ -997,10 +997,6 @@ def least_cost_path(
         geometry=[line],
         crs=surface_crs,
     )
-    if str(output_path).endswith(".parquet"):
-        out.to_parquet(output_path)
-    else:
-        out.to_file(output_path)
 
     record = ProvenanceRecord(
         operation="least_cost_path",
@@ -1034,6 +1030,17 @@ def least_cost_path(
             "by up to 41%, and it is the right choice only when the movement really "
             "is grid-bound."
         )
+
+    # The write is INSIDE the net since 2026-09-07, and it moved down here
+    # rather than the record moving up: nothing this record holds depends on
+    # the write, and nothing between the two positions touches the file. A
+    # write that raises after opening the file left the dataset on disk with
+    # no manifest beside it -- measured, 516 bytes of a partial dataset.
+    with verify.audit_on_failure(record, output_path, []):
+        if str(output_path).endswith(".parquet"):
+            out.to_parquet(output_path)
+        else:
+            out.to_file(output_path)
 
     manifest, extras = verify.audited(
         record,
