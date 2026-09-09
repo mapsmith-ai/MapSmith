@@ -112,30 +112,51 @@ def check_names() -> dict[str, str]:
     return found
 
 
-def repair_check_names() -> dict[str, str]:
-    """Names written into `repairs[].check`, which are not `verification[]` names.
+def repair_check_names() -> tuple[dict[str, str], int]:
+    """Names written into `repairs[].check`, and how many sites name one at runtime.
 
     A repair says which check it was made for. When the repair happens to the
     INPUT, before anything is verified, that name belongs to no entry of
     `verification[]` and appears nowhere else in the source -- so a consumer who
     meets it in a manifest has nothing to look it up in. That is the exact
     failure this page exists to prevent, one field over.
+
+    It recognises the ENTRY, not the key, and that is the correction of
+    2026-09-09. Looking for any dictionary with a `"check"` key and a constant
+    value was wrong in both directions at once: it could not see the entries
+    built at runtime (`verify.py` writes `"check": check.name`, a name and not a
+    literal) and it would have listed a dictionary of *warnings* written in the
+    same shape as though it were a repair. The answer was right by accident,
+    there being exactly one name of this kind. A repairs entry says at least
+    which check and what was done, so `check` and `action` together are the
+    shape, and a warning has neither.
+
+    The dynamic sites are counted rather than resolved: their names come from a
+    `Check`, so they are already in the check vocabulary above, and pretending to
+    read them from the source would be inventing. The count exists so that a
+    caller can tell "no dynamic sites" from "the sweep stopped seeing them".
     """
     found: dict[str, str] = {}
+    dynamic = 0
     for module in sorted(PACKAGE.rglob("*.py")):
         tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Dict):
                 continue
+            keys = {
+                k.value for k in node.keys
+                if isinstance(k, ast.Constant) and isinstance(k.value, str)
+            }
+            if not {"check", "action"} <= keys:
+                continue
             for key, value in zip(node.keys, node.values, strict=False):
-                if (
-                    isinstance(key, ast.Constant)
-                    and key.value == "check"
-                    and isinstance(value, ast.Constant)
-                    and isinstance(value.value, str)
-                ):
+                if not (isinstance(key, ast.Constant) and key.value == "check"):
+                    continue
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
                     found.setdefault(value.value, module.stem)
-    return found
+                else:
+                    dynamic += 1
+    return found, dynamic
 
 
 def page() -> str:
@@ -149,10 +170,9 @@ def page() -> str:
     )
 
     names = check_names()
+    repaired, _dynamic = repair_check_names()
     repairs_only = {
-        name: module
-        for name, module in repair_check_names().items()
-        if name not in names
+        name: module for name, module in repaired.items() if name not in names
     }
     ours = {n: m for n, m in sorted(names.items()) if n.startswith("x-mapsmith:")}
     core = sorted(n for n in names if not n.startswith("x-mapsmith:"))

@@ -183,6 +183,19 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
     validated: list[str] = []
     skipped: list[str] = []
     with_crs: list[str] = []
+    with_repairs: list[str] = []
+    from pathlib import Path as _Path
+
+    # The PUBLISHED page, not a fresh derivation of the source. Deriving both
+    # sides here would be circular in the way conftest already warns about:
+    # renaming the literal at the repair site renames it in the derivation too,
+    # and the check agrees with itself. Measured -- that sabotage passed green
+    # before this line changed. The page is the artefact a reader actually has,
+    # and a separate guard keeps it in step with the source, so comparing
+    # against it asks the question that matters: could somebody look this up?
+    _page = (
+        _Path(__file__).resolve().parent.parent / "docs" / "manifest-vocabulary.md"
+    ).read_text(encoding="utf-8")
     for entry in catalog.OPERATIONS:
         if entry["status"] != "available":
             continue
@@ -209,6 +222,26 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
         # is opened properly, the way a consumer would. Two paths to one fact,
         # which is the only form of this check worth running -- calling
         # `probe_crs` again would agree with itself.
+        # Every name in `repairs[].check` has to be findable. There are two
+        # kinds and both must be: a `Check` name, which is in the vocabulary of
+        # `verification[]` already, or a literal written at the repair site --
+        # and the second kind belongs to no `verification[]` entry, so unless
+        # the page lists it a reader who meets it in a manifest has nowhere to
+        # look. The source sweep in `benchmarks/manifest_vocabulary.py` reads
+        # the literals, including on branches no fixture takes; this reads what
+        # actually lands in a record, including a name a `Check` put there.
+        # Neither sees what the other sees.
+        for repair in record.get("repairs") or []:
+            named = repair.get("check")
+            with_repairs.append(name)
+            assert f"`{named}`" in _page, (
+                f"{name} wrote `repairs[].check` = {named!r}, and "
+                "`docs/manifest-vocabulary.md` does not name it. A reader who "
+                "meets it in a manifest has nowhere to look it up, which is the "
+                "one thing that page exists to prevent. Either use the name of "
+                "the check the repair was made for -- those are listed -- or "
+                "write it as a literal at the repair site and regenerate."
+            )
         declared = (record.get("output") or {}).get("crs")
         if declared is not None:
             with_crs.append(name)
@@ -347,6 +380,18 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
     # An operation that legitimately has no output CRS -- a table of statistics
     # with no geometry, say -- belongs in the set below, declared, rather than
     # quietly lowering a threshold.
+    # ANTI-VACUITY on the repairs rule above, and it needs saying: until
+    # 2026-09-09 **zero** of the fifty-eight records carried a `repairs` entry,
+    # so every rule about their shape -- this one, and the vocabulary page's
+    # claim to list the names that appear only there -- was checked against
+    # nothing at all. One fixture now crosses a ring with itself, which is the
+    # defect `measure_area`'s repair exists for.
+    assert with_repairs, (
+        "no record in this sweep carries a `repairs` entry, so the rule above "
+        "ran on nothing. A fixture that produced one has stopped producing it: "
+        "restore it rather than leaving the rule to pass by not running."
+    )
+
     without_a_crs = set(validated) - set(with_crs) - NO_OUTPUT_CRS
     assert not without_a_crs, (
         f"these operations write a dataset and record no `output.crs`: "
@@ -935,6 +980,21 @@ def _spec_fixtures(tmp_path):
     # crosses a datum in both directions (`estimate_utm_crs()` answers with a
     # WGS 84 zone whatever the input datum is), so the record here carries two
     # real transformations rather than two free relabellings.
+    # A ring that crosses itself, so `measure_area` repairs it with `make_valid`
+    # BEFORE measuring and records that under `repairs`. Until 2026-09-09 not one
+    # of the fifty-eight records this sweep collects carried a `repairs` entry at
+    # all, so every rule about their shape was checked against nothing -- the
+    # vocabulary page's claim to list the names that appear only there included.
+    # The planar area of a self-intersecting ring is the signed shoelace, which
+    # matches no region and comes back without complaint: that is the defect the
+    # repair exists for, and why it has to be visible in the record.
+    self_crossing = tmp_path / "bowtie_area.parquet"
+    gpd.GeoDataFrame(
+        {"k": ["x"]},
+        geometry=[Polygon([(0, 0), (100, 100), (100, 0), (0, 100)])],
+        crs=crs,
+    ).to_parquet(self_crossing)
+
     # EPSG:4806, Monte Mario with the Rome meridian: the pair section 3.7 of the
     # specification uses as its headline ballpark, and the one branch of
     # `datum.default_operation` no fixture reached. PROJ's own choice for
@@ -1082,7 +1142,10 @@ def _spec_fixtures(tmp_path):
             str(points), str(layer), out("near.parquet")
         ),
         "explode_layer": lambda: vector.explode(str(layer), out("exp.parquet")),
-        "measure_area": lambda: vector.measure_area(str(layer), out("area.parquet")),
+        # On the self-crossing ring, so this sweep sees a `repairs` entry.
+        "measure_area": lambda: vector.measure_area(
+            str(self_crossing), out("area.parquet")
+        ),
         "merge_layers": lambda: vector.merge(
             [str(layer), str(second)], out("merge.parquet")
         ),

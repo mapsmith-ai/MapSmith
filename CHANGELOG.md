@@ -13,6 +13,26 @@ guard existed and could not fail.**
 
 ### Fixed
 
+- **The sweep that lists repair names recognised the key, not the entry — wrong
+  in both directions at once.** It looked for any dictionary literal with a
+  `"check"` key and a constant value, so it could not see the entries built at
+  runtime (`verify.py` writes `"check": check.name`) and it would have listed a
+  dictionary of *warnings*, written in the same shape, as though it were a
+  repair. The answer was right by accident, there being exactly one name of this
+  kind. A repairs entry says at least which check and what was done, so `check`
+  and `action` together are now the shape it matches, and the runtime sites are
+  counted rather than guessed at.
+
+  The other half is new: a rule in the conformance sweep that every name landing
+  in `repairs[].check` is named on `docs/manifest-vocabulary.md`. It compares
+  against the **published page** and not against a fresh reading of the source —
+  deriving both sides was circular, and measured so: renaming the literal at the
+  repair site renamed it in the derivation too and the check agreed with itself.
+  Until this release **no record in the sweep carried a `repairs` entry at all**,
+  so every rule about their shape had been checked against nothing; a fixture
+  now crosses a ring with itself, which is the defect that repair exists for.
+
+
 - **Eighteen operations wrote their dataset with no net under the write, and a
   failed write left the file with no manifest at all.** Invariant 2 is
   provenance on every writer, and `audit_on_failure` is what makes it survive an
