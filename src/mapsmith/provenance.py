@@ -521,15 +521,17 @@ class ProvenanceRecord:
     # two produced the number.
     environment: dict[str, str] = field(default_factory=dict)
     # `producer` is the spec's field for "the software that emitted this
-    # record, as distinct from the engine that computed the result", and until
-    # now MapSmith declared its version in a field of its own invention. Both
-    # are emitted: the spec field so a third-party reader finds what the spec
-    # told it to look for, and `mapsmith_version` because manifests already on
-    # disk carry it and something out there may key on it.
+    # record, as distinct from the engine that computed the result", and it is
+    # now the only place MapSmith's version appears. A `mapsmith_version` of our
+    # own invention sat beside it until 2026-09-09, unprefixed, at the top level
+    # of the record -- where every neighbour belongs to the specification, so it
+    # read as one of them. Two copies of one fact, and the one a stranger should
+    # use was the other one. Kept for a while because manifests already on disk
+    # carry it; removed because those files still carry it either way, and the
+    # only thing the field decided was what we write from now on.
     producer: dict[str, str] = field(
         default_factory=lambda: {"name": "mapsmith", "version": __version__}
     )
-    mapsmith_version: str = __version__
     started_at: str = field(default_factory=_utcnow)
     finished_at: str | None = None
     # Set when redaction changed anything in this record — parameters, CRS

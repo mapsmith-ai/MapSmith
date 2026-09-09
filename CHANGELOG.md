@@ -229,6 +229,23 @@ guard existed and could not fail.**
 
 ### Changed
 
+- **`mapsmith_version` is gone from the record, and reading it will break.** It
+  sat at the top level, unprefixed, among fields that all belong to the
+  specification — so it read as one of them and was not. It also duplicated
+  `producer.version`, which the specification defines and MapSmith has always
+  emitted beside it: two copies of one fact, and the one a stranger should use
+  was the other one. Read `producer.version`. Manifests already on disk still
+  carry the old field; removing it changes what is written from now on, not what
+  was written then.
+
+  It was also propping up two guards. Both grepped the output for
+  `"mapsmith_version"` and asserted `shown <= {__version__}`, which is true of
+  the empty set — the README's example has never contained the field, so that
+  guard had been checking nothing at all, and two of the three notebooks
+  satisfied theirs by showing nothing. Both now read `producer.version` off the
+  *parsed* manifests and fail when there is nothing to read.
+
+
 - **Two keys inside `crs_decisions.transformation` gained the `x-mapsmith:`
   prefix, which is breaking for anyone who read them.** `chosen_by` and
   `default_was_ballpark` are now `x-mapsmith:chosen_by` and

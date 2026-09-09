@@ -90,18 +90,6 @@ def test_every_docs_page_is_reachable_from_the_readme():
     )
 
 
-def test_every_readme_anchor_points_at_a_heading():
-    """In-page links are how the first screen reaches the proof further down;
-    renaming a heading silently turns them into scroll-to-nowhere."""
-    text = README.read_text(encoding="utf-8")
-    slugs = set()
-    for heading in re.findall(r"^#{1,6}\s+(.+?)\s*$", text, re.MULTILINE):
-        slug = re.sub(r"[^\w\s-]", "", heading.lower()).strip()
-        slugs.add(re.sub(r"\s+", "-", slug))
-    anchors = set(re.findall(r"\]\(#([^)\s]+)\)", text))
-    assert anchors <= slugs, f"README anchors with no matching heading: {sorted(anchors - slugs)}"
-
-
 def test_every_root_page_is_reachable_from_the_readme():
     """SECURITY.md sat unlinked for two releases: GitHub renders a tab for it,
     so nobody noticed the README never pointed at the one page that documents
@@ -116,6 +104,18 @@ def test_every_root_page_is_reachable_from_the_readme():
         f"root pages unreachable from the README within two clicks: {orphans}. "
         "Link them, or accept that visitors will never read them."
     )
+
+
+def test_every_readme_anchor_points_at_a_heading():
+    """In-page links are how the first screen reaches the proof further down;
+    renaming a heading silently turns them into scroll-to-nowhere."""
+    text = README.read_text(encoding="utf-8")
+    slugs = set()
+    for heading in re.findall(r"^#{1,6}\s+(.+?)\s*$", text, re.MULTILINE):
+        slug = re.sub(r"[^\w\s-]", "", heading.lower()).strip()
+        slugs.add(re.sub(r"\s+", "-", slug))
+    anchors = set(re.findall(r"\]\(#([^)\s]+)\)", text))
+    assert anchors <= slugs, f"README anchors with no matching heading: {sorted(anchors - slugs)}"
 
 
 def test_the_notebook_gallery_is_reachable():
@@ -536,18 +536,30 @@ def test_the_gallery_shows_the_current_release(notebook):
     visitor reads results without running anything), and it is also how a
     manifest from the previous release stays on display forever.
 
-    This half only catches a *wrong* version. It cannot catch a missing one —
-    see the test below, which is the half that was absent while two notebooks
-    displayed manifests from before 0.3.0.
+    Reads `producer.version` off the PARSED manifests since 2026-09-09. It used
+    to grep the output text for `mapsmith_version`, a field of our own invention
+    that has been removed -- and the form of the assertion was
+    `shown <= {__version__}`, which is true of the empty set. Two of the three
+    notebooks already satisfied it by showing nothing at all, so the guard was
+    green on notebooks it was not reading. Anchoring on parsed manifests makes
+    it impossible to be vacuous quietly: the companion test below fixes exactly
+    which notebooks must contain one.
     """
     from mapsmith import __version__
 
-    text = _notebook_output_text(notebook)
-    shown = set(re.findall(r'"mapsmith_version":\s*"([^"]+)"', text))
-    assert shown <= {__version__}, (
-        f"{notebook.name} displays manifests from {sorted(shown)} but this is "
-        f"{__version__} — re-run the notebook instead of editing its output"
-    )
+    manifests = _manifests_shown_in(notebook)
+    if notebook.name in NOTEBOOKS_SHOWING_A_MANIFEST:
+        assert manifests, (
+            f"{notebook.name} is declared as showing a manifest and none parsed "
+            "out of its output. Re-run it, or move it out of "
+            "`NOTEBOOKS_SHOWING_A_MANIFEST` on purpose."
+        )
+    for manifest in manifests:
+        shown = (manifest.get("producer") or {}).get("version")
+        assert shown == __version__, (
+            f"{notebook.name} displays a manifest from {shown!r} and this is "
+            f"{__version__} -- re-run the notebook instead of editing its output"
+        )
 
 
 def _manifests_shown_in(notebook: Path) -> list[dict]:
@@ -670,12 +682,38 @@ def test_the_gallery_notebooks_ran_clean(notebook):
 
 def test_no_stale_version_strings_in_the_docs():
     """The provenance example in the README carries a version; a stale one
-    tells visitors they are reading about an old release."""
+    tells visitors they are reading about an old release.
+
+    On `producer.version` since 2026-09-09, and it was VACUOUS before that: it
+    grepped for `mapsmith_version`, which the README's example has never
+    contained, so the set was always empty and `shown <= {__version__}` was
+    always true. Measured, not suspected -- zero occurrences on the day it was
+    re-pointed. The `assert quoted` below is what stops that from recurring.
+    """
     from mapsmith import __version__
 
-    quoted = set(re.findall(r'"mapsmith_version":\s*"([^"]+)"', README.read_text(encoding="utf-8")))
+    text = README.read_text(encoding="utf-8")
+    # PARSED, not grepped. A bare `"version":` also matches the GeoParquet
+    # level and anything else the page quotes -- the first attempt at this
+    # failed on a `1.0.1` from a neighbouring block, which is a regex reading
+    # a word where a field was meant.
+    decoder = json.JSONDecoder()
+    quoted = set()
+    for start in re.finditer(r"^\{", text, re.MULTILINE):
+        try:
+            candidate, _ = decoder.raw_decode(text[start.start():])
+        except ValueError:
+            continue
+        producer = candidate.get("producer") if isinstance(candidate, dict) else None
+        if isinstance(producer, dict) and "version" in producer:
+            quoted.add(producer["version"])
+    assert quoted, (
+        "the README shows no manifest with a `producer.version`, so this guard "
+        "is checking nothing. Either the example was removed or its shape "
+        "changed; a version check with no version to check is worse than none."
+    )
     assert quoted <= {__version__}, (
-        f"README shows mapsmith_version {sorted(quoted)} but this is {__version__}"
+        f"README shows producer.version {sorted(quoted)} but this is {__version__}"
     )
 
 
