@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mapsmith.dev/spec/manifest-v1.schema.json",
-  "x-spec-version": "1.0.0-draft.4",
+  "x-spec-version": "1.0.0-draft.5",
   "title": "Provenance manifest for a geospatial dataset",
-  "description": "One record, written next to one output dataset, complete enough that someone who was not there can re-run the operation and disagree with it. A manifest records what was done; it does not certify that it was right — those are different claims, and this format only makes the first.",
+  "description": "One record, written next to one output dataset, complete enough that someone who was not there can re-run the operation and disagree with it. A manifest records what was done; it does not certify that it was right \u2014 those are different claims, and this format only makes the first.",
   "type": "object",
   "required": [
     "spec_version",
@@ -29,7 +29,7 @@
     },
     "parameters": {
       "type": "object",
-      "description": "The exact parameters the engine ran with — not the ones requested, the ones used. May be empty, but must be present: an absent field cannot be told apart from 'nobody recorded them'."
+      "description": "The exact parameters the engine ran with \u2014 not the ones requested, the ones used. May be empty, but must be present: an absent field cannot be told apart from 'nobody recorded them'."
     },
     "inputs": {
       "type": "array",
@@ -97,7 +97,7 @@
           "description": "RECOMMENDED. The coordinate reference system the written dataset declares. Section 3.7 says the output CRS belongs here and not in crs_decisions; before 1.0.0-draft.4 there was nowhere here to put it. Omit it rather than predict it: a producer that has not written the file yet does not know."
         }
       },
-      "description": "RECOMMENDED. The digest of the dataset this record sits beside. Without it, a consumer cannot verify that the sidecar describes the bytes next to it — and the record cannot be wrapped in an in-toto attestation, whose subject requires a digest. Recommended rather than mandatory only because a producer may emit the manifest before the output is durably on disk; when it can be computed, it should be."
+      "description": "RECOMMENDED. The digest of the dataset this record sits beside. Without it, a consumer cannot verify that the sidecar describes the bytes next to it \u2014 and the record cannot be wrapped in an in-toto attestation, whose subject requires a digest. Recommended rather than mandatory only because a producer may emit the manifest before the output is durably on disk; when it can be computed, it should be."
     },
     "engine": {
       "type": "object",
@@ -117,12 +117,12 @@
           "description": "Which build produced the numbers. Algorithms change between releases, and so do their outputs; an engine without a version is not reproducible, only imitable."
         }
       },
-      "description": "The software that computed the result — the engine, not the orchestrator that called it."
+      "description": "The software that computed the result \u2014 the engine, not the orchestrator that called it."
     },
     "verification": {
       "type": "array",
       "minItems": 1,
-      "description": "Deterministic checks that ran on the result, recorded whether they passed or failed. At least one: a manifest with no checks at all is a log entry wearing a manifest's clothes. Failed checks MUST be recorded rather than suppressed — the audit trail has to survive the error it documents.",
+      "description": "Deterministic checks that ran on the result, recorded whether they passed or failed. At least one: a manifest with no checks at all is a log entry wearing a manifest's clothes. Failed checks MUST be recorded rather than suppressed \u2014 the audit trail has to survive the error it documents.",
       "items": {
         "type": "object",
         "required": [
@@ -268,9 +268,41 @@
     "repairs": {
       "type": "array",
       "items": {
-        "type": "object"
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "check": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Which check the repair was made for, named as in `verification[].name`. It may name a check that appears in no entry of `verification[]`: a repair applied to an INPUT happens before anything is verified, so the name is the only thing a consumer has to look it up by."
+          },
+          "action": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What was done, in the producer's own words. REQUIRED, and nullable on purpose: null says a repair was attempted and achieved nothing, with `error` saying why, while an absent key cannot be told apart from a producer that did not record it. A repair entry that does not say what was done discloses nothing, which is the one thing this field exists to prevent."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the repair failed, when it did. Null or absent when it did not."
+          },
+          "resolved": {
+            "type": "boolean",
+            "description": "Whether the check passed after the repair. False with a non-null `action` is the case worth reading: something was changed and the problem remained."
+          }
+        },
+        "description": "One disclosed repair. The four names below have fixed meaning as of 1.0.0-draft.5; other keys are permitted under section 3.5 and SHOULD carry a producer prefix."
       },
-      "description": "RECOMMENDED. Mechanical repairs applied to the output, each one disclosed. An undisclosed repair makes the manifest describe a file that never existed."
+      "description": "RECOMMENDED. Mechanical repairs applied to the output, each one disclosed. An undisclosed repair makes the manifest describe a file that never existed. Since 1.0.0-draft.5 the shape of an entry is fixed: before that the schema said only `type: object`, so two producers recording the same repair could share no key and both conform."
     },
     "parameters_redacted": {
       "type": "boolean",

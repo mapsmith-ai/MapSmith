@@ -567,9 +567,22 @@ def repair_and_reverify(
                 action, error = None, f"{type(exc).__name__}: {exc}"
                 impossible.add(check.name)
             entry = {
-                "round": round_no,
+                # Four of these are the specification's since 1.0.0-draft.5,
+                # which fixed the shape of a repairs entry: `check`, `action`,
+                # `error`, `resolved`. `round` is ours and says so -- the format
+                # has no concept of repair rounds -- and D-077 rule 3 puts the
+                # prefix on it because the container is the specification's.
+                #
+                # `operation` used to be here and is gone. It duplicated the
+                # manifest's own root `operation`, always and by construction:
+                # every caller passes one literal to `ProvenanceRecord` and the
+                # same one to `audited`. Section 6 of the specification says a
+                # manifest describes ONE operation, so repeating it inside a
+                # repair said nothing a reader did not already have -- the same
+                # case as `mapsmith_version` (D-082), and removed for the same
+                # reason rather than prefixed into permanence.
+                "x-mapsmith:round": round_no,
                 "check": check.name,
-                "operation": operation,
                 "action": action,
                 "error": error,
                 "resolved": False,

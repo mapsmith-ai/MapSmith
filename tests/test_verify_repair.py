@@ -204,7 +204,7 @@ def test_repair_stops_after_max_rounds_when_it_never_converges(tmp_path, monkeyp
     )
     assert len(calls) == verify.MAX_REPAIR_ROUNDS == 2
     assert len(attempts) == 2
-    assert [a["round"] for a in attempts] == [1, 2]
+    assert [a["x-mapsmith:round"] for a in attempts] == [1, 2]
     assert all(a["resolved"] is False for a in attempts)
     assert not final[0].passed
 

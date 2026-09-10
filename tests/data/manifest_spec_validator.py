@@ -238,6 +238,33 @@ def problems(record: object) -> list[str]:
         for n, repair in enumerate(record["repairs"]):
             if not isinstance(repair, dict):
                 out.append(f"`repairs[{n}]` must be an object")
+                continue
+            # The shape of an entry, new in 1.0.0-draft.5. Until then this
+            # branch checked that a repair was an object and stopped, so two
+            # producers disclosing the same repair could share no key and both
+            # conform -- which is disclosure a consumer cannot read.
+            #
+            # The mutation tests did exercise the field, through the maximal
+            # record. What no `conformance/` fixture carried was a `repairs`
+            # field at all, and those are the files a third-party implementer
+            # reads: the one part of the format with no worked example was the
+            # one part with no described shape.
+            if "action" not in repair:
+                out.append(
+                    f"missing required field `repairs[{n}].action`: an entry "
+                    "that does not say what was done discloses nothing. Null "
+                    "is conforming and means a repair was attempted and "
+                    "achieved nothing, with `error` saying why; absent cannot "
+                    "be told apart from a producer that recorded none."
+                )
+            for field, kinds in (
+                ("check", (str, type(None))),
+                ("action", (str, type(None))),
+                ("error", (str, type(None))),
+                ("resolved", bool),
+            ):
+                if field in repair and not isinstance(repair[field], kinds):
+                    out.append(f"`repairs[{n}].{field}` has the wrong type")
     _optional(out, record, "parameters_redacted", bool)
     if _optional(out, record, "producer", dict):
         for field in ("name", "version"):

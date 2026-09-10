@@ -1169,10 +1169,15 @@ def measure_area(
         # Recorded as a repair, not as a note: `repairs` is where the rest of
         # the system — and anyone reading the manifest — looks to find out
         # whether MapSmith rewrote the caller's geometry.
+        # The keys follow 1.0.0-draft.5, which fixed the shape of a repairs
+        # entry: `check`, `action`, `error` and `resolved` are the
+        # specification's, `x-mapsmith:round` is ours and carries the prefix
+        # because the container is not. `"operation": "measure_area"` used to
+        # be here and is gone -- the manifest's root already says which
+        # operation this is, and section 6 says a manifest describes one.
         input_repairs = [{
-            "round": 1,
+            "x-mapsmith:round": 1,
             "check": "x-mapsmith:input_geometry_valid",
-            "operation": "measure_area",
             "action": f"make_valid applied to {invalid} input geometries BEFORE "
             "measuring: the planar area of a self-intersecting ring is the signed "
             "shoelace, which matches no region and is returned without complaint",

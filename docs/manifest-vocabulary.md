@@ -2,7 +2,7 @@
 
 # The names MapSmith writes into a manifest
 
-Against `1.0.0-draft.4` of the [manifest specification](https://github.com/mapsmith-ai/manifest-spec).
+Against `1.0.0-draft.5` of the [manifest specification](https://github.com/mapsmith-ai/manifest-spec).
 
 Section 3.6 of that specification makes `verification[].name` a closed core
 plus extensions spelled `x-<producer>:<name>`, so a consumer can branch on it

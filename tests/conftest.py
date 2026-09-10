@@ -177,14 +177,18 @@ def _spec_object_paths() -> dict[str, frozenset[str]]:
 #: each for a reason rather than by omission. Kept beside the derivation so the
 #: exclusions are read together with it.
 #:
-#: **It excludes nothing today, and saying so is the point.** All three of these
-#: objects have no `properties` at all in the schema, so the derivation above
-#: never records them and the guard would skip them anyway. What this does is
-#: hold the reasoning, and fire the day the specification describes one property
-#: inside any of them -- at which moment the container becomes policed and every
-#: other key in it would be reported as a stray. The entry for `repairs[]` is
-#: therefore the pre-written answer to a question the board has open, not a
-#: filter that is quietly doing work.
+#: **Neither of these excludes anything today, and saying so is the point.**
+#: Both objects have no `properties` at all in the schema, so the derivation
+#: above never records them and the guard would skip them anyway. What this does
+#: is hold the reasoning, and fire the day the specification describes one
+#: property inside either of them.
+#:
+#: `repairs[]` was the third entry here until 2026-09-10, with its reason
+#: written as an open question for the specification. The question was answered
+#: -- `1.0.0-draft.5` fixed the shape of a repairs entry -- so the entry is gone
+#: and the container is policed like any other. It is worth noticing that the
+#: exclusion did its job by being removable: it recorded WHY the container was
+#: unwatched, so closing the gap was an edit rather than an archaeology.
 SPEC_OBJECTS_NOT_OURS = {
     "parameters": (
         "The parameters the operation ran with. Their names are the "
@@ -196,16 +200,6 @@ SPEC_OBJECTS_NOT_OURS = {
         "the keys are the engine's. D-077 rule 3 cuts the other way here -- "
         "the prefix follows the container, and this container's contents are "
         "not ours to name. It has its own guard, on the shape of a setting."
-    ),
-    "repairs[]": (
-        "The schema says `items: {type: object}` and section 3.4 says what "
-        "repairs are FOR, not what an entry contains. We emit `round`, "
-        "`check`, `operation`, `action`, `error`, `resolved`; a third-party "
-        "producer would emit six different ones and be conforming. That is an "
-        "open question for the specification, not a defect to be prefixed "
-        "away, and it is on the board: until it is answered there is nothing "
-        "here to check a key against, and this entry says so out loud instead "
-        "of the guard passing over it in silence."
     ),
 }
 
