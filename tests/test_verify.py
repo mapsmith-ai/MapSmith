@@ -9,7 +9,9 @@ from shapely.geometry import Point, Polygon
 from conftest import (
     _EXTENSION_KEY,
     _SETTING_NAME,
+    SPEC_OBJECTS_NOT_OURS,
     _spec_crs_keys,
+    _spec_object_paths,
     _spec_problems,
     _spec_transformation_keys,
 )
@@ -184,6 +186,9 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
     skipped: list[str] = []
     with_crs: list[str] = []
     with_repairs: list[str] = []
+    undeclared: list[str] = []
+    containers_seen: set[str] = set()
+    spec_objects = _spec_object_paths()
     from pathlib import Path as _Path
 
     # The PUBLISHED page, not a fresh derivation of the source. Deriving both
@@ -275,6 +280,15 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
         # that no literal at a call site shows. Neither sees what the other
         # sees, and the drift they caught on 2026-09-06 was invisible to both
         # until one of them existed.
+        # D-077 on EVERY container the specification describes, and this is the
+        # general form of the two rules below it. Those read one container each
+        # and were each written the day a key drifted inside it; the container
+        # nobody had been bitten by yet was `engine`, which carried an
+        # unprefixed `geometry_library` for four days in three engine modules.
+        # A guard that is green while not looking is the shape this project
+        # keeps finding in itself, so the containers are derived instead of
+        # listed.
+        _collect_undeclared(record, spec_objects, name, undeclared, containers_seen)
         for key in record.get("crs_decisions", {}):
             # The SAME predicate the AST sweep uses, imported rather than
             # restated. The first version wrote `key.startswith("x-mapsmith:")`
@@ -386,6 +400,29 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
     # claim to list the names that appear only there -- was checked against
     # nothing at all. One fixture now crosses a ring with itself, which is the
     # defect `measure_area`'s repair exists for.
+    # ANTI-VACUITY on the sweep above, and it goes on what the walk must SEE.
+    # Asserting that no key is undeclared would pass on a walk that visited
+    # nothing, which is exactly how `engine` went unwatched: something was
+    # green. So the containers actually reached are compared against the
+    # containers the schema describes, minus the ones declared as nobody's.
+    policeable = {p for p in spec_objects if p not in SPEC_OBJECTS_NOT_OURS}
+    missed = policeable - containers_seen - {"crs_decisions.transformation"}
+    assert not missed, (
+        f"the sweep never reached these described containers: {sorted(missed)}. "
+        "Either no operation emits them -- in which case the rule below is "
+        "checked against less than it appears to be -- or the walk stopped "
+        "descending. `crs_decisions.transformation` is excused because only a "
+        "datum crossing produces it and one fixture does."
+    )
+    assert not undeclared, (
+        "keys inside containers the specification describes that are neither "
+        f"described there nor declared as ours: {sorted(undeclared)}. D-077: "
+        "the prefix follows the CONTAINER, so a key of ours inside a field of "
+        "the specification's must say it is ours -- `x-mapsmith:<name>`. If "
+        "the key is not ours to name, add its container to "
+        "SPEC_OBJECTS_NOT_OURS with the reason."
+    )
+
     assert with_repairs, (
         "no record in this sweep carries a `repairs` entry, so the rule above "
         "ran on nothing. A fixture that produced one has stopped producing it: "
@@ -585,6 +622,40 @@ def test_every_check_name_in_the_source_obeys_the_vocabulary():
         f"extension `x-<producer>:<name>`: {offenders}. An unconstrained vocabulary makes "
         "two records incomparable, which is the point of having a format."
     )
+
+
+def _collect_undeclared(
+    node: object,
+    spec_objects: dict[str, frozenset[str]],
+    operation: str,
+    undeclared: list[str],
+    seen: set[str],
+    path: str = "",
+) -> None:
+    """Walk a record beside the schema's described objects, collecting strays.
+
+    Collecting rather than asserting, so one run names every offender instead
+    of the first: a sweep that stops at the first stray turns a five-minute fix
+    into five sweeps.
+    """
+    if isinstance(node, dict):
+        described = spec_objects.get(path)
+        if described is not None and path not in SPEC_OBJECTS_NOT_OURS:
+            seen.add(path)
+            for key in node:
+                if key not in described and not _EXTENSION_KEY.fullmatch(key):
+                    where = path or "<root>"
+                    undeclared.append(f"{operation}: {where}.{key}")
+        for key, value in node.items():
+            _collect_undeclared(
+                value, spec_objects, operation, undeclared, seen,
+                f"{path}.{key}" if path else key,
+            )
+    elif isinstance(node, list):
+        for item in node:
+            _collect_undeclared(
+                item, spec_objects, operation, undeclared, seen, f"{path}[]"
+            )
 
 
 def test_every_crs_decisions_key_in_the_source_obeys_the_spec():

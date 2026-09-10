@@ -116,6 +116,100 @@ def _spec_transformation_keys() -> frozenset[str]:
     return keys
 
 
+def _spec_object_paths() -> dict[str, frozenset[str]]:
+    """Every object the schema DESCRIBES, by dotted path, with its property names.
+
+    The point is that this is not a list. `_spec_crs_keys` and
+    `_spec_transformation_keys` each read one container, and each was written
+    the day a key drifted inside that container -- which is a list of
+    containers, maintained by whoever last got bitten. On 2026-09-10 the
+    container nobody had got bitten by yet turned out to be `engine`, holding
+    an unprefixed `geometry_library` in three engine modules since 2026-09-06.
+
+    So the containers come from the schema. A container the specification gains
+    is policed the day it lands, and one it loses stops being policed without
+    anybody editing a test.
+
+    Paths are dotted, with `[]` for the items of an array: `engine`,
+    `crs_decisions.transformation`, `inputs[]`, `verification[]`. The root is
+    the empty string. An object the schema leaves open -- no `properties` at all
+    -- gets no entry, which is the honest outcome: there is nothing to check a
+    key against, and pretending otherwise is what `additionalProperties: true`
+    has been hiding all along.
+    """
+    import json
+    from pathlib import Path
+
+    schema = json.loads(
+        (Path(__file__).parent / "data" / "manifest-v1.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    paths: dict[str, frozenset[str]] = {}
+
+    def walk(node: object, path: str) -> None:
+        if not isinstance(node, dict):
+            return
+        described = node.get("properties")
+        if isinstance(described, dict):
+            paths[path] = frozenset(described)
+            for name, child in described.items():
+                walk(child, f"{path}.{name}" if path else name)
+        items = node.get("items")
+        if isinstance(items, dict):
+            walk(items, f"{path}[]")
+
+    walk(schema, "")
+    # Anti-vacuity, and on what the derivation must SEE rather than on what it
+    # must find: these four are `required` or all but universal in the schema,
+    # so a walk that misses them is broken rather than looking at a lean
+    # schema. `engine` is named explicitly because it is the one that slipped.
+    for expected in ("", "engine", "crs_decisions", "verification[]"):
+        assert expected in paths, (
+            f"the schema walk found no described object at {expected!r}: "
+            f"it reached {sorted(paths)}. The walk is broken, or the schema "
+            "changed shape -- either way this is not a lean schema."
+        )
+    return paths
+
+
+#: Objects the specification describes but whose KEYS are nobody's to police,
+#: each for a reason rather than by omission. Kept beside the derivation so the
+#: exclusions are read together with it.
+#:
+#: **It excludes nothing today, and saying so is the point.** All three of these
+#: objects have no `properties` at all in the schema, so the derivation above
+#: never records them and the guard would skip them anyway. What this does is
+#: hold the reasoning, and fire the day the specification describes one property
+#: inside any of them -- at which moment the container becomes policed and every
+#: other key in it would be reported as a stray. The entry for `repairs[]` is
+#: therefore the pre-written answer to a question the board has open, not a
+#: filter that is quietly doing work.
+SPEC_OBJECTS_NOT_OURS = {
+    "parameters": (
+        "The parameters the operation ran with. Their names are the "
+        "operation's own vocabulary, not extensions of the manifest format, "
+        "and the schema describes none of them on purpose."
+    ),
+    "environment": (
+        "Section 3.8 asks for the configuration AS THE ENGINE REPORTS IT, so "
+        "the keys are the engine's. D-077 rule 3 cuts the other way here -- "
+        "the prefix follows the container, and this container's contents are "
+        "not ours to name. It has its own guard, on the shape of a setting."
+    ),
+    "repairs[]": (
+        "The schema says `items: {type: object}` and section 3.4 says what "
+        "repairs are FOR, not what an entry contains. We emit `round`, "
+        "`check`, `operation`, `action`, `error`, `resolved`; a third-party "
+        "producer would emit six different ones and be conforming. That is an "
+        "open question for the specification, not a defect to be prefixed "
+        "away, and it is on the board: until it is answered there is nothing "
+        "here to check a key against, and this entry says so out loud instead "
+        "of the guard passing over it in silence."
+    ),
+}
+
+
 #: The shape D-077 requires of a `crs_decisions` key that is MapSmith's own.
 #: The syntax is the one section 3.6 of the specification makes a MUST for
 #: check names; applying it to FIELDS is a MapSmith rule that the specification

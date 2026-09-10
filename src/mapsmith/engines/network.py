@@ -51,7 +51,7 @@ def _engine_info() -> dict[str, str]:
     return {
         "name": "mapsmith-dijkstra",
         "version": __version__,
-        "geometry_library": f"shapely {shapely.__version__}",
+        "x-mapsmith:geometry_library": f"shapely {shapely.__version__}",
     }
 
 
