@@ -8,16 +8,16 @@
 [![MCP](https://img.shields.io/badge/Model_Context_Protocol-server-654FF0)](https://modelcontextprotocol.io)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 
-**Professional-grade GIS geoprocessing for AI agents — with provenance you can verify.**
+**Professional-grade GIS geoprocessing over MCP — with provenance you can verify.**
 
 **[mapsmith.dev](https://mapsmith.dev)** — a real terrain analysis and the manifest that came
 with it. Both are build products: the figure is rendered from GeoTIFFs MapSmith writes, so the
 page cannot drift from what the software does.
 
-MapSmith is an open-source [MCP](https://modelcontextprotocol.io) server that gives an AI
-agent real GIS analysis — buffers, overlays, reprojections, zonal statistics, terrain and
+MapSmith is an open-source [MCP](https://modelcontextprotocol.io) server for real GIS
+analysis — buffers, overlays, reprojections, zonal statistics, terrain and
 hydrology — executed by GeoPandas, DuckDB Spatial, exactextract and Whitebox Workflows,
-never written by the model. Every dataset it produces lands on disk next to a lineage
+never by the model that asked for them. Every dataset it produces lands on disk next to a lineage
 manifest: inputs with checksums, the exact parameters, the CRS decisions and *why*, engine
 versions, and the deterministic checks that ran on the result.
 

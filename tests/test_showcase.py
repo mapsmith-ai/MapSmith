@@ -406,6 +406,105 @@ def test_the_word_gis_survives_where_a_search_can_see_it():
     first_screen = README.read_text(encoding="utf-8").split("## Quickstart")[0]
     assert "GIS" in first_screen, "the README says what it is without ever saying GIS"
 
+    # The site is the other front door and this test never looked at it, which
+    # is how the h1 and the <title> spent their whole life saying "geoprocessing"
+    # and never "GIS" while the assertions above were green. A search engine
+    # weights those two strings above everything else on the page.
+    template = SITE_TEMPLATE.read_text(encoding="utf-8")
+    for label, pattern in (
+        ("<title>", r"<title>(.*?)</title>"),
+        ("og:title", r'<meta property="og:title" content="(.*?)">'),
+        ("<h1>", r"<h1>(.*?)</h1>"),
+        ("meta description", r'<meta name="description" content="(.*?)">'),
+    ):
+        found = re.search(pattern, template, re.S)
+        assert found, f"the site template has no {label}"
+        assert "GIS" in found.group(1), (
+            f"the site {label} says what MapSmith is without ever saying GIS: "
+            f"{found.group(1)!r}"
+        )
+
+
+# The one-line description of MapSmith is copied onto nine surfaces, and until
+# 2026-09-11 nothing compared them. It was reworded on five of them by hand;
+# whether the other four had been missed or left behind deliberately was not
+# recorded anywhere, which is the same state as having forgotten.
+RETIRED_DESCRIPTION = re.compile(r"for AI agents|gives (AI agents|an AI agent)|to AI agents", re.I)
+
+# Ratchet, not permission: these four still carry the retired wording, each for
+# a reason that is about publication mechanics rather than about the wording.
+# The list may only SHRINK. Adding a fifth means a surface was reworded and its
+# neighbour was not, which is the drift this test exists to catch.
+DESCRIPTION_NOT_YET_REWORDED = {
+    # Archived under a DOI. Zenodo reads both from inside the tag, and the
+    # title of a citable record is not a string you edit in place -- anyone who
+    # already cited it typed this one. Changing it is a release decision.
+    "CITATION.cff": "title of a record already archived with a DOI",
+    ".zenodo.json": "title of a record already archived with a DOI",
+    # These two only reach a reader when they are republished, so they are
+    # stale rather than wrong: PyPI shows the description of the last upload
+    # and the MCP Registry the last publish. They correct themselves at the
+    # next release, and they are the reason this dictionary is dated.
+    "pyproject.toml": "reaches the public only on the next PyPI release",
+    "server.json": "reaches the public only on the next MCP Registry publish",
+}
+
+
+def test_the_one_line_description_does_not_say_two_different_things():
+    """MapSmith describes itself in one line on nine surfaces, and a reader
+    meets several of them in a row: the README tagline, then the package
+    summary on PyPI, then the title of the thing they are about to cite. They
+    were reworded five at a time by hand, which is how the tenth gets missed.
+
+    Two assertions, and the second is the one that earns its keep: the surfaces
+    that were reworded must stay reworded, and the surfaces deliberately left
+    behind must still be exactly the ones written down here."""
+    import json
+
+    head = SITE_TEMPLATE.read_text(encoding="utf-8").split("<section", 1)[0]
+    current = {
+        "README.md": README.read_text(encoding="utf-8"),
+        "src/mapsmith/__init__.py": (ROOT / "src" / "mapsmith" / "__init__.py").read_text(
+            encoding="utf-8"
+        ),
+        "site/index.template.html": head,
+        "CLAUDE.md": (ROOT / "CLAUDE.md").read_text(encoding="utf-8"),
+        "funding.json": (ROOT / "funding.json").read_text(encoding="utf-8"),
+    }
+    for name, text in current.items():
+        found = RETIRED_DESCRIPTION.search(text)
+        assert not found, (
+            f"{name} still describes MapSmith as being {found.group(0)!r}, which the "
+            f"other front-door surfaces stopped saying. The subject of the sentence "
+            f"is the geoprocessing, not whoever is calling it."
+        )
+
+    lagging = {}
+    for name in DESCRIPTION_NOT_YET_REWORDED:
+        text = (ROOT / name).read_text(encoding="utf-8")
+        if RETIRED_DESCRIPTION.search(text):
+            lagging[name] = DESCRIPTION_NOT_YET_REWORDED[name]
+    gone = sorted(set(DESCRIPTION_NOT_YET_REWORDED) - set(lagging))
+    assert not gone, (
+        f"{gone} no longer carry the retired wording, so they are not lagging any "
+        f"more. Delete them from DESCRIPTION_NOT_YET_REWORDED -- a ratchet that is "
+        f"not tightened is a list."
+    )
+
+    # The two archived titles are held equal to each other by
+    # test_the_archive_metadata_does_not_contradict_the_rest_of_the_release.
+    # Nothing holds them equal to the README, on purpose: a DOI'd title is a
+    # citation, and it is allowed to age. Saying so here is what stops the next
+    # reader of this file from "fixing" it.
+    citation = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
+    archived = re.search(r'^title:\s*"(.+)"', citation, re.MULTILINE)
+    assert archived, "CITATION.cff has no title to compare"
+    registry = json.loads((ROOT / "server.json").read_text(encoding="utf-8"))["description"]
+    assert "provenance" in archived.group(1) and "provenance" in registry, (
+        "a description may age, but every one of them has to name the thing that "
+        "makes MapSmith different"
+    )
+
 
 # --------------------------------------------------------------------------
 # mapsmith.dev. The site is the other front door, and until 2026-08-25 no test

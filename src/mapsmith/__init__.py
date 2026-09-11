@@ -1,4 +1,4 @@
-"""MapSmith — professional-grade geoprocessing for AI agents via MCP, with verifiable provenance."""
+"""MapSmith — professional-grade GIS geoprocessing over MCP, with verifiable provenance."""
 
 __version__ = "0.4.0"
 

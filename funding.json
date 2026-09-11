@@ -6,7 +6,7 @@
     "role": "owner",
     "name": "MapSmith",
     "email": "mapsmith@proton.me",
-    "description": "Maintainer of MapSmith, an open-source MCP server that gives AI agents professional GIS geoprocessing with verifiable provenance. Work is unfunded to date. As of 2026-09-01: a catalogue of 74 operations, more than 1500 closed-form tests, a 375-run published benchmark, and three repositories archived with DOIs — all built without external support.",
+    "description": "Maintainer of MapSmith, an open-source MCP server for professional GIS geoprocessing with verifiable provenance. Work is unfunded to date. As of 2026-09-01: a catalogue of 74 operations, more than 1500 closed-form tests, a 375-run published benchmark, and three repositories archived with DOIs — all built without external support.",
     "webpageUrl": {
       "url": "https://github.com/mapsmith-ai"
     }

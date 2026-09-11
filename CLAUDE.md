@@ -1,6 +1,6 @@
 # MapSmith — Contributor guide for AI assistants
 
-MapSmith gives AI agents professional-grade geoprocessing via MCP, with **verifiable provenance**. Every design rule below protects that promise.
+MapSmith is professional-grade geoprocessing with **verifiable provenance**, reachable over MCP. Every design rule below protects that promise.
 
 ## Non-negotiable invariants
 
