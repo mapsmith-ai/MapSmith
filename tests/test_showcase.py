@@ -417,7 +417,7 @@ def test_the_word_gis_survives_where_a_search_can_see_it():
         ("<h1>", r"<h1>(.*?)</h1>"),
         ("meta description", r'<meta name="description" content="(.*?)">'),
     ):
-        found = re.search(pattern, template, re.S)
+        found = re.search(pattern, template, re.DOTALL)
         assert found, f"the site template has no {label}"
         assert "GIS" in found.group(1), (
             f"the site {label} says what MapSmith is without ever saying GIS: "
@@ -429,7 +429,8 @@ def test_the_word_gis_survives_where_a_search_can_see_it():
 # 2026-09-11 nothing compared them. It was reworded on five of them by hand;
 # whether the other four had been missed or left behind deliberately was not
 # recorded anywhere, which is the same state as having forgotten.
-RETIRED_DESCRIPTION = re.compile(r"for AI agents|gives (AI agents|an AI agent)|to AI agents", re.I)
+RETIRED_DESCRIPTION = re.compile(r"for AI agents|gives (AI agents|an AI agent)|to AI agents", re.IGNORECASE
+)
 
 # Ratchet, not permission: these four still carry the retired wording, each for
 # a reason that is about publication mechanics rather than about the wording.
@@ -480,10 +481,10 @@ def test_the_one_line_description_does_not_say_two_different_things():
         )
 
     lagging = {}
-    for name in DESCRIPTION_NOT_YET_REWORDED:
+    for name, perche in DESCRIPTION_NOT_YET_REWORDED.items():
         text = (ROOT / name).read_text(encoding="utf-8")
         if RETIRED_DESCRIPTION.search(text):
-            lagging[name] = DESCRIPTION_NOT_YET_REWORDED[name]
+            lagging[name] = perche
     gone = sorted(set(DESCRIPTION_NOT_YET_REWORDED) - set(lagging))
     assert not gone, (
         f"{gone} no longer carry the retired wording, so they are not lagging any "
