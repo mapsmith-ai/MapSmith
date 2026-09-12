@@ -432,6 +432,87 @@ def test_the_word_gis_survives_where_a_search_can_see_it():
 RETIRED_DESCRIPTION = re.compile(r"for AI agents|gives (AI agents|an AI agent)|to AI agents", re.IGNORECASE
 )
 
+# The regex above matches a PHRASE, and on 2026-09-12 an adversarial read found
+# what that costs: it was green while `funding.json` advertised the project as a
+# suite "for geospatial AI" and tagged it `ai-agents`, and while `pyproject.toml`
+# carried the same keyword. Those are the machine-readable fields a directory,
+# an aggregator or a reviewer reads FIRST, and no wording of the tagline reaches
+# them. A guard that can only see one sentence is a guard that cannot fail on
+# the surface that matters most.
+#
+# So the concept is checked in two more places, in the two shapes it actually
+# takes: as a label in a classifier list, and as a positioning phrase that names
+# AI as the subject rather than the caller.
+RETIRED_LABELS = {"ai-agents", "ai-agent", "llm-tools", "llm", "ai", "agents", "genai"}
+RETIRED_POSITIONING = re.compile(
+    r"geospatial AI|AI[- ]native|AI for GIS|GIS for AI|AI-powered", re.IGNORECASE
+)
+
+
+def _classifier_lists() -> dict[str, list[str]]:
+    """Every machine-readable list of labels this project publishes about itself.
+
+    Derived, not enumerated: if a future `funding.json` grows a second project
+    entry it is picked up, and if the keys are renamed upstream this raises
+    instead of quietly checking nothing."""
+    import json
+    import tomllib
+
+    lists: dict[str, list[str]] = {}
+    funding = json.loads((ROOT / "funding.json").read_text(encoding="utf-8"))
+    projects = funding["projects"]
+    assert projects, "funding.json declares no project, so its tags cannot be checked"
+    for project in projects:
+        lists[f"funding.json:{project['guid']}:tags"] = project["tags"]
+    metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    lists["pyproject.toml:keywords"] = metadata["project"]["keywords"]
+    lists["pyproject.toml:classifiers"] = metadata["project"]["classifiers"]
+    return lists
+
+
+def test_the_labels_we_publish_do_not_say_the_subject_is_AI():
+    """A tagline is prose and a tag is a filter, and only one of them decides
+    which list a project turns up in. Both were saying the same retired thing
+    until the prose was fixed alone."""
+    lists = _classifier_lists()
+    # Anti-vacuity on what the check must SEE, never on what it must find: if
+    # the derivation stops reaching the lists -- a renamed key, a restructured
+    # funding.json -- this fails rather than passing over an empty set.
+    for expected in ("funding.json:mapsmith:tags", "pyproject.toml:keywords"):
+        assert expected in lists, (
+            f"{expected} is no longer reachable, so this guard is checking a subset "
+            f"of what it was written to check: {sorted(lists)}"
+        )
+    for where, labels in lists.items():
+        assert labels, f"{where} is empty, so checking it proves nothing"
+        hits = sorted({label for label in labels if label.strip().lower() in RETIRED_LABELS})
+        assert not hits, (
+            f"{where} still classifies MapSmith under {hits}. The tagline stopped "
+            f"saying the subject is AI; a label is read by more tools than the "
+            f"tagline is read by people."
+        )
+
+
+def test_no_front_door_surface_positions_the_project_as_AI():
+    """The retired phrase has synonyms, and one of them was live on the funding
+    page under a different shape: a plan named 'A correctness suite for
+    geospatial AI'. Same claim, no match for the phrase regex."""
+    surfaces = {
+        "README.md": README.read_text(encoding="utf-8"),
+        "funding.json": (ROOT / "funding.json").read_text(encoding="utf-8"),
+        "pyproject.toml": (ROOT / "pyproject.toml").read_text(encoding="utf-8"),
+        "server.json": (ROOT / "server.json").read_text(encoding="utf-8"),
+        "site/index.template.html": SITE_TEMPLATE.read_text(encoding="utf-8").split(
+            "<section", 1
+        )[0],
+    }
+    for name, text in surfaces.items():
+        found = RETIRED_POSITIONING.search(text)
+        assert not found, (
+            f"{name} positions the project as {found.group(0)!r}. What is being "
+            f"described is geospatial computation; AI is who calls it."
+        )
+
 # Ratchet, not permission: these four still carry the retired wording, each for
 # a reason that is about publication mechanics rather than about the wording.
 # The list may only SHRINK. Adding a fifth means a surface was reworded and its

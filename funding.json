@@ -23,7 +23,7 @@
         "url": "https://github.com/mapsmith-ai/MapSmith"
       },
       "licenses": ["spdx:AGPL-3.0-or-later"],
-      "tags": ["gis", "geospatial", "mcp", "ai-agents", "provenance", "geoprocessing", "reproducibility"]
+      "tags": ["gis", "geospatial", "mcp", "provenance", "geoprocessing", "reproducibility"]
     }
   ],
   "funding": {
@@ -39,7 +39,7 @@
       {
         "guid": "trap-suite",
         "status": "inactive",
-        "name": "A correctness suite for geospatial AI — delivered, unfunded",
+        "name": "A correctness suite for geospatial software — delivered, unfunded",
         "description": "DELIVERED, and left here rather than deleted so that what was asked for can be compared with what came of it. The plan was a public suite of traps with hand-computable answers (undetected CRS mismatch, feet read as metres, an unset TIFF predictor producing plausible terrain), a runner, a two-number score, and a clean set so that refusing everything cannot score well. All of it exists as Argleton — a separate project under a separate organisation, because an evaluation living inside the thing it evaluates can be dismissed in one line — Apache-2.0, with published runs and an archived release at DOI 10.5281/zenodo.22206349. It was built with no funding at all, which is the only reason this entry is worth reading: the estimate was EUR 20000.",
         "amount": 20000,
         "currency": "EUR",

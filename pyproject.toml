@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = "AGPL-3.0-or-later"
 authors = [{ name = "MapSmith", email = "mapsmith@proton.me" }]
-keywords = ["mcp", "gis", "geoprocessing", "geospatial", "ai-agents", "provenance"]
+keywords = ["mcp", "gis", "geoprocessing", "geospatial", "provenance", "reproducibility"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
