@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use MapSmith in your work, please cite it as below."
-title: "MapSmith: geospatial processing for AI agents, with verifiable provenance"
+title: "MapSmith: geospatial processing over MCP, with verifiable provenance"
 type: software
 authors:
   - name: "The MapSmith project"
@@ -22,9 +22,9 @@ keywords:
   - Model Context Protocol
   - MCP
 abstract: >-
-  An MCP server that gives AI agents professional geoprocessing under a rule
-  the agent cannot bend: every geometry and every number comes from a real
-  engine run, never from the model. Each operation that writes a dataset also
+  An MCP server for professional geoprocessing under a rule the caller cannot
+  bend: every geometry and every number comes from a real engine run, never
+  from the model. Each operation that writes a dataset also
   writes a manifest beside it — the inputs and their hashes, the exact
   parameters, the coordinate-system decisions and the reason for each, the
   engine and its version, and the deterministic checks that ran — and the

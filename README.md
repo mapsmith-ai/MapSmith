@@ -229,7 +229,7 @@ about it. `get_provenance` returns it for any output.
 | `preview_map` | Interactive in-chat map (MCP Apps) of any datasets, with a provenance card and verification status per layer |
 | `validate_plan` | Statically validate a multi-step plan before running anything: operations, arguments, references, input files, simulated CRS flow |
 | `execute_plan` | Validate then run a plan step by step, with per-step provenance and a plan-level manifest |
-| `get_provenance` | Return the full lineage manifest of any MapSmith output |
+| `get_provenance` | Return the manifest of any MapSmith output: one operation, its inputs and their digests, and what was checked |
 | `list_operations` | Catalog search: narrows on what you declare, then returns the surviving set to choose from (`status: "choose"`) or a ranking by `engine` — BM25, embeddings, or auto; `detail=true` returns parameters and worked examples |
 | `run_operation` | Run any catalog operation by name, including those with no tool of their own; arguments validated against the catalog before anything runs |
 | `server_info` | Version, license, available engines |

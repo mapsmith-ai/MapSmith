@@ -164,6 +164,7 @@ def page() -> str:
     sys.path.insert(0, str(ROOT / "src"))
     from mapsmith.grid import DERIVED_ENVIRONMENT, GEOREF_VARIABLES
     from mapsmith.provenance import (
+        CONTAINER_EXTENSIONS,
         CRS_EXTENSIONS,
         SPEC_VERSION,
         TRANSFORMATION_EXTENSIONS,
@@ -302,6 +303,27 @@ def page() -> str:
     lines += [
         f"| `{key}` | {why} |"
         for key, why in sorted(TRANSFORMATION_EXTENSIONS.items())
+    ]
+
+    total = sum(len(keys) for keys in CONTAINER_EXTENSIONS.values())
+    lines += [
+        "",
+        f"## Extension fields in the other containers ({total})",
+        "",
+        "The three sections above cover `verification[]`, `crs_decisions` and the",
+        "`transformation` inside it. They are not every object a manifest has, and",
+        "until 2026-09-13 the difference was invisible: this page derived its sections",
+        "from three lists, so a key added to a fourth container was documented nowhere",
+        "and nothing said so. Two had been shipping that way. The containers are named",
+        "here so that adding a fifth is a change to this table rather than a silence.",
+        "",
+        "| container | key | why it is not one the format already has |",
+        "|---|---|---|",
+    ]
+    lines += [
+        f"| `{container}` | `{key}` | {why} |"
+        for container, keys in sorted(CONTAINER_EXTENSIONS.items())
+        for key, why in sorted(keys.items())
     ]
     lines.append("")
     return "\n".join(lines)

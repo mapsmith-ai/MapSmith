@@ -2310,3 +2310,124 @@ def test_the_vendored_schema_and_validator_are_the_published_ones():
         "docstring. Copy the published body across: the header here is ours and "
         "says so, everything under it is theirs."
     )
+
+
+def test_two_chained_operations_link_by_the_output_digest(tmp_path, monkeypatch):
+    """Section 6 of the specification says multi-step lineage needs no new
+    field: the second record's `inputs[].sha256` is the first record's
+    `output.sha256`, so a consumer holding only the final file can walk back.
+
+    Nothing checked that with real bytes until 2026-09-13. It matters here more
+    than in the specification repository, because MapSmith is where the claim
+    meets formats that a reader can modify while opening them -- a GeoPackage is
+    a SQLite database, and a driver that touched it on read would break the link
+    while every individual record stayed true.
+    """
+    import hashlib
+    import json
+
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    from mapsmith.engines import vector
+
+    monkeypatch.setenv("MAPSMITH_WORKSPACE", str(tmp_path))
+    source = tmp_path / "points.gpkg"
+    gpd.GeoDataFrame(
+        {"id": [1, 2]}, geometry=[Point(0, 0), Point(100, 100)], crs="EPSG:32633"
+    ).to_file(source, driver="GPKG")
+
+    buffered = tmp_path / "buffered.gpkg"
+    centroids = tmp_path / "centroids.gpkg"
+    vector.buffer(str(source), 10.0, str(buffered))
+    vector.centroid(str(buffered), str(centroids))
+
+    upstream = json.loads(
+        (tmp_path / "buffered.gpkg.provenance.json").read_text(encoding="utf-8")
+    )
+    downstream = json.loads(
+        (tmp_path / "centroids.gpkg.provenance.json").read_text(encoding="utf-8")
+    )
+
+    # Anti-vacuity on what the check must SEE. Without it this passes when the
+    # upstream record has no `output` at all -- which is a valid record, and
+    # exactly the state in which the chain silently stops working.
+    digest = (upstream.get("output") or {}).get("sha256")
+    assert digest, (
+        "the upstream manifest carries no output digest, so there is no link to "
+        "check and section 6's claim is untestable here"
+    )
+    assert digest == hashlib.sha256(buffered.read_bytes()).hexdigest(), (
+        "the recorded output digest is not the digest of the bytes on disk: "
+        "something wrote or touched the file after the manifest was written"
+    )
+    assert digest in [i["sha256"] for i in downstream["inputs"]], (
+        "the second operation read the first operation's output and recorded a "
+        "different digest for it, so the chain does not resolve. Either the "
+        "reader modified the file on open, or the two ends hash different bytes."
+    )
+
+
+def test_every_extension_name_the_source_emits_is_on_the_published_page():
+    """`docs/manifest-vocabulary.md` says it lists the names MapSmith adds to a
+    manifest. Until 2026-09-13 it listed the names in three containers, and the
+    page could not tell the difference: it derives a section per container from
+    a list of containers, so a key added to a fourth was documented nowhere and
+    nothing was red. `engine.x-mapsmith:geometry_library` and
+    `repairs[].x-mapsmith:round` had been shipping in that gap.
+
+    This sweep does not know about containers. It reads every string constant in
+    the package that IS an extension name -- the whole string, so prose and
+    comments mentioning a name are not mistaken for one being emitted -- and
+    requires the page to carry it.
+
+    The comparison is on a word boundary, and that is not fussiness: checking
+    for `x-mapsmith:round` as a plain substring finds `x-mapsmith:round_trip`
+    and reports a missing name as present. That false negative happened while
+    this test was being written.
+    """
+    import ast
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    package = root / "src" / "mapsmith"
+    shape = re.compile(r"^x-mapsmith:[a-z0-9_]+$")
+
+    emitted: dict[str, str] = {}
+    for module in sorted(package.rglob("*.py")):
+        tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and shape.match(node.value)
+            ):
+                emitted.setdefault(node.value, module.name)
+
+    # Anti-vacuity on what the sweep must SEE, not on what it must find. These
+    # three live in three different containers, so a change that narrows the
+    # sweep to one of them fails here instead of quietly checking less.
+    for expected in (
+        "x-mapsmith:geometry_library",     # engine
+        "x-mapsmith:round",                # repairs[]
+        "x-mapsmith:round_trip",           # crs_decisions
+    ):
+        assert expected in emitted, (
+            f"the sweep no longer reads {expected} out of the source, so whatever "
+            f"it reports about the page proves less than it claims"
+        )
+
+    page = (root / "docs" / "manifest-vocabulary.md").read_text(encoding="utf-8")
+    undocumented = sorted(
+        f"{name} ({module})"
+        for name, module in emitted.items()
+        if not re.search(re.escape(name) + r"(?![a-z0-9_])", page)
+    )
+    assert not undocumented, (
+        f"these extension names are emitted and appear nowhere on the published "
+        f"vocabulary page: {undocumented}. A consumer branching on one has "
+        f"nothing to look it up in, which is the whole reason the page exists. "
+        f"Add the container to CONTAINER_EXTENSIONS in provenance.py -- with the "
+        f"sentence saying why the key is not a synonym -- and regenerate."
+    )

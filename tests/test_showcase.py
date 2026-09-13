@@ -513,23 +513,17 @@ def test_no_front_door_surface_positions_the_project_as_AI():
             f"described is geospatial computation; AI is who calls it."
         )
 
-# Ratchet, not permission: these four still carry the retired wording, each for
-# a reason that is about publication mechanics rather than about the wording.
-# The list may only SHRINK. Adding a fifth means a surface was reworded and its
-# neighbour was not, which is the drift this test exists to catch.
-DESCRIPTION_NOT_YET_REWORDED = {
-    # Archived under a DOI. Zenodo reads both from inside the tag, and the
-    # title of a citable record is not a string you edit in place -- anyone who
-    # already cited it typed this one. Changing it is a release decision.
-    "CITATION.cff": "title of a record already archived with a DOI",
-    ".zenodo.json": "title of a record already archived with a DOI",
-    # These two only reach a reader when they are republished, so they are
-    # stale rather than wrong: PyPI shows the description of the last upload
-    # and the MCP Registry the last publish. They correct themselves at the
-    # next release, and they are the reason this dictionary is dated.
-    "pyproject.toml": "reaches the public only on the next PyPI release",
-    "server.json": "reaches the public only on the next MCP Registry publish",
-}
+# The ratchet is spent, and on 2026-09-13 it was dissolved rather than left
+# empty. It held four surfaces that still carried the retired wording, each for
+# a reason about publication mechanics: two titles inside records archived under
+# a DOI, and two strings that only reach a reader on the next PyPI release or
+# MCP Registry publish. All four are reworded now, and the reasons were about
+# WHEN the change takes effect, never about whether to make it.
+#
+# An empty ratchet is a dictionary a loop walks in zero iterations, which is the
+# guard that cannot fail -- this file has caught that shape twice. So the four
+# join the surfaces that are checked outright, below, and the deferred ones are
+# the deferred ones no longer.
 
 
 def test_the_one_line_description_does_not_say_two_different_things():
@@ -538,9 +532,9 @@ def test_the_one_line_description_does_not_say_two_different_things():
     summary on PyPI, then the title of the thing they are about to cite. They
     were reworded five at a time by hand, which is how the tenth gets missed.
 
-    Two assertions, and the second is the one that earns its keep: the surfaces
-    that were reworded must stay reworded, and the surfaces deliberately left
-    behind must still be exactly the ones written down here."""
+    All nine are checked outright since 2026-09-13. Until then four were held in
+    a ratchet, deferred for reasons about when a change reaches a reader; the
+    note above the regex says what became of it."""
     import json
 
     head = SITE_TEMPLATE.read_text(encoding="utf-8").split("<section", 1)[0]
@@ -552,7 +546,35 @@ def test_the_one_line_description_does_not_say_two_different_things():
         "site/index.template.html": head,
         "CLAUDE.md": (ROOT / "CLAUDE.md").read_text(encoding="utf-8"),
         "funding.json": (ROOT / "funding.json").read_text(encoding="utf-8"),
+        # The four that used to be deferred. See the note above the regex.
+        "CITATION.cff": (ROOT / "CITATION.cff").read_text(encoding="utf-8"),
+        ".zenodo.json": (ROOT / ".zenodo.json").read_text(encoding="utf-8"),
+        "pyproject.toml": (ROOT / "pyproject.toml").read_text(encoding="utf-8"),
+        "server.json": (ROOT / "server.json").read_text(encoding="utf-8"),
     }
+    # Anti-vacuity on what the check must SEE. The first version of this counted
+    # the entries, and a deliberate sabotage walked straight past it: swapping
+    # `CITATION.cff` for a placeholder holding an empty string kept the count at
+    # nine and matched nothing, so the guard reported success while no longer
+    # reading one of the files it exists to read. Naming them is the fix, and
+    # every one is read from disk right above -- a name here with no file behind
+    # it raises rather than passes.
+    assert set(current) == {
+        "README.md",
+        "src/mapsmith/__init__.py",
+        "site/index.template.html",
+        "CLAUDE.md",
+        "funding.json",
+        "CITATION.cff",
+        ".zenodo.json",
+        "pyproject.toml",
+        "server.json",
+    }, f"this guard is no longer walking the nine published surfaces: {sorted(current)}"
+    for name, text in current.items():
+        assert text.strip(), (
+            f"{name} was read as empty, so searching it proves nothing about "
+            f"what that surface says"
+        )
     for name, text in current.items():
         found = RETIRED_DESCRIPTION.search(text)
         assert not found, (
@@ -561,23 +583,13 @@ def test_the_one_line_description_does_not_say_two_different_things():
             f"is the geoprocessing, not whoever is calling it."
         )
 
-    lagging = {}
-    for name, perche in DESCRIPTION_NOT_YET_REWORDED.items():
-        text = (ROOT / name).read_text(encoding="utf-8")
-        if RETIRED_DESCRIPTION.search(text):
-            lagging[name] = perche
-    gone = sorted(set(DESCRIPTION_NOT_YET_REWORDED) - set(lagging))
-    assert not gone, (
-        f"{gone} no longer carry the retired wording, so they are not lagging any "
-        f"more. Delete them from DESCRIPTION_NOT_YET_REWORDED -- a ratchet that is "
-        f"not tightened is a list."
-    )
-
     # The two archived titles are held equal to each other by
     # test_the_archive_metadata_does_not_contradict_the_rest_of_the_release.
     # Nothing holds them equal to the README, on purpose: a DOI'd title is a
-    # citation, and it is allowed to age. Saying so here is what stops the next
-    # reader of this file from "fixing" it.
+    # citation for a release that has already shipped, and it is allowed to
+    # differ from a README that has moved on. What it is NOT allowed to do is
+    # keep saying something the project has retired -- that is the loop above,
+    # which since 2026-09-13 covers these two as well.
     citation = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
     archived = re.search(r'^title:\s*"(.+)"', citation, re.MULTILINE)
     assert archived, "CITATION.cff has no title to compare"

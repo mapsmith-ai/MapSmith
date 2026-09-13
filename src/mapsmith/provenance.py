@@ -134,6 +134,40 @@ TRANSFORMATION_EXTENSIONS: dict[str, str] = {
     ),
 }
 
+#: **The extension keys MapSmith adds OUTSIDE `verification[]` and
+#: `crs_decisions`, one entry per container.**
+#:
+#: These two were emitted for weeks and appeared in `docs/manifest-vocabulary.md`
+#: nowhere, which the generated page could not notice: it derives its sections
+#: from the three constants above, and a container absent from that list is a
+#: container it never looks in. The page said it listed the vocabulary and
+#: listed most of it — the same shape as a guard that cannot fail, wearing a
+#: documentation hat.
+#:
+#: `engine` and `repairs[]` are objects the specification defines (§3.2, §3.4),
+#: so a key added to either is an extension under §3.5 and carries the prefix.
+#: The rule of D-077 applies here as it does to `crs_decisions`: the sentence
+#: has to say why the key is not a synonym of one the format already has.
+CONTAINER_EXTENSIONS: dict[str, dict[str, str]] = {
+    "engine": {
+        "x-mapsmith:geometry_library": (
+            "Not `engine.version`, which names the thing that ran: three engines "
+            "in this package are thin layers over Shapely, and the version that "
+            "decides the geometry is Shapely's, not theirs. Recording only the "
+            "wrapper would name a component that cannot explain a change in the "
+            "answer."
+        ),
+    },
+    "repairs[]": {
+        "x-mapsmith:round": (
+            "Which pass of the repair loop produced this entry. Not `action`, "
+            "which says what was done: the same action can be applied twice, and "
+            "without the round two entries reporting the same fix are "
+            "indistinguishable from one entry written twice."
+        ),
+    },
+}
+
 
 def alignment_decisions(
     analysis_crs: Any,
@@ -647,11 +681,21 @@ class ProvenanceRecord:
         describes the bytes next to it, and the record could not become the
         predicate of an in-toto attestation, whose subject requires a digest.
 
-        `with_output_digest=False` drops that one field, and exists for exactly
-        one caller: `verify.audit_on_failure`, writing after an engine crash.
-        Hashing the output is the only part of this method that reads a file the
-        crashed engine may still hold open, so it is the part most likely to
-        raise — and section 3.1 says a manifest MUST be written even then. A
+        There are TWO ways a record ends up without `output`, and the flag is
+        the rarer one. The common way is the condition a few lines down: the
+        file does not exist, because the engine died before writing it. The
+        flag, `with_output_digest=False`, has exactly one caller —
+        `verify.audit_on_failure`, and there it is a retry: the digest is
+        attempted first and dropped only if hashing raises. Hashing is the only
+        part of this method that reads a file the crashed engine may still hold
+        open, so it is the part most likely to raise — and section 3.1 says a
+        manifest MUST be written even then.
+
+        Section 6 of the specification is the other side of this: a walk that
+        resolves a chain by digest will meet records of runs that did not
+        finish, including one written after a PARTIAL write, whose digest is of
+        partial bytes and is perfectly accurate. That is why the walker there is
+        required to read `verification[]` and not just follow digests. A
         record without `output` is valid (the schema allows its absence) and
         useless only for checking bytes; a record that was never written is
         useless for everything.

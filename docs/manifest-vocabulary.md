@@ -153,3 +153,17 @@ already ours: the difference is the container, never the datum.
 |---|---|
 | `x-mapsmith:chosen_by` | Not `pipeline`, which says WHAT will run: this says WHO picked it, and it is written only where the answer is `the engine, not MapSmith`. The specification has no key for agency because it assumes one producer reporting one choice; here the engine reaches for PROJ on its own and this module can only report what it will get. |
 | `x-mapsmith:default_was_ballpark` | Not `is_ballpark`, and the two are opposites in the same record: this appears when `is_ballpark` is FALSE precisely because MapSmith declined the default. Without it the record says the right thing -- a real datum shift, with its accuracy -- and hides that the library's own choice would have applied none. |
+
+## Extension fields in the other containers (2)
+
+The three sections above cover `verification[]`, `crs_decisions` and the
+`transformation` inside it. They are not every object a manifest has, and
+until 2026-09-13 the difference was invisible: this page derived its sections
+from three lists, so a key added to a fourth container was documented nowhere
+and nothing said so. Two had been shipping that way. The containers are named
+here so that adding a fifth is a change to this table rather than a silence.
+
+| container | key | why it is not one the format already has |
+|---|---|---|
+| `engine` | `x-mapsmith:geometry_library` | Not `engine.version`, which names the thing that ran: three engines in this package are thin layers over Shapely, and the version that decides the geometry is Shapely's, not theirs. Recording only the wrapper would name a component that cannot explain a change in the answer. |
+| `repairs[]` | `x-mapsmith:round` | Which pass of the repair loop produced this entry. Not `action`, which says what was done: the same action can be applied twice, and without the round two entries reporting the same fix are indistinguishable from one entry written twice. |
