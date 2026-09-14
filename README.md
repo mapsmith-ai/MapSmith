@@ -8,20 +8,33 @@
 [![MCP](https://img.shields.io/badge/Model_Context_Protocol-server-654FF0)](https://modelcontextprotocol.io)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 
-**Professional-grade GIS geoprocessing over MCP — with provenance you can verify.**
+**Ask a question about your data. Get an analysis — and the record that proves it.**
+
+Most GIS servers hand an agent a tool to run. MapSmith takes the question, works out the
+*analysis* — usually several operations, in an order that has to be right — validates the
+plan before a single file is touched, runs it, and leaves a record of every step that
+somebody else can check afterwards without rerunning anything.
+
+### Try it
+
+Point any MCP client at MapSmith ([one JSON block](#quickstart)) and ask, in your own words:
+
+> Which parcels lie within 1.5 km of the river and sit at 120 m or lower? Give me the mean
+> elevation and the ground area of each.
+
+That is five operations, two coordinate systems and forty-eight checks. **[What actually
+happens is below](#a-whole-analysis-start-to-finish)** — the plan, the step that gets
+rejected for being in the wrong order, the CRS decision behind every metric step, and an
+answer you can work out on paper before MapSmith sees the files.
+
+The operations are executed by GeoPandas, DuckDB Spatial, exactextract and Whitebox
+Workflows — never by the model that asked for them. Every dataset lands on disk next to a
+lineage manifest: inputs with checksums, the exact parameters, the CRS decisions and *why*,
+engine versions, and the deterministic checks that ran on the result.
 
 **[mapsmith.dev](https://mapsmith.dev)** — a real terrain analysis and the manifest that came
 with it. Both are build products: the figure is rendered from GeoTIFFs MapSmith writes, so the
 page cannot drift from what the software does.
-
-MapSmith is an open-source [MCP](https://modelcontextprotocol.io) server for real GIS
-analysis — buffers, overlays, reprojections, zonal statistics, terrain and
-hydrology — executed by GeoPandas, DuckDB Spatial, exactextract and Whitebox Workflows,
-never by the model that asked for them. Every dataset it produces lands on disk next to a lineage
-manifest: inputs with checksums, the exact parameters, the CRS decisions and *why*, engine
-versions, and the deterministic checks that ran on the result.
-
-> Ask for the result. The agent picks the tools. You can check the work afterwards.
 
 The manifest is a [specified format](https://github.com/mapsmith-ai/manifest-spec), not
 MapSmith's private output: JSON Schema, a toolchain-free validator, a conformance suite, and a
@@ -42,6 +55,80 @@ back here, [notebooks](examples/) on a real USGS DEM of Mount St. Helens, an
 every layer it draws, and a
 [measurement of our own tool discovery](#finding-the-right-operation) that retracted two numbers
 this page had already published — including the one in the bullet list below.
+
+## A whole analysis, start to finish
+
+This is the thing MapSmith is for, and it is not a single tool call. One question — six
+parcels, a river, an elevation grid — becomes a plan of five operations chosen out of 74,
+validated before anything runs, executed step by step, and recorded: the search that
+narrowed the catalogue, the arguments that mattered, the CRS decision behind each metric
+step, and the checks that ran on every result.
+
+Nothing in this section is drawn. `benchmarks/worked_example.py` builds fixtures whose answer can
+be worked out on paper, asks the catalogue in the words of the problem, validates and runs the
+plan, reads the manifests, and writes what follows; `tests/test_worked_example.py` fails if this
+page and that script disagree. The position column is BM25's rather than the default engine's,
+because a published figure should not depend on whether a model download succeeded on the machine
+that built the page — the narrowing, which is the point, is identical on both. Two things worth watching: the middle column, where the catalogue
+goes from 74 operations to a handful the caller can read; and the CRS column, where every
+metric operation says which coordinate system it moved the data into and why.
+
+<!-- worked-example:start -->
+
+```mermaid
+flowchart TB
+  ASK["<b>Parcels within 1.5 km of the river whose mean ground elevation is at most 120 m, with the elevation and the ground area of each</b>"]
+  ASK --> PLAN{{"plan validated<br/>before anything runs"}}
+  PLAN -. "rejected: FORWARD_REFERENCE" .-> BAD["'mask_path' references '$buffer' which runs later — move step 'buffer' before 'near'"]
+  BAD:::bad
+  BUFFER["<b>buffer_layer</b><br/>74 operations &rarr; 29 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
+  PLAN --> BUFFER
+  NEAR["<b>clip_layer</b><br/>74 operations &rarr; 14 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>12/12 checks"]
+  BUFFER --> NEAR
+  HEIGHT["<b>zonal_statistics</b><br/>74 operations &rarr; 4 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
+  NEAR --> HEIGHT
+  AREA["<b>measure_area</b><br/>74 operations &rarr; 29 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>10/10 checks"]
+  HEIGHT --> AREA
+  FILTER["<b>select_features</b><br/>74 operations &rarr; 29 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>10/10 checks"]
+  AREA --> FILTER
+  OUT[["3 parcels, each with elevation and ground area"]]
+  FILTER --> OUT
+  classDef bad stroke-dasharray: 4 3
+```
+
+| what the agent asks for | it declares | candidates | picked | at position |
+|---|---|---|---|---|
+| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s) | **29** of 74 | `buffer_layer` | 2 |
+| “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s) | **14** of 74 | `clip_layer` | 1 |
+| “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s) | **4** of 74 | `zonal_statistics` | 3 |
+| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s) | **29** of 74 | `measure_area` | 1 |
+| “drop the ones where the ground is above 120 metres” | vector, dataset:vector, 1 dataset(s) | **29** of 74 | `select_features` | 2 |
+
+| step | operation | arguments that mattered | CRS decision, recorded | checks |
+|---|---|---|---|---|
+| buffer | `buffer_layer` | `distance_meters=1500` | `EPSG:32610` — estimated UTM zone for metric buffering on a geographic CRS | 9/9 |
+| near | `clip_layer` | `mask_path=$buffer` | `EPSG:4326` — the mask is already in the input layer's CRS; nothing was reprojected | 12/12 |
+| height | `zonal_statistics` | `zones_path=$near`, `stats=['mean', 'min']` | `EPSG:4326` — zones and raster share the same CRS | 7/7 |
+| area | `measure_area` | `input_path=$height`, `method=geodesic` | `WGS 84 (ellipsoidal)` — ground area computed on the WGS 84 ellipsoid, which is where the coordinates are put first; no map plane is involved, so no projection distortion enters | 10/10 |
+| filter | `select_features` | `input_path=$area`, `by=field_between`, `field=mean`, `maximum=120` | `EPSG:4326` — no CRS change: selecting rows does not touch coordinates | 10/10 |
+
+Every step is inside the plan, the last one included: `select_features` took 4 rows and returned 3, with a manifest like every other write. This step used to run outside the plan, because the only operation that could answer it was run_sql — which takes its inputs inside a SQL string, declares zero datasets, and therefore cannot join the plan's dataflow. That boundary is deliberate and has not moved: substituting `$step` into arbitrary strings would be a grammar in which a planner assembles a path out of text. What changed is that it is no longer the only way to ask.
+
+**The answer**, which can be worked out on paper before MapSmith sees the files: the parcels are squares of 0.0015° at 46.2°N, so each is about 119 m by 167 m, and the elevation ramps west to east across the fixture.
+
+| name | mean | min | area_m2 |
+|---|---|---|---|
+| North Field | 104.85 | 104.14 | 19303.33 |
+| Mill Meadow | 110.51 | 109.8 | 19303.33 |
+| Old Orchard | 117.58 | 116.87 | 19303.33 |
+
+<!-- worked-example:end -->
+
+The rejected plan is the honest half. Steps in the wrong order are the dominant failure class in
+the agent benchmark, so the example includes one and shows what the validator says about it,
+before any file is touched. It earned that place while this was being written: the first version
+of the plan passed `distance_m` where the operation declares `distance_meters`, and the validator
+named the argument and listed the three it accepts.
 
 ## Quickstart
 
@@ -180,6 +267,14 @@ about it. `get_provenance` returns it for any output.
 
 ## Why MapSmith
 
+- **The unit of work is the analysis, not the tool call.** Other GIS servers expose
+  operations and let the caller fire them one at a time; a question that takes five steps is
+  five unrelated calls, and nothing above them knows they belong together. MapSmith takes a
+  [typed plan](#plans-reject-wrong-analyses-before-they-run), refuses it if a step reads
+  something a later step produces, runs it in order, writes a manifest for each step **and**
+  a plan-level record tying them together, and leaves the chain recoverable afterwards from
+  the content digests alone. That is the difference a wrapper around a toolbox cannot have,
+  because there is nothing above the single call to put it in.
 - **Real geoprocessing, not map CRUD.** Built on the proven open geospatial stack: GDAL,
   GeoPandas, Shapely, DuckDB Spatial, Whitebox Workflows and exactextract ship today
   (more to come: QGIS Processing via sidecar).
@@ -604,79 +699,6 @@ The log is off unless the variable is set, holds queries and operation names and
 else (no dataset paths, no arguments), is guarded by `MAPSMITH_WORKSPACE` like any other
 path MapSmith writes, and never leaves the machine — nothing reads it back. Your queries
 describe your work; treat the file that way, and delete it when you are done.
-
-### One question, end to end
-
-Everything above is about one step. Here is a whole question — six parcels, a river, an
-elevation grid, and five operations picked out of 74 — with the search, the arguments and
-the verification of each step as they were actually recorded.
-
-Nothing in this section is drawn. `benchmarks/worked_example.py` builds fixtures whose answer can
-be worked out on paper, asks the catalogue in the words of the problem, validates and runs the
-plan, reads the manifests, and writes what follows; `tests/test_worked_example.py` fails if this
-page and that script disagree. The position column is BM25's rather than the default engine's,
-because a published figure should not depend on whether a model download succeeded on the machine
-that built the page — the narrowing, which is the point, is identical on both. Two things worth watching: the middle column, where the catalogue
-goes from 74 operations to a handful the caller can read; and the CRS column, where every
-metric operation says which coordinate system it moved the data into and why.
-
-<!-- worked-example:start -->
-
-```mermaid
-flowchart TB
-  ASK["<b>Parcels within 1.5 km of the river whose mean ground elevation is at most 120 m, with the elevation and the ground area of each</b>"]
-  ASK --> PLAN{{"plan validated<br/>before anything runs"}}
-  PLAN -. "rejected: FORWARD_REFERENCE" .-> BAD["'mask_path' references '$buffer' which runs later — move step 'buffer' before 'near'"]
-  BAD:::bad
-  BUFFER["<b>buffer_layer</b><br/>74 operations &rarr; 29 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
-  PLAN --> BUFFER
-  NEAR["<b>clip_layer</b><br/>74 operations &rarr; 14 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>12/12 checks"]
-  BUFFER --> NEAR
-  HEIGHT["<b>zonal_statistics</b><br/>74 operations &rarr; 4 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
-  NEAR --> HEIGHT
-  AREA["<b>measure_area</b><br/>74 operations &rarr; 29 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>10/10 checks"]
-  HEIGHT --> AREA
-  FILTER["<b>select_features</b><br/>74 operations &rarr; 29 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>10/10 checks"]
-  AREA --> FILTER
-  OUT[["3 parcels, each with elevation and ground area"]]
-  FILTER --> OUT
-  classDef bad stroke-dasharray: 4 3
-```
-
-| what the agent asks for | it declares | candidates | picked | at position |
-|---|---|---|---|---|
-| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s) | **29** of 74 | `buffer_layer` | 2 |
-| “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s) | **14** of 74 | `clip_layer` | 1 |
-| “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s) | **4** of 74 | `zonal_statistics` | 3 |
-| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s) | **29** of 74 | `measure_area` | 1 |
-| “drop the ones where the ground is above 120 metres” | vector, dataset:vector, 1 dataset(s) | **29** of 74 | `select_features` | 2 |
-
-| step | operation | arguments that mattered | CRS decision, recorded | checks |
-|---|---|---|---|---|
-| buffer | `buffer_layer` | `distance_meters=1500` | `EPSG:32610` — estimated UTM zone for metric buffering on a geographic CRS | 9/9 |
-| near | `clip_layer` | `mask_path=$buffer` | `EPSG:4326` — the mask is already in the input layer's CRS; nothing was reprojected | 12/12 |
-| height | `zonal_statistics` | `zones_path=$near`, `stats=['mean', 'min']` | `EPSG:4326` — zones and raster share the same CRS | 7/7 |
-| area | `measure_area` | `input_path=$height`, `method=geodesic` | `WGS 84 (ellipsoidal)` — ground area computed on the WGS 84 ellipsoid, which is where the coordinates are put first; no map plane is involved, so no projection distortion enters | 10/10 |
-| filter | `select_features` | `input_path=$area`, `by=field_between`, `field=mean`, `maximum=120` | `EPSG:4326` — no CRS change: selecting rows does not touch coordinates | 10/10 |
-
-Every step is inside the plan, the last one included: `select_features` took 4 rows and returned 3, with a manifest like every other write. This step used to run outside the plan, because the only operation that could answer it was run_sql — which takes its inputs inside a SQL string, declares zero datasets, and therefore cannot join the plan's dataflow. That boundary is deliberate and has not moved: substituting `$step` into arbitrary strings would be a grammar in which a planner assembles a path out of text. What changed is that it is no longer the only way to ask.
-
-**The answer**, which can be worked out on paper before MapSmith sees the files: the parcels are squares of 0.0015° at 46.2°N, so each is about 119 m by 167 m, and the elevation ramps west to east across the fixture.
-
-| name | mean | min | area_m2 |
-|---|---|---|---|
-| North Field | 104.85 | 104.14 | 19303.33 |
-| Mill Meadow | 110.51 | 109.8 | 19303.33 |
-| Old Orchard | 117.58 | 116.87 | 19303.33 |
-
-<!-- worked-example:end -->
-
-The rejected plan is the honest half. Steps in the wrong order are the dominant failure class in
-the agent benchmark, so the example includes one and shows what the validator says about it,
-before any file is touched. It earned that place while this was being written: the first version
-of the plan passed `distance_m` where the operation declares `distance_meters`, and the validator
-named the argument and listed the three it accepts.
-
 
 ### Formats
 

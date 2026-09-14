@@ -118,3 +118,44 @@ def test_the_example_answer_matches_what_the_fixture_makes_it(section):
         "the published areas are no longer near the 19,270 m² the fixture geometry "
         "implies for a 0.0015° square at this latitude"
     )
+
+
+# Word-numbers in the prose that describes the generated block, checked against the
+# block itself. They are outside the markers, so nothing regenerates them: a reader
+# meets "five operations and forty-eight checks" in the opening and has no way to
+# know the table underneath has moved on. The suite has been bitten by exactly this
+# once already, on 2026-09-02, when a page whose only job was to bound a claim was
+# published with four false sentences about its own counts while two guards watched
+# other phrasings. So the numbers are derived here and the sentence has to agree.
+WORDS = {
+    3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight", 9: "nine",
+    10: "ten", 11: "eleven", 12: "twelve",
+}
+TENS = {40: "forty", 50: "fifty", 60: "sixty", 70: "seventy"}
+
+
+def _spell(number: int) -> str:
+    if number in WORDS:
+        return WORDS[number]
+    tens, units = divmod(number, 10)
+    if tens * 10 in TENS and units:
+        return f"{TENS[tens * 10]}-{WORDS[units]}"
+    if tens * 10 in TENS:
+        return TENS[tens * 10]
+    raise AssertionError(f"no spelling for {number}; extend the table rather than dropping the check")
+
+
+def test_the_prose_counts_match_the_generated_table(section: str) -> None:
+    import re
+
+    ran = re.findall(r"\|\s*(\d+)/(\d+)\s*\|", section)
+    assert ran, "the generated table no longer carries per-step check counts"
+    steps = len(ran)
+    checks = sum(int(done) for done, _ in ran)
+    prose = README.read_text(encoding="utf-8").split("## Quickstart", 1)[0]
+    for count, noun in ((steps, "operations"), (checks, "checks")):
+        spelled = _spell(count)
+        assert f"{spelled} {noun}" in prose, (
+            f"the opening no longer says '{spelled} {noun}', but the worked example now "
+            f"records {count}. Update the sentence or the example, not this test."
+        )
