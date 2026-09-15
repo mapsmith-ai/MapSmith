@@ -270,7 +270,7 @@ about it. `get_provenance` returns it for any output.
 - **The unit of work is the analysis, not the tool call.** Other GIS servers expose
   operations and let the caller fire them one at a time; a question that takes five steps is
   five unrelated calls, and nothing above them knows they belong together. MapSmith takes a
-  [typed plan](#plans-reject-wrong-analyses-before-they-run), refuses it if a step reads
+  [typed plan](#plans-reject-malformed-analyses-before-they-run), refuses it if a step reads
   something a later step produces, runs it in order, writes a manifest for each step **and**
   a plan-level record tying them together, and leaves the chain recoverable afterwards from
   the content digests alone. That is the difference a wrapper around a toolbox cannot have,
@@ -824,7 +824,7 @@ reveal the map view you are looking at (never your data) and which the panel dro
 plain backdrop when the host blocks them. The preview is deliberately lossy (simplified
 geometry, capped feature counts): the dataset of record stays on disk with its manifest.
 
-## Plans: reject wrong analyses before they run
+## Plans: reject malformed analyses before they run
 
 In [GISAgentBench](https://arxiv.org/abs/2608.01645) — 349 practitioner-sourced tasks over
 128 GIS APIs — the best frontier agent completes 32.7% of tasks under strict scoring, and
@@ -835,6 +835,18 @@ submits a **typed plan**, and static validation rejects unknown operations (with
 suggestions), missing arguments, forward references, absent input files and CRS-unsuitable
 steps **before anything executes** — with machine-actionable error codes the agent can
 repair.
+
+**What it does not do, said here because the heading used to claim it did.** Validation is
+structural. It reads the shape of the plan, not its meaning, so a plan that is well formed and
+answers the wrong question passes. Demonstrated on this repository's own worked example on
+2026-09-14: asked to clip the parcels *before* buffering the river, MapSmith did exactly that. The
+intermediate is a 1.5 km circle centred on one parcel corner, it inherits that parcel's name so
+downstream it looks like a parcel, **every step reported verified**, and on this fixture the final
+table comes out identical to the correct one — the defect is silent in the output. The heading
+said "reject wrong analyses" until that run; it says malformed now, because that is what is true.
+Catching the other kind is an open problem, and it is the reason the
+[correctness suite](https://argleton.org) exists — though its traps are single-step, so today it
+does not catch this one either.
 
 ```json
 {
