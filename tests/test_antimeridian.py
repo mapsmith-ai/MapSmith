@@ -300,3 +300,47 @@ def test_a_crs_in_grads_is_still_refused_and_a_geocentric_one_too():
     assert _is_in_degrees(CRS.from_user_input("EPSG:4807")) is False
     assert _is_in_degrees(CRS.from_user_input("EPSG:4936")) is False
     assert _is_in_degrees(CRS.from_user_input("EPSG:32632")) is False
+
+
+def test_an_ordinary_layer_is_not_announced_as_crossing_the_seam():
+    """A tenth of a kilometre of river in Washington is not a wrapped dataset.
+
+    The rule used to be "does reading across the seam give a narrower span",
+    and on data that does not wrap those two spans are the same number computed
+    twice -- once directly, once through a round trip via +-360. Measured on
+    2026-09-14 against the demo fixture: plain 0.0010000000000047748, wrapped
+    0.0009999999999763531. The wrapped reading won by 2.8e-14 degrees, about
+    three nanometres on the ground, and the layer was published with
+    `crosses_antimeridian: true`, a `true_extent` identical to the ordinary one,
+    and a note telling the reader not to trust its bounding box.
+
+    Which way that subtraction falls is not a property of the data, so the
+    defect is not an edge case: any ordinary layer could draw it. The rule is
+    now that the PLAIN extent has to be absurd first -- a wrapped dataset looks
+    like it spans nearly the whole world, and this one spans a thousandth of a
+    degree.
+    """
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    river = gpd.GeoDataFrame(
+        geometry=[LineString([(-122.1905, 46.197), (-122.1895, 46.206)])],
+        crs="EPSG:4326",
+    )
+    extent = antimeridian.describe_extent(river)
+    assert "crosses_antimeridian" not in extent, (
+        "a 0.001-degree line in Washington is announced as crossing the antimeridian: "
+        f"{extent}"
+    )
+    assert "note" not in extent
+    # And the fix must not have bought that by blinding the detector: a layer
+    # split at the seam the way RFC 7946 asks still has to be recognised.
+    from shapely.geometry import box
+
+    wrapped = gpd.GeoDataFrame(
+        geometry=[box(179.0, -1.0, 180.0, 1.0), box(-180.0, -1.0, -179.0, 1.0)],
+        crs="EPSG:4326",
+    )
+    crossing = antimeridian.describe_extent(wrapped)
+    assert crossing.get("crosses_antimeridian") is True
+    assert crossing["true_extent"]["width_degrees"] == pytest.approx(2.0)

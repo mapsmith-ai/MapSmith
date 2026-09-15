@@ -162,6 +162,26 @@ def describe_extent(gdf: Any) -> dict[str, Any]:
         return extent
 
     plain_span, wrapped_min, wrapped_max, wrapped_span = _spans(xs)
+    if plain_span <= HALF_THE_WORLD:
+        # The hypothesis only makes sense for data whose PLAIN extent is absurd.
+        # A layer that wraps the seam looks like it covers nearly the whole
+        # world; one that does not, does not — whatever the seam reading says.
+        #
+        # This line exists because the test below is a comparison of two floats
+        # that differ by a round trip through +-360, and on data that does not
+        # wrap they are the same number computed twice. Measured 2026-09-14 on a
+        # river spanning 0.001 degrees at -122.19: plain 0.0010000000000047748,
+        # wrapped 0.0009999999999763531, wrapped SMALLER by 2.8e-14 degrees --
+        # about three nanometres on the ground. The comparison passed, the probe
+        # meridian on the far side of the world naturally met nothing, and the
+        # layer was announced as crossing the antimeridian, with a `true_extent`
+        # identical to the ordinary one and a `width_degrees` equal to the plain
+        # span. The verdict was decided by the last bits of a subtraction.
+        #
+        # An agent reads that note and stops trusting the bounding box of a
+        # perfectly ordinary layer. Which way the noise falls is not a property
+        # of the data, so any layer could get it.
+        return extent
     if wrapped_span >= plain_span or wrapped_span >= HALF_THE_WORLD:
         # Either the seam buys nothing, or the data is spread over more than
         # half the world and neither reading is the narrow one.
