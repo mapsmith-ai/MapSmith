@@ -464,7 +464,7 @@ evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
 What it says about MapSmith (all twenty-nine families, engine tier, `spec_commit`
-[`806344f`](https://github.com/argleton/argleton/tree/main/results/2026-09-15-qgis-three-ways)):
+[`beab4ba`](https://github.com/argleton/argleton/tree/main/results/2026-09-15-qgis-three-ways)):
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|

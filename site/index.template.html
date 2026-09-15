@@ -564,6 +564,17 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     passed <code>distance_m</code> where the operation declares <code>distance_meters</code>, and
     the validator named the argument and listed the three it accepts.
   </p>
+  <p style="font-size:0.94rem;color:var(--ink-soft)">
+    <strong>And here is what it does not catch, because the heading above it used to claim that it
+    did.</strong> Validation is structural: it reads the shape of a plan, never its meaning. A plan
+    that is well formed and answers the wrong question runs. Measured on this very example on
+    2026-09-14 — asked to clip the parcels <em>before</em> buffering the river, MapSmith did exactly
+    that, the intermediate was a 1.5 km circle centred on one parcel corner carrying that parcel's
+    name, <em>every step reported verified</em>, and on this fixture the final table came out
+    identical to the correct one. Catching that kind is an open problem, and the
+    <a href="https://argleton.org">correctness suite</a> does not catch it either: its traps are
+    single-step, so a wrong order of right operations is outside what it can currently reach.
+  </p>
 </div></section>
 
 <section id="evidence"><div class="wrap">

@@ -24,8 +24,11 @@ Point any MCP client at MapSmith ([one JSON block](#quickstart)) and ask, in you
 
 That is five operations, two coordinate systems and forty-eight checks. **[What actually
 happens is below](#a-whole-analysis-start-to-finish)** — the plan, the step that gets
-rejected for being in the wrong order, the CRS decision behind every metric step, and an
-answer you can work out on paper before MapSmith sees the files.
+rejected for reading something a later step produces, the CRS decision behind every metric
+step, and an answer you can work out on paper before MapSmith sees the files. That
+rejection is structural, and so is every other one: a plan that is well formed and answers
+the wrong question runs instead, which is
+[measured and written down further down this page](#plans-reject-malformed-analyses-before-they-run).
 
 The operations are executed by GeoPandas, DuckDB Spatial, exactextract and Whitebox
 Workflows — never by the model that asked for them. Every dataset lands on disk next to a
