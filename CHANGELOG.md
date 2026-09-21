@@ -11,6 +11,39 @@ defects found in shipped code by reviews that ran *after* 0.4.0 went out, and
 the shape they share is worth more than any one of them: **in every case a
 guard existed and could not fail.**
 
+### Added
+
+- **`get_lineage`: the whole analysis behind an output, recovered from its
+  bytes.** Section 6 of the manifest specification has said since draft.1 that
+  multi-step lineage needs no pointer field because it is recoverable from the
+  digests already there -- hash the file, find the manifest claiming those
+  bytes, follow every input digest back. It described a consumer nobody had
+  written: `get_provenance` returned one record, so the claim that the unit of
+  work is the analysis was true on disk and invisible in the interface. This is
+  that walk, and it returns each step with its engine, parameters, CRS
+  decisions, environment and verification result, the plan record when the
+  analysis ran as a plan, and where the walk stopped and why.
+
+  Deliberately **not** a new MCP tool. It is a catalogue operation reached
+  through `run_operation`, like fifty others, because exposing it beside
+  `get_provenance` would put two tools on one question about one file --
+  identical on every facet the catalogue narrows by, separable only in prose.
+
+  What it refuses to do is the part worth reading. A resolved hop is not a
+  successful hop, so every step carries its verification result and a failed
+  one is said out loud. A failed check that declares no `critical` is not read
+  as non-critical: the field is optional and its absence means the producer
+  made no claim, and treating silence as reassurance made this walker answer
+  `verified: true` about a record announcing a failure -- measured on a
+  `verification[]` copied verbatim from a fixture the specification publishes
+  as conforming. An empty `verification[]` is not a pass either. Where two
+  records claim the same bytes -- ordinary, since deterministic operations
+  write identical output twice -- the one beside the file wins and the
+  ambiguity is reported rather than resolved by sort order. And a rejoining
+  history is walked without re-expanding shared subtrees: a review measured 42
+  manifests on disk producing 49,149 steps and a 31 MB payload before that was
+  bounded.
+
 ### Fixed
 
 - **The sweep that lists repair names recognised the key, not the entry — wrong

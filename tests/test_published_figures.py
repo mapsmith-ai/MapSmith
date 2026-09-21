@@ -69,20 +69,43 @@ class Figure:
     spelled: tuple[str, ...] = field(default=())
 
 
-#: Spelled-out forms, because a page writes "sixteen" where a table writes 16.
-#: Filled in as values appear rather than exhaustively — and that has a cost
-#: worth stating: a value with no entry here cannot be recognised in its written
-#: form, so the check reports the page as stale and names the word it found. That
-#: is the safe direction (it complains rather than passing), and it happened on
-#: 2026-09-01 when a figure moved from seventeen to sixteen.
-NUMBER_WORDS = {
-    0: "zero", 1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six",
-    7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve",
-    13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen",
-    17: "seventeen", 18: "eighteen", 19: "nineteen", 20: "twenty",
-    27: "twenty-seven", 28: "twenty-eight", 29: "twenty-nine", 30: "thirty",
-    31: "thirty-one", 49: "forty-nine", 72: "seventy-two", 74: "seventy-four",
-}
+_UNITS = (
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
+    "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+    "sixteen", "seventeen", "eighteen", "nineteen",
+)
+_TENS = (
+    "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
+    "eighty", "ninety",
+)
+
+
+def in_words(value: int) -> str:
+    """The spelled-out form, DERIVED, because a page writes "sixteen" for 16.
+
+    This was a hand-kept dictionary, filled in as values appeared, and it
+    claimed that was the safe direction because a missing entry made the check
+    complain rather than pass. That was true of the check and false of the
+    outcome: on 2026-09-21 the catalogue reached 75, the page correctly said
+    "seventy-five", the map stopped at 74, and the guard accused a page that
+    was right. A test that goes red when the code is correct gets silenced,
+    and then it is not a guard at all.
+
+    It is also the fifth appearance of one shape in this repository -- a finite
+    map of number-words standing in for a rule -- which is the actual reason
+    this is derivation and not one more entry. Two-digit values only: nothing
+    published here is spelled out above ninety-nine, and a wrong answer is
+    better than a silently plausible one, so it raises.
+    """
+    if not 0 <= value < 100:
+        raise ValueError(
+            f"{value} is outside the range this spells out; a published figure "
+            "that large is written as digits, so the caller wants the digits"
+        )
+    if value < 20:
+        return _UNITS[value]
+    tens, unit = divmod(value, 10)
+    return _TENS[tens] if not unit else f"{_TENS[tens]}-{_UNITS[unit]}"
 
 
 def _catalogue():
@@ -244,9 +267,16 @@ FIGURES: dict[str, Figure] = {
 
 
 def _expand(pattern: str, value: int) -> str:
-    return pattern.replace("{n}", f"({value}|\\d+)").replace(
-        "{w}", f"({NUMBER_WORDS.get(value, '@@')}|[a-z-]+)"
-    )
+    """The pattern with the figure in it, in digits or in words as it asks.
+
+    Lazily on the word form: most figures here are three digits (118 requests,
+    1600 tests) and are never spelled out, so deriving a word for them would
+    raise on patterns that never asked for one.
+    """
+    expanded = pattern.replace("{n}", f"({value}|\\d+)")
+    if "{w}" in expanded:
+        expanded = expanded.replace("{w}", f"({in_words(value)}|[a-z-]+)")
+    return expanded
 
 
 @pytest.mark.parametrize("key", sorted(FIGURES))
@@ -266,11 +296,7 @@ def test_every_surface_states_the_current_value(key, measured):
                 stated = match.group(1)
                 # A page may spell the number ("seventeen") or print it ("17"),
                 # and both are the same claim. The pattern says which it is.
-                expected = (
-                    NUMBER_WORDS.get(value, str(value))
-                    if "{w}" in pattern
-                    else str(value)
-                )
+                expected = in_words(value) if "{w}" in pattern else str(value)
                 if stated != expected:
                     line = text[: match.start()].count("\n") + 1
                     wrong.append(f"{name}:{line} says {stated}, it is {expected}")

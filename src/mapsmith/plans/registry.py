@@ -456,6 +456,12 @@ def _get_provenance() -> Callable[..., dict[str, Any]]:
     return read_provenance
 
 
+def _get_lineage() -> Callable[..., dict[str, Any]]:
+    from ..lineage import lineage
+
+    return lineage
+
+
 BINDINGS: dict[str, Binding] = {
     "describe_dataset": Binding(_describe, ("path",), None, None, None),
     "buffer_layer": Binding(
@@ -878,6 +884,7 @@ BINDINGS: dict[str, Binding] = {
         "vector",
     ),
     "get_provenance": Binding(_get_provenance, ("output_path",), None, None, None),
+    "get_lineage": Binding(_get_lineage, ("output_path",), None, None, None),
 }
 
 # Python types accepted for each catalog parameter type declaration.

@@ -73,7 +73,7 @@ plan, reads the manifests, and writes what follows; `tests/test_worked_example.p
 page and that script disagree. The position column is BM25's rather than the default engine's,
 because a published figure should not depend on whether a model download succeeded on the machine
 that built the page — the narrowing, which is the point, is identical on both. Two things worth watching: the middle column, where the catalogue
-goes from 74 operations to a handful the caller can read; and the CRS column, where every
+goes from 75 operations to a handful the caller can read; and the CRS column, where every
 metric operation says which coordinate system it moved the data into and why.
 
 <!-- worked-example:start -->
@@ -84,15 +84,15 @@ flowchart TB
   ASK --> PLAN{{"plan validated<br/>before anything runs"}}
   PLAN -. "rejected: FORWARD_REFERENCE" .-> BAD["'mask_path' references '$buffer' which runs later — move step 'buffer' before 'near'"]
   BAD:::bad
-  BUFFER["<b>buffer_layer</b><br/>74 operations &rarr; 29 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
+  BUFFER["<b>buffer_layer</b><br/>75 operations &rarr; 29 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
   PLAN --> BUFFER
-  NEAR["<b>clip_layer</b><br/>74 operations &rarr; 14 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>12/12 checks"]
+  NEAR["<b>clip_layer</b><br/>75 operations &rarr; 14 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>12/12 checks"]
   BUFFER --> NEAR
-  HEIGHT["<b>zonal_statistics</b><br/>74 operations &rarr; 4 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
+  HEIGHT["<b>zonal_statistics</b><br/>75 operations &rarr; 4 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
   NEAR --> HEIGHT
-  AREA["<b>measure_area</b><br/>74 operations &rarr; 29 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>10/10 checks"]
+  AREA["<b>measure_area</b><br/>75 operations &rarr; 29 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>10/10 checks"]
   HEIGHT --> AREA
-  FILTER["<b>select_features</b><br/>74 operations &rarr; 29 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>10/10 checks"]
+  FILTER["<b>select_features</b><br/>75 operations &rarr; 29 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>10/10 checks"]
   AREA --> FILTER
   OUT[["3 parcels, each with elevation and ground area"]]
   FILTER --> OUT
@@ -101,11 +101,11 @@ flowchart TB
 
 | what the agent asks for | it declares | candidates | picked | at position |
 |---|---|---|---|---|
-| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s) | **29** of 74 | `buffer_layer` | 2 |
-| “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s) | **14** of 74 | `clip_layer` | 1 |
-| “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s) | **4** of 74 | `zonal_statistics` | 3 |
-| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s) | **29** of 74 | `measure_area` | 1 |
-| “drop the ones where the ground is above 120 metres” | vector, dataset:vector, 1 dataset(s) | **29** of 74 | `select_features` | 2 |
+| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s) | **29** of 75 | `buffer_layer` | 2 |
+| “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s) | **14** of 75 | `clip_layer` | 1 |
+| “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s) | **4** of 75 | `zonal_statistics` | 3 |
+| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s) | **29** of 75 | `measure_area` | 1 |
+| “drop the ones where the ground is above 120 metres” | vector, dataset:vector, 1 dataset(s) | **29** of 75 | `select_features` | 2 |
 
 | step | operation | arguments that mattered | CRS decision, recorded | checks |
 |---|---|---|---|---|
@@ -335,8 +335,8 @@ about it. `get_provenance` returns it for any output.
 ### Finding the right operation
 
 Those are the tools an agent chooses between. Behind them the **catalog** holds every
-operation MapSmith can perform — 74 today, and 49 of them have no tool of their own — and
-it is built to hold thousands. (Two of the 74 are marked `planned` and say so when asked:
+operation MapSmith can perform — 75 today, and 50 of them have no tool of their own — and
+it is built to hold thousands. (Two of the 75 are marked `planned` and say so when asked:
 the roadmap is in the catalog on purpose, so an agent can answer "not yet" instead of
 inventing a call.)
 
@@ -355,8 +355,8 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 74 | 31% | 18% | 31% |
-| what data I have | 48 | 32% | 21% | 33% |
+| nothing — words alone | 75 | 31% | 17% | 31% |
+| what data I have | 49 | 32% | 21% | 33% |
 | + what I want back | 30 | 45% | 38% | 53% |
 | **+ how many datasets I have** | **16** | **58%** | **53%** | **98%** |
 
@@ -379,7 +379,7 @@ the phrasings it has never seen, not on the ranking once the set is small.
 
 The last column is not an accuracy figure — it is a property, and the 98% rather than 100% is
 worth a sentence. The narrowing never drops the right operation: that is asserted per entry and
-holds for all 74. What the column measures is whether the surviving set was small enough to hand
+holds for all 75. What the column measures is whether the surviving set was small enough to hand
 over WHOLE, and for a handful of requests it still is not, so those fall back to a ranked
 shortlist and the answer can be outside the top three. Ranking decides the order; it does not
 decide membership; and the 3% is the gap between "cannot lose the answer" and "can show you all
@@ -414,10 +414,10 @@ of comparison this page exists to refuse.)
 That is the shape of the trade, and it says when the next facet is due. The figure to watch is
 not found@3 — a ranker will always get worse as the catalogue grows, and it is a hint. It is the
 **average** surviving set at the fullest declaration, the fourth column of that table:
-9 at 51 operations, 14 at 61, 16 at 72, 16 at 74. When that crosses 30, delivery stops being a
+9 at 51 operations, 14 at 61, 16 at 72, 16 at 74, 16 at 75. When that crosses 30, delivery stops being a
 property and starts being a ranking again, and the answer is another fact the caller already
 knows, not a bigger threshold. (It said *median* until 2026-08-29, and published the mean:
-the median at 74 is 14. The distribution is skewed — most requests leave a small set and a few
+the median at 75 is 14. The distribution is skewed — most requests leave a small set and a few
 leave a large one — so the two numbers say different things and the mean is the pessimistic
 one, which is the right one to watch.)
 
@@ -533,8 +533,8 @@ catalog grows:
 | catalog size | BM25 found@3 | embeddings found@3 |
 |---|---|---|
 | 10 | 77% | 80% |
-| 30 | 65% | 58% |
-| 74 | 50% | 40% |
+| 30 | 63% | 58% |
+| 75 | 50% | 40% |
 
 **This table used to say the opposite, and the reversal is the finding.** Published at 10/30/51
 it read 78/83, 47/65, 40/55 — embeddings ahead at every size — and the sentence under it said
@@ -585,7 +585,7 @@ number of features as the input. Those are structural properties of the operatio
 checkable against the code rather than declared by hand, and they separate the pairs a bag of
 words cannot: `spatial_join` from `overlay_layers`, `flow_accumulation` from `extract_streams`.
 That work is not done, and until it is, the honest claim is the measured one: the guarantee above
-holds at seventy-four operations, not at eight hundred.
+holds at seventy-five operations, not at eight hundred.
 
 **How an entry has to be written is a published specification**, not a convention:
 [`docs/catalog-entry-spec.md`](docs/catalog-entry-spec.md), with a normative

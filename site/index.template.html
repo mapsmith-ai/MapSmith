@@ -221,6 +221,13 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
       Every dataset it writes lands on disk beside a lineage manifest — the one below came with the
       image on the left. It is the whole argument, so it is the first thing on this page.
     </p>
+    <p class="lede">
+      One manifest is one step. The <strong>analysis</strong> is recoverable too, and from the file
+      alone: <code>get_lineage</code> hashes it, finds the record claiming those exact bytes, and
+      follows every input digest back to the originals — no field points at another record, and
+      nothing reads a filename to decide what came before. It reports a step that failed its checks
+      as one, and says where it stopped rather than claiming a history it did not reach.
+    </p>
     <div class="cta">
       <a href="#install">Install</a>
       <a href="https://github.com/mapsmith-ai/MapSmith">Read the source</a>
@@ -326,7 +333,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   </p>
   <p>
     <strong>It narrows first, deterministically, on facts the caller already has.</strong> What data
-    is in hand, and what should come back. Declaring those two takes the candidates from 74 to 30 —
+    is in hand, and what should come back. Declaring those two takes the candidates from 75 to 30 —
     and below thirty survivors the search stops choosing for you: it returns
     <code>status: "choose"</code> with every candidate, ordered as a hint that says so, each carrying
     the sentence that separates it from its neighbours. On 116 of those 118 requests the right
@@ -442,7 +449,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <tr>
       <td>ablation</td>
       <td>Each facet is worth measuring alone, over the 118 independent requests: nothing declared
-      → 74 candidates, 18% found@3 with embeddings and 31% with BM25; what data I have → 48,
+      → 75 candidates, 17% found@3 with embeddings and 31% with BM25; what data I have → 49,
       21% and 32%; + what I want back → 30, 38% and 45%; + how many datasets I have →
       <strong>16, 58% ranked and 98% delivered</strong>. Both engines, because this row carried one
       unnamed column until a CI run met a rate limit from the model host, fell back to BM25 and

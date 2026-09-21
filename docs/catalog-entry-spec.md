@@ -21,8 +21,8 @@ catalogue is written: *"the coastline is 400 000 nodes and the browser dies"*, n
 
 | what the caller declares | candidates left | ranked, found@3 | **in what comes back** |
 |---|---|---|---|
-| nothing — words alone | 74 | 25% | 25% |
-| the input kind | 49 | 27% | 27% |
+| nothing — words alone | 75 | 31% | 31% |
+| the input kind | 49 | 32% | 33% |
 | + what it should produce | 30 | 45% | 53% |
 | **+ how many datasets** | **16** | **58%** | **98%** |
 

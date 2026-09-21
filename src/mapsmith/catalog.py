@@ -1378,6 +1378,68 @@ OPERATIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        "name": "get_lineage",
+        "status": "available",
+        "tool": None,
+        # No tool of its own, and that is the invariant-6 decision rather than an
+        # omission. `get_provenance` and a chain walk are the same question at
+        # two depths about the same file: exposed side by side they are
+        # identical on every facet the narrowing uses -- workload, category,
+        # produces, applicability -- so discovery cannot separate them and only
+        # prose could. Reachable by name through `run_operation`, like the
+        # forty-nine other catalogue operations that are not tools.
+        "workload": "small_vector",
+        "category": "provenance",
+        "produces": "description",
+        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False, 'dataset_inputs': 1},
+        "summary": "The whole multi-step analysis behind an output, recovered from its bytes",
+        "phrasings": (
+            "how was this analysis built; show me every step that led to this; "
+            "reconstruct the chain; which operations produced this result"
+        ),
+        "description": (
+            "Recover a multi-step analysis from one final file. Hashes the bytes, finds "
+            "the manifest claiming them, and follows every input digest back to the "
+            "originals, returning each operation with its engine, CRS decisions and "
+            "verification result, plus the plan record when one exists. Reports where "
+            "the walk stopped and why, and flags any step that failed a critical check. "
+            "Use get_provenance instead when one step is enough."
+        ),
+        "parameters": [
+            {
+                "name": "output_path",
+                "type": "str",
+                "required": True,
+                "description": (
+                    "Path of the final dataset. Any output carrying a conforming "
+                    "provenance manifest works, not only one MapSmith wrote"
+                ),
+            },
+        ],
+        "examples": [
+            {
+                "goal": "Explain to a reviewer how a final table was produced, end to end",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "get_lineage",
+                        "arguments": {"output_path": "parcels_at_risk.parquet"},
+                    },
+                },
+            },
+            {
+                "goal": "Check whether any step behind a published number failed its checks",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "get_lineage",
+                        "arguments": {"output_path": "summary_by_zone.parquet"},
+                    },
+                },
+            },
+        ],
+    },
+    {
         "name": "hillshade",
         "status": "available",
         "tool": "hillshade",

@@ -177,8 +177,11 @@ def test_the_prose_around_the_table_is_checked_too():
 
     # The curve: every point must be the average the harness computes at that
     # catalogue size. Only the last one can be recomputed here — the earlier
-    # ones are history — but the last one is the one that goes stale.
-    curve = re.search(r"9 at 51 operations, 14 at 61, 16 at 72, (\d+) at (\d+)", prose)
+    # ones are history — but the last one is the one that goes stale, so the
+    # pattern walks to the end of the list rather than assuming its length.
+    curve = re.search(
+        r"9 at 51 operations(?:, \d+ at \d+)*, (\d+) at (\d+)\.", prose
+    )
     assert curve, "the scaling curve sentence has been reworded; update this test"
     assert int(curve.group(2)) == len(catalog.OPERATIONS)
     assert int(curve.group(1)) == round(sum(sizes) / len(sizes))
@@ -607,4 +610,45 @@ def test_the_dashboard_can_collect_a_second_answer_and_its_reason():
         assert needed in dashboard_source, (
             f"the dashboard no longer carries {needed!r}, so a second answer "
             f"cannot be given and D-062's format has nothing to fill it"
+        )
+
+
+def test_the_entry_spec_carries_the_same_facet_numbers_as_the_harness(report):
+    """The third copy of one measurement, and it had drifted.
+
+    `docs/catalog-entry-spec.md` opens with "the measurement everything rests
+    on" and prints the facet table again, for a reader who arrives at the entry
+    format rather than at the README. On 2026-09-21 it said 25% where the
+    harness computes 31% and 27% where it computes 32%: a page presenting
+    itself as the foundation, publishing figures nothing had recomputed since
+    they were typed.
+
+    The README and the site were already checked against the harness. This file
+    was not, which is the whole reason it could drift -- and the count of
+    places computing one number their own way is exactly what this repository
+    keeps finding.
+    """
+    import re
+    from pathlib import Path
+
+    page = Path(__file__).resolve().parent.parent / "docs" / "catalog-entry-spec.md"
+    prose = page.read_text(encoding="utf-8")
+    rows = re.findall(
+        r"^\|[^|]+\|\s*\**(\d+)\**\s*\|\s*\**(\d+)%\**\s*\|\s*\**(\d+)%\**\s*\|$",
+        prose,
+        re.MULTILINE,
+    )
+    assert rows, (
+        "the facet table is no longer in catalog-entry-spec.md in a shape this "
+        "can read, so nothing is checking the numbers that page publishes"
+    )
+    computed = [
+        (str(level["candidates"]), str(level["found_at_3"]), str(level["delivered"]))
+        for level in report["ablation"]
+    ]
+    for row in rows:
+        assert row in computed, (
+            f"catalog-entry-spec.md publishes candidates={row[0]}, found@3={row[1]}%, "
+            f"delivered={row[2]}% - the harness computes {computed}. Run "
+            "`python benchmarks/discovery_report.py` and put back what it says."
         )

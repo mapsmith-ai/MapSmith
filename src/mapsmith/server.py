@@ -692,9 +692,20 @@ def execute_plan(plan: Plan) -> dict[str, Any]:
 
 @mcp.tool(annotations=_READONLY)
 def get_provenance(output_path: str) -> dict[str, Any]:
-    """Return the full lineage manifest of a MapSmith output dataset."""
+    """Return the manifest of the ONE operation that wrote this dataset.
+
+    Its inputs with their digests, the exact parameters, the CRS decisions with
+    reasons, engine and version, and every deterministic check with its result.
+    One step, in full. For the whole chain that led here — the operations
+    behind the inputs, and the ones behind those — the catalogue operation
+    `get_lineage` walks it and returns each step summarised instead of one step
+    complete; run it through `run_operation`. It is not a tool of its own on
+    purpose: two exposed tools answering the same question about the same file
+    is the overlap that makes an agent pick wrong.
+    """
     _guard(output_path=output_path)
     return read_provenance(output_path)
+
 
 
 @mcp.resource(
