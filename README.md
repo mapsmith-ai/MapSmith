@@ -64,7 +64,7 @@ this page had already published — including the one in the bullet list below.
 ## A whole analysis, start to finish
 
 This is the thing MapSmith is for, and it is not a single tool call. One question — six
-parcels, a river, an elevation grid — becomes a plan of five operations chosen out of 74,
+parcels, a river, an elevation grid — becomes a plan of five operations chosen out of 75,
 validated before anything runs, executed step by step, and recorded: the search that
 narrowed the catalogue, the arguments that mattered, the CRS decision behind each metric
 step, and the checks that ran on every result.
@@ -211,7 +211,7 @@ for it:
 ```json
 {
   "spec_version": "1.0.0-draft.5",
-  "producer": {"name": "mapsmith", "version": "0.4.0"},
+  "producer": {"name": "mapsmith", "version": "0.5.0"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{

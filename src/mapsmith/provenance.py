@@ -317,7 +317,23 @@ _NAMES = "|".join(name.replace("_", "[-_]") for name in _SECRET_NAMES)
 #: The left boundary carries as much weight as the right. Without it `.search`
 #: finds `sas` in the middle of `arkansas`, and a column named after the state
 #: comes back `<redacted>`.
-_KEY_NAME = r"(?<![A-Za-z0-9_.\-])(?:[A-Za-z0-9_.\-]*[_.\-])?(?:" + _NAMES + r")"
+#:
+#: **A trailing component is allowed, and leaving it out was a regression.** The
+#: fix that stopped masking `sig_figs` and `token_count` required the name to be
+#: the END of the identifier, which quietly stopped masking `secret_key`,
+#: `aws_secret_key`, `secretkey`, `private_key_pem`, `token_value` and
+#: `gcp_service_account_key` -- measured in a pre-release audit on 2026-09-21.
+#: The commit that narrowed it said "measured against 31 real credential names,
+#: every credential still masked", and `secret_key` was not among the 31: the
+#: guard was true of the sample and false of the rule. What actually separates
+#: `sig_figs` from `secret_key` is not position -- it is that `figs` and `count`
+#: are ordinary words while what follows a credential word here is another
+#: credential word or a format. So the suffix is allowed only from a small list,
+#: which is the distinction the earlier fix was reaching for.
+_TRAILING = r"(?:[_.\-]?(?:key|keys|value|values|pem|der|jwt|base64|b64))*"
+_KEY_NAME = (
+    r"(?<![A-Za-z0-9_.\-])(?:[A-Za-z0-9_.\-]*[_.\-])?(?:" + _NAMES + r")" + _TRAILING
+)
 
 # A gap between a name and its value: whitespace, a block comment, a line
 # comment. An audit hid a secret behind `SECRET /* c */ 'shh'`, which the first

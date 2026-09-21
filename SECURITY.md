@@ -243,6 +243,30 @@ Out of scope: issues requiring a hostile local process on the same machine
 documented in the README), and anything reachable only by running MapSmith
 without a workspace, which is deliberately unconfined.
 
+**A manifest is an unsigned file, and `get_lineage` reads whatever it finds.**
+The walk recovers a chain by scanning the workspace for `*.provenance.json` and
+matching digests, so a record is evidence only in the sense that it exists.
+Anything able to write in the workspace can leave one claiming bytes it never
+produced — and in the usual deployment that includes the calling agent, which
+is the component everything else on this page treats as untrusted. Nothing can
+close this: the format has no signatures and does not claim to. What the walk
+does instead is check the cheap thing and say the answer. A manifest sits
+beside the output it describes, so each step reports under `claim` whether that
+output is on disk and hashes to what the record says; only `reverified` means
+this walk confirmed it, and a chain containing anything else is not reported as
+verified. Strings copied out of a record — operation names, notes, parameters —
+are truncated and stripped of control characters before they reach a reply,
+because they are quoted from files nobody named and one of them is interpolated
+into a sentence an agent reads. Treat a recovered chain as testimony to be
+checked, not as an attestation.
+
+**A third containment exception, and it is the filesystem's.** A workspace on a
+cloud-synced folder (OneDrive, Dropbox) may hold placeholder files that the
+provider downloads on read. Reading every manifest under the scan root can
+therefore cause network traffic in a mode this page describes as having no
+egress. It is not reachable by an attacker and it is not ours to switch off;
+it is listed because the other two exceptions are.
+
 ## When a break becomes an advisory
 
 Every break of the promises above is a vulnerability. Not every one gets a

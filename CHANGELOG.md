@@ -6,7 +6,11 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
-Everything here is on `main` and not in a release. It is almost entirely
+Nothing yet.
+
+## [0.5.0] - 2026-09-21
+
+Everything here was on `main` and not in a release. It is almost entirely
 defects found in shipped code by reviews that ran *after* 0.4.0 went out, and
 the shape they share is worth more than any one of them: **in every case a
 guard existed and could not fail.**
@@ -43,6 +47,246 @@ guard existed and could not fail.**
   history is walked without re-expanding shared subtrees: a review measured 42
   manifests on disk producing 49,149 steps and a 31 MB payload before that was
   bounded.
+
+- **`output.crs`: what the written file declares, read from the file.** New in
+  `1.0.0-draft.4` of the specification, and filled by `write_for` -- the one
+  moment the final bytes certainly exist, which is the same reason the digest is
+  computed there and not in `verify.audited`, where seventeen of the fifty-eight
+  writers never go. It closes a hole this release opened on purpose: the output
+  CRS used to sit in `crs_decisions` under `x-mapsmith:round_trip.output_crs`,
+  where section 3.7 says it must not, written by code that had not yet written
+  the file.
+
+  It is what the file *declares*, not what the operation intended: the intention
+  is already the subject of `crs_matches`, and a second copy of an expectation
+  tells a consumer nothing it could not already read. When the CRS cannot be
+  determined the field is **omitted rather than null** -- null would say "this
+  file declares none", and the probe cannot tell that apart from "could not read
+  it". All 58 writing operations record it, measured; an operation that stops
+  has to be declared with its reason rather than the check being loosened.
+
+- **`environment` and `repairs[].check` are on the vocabulary page.** The page
+  argues that a vocabulary you have to read the engines to learn is half a
+  vocabulary, and listed only `verification[].name` and `crs_decisions` -- so it
+  omitted the field answering *which georeferencing produced these numbers*,
+  which is the first of the two silent-error classes this product exists for.
+  `grid.DERIVED_ENVIRONMENT` is now a mapping from key to the sentence saying
+  what it claims, in the same shape as `CRS_EXTENSIONS`, and a ratchet refuses
+  an `x-mapsmith:` key in `environment` that is not declared there --
+  `x-mapsmith:area_or_point` would have passed the prefix rule and is a synonym
+  of a setting section 3.8 names itself.
+- **The manifest specification is cited, and so is GABench.** `docs/benchmarks.md`
+  linked the benchmark's repository and never named its paper
+  (arXiv:2604.13888). The paper's counts and ours differ -- 117 tools and 53
+  tasks there, 133 and 57 in the checkout we ran -- and both are now stated,
+  because a reader comparing the two pages should meet the difference rather
+  than find it.
+- **`SECURITY.md` says when a break becomes an advisory.** It called every break
+  of its promises a vulnerability, which is true, and never said which ones get
+  a GHSA -- so it named a policy we do not follow. The criterion is now written
+  with the worked example that tests it: a reader would *do something
+  different*, or the defect is recorded in the CHANGELOG and beside the promise
+  it broke, with no third option.
+- **`docs/manifest-vocabulary.md`: the names MapSmith writes that the
+  specification does not define.** Section 3.6 makes `verification[].name`
+  something a consumer can branch on rather than parse, and MapSmith obeys
+  it everywhere -- but the vocabulary that produces was written nowhere
+  outside the engines, which makes mechanical only half of what section 3.6
+  set out to make mechanical. Generated from the source, so it includes the
+  names on branches no test reaches: a check that fires only on a defect is
+  precisely the one no fixture triggers.
+
+  The two names about the RUN rather than the output --
+  `x-mapsmith:operation_completed` and `x-mapsmith:verification_present` --
+  are at the top, because they are how a consumer asks whether this system
+  verified anything at all, and it has to be able to ask that before it
+  knows what else to look for.
+
+### Changed
+
+- **Two more field names moved under the `x-mapsmith:` prefix, and both are
+  breaking for a consumer that read them.** They belong with the
+  `crs_decisions` renaming further down -- same rule, same release, and they
+  were missing from this list until a pre-release review compared the entries
+  against the diff. An omitted breaking change is worse than an unannounced
+  one: the reader has been told the format changes are listed.
+  - `repairs[].round` is now `repairs[].x-mapsmith:round`, and
+    `repairs[].operation` is **gone**. `draft.5` gave `repairs[]` a declared
+    shape, and neither field was in it: `round` is ours and now says so,
+    `operation` repeated what the record already states at the top level.
+  - `engine.geometry_library` is now `engine.x-mapsmith:geometry_library`.
+    `engine` is an object the specification defines, so a key of ours inside
+    it has to be marked as ours. This touches every record written by the
+    linework, network and spatial-statistics engines -- `snap_layer`,
+    `points_along_lines`, `line_intersections`, `transform_by_control_points`,
+    `network_shortest_path`, `service_area`, `hot_spots`, `smooth_rates`,
+    `aggregate_to_threshold`, `thin_points`.
+
+- **`mapsmith_version` is gone from the record, and reading it will break.** It
+  sat at the top level, unprefixed, among fields that all belong to the
+  specification — so it read as one of them and was not. It also duplicated
+  `producer.version`, which the specification defines and MapSmith has always
+  emitted beside it: two copies of one fact, and the one a stranger should use
+  was the other one. Read `producer.version`. Manifests already on disk still
+  carry the old field; removing it changes what is written from now on, not what
+  was written then. **`<output>.plan.json` keeps its `mapsmith_version`**, and
+  that is not an oversight: the plan record is not a manifest, it implements no
+  clause of the specification, and nothing about it claims to. `get_lineage`
+  passes the field through from there, so an agent can meet it after reading
+  that it is gone -- which is why it is said here rather than left to look like
+  a leftover.
+
+  It was also propping up two guards. Both grepped the output for
+  `"mapsmith_version"` and asserted `shown <= {__version__}`, which is true of
+  the empty set — the README's example has never contained the field, so that
+  guard had been checking nothing at all, and two of the three notebooks
+  satisfied theirs by showing nothing. Both now read `producer.version` off the
+  *parsed* manifests and fail when there is nothing to read.
+
+
+- **Two keys inside `crs_decisions.transformation` gained the `x-mapsmith:`
+  prefix, which is breaking for anyone who read them.** `chosen_by` and
+  `default_was_ballpark` are now `x-mapsmith:chosen_by` and
+  `x-mapsmith:default_was_ballpark`. That object belongs to section 3.7 of the
+  specification -- four keys since `1.0.0-draft.4` -- and the prefix follows the
+  container, not the datum: a statement of ours living among the format's has to
+  say whose it is. The third key that was in the same position,
+  `better_available_m`, went the other way on the same day: it entered the
+  specification, so it is the format's now and stands unprefixed by right.
+
+  Both are declared in `provenance.TRANSFORMATION_EXTENSIONS` with the sentence
+  saying why each is not one section 3.7 already has, and both are on
+  `docs/manifest-vocabulary.md`. The guard that polices this used to stop at the
+  first level of `crs_decisions`, which is how the two went unnoticed; it
+  descends now, and it caught nothing at first because **no fixture reached
+  either branch of the datum module that writes them**. Two do now, on the
+  EPSG:4806 pair section 3.7 uses as its own headline example: one where
+  MapSmith picks a better transformation than the library's default, one where
+  the engine reaches for PROJ itself and MapSmith can only report what it will
+  get.
+
+- **Records declare `spec_version` `1.0.0-draft.5`.** Two drafts of the format
+  moved during this release, and this entry said `draft.4` until the eve of the
+  tag: the commit that advanced `SPEC_VERSION` re-vendored the schema, the
+  validator and the vocabulary page and left the changelog behind -- the one
+  surface a consumer of these records reads. `draft.5` gave `repairs[]` a
+  declared shape (see the breaking entry below). The two fields `draft.4` added
+  are ones this producer was already emitting in the wrong place or not at
+  all. `crs_decisions.transformation.better_available_m` was ours, unprefixed,
+  inside an object the specification defines -- and it is the only field in the
+  format that separates *no datum transformation exists for this pair* from *one
+  does and this machine has not got the grid*, which are different problems with
+  different fixes. It is now the specification's, described, and checked by both
+  implementations. `output.crs` exists for the first time: section 3.7 had said
+  since `draft.2` that the output CRS belongs in `output`, at a field nobody had
+  built, which is why it ended up in `crs_decisions` where a producer states it
+  before the file exists.
+
+  The vendored schema and validator moved with it, and that is now something a
+  test says rather than something somebody remembers: the schema declares its own
+  version, and re-vendoring without moving `SPEC_VERSION` fails the suite. It
+  failed exactly that way while this change was being made.
+
+- **`x-mapsmith:round_trip` lost two fields, and both losses are breaking for a
+  consumer that read them.** The object was
+  `{output_crs, applied_twice, transformation}`; it is now
+  `{transformation, return_transformation}`.
+  - `applied_twice` was the constant `true`, written on every round trip and
+    computed on none -- and a wrong description besides: PROJ chooses each
+    direction separately, and where it names them the two are visibly an
+    operation and its inverse, the way back carrying `+inv`. Both legs are now
+    asked of PROJ and recorded, so the manifest *shows* "twice" instead of
+    asserting it.
+  - `output_crs` named the CRS the output ended in. Section 3.7 of the
+    specification says in as many words that the output CRS belongs in `output`
+    and not among the CRS decisions -- and the field was written *before the
+    file existed*, so on any path that failed afterwards it described a dataset
+    that was never written, or a stale one left by an earlier run. What it
+    claimed is already recorded where it can be checked: the `crs_matches` entry
+    of `verification[]`, which is absent exactly when the operation did not
+    finish.
+
+  Covered by a test that buffers a **NAD27** layer -- the branch four operations
+  take and no fixture had ever taken, which is why the key shipped with nothing
+  reading it.
+
+- **Every `crs_decisions` key MapSmith adds is declared in one place, with
+  the sentence that says why it is not a synonym.** The prefix rule cannot
+  ask that question: `x-mapsmith:measurement_crs` passes it exactly as
+  `x-mapsmith:computed_in` does, and `measurement_crs` is one of the two
+  synonyms this whole line of work started from -- with a prefix in front
+  of it, it would have sailed through. Whether a name means what
+  `source_crs` means is not mechanical, so the registry does the only
+  thing available: a key that is not declared fails the suite until
+  somebody writes the reason down. `provenance.CRS_EXTENSIONS`.
+
+- **The workspace promise now states its two exceptions.** `SECURITY.md`
+  said no tool call may read or write outside the workspace, without
+  reservation, while two paths did: the scratch above, and DuckDB's one-time
+  install of its `spatial` extension under `~/.duckdb`. Both are named there
+  now, the residual promise is tied to the test that can falsify it, and
+  the README no longer calls the discovery log *the one* path MapSmith
+  writes that no tool argument names.
+- **BREAKING — `crs_decisions` keys now follow the specification's vocabulary.**
+  Two keys were synonyms of keys section 3.7 of the manifest specification
+  already recommends; the other six were extensions of ours wearing
+  unprefixed names, one of them a third synonym that became an extension
+  rather than a specification key, for the reason given below. A consumer asking those records *"what did you compute in?"* read
+  `analysis_crs`, found nothing, and had no way to know the answer sat under
+  another name. Nothing had compared the writing sites to each other, and each
+  one is defensible alone.
+
+  | was | is | operation |
+  |---|---|---|
+  | `measurement_crs` | `analysis_crs` | `points_along_lines` |
+  | `declared_output_crs` | `target_crs` | `transform_by_control_points` |
+  | `input_crs_before` | `x-mapsmith:input_crs_discarded` | `transform_by_control_points` |
+  | `reference_reprojected` | `x-mapsmith:inputs_reprojected` | `snap_layer` |
+  | `second_layer_reprojected` | `x-mapsmith:inputs_reprojected` | `line_intersections` |
+  | `computed_in` | `x-mapsmith:computed_in` | `buffer_layer`, Esri stack |
+  | `raster_registration` | `x-mapsmith:raster_registration` | `zonal_statistics`, `least_cost_path` |
+  | `raster_registration_reason` | `x-mapsmith:raster_registration_reason` | the same two |
+
+  The last four rows are the rule: a key that is a producer's own says so in
+  its name, so that a reader holding a manifest and not the specification can
+  tell the format's vocabulary from one implementation's. `input_crs_discarded`
+  is not `source_crs` on purpose — everywhere else that key comes with
+  `transformation`, describing a real reprojection, and there was none here.
+  The two reprojection keys became one, with a structured value instead of the
+  sentence `"EPSG:4326 -> EPSG:32632"`: two names for one fact is the defect
+  this entry removes, one level down.
+
+  **`spec_version` cannot carry this change** — the specification did not move
+  — so this entry is the only notice a consumer gets.
+- **`snap_layer` recorded its reference input's CRS after reprojecting it.**
+  The record said `inputs[].crs: EPSG:32632` about a file declaring EPSG:4326
+  and, three lines lower, that the same input had been reprojected *from*
+  EPSG:4326 — a manifest contradicting itself beside the digest of the file it
+  misdescribed. Its twin `line_intersections` had the order right, which is
+  what makes this an accident rather than a convention.
+- **`snap_layer` and `line_intersections` record `analysis_crs` on every run**,
+  not only when something was reprojected. *"Computed in the input's CRS"* and
+  *"nobody recorded it"* are different claims, and an empty object made them
+  the same one.
+- **Guards that enumerate are now guards that derive.** The parametrised list
+  behind the georeferencing refusal read one module; it reads all of
+  `engines/` and fails if the field it derives from is renamed — otherwise it
+  would have stopped guarding exactly when the work it protects got done. The
+  same treatment went to the notebook-gallery check (which summed across
+  notebooks, so one notebook satisfied it) and to the published-figure census,
+  which now sweeps `funding.json` too.
+- **`funding.json` says what has been delivered.** It claimed 16 tools and 336
+  tests against 28 and more than 1500, and carried two *active* plans totalling
+  €35,000 to build a trap suite and a provenance specification — both of which
+  had shipped weeks earlier and are archived with DOIs. The plans are kept
+  rather than deleted and marked inactive with what came of them: an estimate
+  beside its actual cost is a stronger thing to show than an ask that ages into
+  a lie.
+- **`CLAUDE.md` no longer tells contributors something false.** It said writers
+  go through `verify.audited` "so the audit-trail-first invariant cannot be
+  bypassed". That was untrue for seventeen writers of fifty-seven.
+- Documentation and site now quote the Argleton run that covers all
+  twenty-nine families: **0.00 silent errors over 31 traps, nothing skipped**.
 
 ### Fixed
 
@@ -204,6 +448,10 @@ guard existed and could not fail.**
   must be a plain small constant, which is what separates `(b1-b2)**2` from a
   tower: `**` is right-associative, so a tower's outer exponent is itself an
   expression. Parsed with `ast`, for the same reason the SQL policy was.
+  **The limits, because they are what a user meets:** an exponent must be an
+  integer constant from 0 to 8, and at most four `**` may appear in one
+  expression. `b1**10` used to compute and now raises. Both numbers are above
+  anything band arithmetic asks for and far below what takes measurable time.
 - **Two credentials travelled in clear.** `x_api_key` was masked and
   `x-api-key` was not, because the vocabulary was written the way SQL spells
   names while HTTP spells them with hyphens. And Azure's shared-access signature
@@ -223,154 +471,6 @@ guard existed and could not fail.**
   open-code the sequence correctly; this one was the exception, and two tests
   now hold the line — one fails if any hand-written writer skips
   `verify.enforce`, the other ratchets their count downwards only.
-
-### Added
-
-- **`output.crs`: what the written file declares, read from the file.** New in
-  `1.0.0-draft.4` of the specification, and filled by `write_for` -- the one
-  moment the final bytes certainly exist, which is the same reason the digest is
-  computed there and not in `verify.audited`, where seventeen of the fifty-eight
-  writers never go. It closes a hole this release opened on purpose: the output
-  CRS used to sit in `crs_decisions` under `x-mapsmith:round_trip.output_crs`,
-  where section 3.7 says it must not, written by code that had not yet written
-  the file.
-
-  It is what the file *declares*, not what the operation intended: the intention
-  is already the subject of `crs_matches`, and a second copy of an expectation
-  tells a consumer nothing it could not already read. When the CRS cannot be
-  determined the field is **omitted rather than null** -- null would say "this
-  file declares none", and the probe cannot tell that apart from "could not read
-  it". All 58 writing operations record it, measured; an operation that stops
-  has to be declared with its reason rather than the check being loosened.
-
-- **`environment` and `repairs[].check` are on the vocabulary page.** The page
-  argues that a vocabulary you have to read the engines to learn is half a
-  vocabulary, and listed only `verification[].name` and `crs_decisions` -- so it
-  omitted the field answering *which georeferencing produced these numbers*,
-  which is the first of the two silent-error classes this product exists for.
-  `grid.DERIVED_ENVIRONMENT` is now a mapping from key to the sentence saying
-  what it claims, in the same shape as `CRS_EXTENSIONS`, and a ratchet refuses
-  an `x-mapsmith:` key in `environment` that is not declared there --
-  `x-mapsmith:area_or_point` would have passed the prefix rule and is a synonym
-  of a setting section 3.8 names itself.
-- **The manifest specification is cited, and so is GABench.** `docs/benchmarks.md`
-  linked the benchmark's repository and never named its paper
-  (arXiv:2604.13888). The paper's counts and ours differ -- 117 tools and 53
-  tasks there, 133 and 57 in the checkout we ran -- and both are now stated,
-  because a reader comparing the two pages should meet the difference rather
-  than find it.
-- **`SECURITY.md` says when a break becomes an advisory.** It called every break
-  of its promises a vulnerability, which is true, and never said which ones get
-  a GHSA -- so it named a policy we do not follow. The criterion is now written
-  with the worked example that tests it: a reader would *do something
-  different*, or the defect is recorded in the CHANGELOG and beside the promise
-  it broke, with no third option.
-- **`docs/manifest-vocabulary.md`: the names MapSmith writes that the
-  specification does not define.** Section 3.6 makes `verification[].name`
-  something a consumer can branch on rather than parse, and MapSmith obeys
-  it everywhere -- but the vocabulary that produces was written nowhere
-  outside the engines, which makes mechanical only half of what section 3.6
-  set out to make mechanical. Generated from the source, so it includes the
-  names on branches no test reaches: a check that fires only on a defect is
-  precisely the one no fixture triggers.
-
-  The two names about the RUN rather than the output --
-  `x-mapsmith:operation_completed` and `x-mapsmith:verification_present` --
-  are at the top, because they are how a consumer asks whether this system
-  verified anything at all, and it has to be able to ask that before it
-  knows what else to look for.
-
-### Changed
-
-- **`mapsmith_version` is gone from the record, and reading it will break.** It
-  sat at the top level, unprefixed, among fields that all belong to the
-  specification — so it read as one of them and was not. It also duplicated
-  `producer.version`, which the specification defines and MapSmith has always
-  emitted beside it: two copies of one fact, and the one a stranger should use
-  was the other one. Read `producer.version`. Manifests already on disk still
-  carry the old field; removing it changes what is written from now on, not what
-  was written then.
-
-  It was also propping up two guards. Both grepped the output for
-  `"mapsmith_version"` and asserted `shown <= {__version__}`, which is true of
-  the empty set — the README's example has never contained the field, so that
-  guard had been checking nothing at all, and two of the three notebooks
-  satisfied theirs by showing nothing. Both now read `producer.version` off the
-  *parsed* manifests and fail when there is nothing to read.
-
-
-- **Two keys inside `crs_decisions.transformation` gained the `x-mapsmith:`
-  prefix, which is breaking for anyone who read them.** `chosen_by` and
-  `default_was_ballpark` are now `x-mapsmith:chosen_by` and
-  `x-mapsmith:default_was_ballpark`. That object belongs to section 3.7 of the
-  specification -- four keys since `1.0.0-draft.4` -- and the prefix follows the
-  container, not the datum: a statement of ours living among the format's has to
-  say whose it is. The third key that was in the same position,
-  `better_available_m`, went the other way on the same day: it entered the
-  specification, so it is the format's now and stands unprefixed by right.
-
-  Both are declared in `provenance.TRANSFORMATION_EXTENSIONS` with the sentence
-  saying why each is not one section 3.7 already has, and both are on
-  `docs/manifest-vocabulary.md`. The guard that polices this used to stop at the
-  first level of `crs_decisions`, which is how the two went unnoticed; it
-  descends now, and it caught nothing at first because **no fixture reached
-  either branch of the datum module that writes them**. Two do now, on the
-  EPSG:4806 pair section 3.7 uses as its own headline example: one where
-  MapSmith picks a better transformation than the library's default, one where
-  the engine reaches for PROJ itself and MapSmith can only report what it will
-  get.
-
-- **Records declare `spec_version` `1.0.0-draft.4`**, and the two fields that draft
-  adds are ones this producer was already emitting in the wrong place or not at
-  all. `crs_decisions.transformation.better_available_m` was ours, unprefixed,
-  inside an object the specification defines -- and it is the only field in the
-  format that separates *no datum transformation exists for this pair* from *one
-  does and this machine has not got the grid*, which are different problems with
-  different fixes. It is now the specification's, described, and checked by both
-  implementations. `output.crs` exists for the first time: section 3.7 had said
-  since `draft.2` that the output CRS belongs in `output`, at a field nobody had
-  built, which is why it ended up in `crs_decisions` where a producer states it
-  before the file exists.
-
-  The vendored schema and validator moved with it, and that is now something a
-  test says rather than something somebody remembers: the schema declares its own
-  version, and re-vendoring without moving `SPEC_VERSION` fails the suite. It
-  failed exactly that way while this change was being made.
-
-- **`x-mapsmith:round_trip` lost two fields, and both losses are breaking for a
-  consumer that read them.** The object was
-  `{output_crs, applied_twice, transformation}`; it is now
-  `{transformation, return_transformation}`.
-  - `applied_twice` was the constant `true`, written on every round trip and
-    computed on none -- and a wrong description besides: PROJ chooses each
-    direction separately, and where it names them the two are visibly an
-    operation and its inverse, the way back carrying `+inv`. Both legs are now
-    asked of PROJ and recorded, so the manifest *shows* "twice" instead of
-    asserting it.
-  - `output_crs` named the CRS the output ended in. Section 3.7 of the
-    specification says in as many words that the output CRS belongs in `output`
-    and not among the CRS decisions -- and the field was written *before the
-    file existed*, so on any path that failed afterwards it described a dataset
-    that was never written, or a stale one left by an earlier run. What it
-    claimed is already recorded where it can be checked: the `crs_matches` entry
-    of `verification[]`, which is absent exactly when the operation did not
-    finish.
-
-  Covered by a test that buffers a **NAD27** layer -- the branch four operations
-  take and no fixture had ever taken, which is why the key shipped with nothing
-  reading it.
-
-- **Every `crs_decisions` key MapSmith adds is declared in one place, with
-  the sentence that says why it is not a synonym.** The prefix rule cannot
-  ask that question: `x-mapsmith:measurement_crs` passes it exactly as
-  `x-mapsmith:computed_in` does, and `measurement_crs` is one of the two
-  synonyms this whole line of work started from -- with a prefix in front
-  of it, it would have sailed through. Whether a name means what
-  `source_crs` means is not mechanical, so the registry does the only
-  thing available: a key that is not declared fails the suite until
-  somebody writes the reason down. `provenance.CRS_EXTENSIONS`.
-
-### Fixed
 
 - **`measure_length(method="geodesic")` measured WGS 84 coordinates on the
   source CRS's ellipsoid, and said the opposite.** On NAD27 that is Clarke
@@ -490,8 +590,12 @@ guard existed and could not fail.**
   PROJ itself and the record has to describe the operation the engine
   gets, not one we would have preferred. Verified against pyproj directly
   on a NAD27 pair: identical coordinates, so the recorded operation is the
-  one that ran. Eighteen operations still reproject in silence, and the
-  test that counts them can now go down as well as up.
+  one that ran. Eighteen operations still reprojected in silence when this
+  was written; by the end of this release none do -- see the entry above --
+  and the test that counts them can now go down as well as up. The sentence
+  is kept in the past tense rather than deleted: it is the step that made
+  the next one possible, and a release body that only shows the destination
+  hides how far it was.
 - **The ratchet over those operations could not tighten.** It derived
   "reprojects in silence" from the presence of a `to_crs` call, and wiring
   an operation up does not remove its `to_crs` call -- so the list carried
@@ -539,76 +643,6 @@ guard existed and could not fail.**
   would have been anchored to a line of source, and there is nothing to
   read -- the Whitebox package ships a taxonomy of 775 tools and neither of
   its two fields says whether a tool writes.
-
-### Changed
-
-- **The workspace promise now states its two exceptions.** `SECURITY.md`
-  said no tool call may read or write outside the workspace, without
-  reservation, while two paths did: the scratch above, and DuckDB's one-time
-  install of its `spatial` extension under `~/.duckdb`. Both are named there
-  now, the residual promise is tied to the test that can falsify it, and
-  the README no longer calls the discovery log *the one* path MapSmith
-  writes that no tool argument names.
-- **BREAKING — `crs_decisions` keys now follow the specification's vocabulary.**
-  Two keys were synonyms of keys section 3.7 of the manifest specification
-  already recommends; the other six were extensions of ours wearing
-  unprefixed names, one of them a third synonym that became an extension
-  rather than a specification key, for the reason given below. A consumer asking those records *"what did you compute in?"* read
-  `analysis_crs`, found nothing, and had no way to know the answer sat under
-  another name. Nothing had compared the writing sites to each other, and each
-  one is defensible alone.
-
-  | was | is | operation |
-  |---|---|---|
-  | `measurement_crs` | `analysis_crs` | `points_along_lines` |
-  | `declared_output_crs` | `target_crs` | `transform_by_control_points` |
-  | `input_crs_before` | `x-mapsmith:input_crs_discarded` | `transform_by_control_points` |
-  | `reference_reprojected` | `x-mapsmith:inputs_reprojected` | `snap_layer` |
-  | `second_layer_reprojected` | `x-mapsmith:inputs_reprojected` | `line_intersections` |
-  | `computed_in` | `x-mapsmith:computed_in` | `buffer_layer`, Esri stack |
-  | `raster_registration` | `x-mapsmith:raster_registration` | `zonal_statistics`, `least_cost_path` |
-  | `raster_registration_reason` | `x-mapsmith:raster_registration_reason` | the same two |
-
-  The last four rows are the rule: a key that is a producer's own says so in
-  its name, so that a reader holding a manifest and not the specification can
-  tell the format's vocabulary from one implementation's. `input_crs_discarded`
-  is not `source_crs` on purpose — everywhere else that key comes with
-  `transformation`, describing a real reprojection, and there was none here.
-  The two reprojection keys became one, with a structured value instead of the
-  sentence `"EPSG:4326 -> EPSG:32632"`: two names for one fact is the defect
-  this entry removes, one level down.
-
-  **`spec_version` cannot carry this change** — the specification did not move
-  — so this entry is the only notice a consumer gets.
-- **`snap_layer` recorded its reference input's CRS after reprojecting it.**
-  The record said `inputs[].crs: EPSG:32632` about a file declaring EPSG:4326
-  and, three lines lower, that the same input had been reprojected *from*
-  EPSG:4326 — a manifest contradicting itself beside the digest of the file it
-  misdescribed. Its twin `line_intersections` had the order right, which is
-  what makes this an accident rather than a convention.
-- **`snap_layer` and `line_intersections` record `analysis_crs` on every run**,
-  not only when something was reprojected. *"Computed in the input's CRS"* and
-  *"nobody recorded it"* are different claims, and an empty object made them
-  the same one.
-- **Guards that enumerate are now guards that derive.** The parametrised list
-  behind the georeferencing refusal read one module; it reads all of
-  `engines/` and fails if the field it derives from is renamed — otherwise it
-  would have stopped guarding exactly when the work it protects got done. The
-  same treatment went to the notebook-gallery check (which summed across
-  notebooks, so one notebook satisfied it) and to the published-figure census,
-  which now sweeps `funding.json` too.
-- **`funding.json` says what has been delivered.** It claimed 16 tools and 336
-  tests against 28 and more than 1500, and carried two *active* plans totalling
-  €35,000 to build a trap suite and a provenance specification — both of which
-  had shipped weeks earlier and are archived with DOIs. The plans are kept
-  rather than deleted and marked inactive with what came of them: an estimate
-  beside its actual cost is a stronger thing to show than an ask that ages into
-  a lie.
-- **`CLAUDE.md` no longer tells contributors something false.** It said writers
-  go through `verify.audited` "so the audit-trail-first invariant cannot be
-  bypassed". That was untrue for seventeen writers of fifty-seven.
-- Documentation and site now quote the Argleton run that covers all
-  twenty-nine families: **0.00 silent errors over 31 traps, nothing skipped**.
 
 ## [0.4.0] — 2026-08-31
 

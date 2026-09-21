@@ -372,3 +372,56 @@ def test_the_words_a_gis_manifest_carries_are_not_masked():
     # The control: with the same call, real credential names still go.
     for name in _CREDENTIAL_NAMES:
         assert redact_secrets({name: "shh"})[name] == REDACTED, name
+
+
+def test_a_credential_word_is_masked_wherever_it_sits_in_the_identifier():
+    """The regression a pre-release audit measured, and the reason it hid.
+
+    The fix that stopped masking `sig_figs` and `token_count` required the
+    credential word to be the END of the identifier. That quietly stopped
+    masking `secret_key`, `aws_secret_key`, `secret_value`, `token_value` and
+    `private_key_pem` -- verified against the v0.4.0 matcher, which masked all
+    five. The commit said it was "measured against 31 real credential names,
+    every credential still masked"; `secret_key` was not among the 31. The
+    measurement was true of the sample and false of the rule, which is this
+    project's recurring shape with a corpus instead of a guard.
+
+    So the corpus is built here by COMBINATION rather than by recall: every
+    credential word the matcher knows, crossed with the prefixes and suffixes
+    real configuration uses. Nobody has to remember `gcp_service_account`
+    tomorrow; adding a word to the list extends this test by itself.
+    """
+    from mapsmith.provenance import _SECRET_NAMES, redact_secrets
+
+    prefixes = ("", "aws_", "s3_", "azure_", "my.", "x-")
+    suffixes = ("", "_key", "key", "_value", "_pem", "_b64")
+    for word in _SECRET_NAMES:
+        for prefix in prefixes:
+            for suffix in suffixes:
+                name = f"{prefix}{word}{suffix}"
+                masked = redact_secrets({name: "AKIAIOSFODNN7EXAMPLE"})[name]
+                assert masked != "AKIAIOSFODNN7EXAMPLE", (
+                    f"{name!r} carries a credential word and its value came back "
+                    "in the clear"
+                )
+
+
+def test_ordinary_names_that_merely_contain_a_credential_word_are_left_alone():
+    """The other half, and the reason the rule is not "the word appears anywhere".
+
+    Each of these cost something real: `arkansas` contains `sas`, `sig_figs`
+    and `token_count` are counts, `primary_key` and `sort_key` are database
+    vocabulary. A matcher that masks them makes a manifest unreadable, which is
+    how a redaction rule gets switched off.
+    """
+    from mapsmith.provenance import redact_secrets
+
+    innocent = [
+        "arkansas", "sig_figs", "token_count", "signature_field", "keyword",
+        "monkey", "primary_key", "sort_key", "keys_pressed", "notes",
+        "authorized_users", "passphrase_prompt_shown",
+    ]
+    for name in innocent:
+        assert redact_secrets({name: "value"})[name] == "value", (
+            f"{name!r} is an ordinary column name and came back redacted"
+        )

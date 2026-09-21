@@ -243,11 +243,24 @@ def test_work_since_the_last_tag_is_announced_under_unreleased():
     )
     # The section must carry entries, not just exist: an empty heading passes a
     # presence check while saying exactly as little as no heading at all.
+    #
+    # Unless the work has already been moved into the section for the version
+    # in the tree, which is the state on the eve of a tag: the block is dated,
+    # `[Unreleased]` is legitimately empty, and the tag that would make this
+    # check skip does not exist yet. Without this, the release procedure has a
+    # step that cannot be performed with the suite green, and a check nobody
+    # can satisfy is a check that gets bypassed.
     body = changelog[heading.end():].split("\n## ", 1)[0]
     entries = [ln for ln in body.splitlines() if ln.startswith("- ")]
+    from mapsmith import __version__ as in_tree
+
+    dated = re.search(rf"^## \[{re.escape(in_tree)}\]", changelog, re.MULTILINE)
+    if dated:
+        released = changelog[dated.end():].split("\n## ", 1)[0]
+        entries += [ln for ln in released.splitlines() if ln.startswith("- ")]
     assert entries, (
-        f"{ahead.stdout.strip()} commits since {tag.stdout.strip()} and "
-        f"[Unreleased] has no entries"
+        f"{ahead.stdout.strip()} commits since {tag.stdout.strip()} and neither "
+        f"[Unreleased] nor [{in_tree}] has entries"
     )
 
 
@@ -1304,9 +1317,17 @@ def test_the_changelog_block_for_this_version_counts_what_is_actually_here():
     # passing over an empty one — which is worse than failing.
     changelog = README.parent.joinpath("CHANGELOG.md").read_text(encoding="utf-8")
     blocks = changelog.split("## [")
-    block = next(
-        (b for b in blocks if b.startswith(f"{__version__}]")),
-        next((b for b in blocks if b.startswith("Unreleased]")), ""),
+    # The block for the version in the tree AND the unreleased one, joined.
+    # Taking only the first that exists meant that between two releases the
+    # counts were checked against the dated section and the `[Unreleased]`
+    # entries -- the ones about to become a release body -- were checked by
+    # nothing. A stale spec_version sat there until the eve of a tag for
+    # exactly that reason, and would have turned the suite red at the bump
+    # instead of being caught while it was being written.
+    block = "\n".join(
+        b
+        for b in blocks
+        if b.startswith((f"{__version__}]", "Unreleased]"))
     )
     assert block.strip(), (
         f"the changelog has no section for {__version__} and no [Unreleased] one, "
@@ -1339,10 +1360,28 @@ def test_the_changelog_block_for_this_version_counts_what_is_actually_here():
     from mapsmith import provenance
 
     emitted = provenance.SPEC_VERSION
-    for found in re.findall(r"`(1\.0\.0-draft\.\d+)`", block):
+    # The DECLARATION must be the version the writers emit. Every other mention
+    # may only be a draft that has already happened: an entry explaining that a
+    # field entered the format in draft.4 is true and stays true, and the first
+    # version of this check forbade it -- it compared every backticked draft in
+    # the block, so a correct historical sentence failed the release. That is
+    # the same shape as a guard accusing a page that is right, which this
+    # repository has now met in three different files.
+    declared = re.findall(r"`spec_version`\s+`(1\.0\.0-draft\.\d+)`", block)
+    assert declared, (
+        "the [Unreleased] block no longer declares which spec_version the "
+        "records carry; that sentence is what a consumer of the manifests reads"
+    )
+    for found in declared:
         assert found == emitted, (
             f"the CHANGELOG announces spec_version {found} and the writers emit "
             f"{emitted}"
+        )
+    latest = int(emitted.rsplit(".", 1)[1])
+    for found in re.findall(r"`1\.0\.0-draft\.(\d+)`", block):
+        assert int(found) <= latest, (
+            f"the CHANGELOG mentions draft.{found}, which is ahead of the "
+            f"{emitted} these writers emit"
         )
 
 

@@ -51,6 +51,16 @@ _CREDENTIAL_WORDS = (
 )
 _WORDS = "|".join(_CREDENTIAL_WORDS)
 
+#: A credential word is allowed a trailing component, from a closed list. Without
+#: it `SET s3_secret_key = '...'` passed this layer: the prefix could not eat
+#: `s3_secret_` because `key` alone is not a credential word, and `secret` was
+#: not followed by a word boundary. `s3_secret_access_key` -- the setting that
+#: actually exists -- was caught, so this is depth rather than a live hole; but
+#: the redaction matcher in `provenance.py` has the same allowance for the same
+#: reason, and two layers written from one idea should not disagree about which
+#: names are credentials.
+_TAIL = r"(?:[_.\-]?(?:key|keys|value|values|pem|der|jwt|base64|b64))*"
+
 _RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     # CREATE [OR REPLACE] [PERSISTENT|TEMPORARY] SECRET [IF NOT EXISTS] name (...)
     (re.compile(r"(?i)\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:PERSISTENT\s+|TEMPORARY\s+|TEMP\s+)?SECRET\b"),
@@ -62,7 +72,7 @@ _RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     # passed BOTH layers — neither refused nor redacted. Fifth escape found by
     # an audit, and it fell under neither documented limit: the name was
     # perfectly recognisable, the statement did configure a credential.
-    (re.compile(rf"""(?i)\b(?:SET|PRAGMA)\s+(?:GLOBAL\s+|SESSION\s+|LOCAL\s+)?(?:VARIABLE\s+)?["`\[]?[A-Za-z0-9_.]*(?:{_WORDS})\b"""),
+    (re.compile(rf"""(?i)\b(?:SET|PRAGMA)\s+(?:GLOBAL\s+|SESSION\s+|LOCAL\s+)?(?:VARIABLE\s+)?["`\[]?[A-Za-z0-9_.]*(?:{_WORDS}){_TAIL}\b"""),
      "a credential setting"),
     # ATTACH with credentials, either as an option or as URI userinfo
     (re.compile(rf"(?i)\bATTACH\b[^;]*?(?:\b(?:{_WORDS})\b\s*(?::=|=)|://[^\s:/@]+:[^\s@/]+@)"),

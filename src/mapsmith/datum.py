@@ -306,7 +306,3 @@ def default_operation(source_crs: Any, target_crs: Any) -> dict[str, Any]:
         record["better_available_m"] = float(stated[0].accuracy)
     return record
 
-
-def is_ballpark(transformation: dict[str, Any] | None) -> bool:
-    """True when the record describes an operation that shifts nothing."""
-    return bool(transformation and transformation.get("is_ballpark"))
