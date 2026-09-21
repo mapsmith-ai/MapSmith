@@ -23,9 +23,12 @@ separates a tool from a plausible-sounding guess, and it is not negotiable.
 Each dataset MapSmith writes ships with a machine-readable manifest: input
 files with checksums, the exact parameters used, the CRS decisions taken and
 *why*, the engine and version that ran, timestamps. Everything needed to re-run the
-analysis without a model in the loop is in there — and when the work came from
-a typed plan, the plan itself is recorded with its checksum, so the whole chain
-can be replayed as one artifact. If you cannot reconstruct how a result was
+analysis without a model in the loop is in there. And the chain of them is
+recoverable from the last file alone, plan or no plan: one record does not point
+at another, but each names the digests of its inputs, so hashing what you hold
+finds what produced it and the walk continues until nothing claims the bytes. A
+typed plan adds what the digests cannot say — what the analysis was for — and is
+recorded with its own checksum. If you cannot reconstruct how a result was
 produced, it is not a result. It is an anecdote.
 
 ## 3. Verify, then report. Not the other way around.

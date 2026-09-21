@@ -1671,6 +1671,19 @@ def test_the_manifest_on_the_front_page_conforms_to_the_specification():
             f"the manifest on the front page is not a conforming record: "
             f"{problems}. It is what an implementer copies."
         )
+        # And it must be the version THIS code writes, which neither validator
+        # can require: section 5 makes any `1.x.y` conforming on purpose, so
+        # both implementations accept a label two drafts old and the check above
+        # is structurally unable to fail on it. It sat at `draft.3` while the
+        # emitter wrote `draft.5`, four lines under a sentence calling this
+        # "the record a third-party implementer copies".
+        from mapsmith.provenance import SPEC_VERSION
+
+        assert manifest["spec_version"] == SPEC_VERSION, (
+            f"the front-page record says spec_version {manifest['spec_version']} "
+            f"and this build emits {SPEC_VERSION}; an implementer copying it "
+            "writes records claiming a draft we no longer produce"
+        )
 
 
 def test_every_manifest_a_reader_can_see_obeys_the_key_rule():

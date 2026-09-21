@@ -223,7 +223,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     </p>
     <p class="lede">
       One manifest is one step. The <strong>analysis</strong> is recoverable too, and from the file
-      alone: <code>get_lineage</code> hashes it, finds the record claiming those exact bytes, and
+      alone: <code>get_lineage</code> — a catalogue operation, run through <code>run_operation</code> rather than a tool of its own — hashes it, finds the record claiming those exact bytes, and
       follows every input digest back to the originals — no field points at another record, and
       nothing reads a filename to decide what came before. It reports a step that failed its checks
       as one, and says where it stopped rather than claiming a history it did not reach.
@@ -384,8 +384,9 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   <p>
     So the figure to watch is not found@3. A ranker gets worse as a catalogue grows and it is a hint
     either way. It is the <em>average</em> surviving set at the fullest declaration — 9 at fifty-one
-    operations, 14 at sixty-one, 16 at seventy-two, 17 at seventy-four. (This page said
-    <em>median</em> until 29 August and published the mean; the median at seventy-four is 14. The
+    operations, 14 at sixty-one, 16 at seventy-two, 16 at seventy-four, 16 at seventy-five.
+    (This page said
+    <em>median</em> until 29 August and published the mean; the median at seventy-five is 14. The
     distribution is skewed, so the two say different things, and the mean is the pessimistic one.)
     When that crosses thirty, delivery stops being a
     property and becomes a ranking again, and the answer will be another fact the caller already

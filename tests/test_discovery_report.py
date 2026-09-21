@@ -652,3 +652,76 @@ def test_the_entry_spec_carries_the_same_facet_numbers_as_the_harness(report):
             f"delivered={row[2]}% - the harness computes {computed}. Run "
             "`python benchmarks/discovery_report.py` and put back what it says."
         )
+
+
+def test_the_scaling_curve_and_the_median_are_current_on_every_surface():
+    """Two sentences nothing was comparing, on two pages, one of them stale.
+
+    The README and the site both print the average surviving set as a series
+    over catalogue sizes, and both quote the median beside it. The README's
+    copy was checked; the site's was not, so on 2026-09-21 the site still
+    ended its series at "17 at seventy-four" -- a value the README had already
+    retracted on 2026-09-01, one catalogue size back, in words rather than
+    digits so no digit-matching guard could see it.
+
+    The earlier points of the series are history and cannot be recomputed. The
+    last one is the one that goes stale, so that is the one checked, on both
+    surfaces and in whichever notation each uses.
+    """
+    import re
+    import statistics
+    from pathlib import Path
+
+    import discovery_report
+
+    from mapsmith import catalog
+
+    rows = discovery_report.answerable(discovery_report.load())
+    full = discovery_report.LEVELS[3][1]
+    sizes = [
+        len(
+            catalog.applicable(
+                **discovery_report.facets_for(discovery_report.accepted_of(row)[0], full)
+            )
+        )
+        for row in rows
+    ]
+    mean, median = round(sum(sizes) / len(sizes)), int(statistics.median(sizes))
+    total = len(catalog.OPERATIONS)
+
+    root = Path(__file__).resolve().parent.parent
+    words = {
+        10: "ten", 14: "fourteen", 16: "sixteen", 17: "seventeen", 51: "fifty-one",
+        61: "sixty-one", 72: "seventy-two", 74: "seventy-four", 75: "seventy-five",
+    }
+
+    def spoken(value: int) -> str:
+        return words.get(value, str(value))
+
+    surfaces = {
+        "README.md": (
+            rf"(\d+) at {total} operations|, (\d+) at {total}\.",
+            rf"the median at {total} is (\d+)",
+        ),
+        "site/index.template.html": (
+            rf", (\w[\w-]*) at {spoken(total)}[.\s]",
+            rf"the median at {spoken(total)} is (\d+)",
+        ),
+    }
+    for name, (curve_pattern, median_pattern) in surfaces.items():
+        prose = (root / name).read_text(encoding="utf-8")
+        curve = re.search(curve_pattern, prose)
+        assert curve, (
+            f"{name} no longer ends its surviving-set series at the current "
+            f"catalogue size ({total}); it is a catalogue behind, or reworded"
+        )
+        stated = next(group for group in curve.groups() if group)
+        assert stated in (str(mean), spoken(mean)), (
+            f"{name} says the average surviving set is {stated} at {total} "
+            f"operations; the harness computes {mean}"
+        )
+        found = re.search(median_pattern, prose)
+        assert found, f"{name} no longer states the median at the current catalogue size"
+        assert int(found.group(1)) == median, (
+            f"{name} says the median is {found.group(1)}; the harness computes {median}"
+        )

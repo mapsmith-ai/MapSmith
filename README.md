@@ -43,7 +43,9 @@ The manifest is a [specified format](https://github.com/mapsmith-ai/manifest-spe
 MapSmith's private output: JSON Schema, a toolchain-free validator, a conformance suite, and a
 hundred-line emitter that never imports MapSmith. Records carry `spec_version`, and CI validates
 real MapSmith output against the spec's own validator. The specification is archived and citable
-as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213). The names MapSmith puts
+as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213) — that DOI holds
+`1.0.0-draft.3`, while MapSmith emits `1.0.0-draft.5`, so follow the repository for the text
+these records are written against. The names MapSmith puts
 in a record beyond the ones the specification defines — every extension check name, and every
 extension field in `crs_decisions` with the reason it is not a synonym of a key the specification
 already has — are listed in [`docs/manifest-vocabulary.md`](docs/manifest-vocabulary.md),
@@ -208,7 +210,7 @@ for it:
 
 ```json
 {
-  "spec_version": "1.0.0-draft.3",
+  "spec_version": "1.0.0-draft.5",
   "producer": {"name": "mapsmith", "version": "0.4.0"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
@@ -266,7 +268,9 @@ back. This is the record a third-party implementer copies.
 Trimmed for the page, not for the file: the real record also carries the output's own path
 and hash, any geometry MapSmith had to repair, and the notes it made about how the inputs
 were handled — and every check says whether it was critical and, when it failed, what to do
-about it. `get_provenance` returns it for any output.
+about it. `get_provenance` returns it for any output — one operation, in full.
+
+For the **analysis** rather than the step, `run_operation` with `get_lineage` takes the final file, hashes it, finds the record claiming those exact bytes and follows every input digest back to the originals. No field points at another record: the chain is recovered from content, so it survives a rename and breaks only when the data changes. It reports a step that failed its checks as one, and says where the walk stopped rather than presenting a history it did not reach.
 
 ## Why MapSmith
 
@@ -464,7 +468,7 @@ adopted wholesale rather than judged one at a time. Two different strengths of e
 the file says which is which.
 
 **The two model figures are dated: the labels were written on 2026-08-28, against a catalogue of
-51 operations.** It now has 74, so for any request whose right answer is one of the 23 added since,
+51 operations.** It now has 75, so for any request whose right answer is one of the 24 added since,
 neither labeller *could* have been right — the answer was not in the catalogue to name. Measured on
 the first four requests a person has answered by hand, two of the four have both labellers wrong,
 and both of those two name operations that did not exist on the 28th. So "both labellers wrong" and
