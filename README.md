@@ -176,15 +176,16 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.4.0**, which is what that command installs. When `main` runs ahead of
+This page describes **0.5.1**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **`main` is ahead of 0.4.0 today**, by
-defects found in shipped code and by one change a reader of this page would notice: eight
-`crs_decisions` keys are spelled differently on `main`, because 0.4.0 had invented names of
-its own where the specification already fixes one, and left the keys that really are
-MapSmith's own looking like the format's. No tool, operation or count has moved.
-[`[Unreleased]` in the changelog](CHANGELOG.md#unreleased) has the old-to-new table and the
-rest of the list.
+have to find out by calling a tool that is not there. `main` is at 0.5.0 today, with nothing
+unreleased beyond it.
+
+**If you read manifests written by 0.4.0, 0.5.0 renames several fields**, and the changelog
+lists every one with what to read instead: eight `crs_decisions` keys, the top-level
+`mapsmith_version` (read `producer.version`), two fields of `x-mapsmith:round_trip`, two of
+`repairs[]`, and `engine.geometry_library`. Records now declare `spec_version`
+`1.0.0-draft.5`.
 
 Then ask your agent things like:
 
@@ -211,7 +212,7 @@ for it:
 ```json
 {
   "spec_version": "1.0.0-draft.5",
-  "producer": {"name": "mapsmith", "version": "0.5.0"},
+  "producer": {"name": "mapsmith", "version": "0.5.1"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{

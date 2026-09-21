@@ -8,6 +8,23 @@ All notable changes to MapSmith are documented here, in the format of
 
 Nothing yet.
 
+## [0.5.1] - 2026-09-21
+
+### Fixed
+
+- **0.5.0 is yanked on PyPI, and the reason is its own page.** The release
+  procedure builds and uploads only after the tag's CI is green, because that
+  run is the one that checks the README against the release it claims to
+  describe. The upload went first: PyPI took the sdist whose front page says
+  *"This page describes 0.4.0"* and *"`main` is ahead of 0.4.0 today"*, and a
+  PyPI page cannot be edited afterwards. The code in 0.5.0 is the code here;
+  what is wrong is the artefact describing itself as the previous version, on
+  a product whose argument is that records describe what they say they do.
+  0.5.1 is 0.5.0 with that paragraph correct.
+
+  Nothing else moved: records still declare `spec_version` `1.0.0-draft.5`, the
+  tool surface is the same, and the entries below are this release's.
+
 ## [0.5.0] - 2026-09-21
 
 Everything here was on `main` and not in a release. It is almost entirely
