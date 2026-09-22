@@ -725,3 +725,38 @@ def test_the_scaling_curve_and_the_median_are_current_on_every_surface():
         assert int(found.group(1)) == median, (
             f"{name} says the median is {found.group(1)}; the harness computes {median}"
         )
+
+
+def test_the_site_heading_says_the_breadth_before_the_choice():
+    """The number a visitor scanning headings takes away must be the bigger one.
+
+    That section carried the kicker "Operations" over the heading "28 tools, not
+    a catalogue", and the sentence putting the two numbers side by side came two
+    paragraphs later. Both figures were derived and neither was stale -- what
+    was wrong was the framing: a reader who skims headings left with 28 as the
+    breadth of a product whose breadth is 75 and whose argument is that it is
+    built for thousands.
+
+    A reader flagged it. Nothing here could have: every check on this page
+    compares a number with the harness, and both numbers were right.
+    """
+    import re
+    from pathlib import Path
+
+    from mapsmith import catalog
+
+    root = Path(__file__).resolve().parent.parent
+    template = (root / "site" / "index.template.html").read_text(encoding="utf-8")
+    heading = re.search(r"<h2>([^<]*operations[^<]*)</h2>", template)
+    assert heading, (
+        "the operations heading has been reworded out of recognition; update this "
+        "test with it rather than deleting it -- it exists because the framing, "
+        "not the figures, is what misled a reader"
+    )
+    text = heading.group(1)
+    assert "{{CATALOG_COUNT}}" in text and "{{TOOL_COUNT}}" in text, text
+    assert text.index("{{CATALOG_COUNT}}") < text.index("{{TOOL_COUNT}}"), (
+        f"the heading names the exposed tools before the catalogue: {text!r}. The "
+        "bigger number is the one a skimming reader should take away, and "
+        f"there are {len(catalog.OPERATIONS)} operations behind the tools."
+    )

@@ -51,11 +51,13 @@ extension field in `crs_decisions` with the reason it is not a synonym of a key 
 already has — are listed in [`docs/manifest-vocabulary.md`](docs/manifest-vocabulary.md),
 generated from the source rather than maintained by hand.
 
-Evidence before promises: an [A/B on GABench](docs/benchmarks.md) whose headline is a null
-result — with the analysis that took our own positive number apart — a correctness suite in
-its own organisation, [**Argleton**](https://argleton.org), whose published run grades
-MapSmith on thirty-one traps with answers computed on paper and has already sent six defects
-back here, [notebooks](examples/) on a real USGS DEM of Mount St. Helens, an
+Evidence before promises. A correctness suite in its own organisation,
+[**Argleton**](https://argleton.org), grades MapSmith on thirty-one traps whose answers are
+computed on paper before any system runs: **0.00 silent errors, nothing skipped**, against
+0.9355 for the obvious way of writing the same code. Getting there cost six defects it sent
+back here, and they are listed. Alongside it: an [A/B on GABench](docs/benchmarks.md) whose
+headline is a null result — with the analysis that took our own positive number apart —
+[notebooks](examples/) on a real USGS DEM of Mount St. Helens, an
 [in-chat map panel](#see-results-inside-the-chat) that shows the verification status of
 every layer it draws, and a
 [measurement of our own tool discovery](#finding-the-right-operation) that retracted two numbers
@@ -335,8 +337,9 @@ For the **analysis** rather than the step, `run_operation` with `get_lineage` ta
   without the LLM is in there. No AI slop.
 - **The engines compute, the model orchestrates.** Geometry and numbers only ever come
   from deterministic tool executions — never from model output.
-- **Semantic tools, not a tool dump — and a catalog built for thousands.** 28 goal-level
-  tools plus a searchable operation catalog, because tool-selection accuracy degrades once
+- **75 operations, reached through 28 goal-level tools.** The catalogue is the breadth and
+  the tool list is the choice; it is searchable rather than dumped, because tool-selection
+  accuracy degrades once
   a few dozen tools are exposed at once, and fastest when two of them apply to the same
   input. Capability count has no such ceiling, so capability lives in the catalog. Search
   **narrows** it on what you declare and then hands over what survives rather than ranking it
@@ -1058,6 +1061,75 @@ The harness is in [`benchmarks/gabench-ab/`](benchmarks/gabench-ab/), including
 the `split_analysis.py` that took our own win apart and the
 `rep_analysis.py` that bars every delta against a measured noise floor.
 
+## What the suite found in MapSmith
+
+This section is the one a reader should be most suspicious of, so it is a heading
+rather than a line inside the roadmap, where it used to be. Everything in it is
+somebody grading us, and the grader is ours.
+
+[**Argleton**](https://argleton.org) is a correctness suite for the failure every
+existing benchmark misses — a result that is wrong and reported as successful. It is
+ours, and it lives in [its own organisation](https://github.com/argleton/argleton)
+under Apache-2.0 rather than in this repository, because an evaluation that lives
+inside the thing it evaluates is easy to dismiss in one line. Closed-form truth, no
+model in the evaluator, fixtures rebuilt rather than vendored.
+
+**The score.** On the current run — all twenty-nine families — MapSmith answers every
+trap correctly: **0.00 silent errors over 31 traps, nothing skipped**, against 0.9355
+for a careless composition of the same libraries. One of the thirty-one is not an answer
+at all but a refusal: a raster and the sidecar beside it declare different georeferencing,
+both readings are GDAL behaving as documented, and the right move is to stop and say so
+rather than pick one. That family arrived on 2026-08-31, the morning after the list of
+twenty-seven was closed, and it is the reason a manifest can now name its `environment`
+(see the [changelog](CHANGELOG.md)).
+
+The twenty-ninth family arrived on 2026-09-02 and is the one that reads oddly until you
+see it: a survey plot whose easement ring is wound the same way as its outline. A
+shapefile carries no nesting, so which ring is a hole is decided by the winding and by
+nothing else — the easement comes back as a second shell and its area is **added**,
+flattering the owner by 6.9% with a correct bounding box, a correct CRS and no warning.
+MapSmith repairs it and records the repair, which is the only reason the number is right.
+
+**The finding that matters more than the score**, and it is about us: on the first run
+that 0 and MapSmith's verification had nothing to do with each other — seven checks
+passed on that trap and not one of them looks at whether the number is right. A
+provenance manifest records what was done; it does not certify that it was right, and
+this README used to imply otherwise by promising a run "with verification *disabled*".
+There is no such switch and we are not adding one.
+
+The run also separates the passes MapSmith earned from the ones it did not. The
+mismatched-CRS join and the feet-as-metres unit are its own discipline; the Web Mercator
+pass comes from a default (ground area is geodesic unless you ask for the plane) rather
+than from care; the TIFF-predictor pass is still rasterio's. The `datum-ballpark` pass is
+the newest and the least flattering: MapSmith **failed** that trap on 2026-08-26 — 74 m
+out, with a manifest recording a successful reprojection — and the pass is the fix, not
+the original behaviour. The run where it failed is still published.
+
+**Six defects have come back from it**, which is the return we wanted from putting the
+suite outside:
+
+- the `datum-ballpark` failure above — 74 m out with a manifest recording a successful
+  reprojection, the most serious of them because nothing in the output looked wrong;
+- a multi-layer container resolved silently to its default layer, answering 4 features
+  where the truth was 31 ([#29](https://github.com/mapsmith-ai/MapSmith/issues/29), filed
+  before the trap was published — `extract_layer` is the way out of that refusal now);
+- a south-up DEM whose georeferencing was dropped on read, so a 5.71° slope came back as
+  45° with **all five verification checks green** — the coordinate system had survived and
+  only the geotransform had not;
+- totals over a layer holding lines and polygons together, where a treatment plant's fence
+  line was added to 2 km of pipe in silence and every individual row stayed right;
+- two probes answered `unsupported` because nothing could say where a raster's lowest cell
+  was;
+- and three probes that came back `unsupported` because MapSmith had no area operation at
+  all — `measure_area` exists because a trap said so, and it carries the first check here
+  that asks whether the *number* is right rather than whether the operation ran.
+
+Grid registration was the one MapSmith could not attempt at all when it was published: a
+DEM that declares its values sit at grid nodes rather than filling cells, where every
+position moves half a cell if you ignore the tag. Nothing here read the tag, and no
+operation reported *where* a cell is. Fixed in one module rather than at the point of
+failure, because the defect was in every place that turned an index into a coordinate.
+
 ## Notebook gallery
 
 Three executable walkthroughs in [`examples/`](examples/): verified buffer+clip with
@@ -1109,9 +1181,9 @@ detects it, converts the input first, and discloses the workaround in the manife
   workspace — which is what the container runs with by default. DuckDB's own HTTP and S3
   filesystems stay off in every mode, so `read_parquet('s3://…')` does not work even with
   the opt-in: fetch the data down first, or run unconfined with remote reads on.
-- **You want the full breadth of a desktop GIS.** 28 tools plus a catalog that tells the
-  agent what does *not* exist yet. The ~900 QGIS Processing algorithms are on the roadmap,
-  not in the box.
+- **You want the full breadth of a desktop GIS.** 75 operations, and a catalogue that tells
+  the agent what does *not* exist yet rather than letting it improvise. The ~900 QGIS
+  Processing algorithms are on the roadmap, not in the box.
 - **You expect plan validation to make a weak model strong.** Our own A/B says advisory
   validation upstream of an improvising solver does approximately nothing at aggregate
   level — and the enforced configuration MapSmith ships, measured afterwards, did not beat
@@ -1135,64 +1207,9 @@ Next, in the order we intend to do it. The linked items carry a written spec —
 - [x] **A suite for the failure every existing benchmark misses** — a result that is wrong and
   reported as successful. It exists, it is not here, and it is not ours to grade:
   [**Argleton**](https://argleton.org) lives in [its own organisation](https://github.com/argleton/argleton)
-  under Apache-2.0, because an evaluation that lives inside the thing it evaluates is easy to
-  dismiss in one line. Closed-form truth, no model in the evaluator, fixtures rebuilt rather than
-  vendored.
-
-  Its [published results](https://argleton.org/#results) measure MapSmith, and what they say about
-  us is why they are linked from here. On the current run — all twenty-nine families — MapSmith
-  answers every trap correctly: **0.00 silent errors over 31 traps, nothing skipped**. One of the
-  thirty-one is not an answer at all but a refusal: a raster and the sidecar beside it declare
-  different georeferencing, both readings are GDAL behaving as documented, and the right move is
-  to stop and say so rather than pick one. That family arrived on 2026-08-31, the morning after
-  the list of twenty-seven was closed, and it is the reason a manifest can now name its
-  `environment` (see the [changelog](CHANGELOG.md)).
-
-  The twenty-ninth arrived on 2026-09-02 and is the one that reads oddly until you see it: a
-  survey plot whose easement ring is wound the same way as its outline. A shapefile carries no
-  nesting, so which ring is a hole is decided by the winding and by nothing else — the easement
-  comes back as a second shell and its area is **added**, flattering the owner by 6.9% with a
-  correct bounding box, a correct CRS and no warning. MapSmith repairs it and records the repair,
-  which is the only reason the number is right.
-
-  Two of the last four caught defects here, and both are fixed. A DEM whose rows run south to
-  north made a 5.7 degree slope come back as 45, with the output raster written at the origin and
-  **all five verification checks green** — the coordinate system had survived and only the
-  geotransform had not. And a pipe network with a treatment plant in the same layer totalled
-  3000 m of pipe where there are 2000, the plant's perimeter added in silence.
-
-  Before those, grid registration was the one MapSmith could not attempt at all when it was
-  published:
-  a DEM that declares its values sit at grid nodes rather than filling cells, where every position
-  moves half a cell if you ignore the tag. Nothing here read the tag, and no operation reported
-  *where* a cell is. Both are fixed, in one module rather than at the point of failure, because the
-  defect was in every place that turned an index into a coordinate. The run itself also separates
-  the passes it earned from the ones it did not: the mismatched-CRS join and the feet-as-metres
-  unit are MapSmith's own discipline, the Web Mercator pass comes from a default (ground area is
-  geodesic unless you ask for the plane) rather than from care, and the TIFF-predictor pass is
-  still rasterio's. The `datum-ballpark` pass is the newest and the least flattering: MapSmith
-  **failed** that trap on 2026-08-26 — 74 m out, with a manifest recording a successful
-  reprojection — and the pass is the fix, not the original behaviour. The run where it failed is
-  still published. **The finding from the first run stands and matters more than the score: that
-  0 and MapSmith's verification had nothing to do with each other** — seven checks passed on that
-  trap and not one of them looks at whether the number is right. A provenance manifest records what
-  was done; it does not certify that it was right, and this README used to imply otherwise by
-  promising a run "with verification *disabled*". There is no such switch and we are not adding one.
-
-  Six defects have come back from it, which is the return we wanted from putting the suite
-  outside: the `datum-ballpark` failure above — 74 m out with a manifest recording a successful
-  reprojection, the most serious of the three because nothing in the output looked wrong; a
-  multi-layer container resolved silently to its default layer, answering 4 features where the
-  truth was 31 ([#29](https://github.com/mapsmith-ai/MapSmith/issues/29), filed before the trap was
-  published — `extract_layer` is the way out of that refusal now); a south-up DEM whose
-  georeferencing was dropped on read, so a 5.71° slope came back as 45° with five green checks;
-  totals over a layer holding lines and polygons together, where a plant's fence line was added to
-  2 km of pipe in silence and every individual row stayed right; two probes answered `unsupported`
-  because nothing could say where a raster's lowest cell was; and three probes that came back
-  `unsupported` because MapSmith had no area operation
-  at all — `measure_area` exists because a trap said so, and it carries the first check here that
-  asks whether the *number* is right rather than whether the operation ran. #25 is closed against
-  Argleton rather than left open here.
+  under Apache-2.0. What it measures in MapSmith, including the six defects it has sent back,
+  has [a section of its own](#what-the-suite-found-in-mapsmith). #25 is closed against Argleton
+  rather than left open here.
 - [ ] [Agent-loop repair](https://github.com/mapsmith-ai/MapSmith/issues/26): hand verification failures back to the agent as structured, actionable errors, with a bounded retry budget recorded in the manifest. Our [own measurements](docs/benchmarks.md) say the runtime error message is the information channel that works
 - [ ] [Tool contracts that carry their own rules](https://github.com/mapsmith-ai/MapSmith/issues/27): argument constraints enforced *and* stated, and errors that name the rule rather than only the violation. The one intervention in our benchmark work that moved a metric past its noise floor
 - [ ] **A project brief for the requests that are a chain, not a call.** A third of real requests

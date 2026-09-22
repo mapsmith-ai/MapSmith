@@ -1493,6 +1493,30 @@ def test_every_argleton_number_quoted_here_matches_the_vendored_citation():
         "rather than leaving it passing over nothing"
     )
 
+    # The two rates, same argument. They reached the page on 2026-09-22, one of
+    # them into the stats strip beside "375 TASK-RUNS", which is where a reader
+    # skimming for a number stops. A rate is exactly the kind of figure that
+    # moves when a denominator grows, and the trap count above has already gone
+    # stale three times in four days for that reason.
+    ours = f"{citation['mapsmith_silent_error_rate']:.2f}"
+    naive = f"{citation['naive_silent_error_rate']:.4f}"
+    assert "{{SILENT_ERRORS}}" in template and "{{NAIVE_SILENT_ERRORS}}" in template, (
+        "the site template no longer reads the silent-error rates from the citation"
+    )
+    for page in pages:
+        text = page.read_text(encoding="utf-8")
+        for phrase, right in (("silent errors", ours), ("silent error rate", ours)):
+            for match in re.finditer(rf"([0-9]\.[0-9]+)\s+{phrase}", text):
+                assert match.group(1) == right, (
+                    f"{page.name} says {match.group(0)!r}; the published run "
+                    f"({citation['run']}) puts MapSmith at {right}"
+                )
+        for stale in re.finditer(r"0\.9[0-9]{3}", text):
+            assert stale.group(0) == naive, (
+                f"{page.name} states {stale.group(0)}, which is a naive rate from "
+                f"an earlier run; the published one is {naive}"
+            )
+
 
 def test_the_readme_catalog_counts_are_the_real_ones():
     """Two numbers in the discovery section, both hand-typed, both already wrong.
@@ -2032,4 +2056,60 @@ def test_the_readme_cases_block_is_what_a_real_run_produces():
         "`python benchmarks/playground.py --write-readme` and read the diff "
         "before committing it: a difference here is either the software "
         "changing or the page having been edited by hand."
+    )
+
+
+def test_no_public_file_carries_a_mangled_character():
+    """UTF-8 read as cp1252 and saved back, on a page somebody reads.
+
+    Found on 2026-09-22 in the Argleton README, in the pasted terminal output
+    of a run: three lines in which a plus-minus sign and two em dashes had each
+    become a short run of Latin-1 punctuation. Public since the block was
+    written, and invisible to every other guard there because the file parsed,
+    the links resolved and the numbers were right. The engine blocks beside it
+    were clean, which is the tell: only the lines carrying one of those two
+    characters were touched, so the damage arrived through a console capture
+    and not through an editor.
+
+    The same guard runs in all three public repositories, because the way in
+    is the same everywhere: a terminal on this machine, a copy, a paste.
+
+    The markers are derived rather than listed -- each is what cp1252 makes of
+    a character these repositories actually use. A hand-written list would be
+    a finite map of the kind that has already gone stale here twice.
+    """
+    import subprocess
+
+    damage = set()
+    # Written as code points rather than typed: ruff rejects these characters
+    # in a string literal as ambiguous, which they are -- that is the point of
+    # them. Typing them would also put the damage this looks for into the file
+    # that looks for it, which is how the first version of this test failed.
+    suspect = "".join(chr(point) for point in (
+        0x00B1, 0x2014, 0x2013, 0x2018, 0x2019, 0x201C, 0x201D,
+        0x2026, 0x21D2, 0x00E8, 0x00E9, 0x00E0,
+    ))
+    for character in suspect:
+        mangled = character.encode("utf-8").decode("cp1252", errors="replace")
+        if chr(0xFFFD) not in mangled:
+            damage.add(mangled)
+
+    listed = subprocess.run(
+        ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.split()
+    damaged = []
+    for name in listed:
+        path = ROOT / name
+        if path.resolve() == Path(__file__).resolve():
+            continue
+        try:
+            text = path.read_bytes().decode("utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for number, line in enumerate(text.splitlines(), 1):
+            if any(marker in line for marker in damage):
+                damaged.append(f"{name}:{number}")
+    assert not damaged, (
+        "these tracked lines carry cp1252 mojibake, which means a character was "
+        f"written once and saved twice: {damaged[:10]}"
     )

@@ -326,18 +326,26 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
 
 <section id="does"><div class="wrap">
   <p class="kicker">Operations</p>
-  <h2>{{TOOL_COUNT}} tools, not a catalogue</h2>
+  <h2>{{CATALOG_COUNT}} operations, reached through {{TOOL_COUNT}} tools</h2>
   <p>
-    Tool-selection accuracy degrades past a few dozen exposed tools, so capability lives behind a
-    searchable catalogue rather than in the tool list. What is exposed is what an agent has to
-    choose between.
+    The catalogue is the breadth; the tool list is the choice. Tool-selection accuracy degrades
+    past a few dozen exposed tools, so capability lives behind a searchable catalogue rather than
+    in the tool list — and what is exposed is only what an agent has to choose between. Both
+    numbers are counted from the source when this page is built, never typed in.
   </p>
-  <h3 style="margin-top:2rem">Finding the right operation among hundreds</h3>
+  <h3 style="margin-top:2rem">Finding the right operation among {{CATALOG_COUNT}}</h3>
   <p>
     {{TOOL_COUNT}} tools are exposed; the catalogue behind them holds {{CATALOG_COUNT}} operations
-    and is built for thousands. That makes reaching scale a retrieval problem, so it is treated as
-    one — and measured like one, against <strong>800 real GIS operations</strong> with queries
+    and is built to hold thousands. That makes reaching scale a retrieval problem, so it is treated
+    as one — and measured like one, against <strong>800 real GIS operations</strong> with queries
     phrased the way somebody with a problem phrases them.
+  </p>
+  <p>
+    <strong>And the narrowing does not scale on its own — this page said otherwise and was
+    wrong.</strong> At 800 operations the surviving set stops being small enough to hand over, so
+    the guarantee below is measured at {{CATALOG_COUNT}} and claimed at {{CATALOG_COUNT}}, not at
+    eight hundred. Getting there needs more facts a caller can state without knowing our taxonomy,
+    not a better ranker, and that work is not done.
   </p>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1.5rem;margin:2rem 0 1.5rem">
     <div class="stat"><b>118</b><span>REQUESTS WE DID NOT WRITE</span></div>
@@ -639,6 +647,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   <div class="two" style="margin-top:1.5rem">
     <div>
       <div class="grid3">
+        <div class="stat"><b>{{SILENT_ERRORS}}</b><span>SILENT ERRORS, {{TRAP_COUNT}} TRAPS</span></div>
         <div class="stat"><b>375</b><span>TASK-RUNS, 5 ARMS</span></div>
         <div class="stat"><b>{{TEST_COUNT}}</b><span>TEST FUNCTIONS</span></div>
       </div>
@@ -662,12 +671,14 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
         So the instrument that does look at the number lives outside this repository:
         <a href="https://argleton.org"><strong>Argleton</strong></a>, a correctness suite in its own
         organisation, where every probe's answer is derived on paper before any system runs. Its
-        current run grades MapSmith on {{TRAP_COUNT}} traps — <strong>0.00 silent errors, nothing
-        skipped</strong> — and states which of those passes were earned and which were inherited
-        from the library underneath. One of them was taken away first: on 26 August a then-new
-        family moved MapSmith off 0.00, and the pass is the fix. It has now sent six defects back
-        here, which is what putting it outside was for &mdash; the README
-        <a href="https://github.com/mapsmith-ai/MapSmith#roadmap">lists them</a>.
+        current run grades MapSmith on {{TRAP_COUNT}} traps — <strong>{{SILENT_ERRORS}} silent
+        errors, nothing skipped</strong>, against {{NAIVE_SILENT_ERRORS}} for a careless
+        composition of the same libraries — and states which of those passes were earned and which
+        were inherited from the library underneath. One of them was taken away first: on 26 August
+        a then-new family moved MapSmith off {{SILENT_ERRORS}}, and the pass is the fix. It has now
+        sent six defects back here, which is what putting it outside was for &mdash; the README
+        <a href="https://github.com/mapsmith-ai/MapSmith#what-the-suite-found-in-mapsmith">lists
+        them</a>.
       </p>
       <p style="font-size:0.94rem;color:var(--ink-soft)">
         <a href="https://github.com/mapsmith-ai/MapSmith/blob/main/docs/benchmarks.md">Read the benchmark →</a><br>
@@ -681,16 +692,24 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   <p class="kicker">Invariants</p>
   <h2>What it will not do</h2>
   <div class="grid3" style="margin-top:1.75rem">
-    <div><h3>Invent a number</h3><p>Geometry and statistics come from engine executions. If a model produced it, it is not an output.</p></div>
-    <div><h3>Guess a coordinate system</h3><p>An input without a CRS is refused with a message that says what to fix. A declaration MapSmith will not resolve is quoted back, not swallowed.</p></div>
-    <div><h3>Write without a manifest</h3><p>Every writer emits one. A dataset with no lineage beside it did not come from here.</p></div>
-    <div><h3>Hide a failed check</h3><p>Verification is recorded before a critical failure raises, so the diagnosis outlives the error.</p></div>
-    <div><h3>Reach the network quietly</h3><p>Remote paths are opt-in, enforced at the GDAL driver level — a local file that makes GDAL fetch a URL is the same hole with a different name.</p></div>
-    <div><h3>Keep a credential</h3><p>SQL that configures one is refused rather than redacted, because redaction is a text scan and an audit walked past it four ways.</p></div>
-    <div><h3>Fetch code on a model's word</h3><p>A statement that says <code>INSTALL</code> or <code>LOAD</code> is refused in both modes since 0.4.0 — an <code>INSTALL</code> is an HTTPS fetch of a native binary run in this process. An audit used the old behaviour to read real cloud credentials back through a tool result, and <a href="https://github.com/mapsmith-ai/MapSmith/blob/main/SECURITY.md">SECURITY.md</a> says so rather than correcting it quietly.</p></div>
-    <div><h3>Swap an engine in silence</h3><p><code>MAPSMITH_STACK</code> picks the stack once — open source by default, or ArcPy on a machine licensed for it. Where a route exists and cannot run, MapSmith says which of three things is true and records the substitution in the manifest. One operation is routed today and the README says which: a table promising a route nobody takes was this release's own defect.</p></div>
-    <div><h3>Compute from an ambiguous file</h3><p>A raster and the sidecar beside it can declare different georeferencing, and both readings are the library behaving as documented. <code>describe_dataset</code> reports both; the twelve operations that read a raster's grid directly refuse and say how to choose. The terrain ones do not yet, and the README names them rather than promising all.</p></div>
+    <div><h3>Never invents a number</h3><p>Geometry and statistics come from engine executions. If a model produced it, it is not an output.</p></div>
+    <div><h3>Never guesses a coordinate system</h3><p>An input without a CRS is refused with a message that says what to fix. A declaration MapSmith will not resolve is quoted back, not swallowed.</p></div>
+    <div><h3>Never writes without a manifest</h3><p>Every writer emits one. A dataset with no lineage beside it did not come from here.</p></div>
+    <div><h3>Never hides a failed check</h3><p>Verification is recorded before a critical failure raises, so the diagnosis outlives the error.</p></div>
+    <div><h3>Never reaches the network quietly</h3><p>Remote paths are opt-in, enforced at the GDAL driver level — a local file that makes GDAL fetch a URL is the same hole with a different name.</p></div>
+    <div><h3>Never keeps a credential</h3><p>SQL that configures one is refused rather than redacted, because redaction is a text scan and an audit walked past it four ways.</p></div>
+    <div><h3>Never fetches code on a model's word</h3><p>A statement that says <code>INSTALL</code> or <code>LOAD</code> is refused in both modes since 0.4.0 — an <code>INSTALL</code> is an HTTPS fetch of a native binary run in this process. An audit used the old behaviour to read real cloud credentials back through a tool result, and <a href="https://github.com/mapsmith-ai/MapSmith/blob/main/SECURITY.md">SECURITY.md</a> says so rather than correcting it quietly.</p></div>
+    <div><h3>Never swaps an engine in silence</h3><p><code>MAPSMITH_STACK</code> picks the stack once — open source by default, or ArcPy on a machine licensed for it. Where a route exists and cannot run, MapSmith says which of three things is true and records the substitution in the manifest. One operation is routed today and the README says which: a table promising a route nobody takes was this release's own defect.</p></div>
+    <div><h3>Never computes from an ambiguous file</h3><p>A raster and the sidecar beside it can declare different georeferencing, and both readings are the library behaving as documented. <code>describe_dataset</code> reports both; the twelve operations that read a raster's grid directly refuse and say how to choose. The terrain ones do not yet, and the README names them rather than promising all.</p></div>
   </div>
+  <p style="margin-top:2rem">
+    Nine things it will not do is an odd note to end on, so here is the other half: it runs on
+    your machine, over stdio, against files you already have. <code>uvx mapsmith</code> or the
+    container, {{CATALOG_COUNT}} operations behind {{TOOL_COUNT}} tools, and a manifest beside
+    every dataset it writes. <a href="#install">Install it</a>,
+    <a href="#step-through">step through a worked analysis</a>, or read
+    <a href="https://argleton.org">the suite that grades it</a> before you do either.
+  </p>
 </div></section>
 
 <footer><div class="wrap">

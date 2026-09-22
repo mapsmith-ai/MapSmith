@@ -482,6 +482,8 @@ def main(destination: Path) -> int:
         "{{CATALOG_COUNT}}": str(catalog_count),
         "{{TEST_COUNT}}": str(test_count),
         "{{TRAP_COUNT}}": str(argleton["traps_run"]),
+        "{{SILENT_ERRORS}}": f"{argleton['mapsmith_silent_error_rate']:.2f}",
+        "{{NAIVE_SILENT_ERRORS}}": f"{argleton['naive_silent_error_rate']:.4f}",
         "{{COMMIT}}": _git("rev-parse", "--short", "HEAD") or "unknown",
         "{{WORKED_EXAMPLE}}": worked_example_html(),
         "{{PLAYGROUND}}": playground_html(cases),
