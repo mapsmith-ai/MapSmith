@@ -135,6 +135,47 @@ before any file is touched. It earned that place while this was being written: t
 of the plan passed `distance_m` where the operation declares `distance_meters`, and the validator
 named the argument and listed the three it accepts.
 
+**You can step through this on [mapsmith.dev](https://mapsmith.dev/#step-through)**, one beat at a
+time, along with a second case that GitHub cannot show as well: a file MapSmith refuses. Both are
+executed while that page is built. The residue of the second one is here, because it is the half
+nobody demonstrates.
+
+<!-- cases:start -->
+
+**What it declines to answer.** Asked *“How high is the ground at each of these two wells?”* against a GeoTIFF that opens in every viewer:
+
+| describing the file first | |
+|---|---|
+| `georeferencing_source` | sidecar (.aux.xml) |
+| `georeferencing_sidecar_present` | terrain.tif.aux.xml |
+| `georeferencing_internal_would_give` | cell 10 x 10 at (500000, 5030000) |
+
+```
+…\terrain.tif is georeferenced twice and nobody chose: the GeoTIFF's own tags say cell 10 x 10 at (500000, 5030000), and terrain.tif.aux.xml beside it says something else. GDAL prefers the sidecar, which is correct — that is how an override works — but sample_raster_at_points would then report numbers from a file you did not name, and this record could not say which. describe_dataset lists both. To choose, either remove the sidecar or set GDAL_GEOREF_SOURCES=INTERNAL for a run that must use the file's own.
+```
+
+A number would have come back. It would have been read off a grid a hundred
+kilometres away and at twice the cell size, with nothing in the record able to
+say which of the two readings produced it.
+
+**And the analysis comes back out of the file.** Given only the last output of the
+five-step run above — no plan, no filenames, no field pointing at another record
+— the chain is recovered by hashing it and following every input digest back:
+
+```
+5 operations recovered back to 3 original dataset(s), every one passing its critical checks.
+<- select_features    10 checks
+  <- measure_area       10 checks
+    <- zonal_statistics   7 checks
+      <- clip_layer         12 checks
+        <- buffer_layer       9 checks
+   (original) elevation.tif
+   (original) parcels.gpkg
+   (original) river.gpkg
+```
+
+<!-- cases:end -->
+
 ## Quickstart
 
 Add MapSmith to any MCP client over stdio (Claude Desktop, Claude Code, Cursor, VS Code):

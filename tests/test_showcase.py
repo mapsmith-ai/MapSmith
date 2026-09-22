@@ -136,7 +136,20 @@ def test_the_readme_tool_table_matches_the_registered_tools():
     from mapsmith import server
 
     registered = {t.name for t in server.mcp._tool_manager.list_tools()}
-    documented = set(re.findall(r"^\| `([a-z_]+)` \|", README.read_text(encoding="utf-8"), re.MULTILINE))
+    # The table under `## Tools`, and not every table on the page whose first
+    # cell is a backticked identifier. That looser reading held while there was
+    # only one such table; the first other one -- a two-column table of
+    # georeferencing fields, generated from a run -- was read as three tools
+    # that had been removed. A guard that fires on a page being *extended* is a
+    # guard somebody edits the page to appease.
+    page = README.read_text(encoding="utf-8")
+    start = page.index("\n## Tools\n")
+    section = page[start:].split("\n## ", 2)[1]
+    documented = set(re.findall(r"^\| `([a-z_]+)` \|", section, re.MULTILINE))
+    assert documented, (
+        "no tool table found under `## Tools`, so this compares an empty set "
+        "with the registered tools and passes on a page that lost its table"
+    )
     assert registered == documented, (
         f"missing from the README: {sorted(registered - documented)}; "
         f"documented but gone: {sorted(documented - registered)}"
@@ -1902,4 +1915,115 @@ def test_the_published_doi_is_the_concept_doi():
                                (ROOT / "CITATION.cff").read_text(encoding="utf-8")))
     assert everywhere == {declared.split(".")[-1]}, (
         f"CITATION.cff mentions more than one DOI: {sorted(everywhere)}"
+    )
+
+
+@pytest.mark.slow
+def test_every_case_on_the_page_was_really_executed():
+    """The steppable cases, run here, and checked for having anything in them.
+
+    The page says of these cases that nothing is drawn and nothing is typed in.
+    That sentence is worth exactly as much as this test: a case whose beats
+    render empty looks identical to a case that ran, because the titles are
+    written by hand and only the contents come from an execution.
+
+    So each kind of beat is checked for the thing that could only come from a
+    real run -- a narrowing from the catalogue, a refusal message from an
+    engine, check counts from a manifest on disk, a chain recovered by walking
+    digests. The analysis case is also required to REACH those beats: an
+    exception on the third step would otherwise produce a short, tidy,
+    completely honest-looking case.
+    """
+    import sys
+    import tempfile
+
+    sys.path.insert(0, str(ROOT / "benchmarks"))
+    import playground
+
+    with tempfile.TemporaryDirectory(prefix="mapsmith-cases-test-") as tmp:
+        cases = playground.build(Path(tmp))["cases"]
+
+    by_id = {case["id"]: case for case in cases}
+    assert set(by_id) == {"analysis", "refusal"}, sorted(by_id)
+
+    analysis = by_id["analysis"]
+    kinds = [beat["kind"] for beat in analysis["beats"]]
+    for required in ("question", "discovery", "refused", "ran", "answer", "lineage"):
+        assert required in kinds, (
+            f"the analysis case never reached a {required!r} beat, so the page "
+            f"would render a shorter story than it claims: {kinds}"
+        )
+
+    narrowing = [b for b in analysis["beats"] if b["kind"] == "discovery"]
+    assert len(narrowing) >= 3, len(narrowing)
+    for beat in narrowing:
+        assert beat["catalogue"] and beat["candidates"], beat
+        assert beat["candidates"] < beat["catalogue"], (
+            "a narrowing beat that narrows nothing is the page's own claim "
+            f"failing quietly: {beat}"
+        )
+
+    ran = [b for b in analysis["beats"] if b["kind"] == "ran"]
+    assert len(ran) >= 4, len(ran)
+    for beat in ran:
+        assert beat["checks_total"], f"{beat['title']} reports no checks at all"
+        assert beat["checks_passed"] == beat["checks_total"], beat
+        assert beat["engine"] and "None" not in str(beat["engine"]), beat
+
+    walk = next(b for b in analysis["beats"] if b["kind"] == "lineage")
+    assert len(walk["steps"]) == len(ran), (
+        "the recovered chain has a different number of steps from the run that "
+        f"produced it: {len(walk['steps'])} against {len(ran)}"
+    )
+    assert walk["verified"] is True, walk["summary"]
+    assert all(step["claim"] == "reverified" for step in walk["steps"]), walk["steps"]
+
+    refusal = by_id["refusal"]
+    refused = [b for b in refusal["beats"] if b["kind"] == "refused"]
+    assert refused, "the refusal case did not refuse, which is the whole case"
+    message = refused[0]["message"]
+    assert "georeferenced twice" in message, message
+    # The local build directory must not reach the page.
+    assert "AppData" not in message and ":\\" not in message, message
+    inspected = next(b for b in refusal["beats"] if b["kind"] == "inspect")
+    assert inspected["georeferencing"], (
+        "the inspection beat is empty, so the page shows a file being examined "
+        "and nothing being found"
+    )
+
+
+@pytest.mark.slow
+def test_the_readme_cases_block_is_what_a_real_run_produces():
+    """The block between the markers, regenerated and compared.
+
+    The worked example above it has had this guard since 0.3.0, for a reason
+    that applies here with more force: this block quotes an engine's refusal
+    message verbatim and prints a chain recovered from digests. Both are the
+    kind of text somebody tidies while editing the prose around it, and a
+    tidied refusal message is a claim about what the software says that the
+    software no longer says.
+
+        python benchmarks/playground.py --write-readme
+    """
+    import sys
+    import tempfile
+
+    sys.path.insert(0, str(ROOT / "benchmarks"))
+    import playground
+
+    page = README.read_text(encoding="utf-8")
+    assert playground.START in page and playground.END in page, (
+        "the markers are gone from README.md, so nothing regenerates that block "
+        "and nothing compares it with a run"
+    )
+    shown = page[page.index(playground.START): page.index(playground.END) + len(playground.END)]
+
+    with tempfile.TemporaryDirectory(prefix="mapsmith-cases-readme-") as tmp:
+        fresh = playground.markdown(playground.build(Path(tmp))["cases"])
+
+    assert shown.strip() == fresh.strip(), (
+        "the cases block in README.md is not what a run produces now. Run "
+        "`python benchmarks/playground.py --write-readme` and read the diff "
+        "before committing it: a difference here is either the software "
+        "changing or the page having been edited by hand."
     )

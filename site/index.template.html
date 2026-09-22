@@ -172,6 +172,36 @@ table.tools td:last-child { color: var(--ink-soft); }
 footer { border-top: 1px solid var(--rule); padding: 2.5rem 0 3.5rem; font-size: 0.84rem; color: var(--ink-faint); }
 footer .wrap { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: baseline; }
 footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--mono); font-size: 0.74rem; }
+/* ---------- the cases you step through ---------- */
+.cases { margin: 1.5rem 0 0; }
+.case { padding: 0; border: 0; }
+.case + .case { margin-top: 2rem; }
+.beats { list-style: none; padding: 0; margin: 0; counter-reset: beat; }
+.beat {
+  border: 1px solid var(--rule); border-left: 2px solid var(--accent);
+  background: var(--paper-raised); padding: 1rem 1.25rem; margin: 0 0 0.6rem;
+}
+.beat h4 { margin: 0 0 0.4rem; font-size: 0.98rem; font-weight: 600; }
+.beat p { max-width: none; margin: 0.35rem 0; font-size: 0.94rem; }
+.beat .ask { font-size: 1.02rem; }
+.beat .figure { font-family: var(--mono); font-size: 0.8rem; }
+.beat .quiet { color: var(--ink-soft); font-size: 0.88rem; }
+.beat .bad { color: var(--accent); }
+.beat[data-kind="refused"] { border-left-color: var(--accent); }
+.beat[data-kind="lineage"], .beat[data-kind="answer"] { border-left-color: var(--ok); }
+.beat table.tools { margin-top: 0.5rem; font-size: 0.85rem; }
+/* Only with script: the stepper hides what it is not showing. */
+.stepping .beat[hidden] { display: none; }
+.steps-bar {
+  display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+  margin: 0.75rem 0 0; font-family: var(--mono); font-size: 0.75rem;
+}
+.steps-bar button {
+  font: inherit; padding: 0.4rem 0.9rem; cursor: pointer;
+  border: 1px solid var(--ink); background: var(--paper); color: var(--ink);
+}
+.steps-bar button[disabled] { border-color: var(--rule); color: var(--ink-faint); cursor: default; }
+.steps-bar .where { color: var(--ink-faint); letter-spacing: 0.04em; }
 </style>
 </head>
 <body>
@@ -557,6 +587,24 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <tr><td>preview_map</td><td>An in-chat map panel that shows the verification status of every layer it draws</td></tr>
   </table>
 
+  <h3 style="margin-top:2.5rem" id="step-through">Step through it yourself</h3>
+  <p>
+    Two cases, one beat at a time. Everything in them was <strong>executed while this page was
+    built</strong> — the narrowing comes from the catalogue, the refusals from the validator and
+    the engines, the check counts from the manifests on disk, and the recovered chain from
+    walking real digests. Nothing is drawn, and nothing is typed in.
+  </p>
+  <div class="cases">
+{{PLAYGROUND}}
+  </div>
+  <p style="font-size:0.94rem;color:var(--ink-soft)">
+    You pick the question, not the data. Running GDAL on files uploaded by strangers is one of
+    the most heavily exploited surfaces there is, and this project tells its own users to run
+    MapSmith inside a workspace jail for that reason — an upload box here would break, on our
+    own site, the assumption our security page is built on. So the fixtures are ours and their
+    answers are worked out on paper before anything runs.
+  </p>
+
   <h3 style="margin-top:2.5rem">One question, end to end</h3>
   <p>
     Six parcels, a river and an elevation grid, and five operations picked out of
@@ -657,5 +705,49 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   </nav>
 </div></footer>
 
+<script>
+// Progressive on purpose: the page ships every beat of every case as ordinary
+// HTML, and this only hides them and adds a button. With script off, or if this
+// throws, the reader still sees the whole thing -- which matters more here than
+// elsewhere, because the argument of the page is that nothing on it is drawn.
+(function () {
+  var cases = document.querySelectorAll('.case');
+  if (!cases.length) { return; }
+  document.querySelector('.cases').classList.add('stepping');
+  cases.forEach(function (block) {
+    var beats = Array.prototype.slice.call(block.querySelectorAll('.beat'));
+    if (beats.length < 2) { return; }
+    var at = 0;
+    var bar = document.createElement('div');
+    bar.className = 'steps-bar';
+    var back = document.createElement('button');
+    back.type = 'button'; back.textContent = '← back';
+    var next = document.createElement('button');
+    next.type = 'button'; next.textContent = 'next →';
+    var where = document.createElement('span');
+    where.className = 'where';
+    var all = document.createElement('button');
+    all.type = 'button'; all.textContent = 'show all';
+    bar.appendChild(back); bar.appendChild(next); bar.appendChild(where); bar.appendChild(all);
+    block.appendChild(bar);
+
+    function draw() {
+      beats.forEach(function (beat, index) { beat.hidden = index !== at; });
+      back.disabled = at === 0;
+      next.disabled = at === beats.length - 1;
+      where.textContent = (at + 1) + ' / ' + beats.length;
+    }
+    back.addEventListener('click', function () { if (at > 0) { at--; draw(); } });
+    next.addEventListener('click', function () {
+      if (at < beats.length - 1) { at++; draw(); }
+    });
+    all.addEventListener('click', function () {
+      beats.forEach(function (beat) { beat.hidden = false; });
+      bar.remove();
+    });
+    draw();
+  });
+})();
+</script>
 </body>
 </html>

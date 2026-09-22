@@ -170,6 +170,108 @@ def render(hillshade: Path, basins: Path, destination: Path) -> tuple[int, int]:
     return width, height
 
 
+def _escape(value) -> str:
+    return (
+        str(value)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def _beat_body(beat: dict) -> str:
+    """The content of one beat, by kind.
+
+    Every value here came out of an execution performed during this build. The
+    rendering decides how it looks and never what it says: a beat with nothing
+    in it renders as nothing, rather than as a reassuring sentence.
+    """
+    kind, out = beat["kind"], []
+    if text := beat.get("text"):
+        out.append(f'<p class="ask">{_escape(text)}</p>')
+    if kind == "discovery":
+        declared = ", ".join(
+            f"{_escape(k)}={_escape(v)}" for k, v in (beat.get("declared") or {}).items()
+        )
+        out.append(
+            f'<p class="figure"><b>{beat.get("catalogue")}</b> operations in the catalogue '
+            f'&rarr; <b>{beat.get("candidates")}</b> still applicable once the caller '
+            f"declares what it has: <code>{declared}</code></p>"
+        )
+        if chosen := beat.get("chosen"):
+            out.append(f'<p>Chosen: <code>{_escape(chosen)}</code></p>')
+        if says := beat.get("distinguishes"):
+            out.append(f'<p class="quiet">{_escape(says)}</p>')
+    elif kind == "refused":
+        for error in beat.get("errors") or []:
+            out.append(
+                f'<p class="bad"><code>{_escape(error.get("code"))}</code> '
+                f'{_escape(error.get("message"))}</p>'
+            )
+        if message := beat.get("message"):
+            out.append(f'<pre class="block bad">{_escape(message)}</pre>')
+    elif kind == "inspect":
+        rows = "".join(
+            f"<tr><td><code>{_escape(k)}</code></td><td>{_escape(v)}</td></tr>"
+            for k, v in (beat.get("georeferencing") or {}).items()
+        )
+        out.append(f'<table class="tools"><tbody>{rows}</tbody></table>')
+    elif kind == "ran":
+        passed, total = beat.get("checks_passed"), beat.get("checks_total")
+        out.append(
+            f'<p class="figure">engine <code>{_escape(beat.get("engine"))}</code> '
+            f'&middot; CRS <code>{_escape(beat.get("crs"))}</code> '
+            f'&middot; <b>{passed}/{total}</b> checks passed</p>'
+        )
+        if reason := beat.get("reason"):
+            out.append(f'<p class="quiet">{_escape(reason)}</p>')
+        if names := beat.get("checks"):
+            out.append(
+                '<p class="quiet">'
+                + ", ".join(f"<code>{_escape(n)}</code>" for n in names)
+                + "</p>"
+            )
+    elif kind == "lineage":
+        out.append(f'<p class="figure">{_escape(beat.get("summary"))}</p>')
+        rows = "".join(
+            f'<tr><td style="padding-left:{step["depth"]}rem">'
+            f'<code>{_escape(step["operation"])}</code></td>'
+            f'<td>{step["checks"]} checks</td>'
+            f'<td>{_escape(step["claim"])}</td></tr>'
+            for step in beat.get("steps") or []
+        )
+        out.append(f'<table class="tools"><tbody>{rows}</tbody></table>')
+    elif kind == "answer" and (rows := beat.get("rows")):
+        out.append(f'<pre class="block">{_escape(rows)}</pre>')
+    if note := beat.get("note"):
+        out.append(f'<p class="quiet">{_escape(note)}</p>')
+    return "".join(out)
+
+
+def playground_html(cases: list[dict]) -> str:
+    """The cases, rendered so they read with JavaScript off and step with it on.
+
+    Progressive on purpose. This page has never carried a line of script and its
+    whole argument is that nothing on it is drawn: a visitor with JS disabled,
+    or a reader on a mirror, must still see every beat of every case. The script
+    only hides beats and puts a button under them.
+    """
+    blocks = []
+    for case in cases:
+        beats = "".join(
+            f'<li class="beat" data-kind="{_escape(beat["kind"])}">'
+            f'<h4>{_escape(beat["title"])}</h4>{_beat_body(beat)}</li>'
+            for beat in case["beats"]
+        )
+        blocks.append(
+            f'<section class="case" id="case-{_escape(case["id"])}">'
+            f'<p class="kicker">{_escape(case["point"])}</p>'
+            f'<ol class="beats">{beats}</ol></section>'
+        )
+    return "\n".join(blocks)
+
+
 def worked_example_html() -> str:
     """The end-to-end example, rendered from a run performed during this build.
 
@@ -324,6 +426,16 @@ def main(destination: Path) -> int:
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
     )
 
+    # The steppable cases, every one executed here, in its own directory so a
+    # case cannot read a file another case wrote. `build` raises rather than
+    # returning a case that failed: a page of examples quietly missing the one
+    # that broke is worse than a page with fewer examples.
+    sys.path.insert(0, str(ROOT / "benchmarks"))
+    import playground
+
+    with tempfile.TemporaryDirectory(prefix="mapsmith-cases-") as tmp:
+        cases = playground.build(Path(tmp))["cases"]
+
     sys.path.insert(0, str(ROOT / "src"))
     from mapsmith import __version__
 
@@ -372,6 +484,7 @@ def main(destination: Path) -> int:
         "{{TRAP_COUNT}}": str(argleton["traps_run"]),
         "{{COMMIT}}": _git("rev-parse", "--short", "HEAD") or "unknown",
         "{{WORKED_EXAMPLE}}": worked_example_html(),
+        "{{PLAYGROUND}}": playground_html(cases),
         "{{BUILT}}": manifest["finished_at"][:10],
         "{{UPDATE_CHANNELS}}": " · ".join(
             f'<a href="{url}">{name}</a>' for name, url in UPDATE_CHANNELS
