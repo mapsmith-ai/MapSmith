@@ -349,3 +349,44 @@ def test_a_viewshed_with_no_stations_is_refused_not_answered_with_zeros(tmp_path
         engine.viewshed(
             str(dem), str(empty), str(tmp_path / "x.tif"), station_height=2.0
         )
+
+
+def test_confusing_the_two_pointer_tables_rotates_the_network_by_one_step():
+    """The reason the manifest carries the table and not its name.
+
+    Both conventions are clockwise and use the same set of codes -- the powers
+    of two from 1 to 128 -- one position apart. So a consumer that reads a
+    pointer raster under the wrong table gets a legal direction in every cell
+    and a drainage network rotated 45 degrees, uniformly, in one turn. Nothing
+    raises, the set check in the engine passes, and a rotated network still
+    looks like a drainage network.
+
+    Closed form, and it holds the comment above POINTER_ENCODINGS honest: until
+    2026-09-22 that comment said the two tables "agree on no direction at all"
+    and that reading one as the other mirrors the network about the NE-SW axis.
+    Both followed from a table attributed to the WhiteboxTools manual that the
+    manual does not contain -- `d8_pointer.rs` documents the engine's default
+    exactly as the engine writes it. This test is what that paragraph now rests
+    on, so a future edit that reintroduces the mirror claim fails here.
+    """
+    clockwise = [
+        "north", "northeast", "east", "southeast",
+        "south", "southwest", "west", "northwest",
+    ]
+    ne_first = engine.POINTER_ENCODINGS["northeast_first"]
+    e_first = engine.POINTER_ENCODINGS["east_first"]
+
+    assert set(ne_first.values()) == set(e_first.values()), (
+        "the two tables no longer share a code set, so a wrong reading would be "
+        "detectable by the set check and this whole argument changes"
+    )
+
+    for index, direction in enumerate(clockwise):
+        code = ne_first[direction]
+        read_as = next(k for k, v in e_first.items() if v == code)
+        expected = clockwise[(index + 1) % len(clockwise)]
+        assert read_as == expected, (
+            f"a cell flowing {direction} holds {code}; read with the other table "
+            f"that is {read_as}, and one step clockwise from {direction} is "
+            f"{expected} -- the rotation is no longer uniform"
+        )

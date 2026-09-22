@@ -872,20 +872,34 @@ _POINTER_CODES = {0.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0}
 # grid at 200 with the centre at 100 and exactly one neighbour at 0, so the code
 # the centre receives names that neighbour and nothing else.
 #
-# `northeast_first` is what the engine writes by default, and it is NOT the table
-# the WhiteboxTools manual documents for its own default. The manual says east=1,
-# northeast=2, north=4 -- counter-clockwise from east. The engine writes
-# northeast=1, east=2, southeast=4 -- clockwise from northeast. The two agree on
-# no direction at all, so reading a default pointer with the documented table
-# mirrors the whole drainage network about the NE-SW axis. Nothing raises, and a
-# mirrored network still looks like a drainage network.
+# `northeast_first` is what the engine writes by default, and it is also what
+# whitebox documents for its own default: `d8_pointer.rs` carries the grid
 #
-# `east_first` is the table most desktop GIS software uses, and the engine's
-# alternate mode reproduces it exactly as that software documents it -- so the
-# mismatch above is a defect in whitebox's documentation of its own default, not
-# in its code. It is the second measured whitebox doc/behaviour mismatch after
-# the TIFF predictor bug (issue #32), hence D-048: on this library the installed
-# object is the source, never the manual.
+#     | 64 | 128 | 1  |      northwest 64   north 128   northeast 1
+#     | 32 |  0  | 2  |      west      32       .       east      2
+#     | 16 |  8  | 4  |      southwest 16   south   8   southeast 4
+#
+# and calls it "a clockwise, base-2 numeric index convention". `east_first` is
+# the table most desktop GIS software uses, and the engine's alternate mode
+# reproduces it exactly as that software documents it.
+#
+# Until 2026-09-22 these lines said the opposite: that the manual documented
+# east=1, northeast=2, north=4, counter-clockwise from east, and that the
+# mismatch was a defect in whitebox's documentation of its own default. That
+# table belongs to nobody -- not to whitebox, not to ESRI -- and the paragraph
+# opened with "Both were MEASURED", which was true of the engine's table and
+# asserted of the manual's. A measurement and an assertion sewn into one
+# sentence, where the verb of the first covers the second, in a public file
+# accusing an upstream project of a defect it does not have.
+#
+# The reason for writing the whole table into the manifest is stronger than the
+# claim it replaces. Both conventions are clockwise and use the SAME set of
+# codes -- the powers of two from 1 to 128 -- one position apart. So reading a
+# pointer under the wrong table leaves every cell on a legal direction and
+# rotates the entire drainage network by 45 degrees, uniformly, in one turn.
+# Nothing raises, no set check can see it, and a rotated network still looks
+# like a drainage network. The name of a table cannot be checked against the
+# file; the table can.
 POINTER_ENCODINGS = {
     "northeast_first": {
         "northeast": 1, "east": 2, "southeast": 4, "south": 8,
@@ -1010,8 +1024,11 @@ def flow_direction(
 
     parameters: dict[str, Any] = {"method": method, "tool": tool}
     if coded:
-        # The table itself, not its name: a name is a pointer into documentation
-        # that may be wrong, and on this engine it demonstrably is.
+        # The table itself, not its name. The two conventions share the same set
+        # of codes one position apart, so the name is the only thing that tells
+        # them apart and the name is not in the raster: a consumer that guesses
+        # wrong reads a network rotated 45 degrees with every cell on a legal
+        # direction. See POINTER_ENCODINGS.
         parameters["encoding"] = encoding
         parameters["direction_codes"] = dict(POINTER_ENCODINGS[encoding])
 
