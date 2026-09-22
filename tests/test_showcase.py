@@ -1983,8 +1983,14 @@ def test_every_case_on_the_page_was_really_executed():
     assert refused, "the refusal case did not refuse, which is the whole case"
     message = refused[0]["message"]
     assert "georeferenced twice" in message, message
-    # The local build directory must not reach the page.
-    assert "AppData" not in message and ":\\" not in message, message
+    # The local build directory must not reach the page, and neither must the
+    # separator it was built with. Stripping the temporary directory and leaving
+    # the slash behind made this block come out one way on Windows and another
+    # on Linux, so the committed README and the CI run disagreed by one
+    # character -- a build product that depends on its host, which is the defect
+    # issue #30 removed from the manifests themselves.
+    assert message.startswith("terrain.tif "), message
+    assert "\\" not in message and "AppData" not in message, message
     inspected = next(b for b in refusal["beats"] if b["kind"] == "inspect")
     assert inspected["georeferencing"], (
         "the inspection beat is empty, so the page shows a file being examined "

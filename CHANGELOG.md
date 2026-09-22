@@ -6,7 +6,24 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Two cases on [mapsmith.dev](https://mapsmith.dev/#step-through) that a reader
+  steps through**, both executed while the page is built. One is a whole
+  analysis: the question in plain words, the catalogue narrowing with the counts
+  it produced, a plan refused before anything ran, five steps with their engine,
+  CRS decision and checks read from the manifests, the answer, and the chain
+  recovered from the final file alone. The other is a refusal — a GeoTIFF that
+  opens in every viewer, carrying its georeferencing twice and disagreeing with
+  itself, declined with a message naming both readings and how to choose.
+
+  Nothing in the installable product changed. The script is progressive: every
+  beat ships as ordinary HTML and the script only hides them and adds a button,
+  so the page reads in full with JavaScript off.
+
+  You pick the question, not the data, and that is a security decision rather
+  than a limitation: an upload box would mean running GDAL on files from
+  strangers, which is the assumption `SECURITY.md` is built on refusing.
 
 ## [0.5.1] - 2026-09-21
 

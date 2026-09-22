@@ -281,7 +281,13 @@ def refusal(workdir: Path) -> dict[str, Any]:
             _beat(
                 "refused",
                 "MapSmith declines, and says what it would have had to guess",
-                message=str(refused).replace(str(workdir), "…"),
+                # The file NAME, not the path it happened to be built under.
+                # Stripping the temporary directory left the separator behind,
+                # so this block came out `…\terrain.tif` on Windows and
+                # `…/terrain.tif` on Linux -- a build product that differs by
+                # host, which is the defect this project fixed once already in
+                # the manifests themselves (issue #30) turning up in a page.
+                message=str(refused).replace(str(terrain), terrain.name),
                 note=(
                     "The two readings put the same cell a hundred kilometres "
                     "apart and at twice the size. GDAL prefers the sidecar, which "

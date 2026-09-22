@@ -151,7 +151,7 @@ nobody demonstrates.
 | `georeferencing_internal_would_give` | cell 10 x 10 at (500000, 5030000) |
 
 ```
-…\terrain.tif is georeferenced twice and nobody chose: the GeoTIFF's own tags say cell 10 x 10 at (500000, 5030000), and terrain.tif.aux.xml beside it says something else. GDAL prefers the sidecar, which is correct — that is how an override works — but sample_raster_at_points would then report numbers from a file you did not name, and this record could not say which. describe_dataset lists both. To choose, either remove the sidecar or set GDAL_GEOREF_SOURCES=INTERNAL for a run that must use the file's own.
+terrain.tif is georeferenced twice and nobody chose: the GeoTIFF's own tags say cell 10 x 10 at (500000, 5030000), and terrain.tif.aux.xml beside it says something else. GDAL prefers the sidecar, which is correct — that is how an override works — but sample_raster_at_points would then report numbers from a file you did not name, and this record could not say which. describe_dataset lists both. To choose, either remove the sidecar or set GDAL_GEOREF_SOURCES=INTERNAL for a run that must use the file's own.
 ```
 
 A number would have come back. It would have been read off a grid a hundred
@@ -219,8 +219,10 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 
 This page describes **0.5.1**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. `main` is at 0.5.0 today, with nothing
-unreleased beyond it.
+have to find out by calling a tool that is not there. **`main` is ahead of 0.5.1 today**, by the
+two cases below that a visitor can step through on the site: nothing in the installable product
+changed, no tool, operation or count moved, and the pages that render them are built from `main`.
+[`[Unreleased]` in the changelog](CHANGELOG.md#unreleased) is where anything more would appear.
 
 **If you read manifests written by 0.4.0, 0.5.0 renames several fields**, and the changelog
 lists every one with what to read instead: eight `crs_decisions` keys, the top-level
