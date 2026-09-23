@@ -15,6 +15,7 @@ from shapely.geometry import Polygon
 rasterio = pytest.importorskip("rasterio")
 
 import numpy as np
+from rasterio import warp as rasterio_warp
 from rasterio.transform import from_origin
 
 from mapsmith.engines import raster
@@ -351,3 +352,75 @@ def test_reproject_with_a_resolution_delivers_square_cells_of_that_size(tmp_path
     )
     named = {c["name"]: c["passed"] for c in manifest["verification"]}
     assert named["x-mapsmith:cell_size_is_what_was_asked"] is True
+
+
+def test_a_warp_that_dies_halfway_leaves_a_manifest_beside_the_partial_file(
+    tmp_path, monkeypatch
+):
+    """Invariant 2 on the path where it is easiest to lose: a crash mid-write.
+
+    `reproject_raster` opens the destination and then warps band by band, so a
+    warp that raises on band two leaves a file on disk that is real, plausible
+    and partial -- bands two and three zero-filled. It had no
+    `audit_on_failure`, so no manifest was written beside it, and "a dataset
+    with no lineage beside it did not come from here" became false.
+
+    The `conformita-manifest` agent spotted the missing audit on 2026-09-23 by
+    reading the source and said so as an INFERENCE, to be measured before being
+    treated as a fact. Measured: a 19608-byte raster on disk, no manifest.
+
+    The same run fixes the other half. `target_crs` and `transformation` said
+    where the pixels went, and were written before the warp -- the defect found
+    in `reproject_layer` the same day, in the raster twin nobody had looked at.
+    """
+    src = tmp_path / "three_bands.tif"
+    with rasterio.open(
+        src, "w", driver="GTiff", height=40, width=40, count=3, dtype="float32",
+        crs="EPSG:32632", transform=from_origin(500000, 5000000, 30, 30),
+    ) as dst:
+        for band in (1, 2, 3):
+            dst.write(np.full((40, 40), float(band), dtype="float32"), band)
+
+    real_warp = rasterio_warp.reproject
+    calls = {"n": 0}
+
+    def warp_that_dies_on_the_second_band(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("warp failed on band 2")
+        return real_warp(*args, **kwargs)
+
+    monkeypatch.setattr(rasterio_warp, "reproject", warp_that_dies_on_the_second_band)
+
+    out = tmp_path / "out.tif"
+    with pytest.raises(RuntimeError, match="warp failed on band 2"):
+        raster.reproject_raster(str(src), str(out), "EPSG:4326", "nearest")
+
+    assert out.exists(), (
+        "the destination was created and partially written, which is the "
+        "premise of this test: if it stopped being created before the failure, "
+        "there is no orphan to guard against and this test guards nothing"
+    )
+    manifest_path = Path(f"{out}.provenance.json")
+    assert manifest_path.exists(), (
+        "a partial raster is on disk with no manifest beside it, which is "
+        "invariant 2 broken on exactly the path where the lineage matters most"
+    )
+    written = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for claim in ("target_crs", "transformation"):
+        assert claim not in written["crs_decisions"], (
+            f"the warp raised and the manifest still reports {claim!r}: it says "
+            "where the pixels were put, and they were not put there"
+        )
+    assert written["crs_decisions"]["source_crs"] == "EPSG:32632", (
+        "what was true before the attempt has to survive it: "
+        f"{written['crs_decisions']}"
+    )
+    completed = [
+        c for c in written["verification"]
+        if c["name"] == "x-mapsmith:operation_completed"
+    ]
+    assert completed and completed[0]["passed"] is False, (
+        "the record has to say the run did not finish, or a consumer reads a "
+        f"partial raster as a finished one: {written['verification']}"
+    )

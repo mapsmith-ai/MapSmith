@@ -1127,44 +1127,56 @@ def reproject_raster(
         # rasterio builds its own transformer inside `warp`, so recording the
         # BEST available operation here would describe one that never ran.
         shift = datum.default_operation(src.crs, target_crs)
+        # What is true before any pixel moves. `target_crs` and `transformation`
+        # are NOT here: they say where the pixels were put and by which
+        # operation, and on 2026-09-23 the same shape was found and fixed in
+        # `reproject_layer` -- claims written before the `with`, on a path where
+        # the move happens inside it.
         record.crs_decisions = {
             "analysis_crs": str(target_crs),
             "reason": "the caller asked for this CRS; the grid was recomputed for it with "
             f"the '{resampling}' method, which the caller also chose",
             "source_crs": verify.crs_label(src.crs),
-            "target_crs": str(target_crs),
-            "transformation": shift,
         }
-        if shift["is_ballpark"]:
-            better = shift.get("better_available_m")
-            record.notes.append(
-                "no datum shift was applied between these two CRSs: PROJ selected a "
-                "ballpark operation, which carries the coordinates across as if the "
-                "two datums coincided. Every pixel is correct relative to its "
-                "neighbours and the whole grid can be tens of metres from the true "
-                "position. "
-                + (
-                    f"A published operation with a stated accuracy of {better} m "
-                    "exists for this pair but its grid is not installed here."
-                    if better is not None
-                    else "PROJ has no published operation for this pair at all."
-                )
-            )
         profile = src.profile.copy()
         profile.update(crs=target_crs, transform=transform, width=width, height=height)
         for key in ("blockxsize", "blockysize", "tiled"):
             profile.pop(key, None)
-        with rasterio.open(output_path, "w", **profile) as dst:
-            grid.preserve(src, dst)
-            for band in range(1, src.count + 1):
-                warp(
-                    source=rasterio.band(src, band),
-                    destination=rasterio.band(dst, band),
-                    src_transform=src.transform,
-                    src_crs=src.crs,
-                    dst_transform=transform,
-                    dst_crs=target_crs,
-                    resampling=method,
+        # Measured on 2026-09-23: with a three-band input and a warp that raises
+        # on the second band, this left a 19608-byte raster on disk and NO
+        # manifest -- bands two and three zero-filled, a plausible-looking file
+        # with no lineage beside it. Invariant 2 says a dataset without a
+        # manifest did not come from here, and that one had.
+        with verify.audit_on_failure(record, output_path, []):
+            with rasterio.open(output_path, "w", **profile) as dst:
+                grid.preserve(src, dst)
+                for band in range(1, src.count + 1):
+                    warp(
+                        source=rasterio.band(src, band),
+                        destination=rasterio.band(dst, band),
+                        src_transform=src.transform,
+                        src_crs=src.crs,
+                        dst_transform=transform,
+                        dst_crs=target_crs,
+                        resampling=method,
+                    )
+            # The pixels are there now, so the record may say where they went.
+            record.crs_decisions["target_crs"] = str(target_crs)
+            record.crs_decisions["transformation"] = shift
+            if shift["is_ballpark"]:
+                better = shift.get("better_available_m")
+                record.notes.append(
+                    "no datum shift was applied between these two CRSs: PROJ selected a "
+                    "ballpark operation, which carries the coordinates across as if the "
+                    "two datums coincided. Every pixel is correct relative to its "
+                    "neighbours and the whole grid can be tens of metres from the true "
+                    "position. "
+                    + (
+                        f"A published operation with a stated accuracy of {better} m "
+                        "exists for this pair but its grid is not installed here."
+                        if better is not None
+                        else "PROJ has no published operation for this pair at all."
+                    )
                 )
 
     checks: list[verify.Check] = []
