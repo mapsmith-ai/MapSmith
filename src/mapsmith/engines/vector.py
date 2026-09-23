@@ -18,7 +18,12 @@ import pandas as pd
 import shapely
 
 from .. import antimeridian, datum, readers, stacks, verify
-from ..provenance import InputRecord, ProvenanceRecord, alignment_decisions
+from ..provenance import (
+    InputRecord,
+    ProvenanceRecord,
+    alignment_decisions,
+    record_round_trip,
+)
 
 
 def _engine_info() -> dict[str, str]:
@@ -111,7 +116,6 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
         open_source_decision = alignment_decisions(
             analysis_crs,
             "estimated UTM zone for metric buffering on a geographic CRS",
-            returned_to=original_crs,
         )
         buffered = gdf.to_crs(analysis_crs)
         buffered["geometry"] = buffered.geometry.buffer(distance_meters)
@@ -129,6 +133,12 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
     # engine produced. A CRS decision is a record of what happened, so it is
     # written by whichever branch actually happens.
     record.crs_decisions = open_source_decision
+    if on_a_geographic_crs:
+        # AFTER the way back, which on this branch already happened above: see
+        # `record_round_trip`. It goes here rather than beside the `to_crs`
+        # because `record.crs_decisions` is assigned by whichever branch really
+        # ran, and the Esri branch below discards `buffered` without travelling.
+        record_round_trip(record, analysis_crs, original_crs)
 
     if routing["stack"] == "esri":
         # The backend computes; verification and the manifest stay MapSmith's.
@@ -608,7 +618,6 @@ def nearest_join(
                 # The right layer went to the LEFT layer's CRS, not to the UTM
                 # zone: both are taken out to UTM together on the next line.
                 moved_to=original_crs,
-                returned_to=original_crs,
             ),
         }
         left_m, right_m = left.to_crs(analysis_crs), right.to_crs(analysis_crs)
@@ -630,6 +639,8 @@ def nearest_join(
         joined = joined.drop(columns=[c for c in ("index_right",) if c in joined.columns])
         if original_crs.is_geographic:
             joined = joined.to_crs(original_crs)
+            # AFTER the way back, never before: see `record_round_trip`.
+            record_round_trip(record, analysis_crs, original_crs)
         _write(joined, output_path)
     manifest, extras = verify.audited(
         record,
@@ -838,7 +849,6 @@ def simplify(input_path: str, tolerance_meters: float, output_path: str) -> dict
             analysis_crs,
             "estimated UTM zone for metric simplification on a geographic CRS; "
             "output geometries are returned in the input CRS",
-            returned_to=original_crs,
         )
         work = gdf.to_crs(analysis_crs)
         restore = True
@@ -881,6 +891,8 @@ def simplify(input_path: str, tolerance_meters: float, output_path: str) -> dict
         )
         if restore:
             work = work.to_crs(original_crs)
+            # AFTER the way back, never before: see `record_round_trip`.
+            record_round_trip(record, analysis_crs, original_crs)
         _write(work, output_path)
     manifest, extras = verify.audited(
         record,
@@ -931,7 +943,6 @@ def centroid(input_path: str, output_path: str) -> dict[str, Any]:
             analysis_crs,
             "estimated UTM zone for planar centroids on a geographic CRS; "
             "output points are returned in the input CRS",
-            returned_to=original_crs,
         )
         work = gdf.to_crs(analysis_crs)
         restore = True
@@ -953,6 +964,8 @@ def centroid(input_path: str, output_path: str) -> dict[str, Any]:
         work[work.geometry.name] = work.geometry.centroid
         if restore:
             work = work.to_crs(original_crs)
+            # AFTER the way back, never before: see `record_round_trip`.
+            record_round_trip(record, analysis_crs, original_crs)
         _write(work, output_path)
     manifest, extras = verify.audited(
         record,

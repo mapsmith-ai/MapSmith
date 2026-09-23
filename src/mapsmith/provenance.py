@@ -174,7 +174,6 @@ def alignment_decisions(
     reason: str,
     moved: Sequence[tuple[str, Any]] = (),
     *,
-    returned_to: Any = None,
     moved_to: Any = None,
 ) -> dict[str, Any]:
     """`crs_decisions` for an operation that brings its other inputs to one CRS.
@@ -203,17 +202,10 @@ def alignment_decisions(
     when several did with different pairs — once, in the place able to hold it,
     rather than twice.
 
-    `returned_to` is for the other shape: the operation computed somewhere else
-    because it needed metres, and wrote its output back in the caller's CRS.
-    Recorded because the round trip is not free and the manifest said nothing
-    about it. `estimate_utm_crs()` answers with a **WGS 84** UTM zone whatever
-    the input's datum is — measured on 2026-09-06 — so buffering a NAD27 layer
-    crosses a datum on the way out and again on the way back, seven metres each
-    way. The two legs largely cancel over the extent of one feature, which is
-    why nothing looked wrong; the record says it happened rather than leaving a
-    reader to assume it did not. Both legs are recorded, each asked of PROJ
-    on its own pair: whether the way back is the same operation as the way
-    out has an answer, and is not something to assert.
+    The other shape — the operation computed somewhere else because it needed
+    metres, and wrote its output back in the caller's CRS — is NOT recorded
+    here. It is recorded by `record_round_trip`, after the way back has
+    actually happened, and the reason is in that function.
     """
     from . import datum
 
@@ -221,17 +213,6 @@ def alignment_decisions(
         "analysis_crs": _crs_label(analysis_crs),
         "reason": reason,
     }
-    if returned_to is not None and not _same_crs(returned_to, analysis_crs):
-        # BOTH legs, each asked of PROJ, because the trip is two operations and
-        # not one applied twice. Until 2026-09-07 this wrote the outbound leg and
-        # `"applied_twice": True` -- a constant, never computed, and an inference:
-        # PROJ is free to pick a different operation for the reverse pair. A field
-        # whose value is always the same is not a field, it is part of what the key
-        # means. Two measured legs say "twice" by showing it.
-        decisions[ROUND_TRIP] = {
-            "transformation": datum.default_operation(returned_to, analysis_crs),
-            "return_transformation": datum.default_operation(analysis_crs, returned_to),
-        }
     if not moved:
         return decisions
     entries = [
@@ -253,6 +234,47 @@ def alignment_decisions(
             entry["transformation"] = shift
     decisions[INPUTS_REPROJECTED] = entries
     return decisions
+
+
+def record_round_trip(record: Any, analysis_crs: Any, returned_to: Any) -> None:
+    """Record a completed round trip — called AFTER the way back has happened.
+
+    An operation that needs metres computes somewhere else and writes its output
+    back in the caller's CRS. The trip is not free and the manifest used to say
+    nothing about it: `estimate_utm_crs()` answers with a **WGS 84** UTM zone
+    whatever the input's datum is (measured 2026-09-06), so buffering a NAD27
+    layer crosses a datum on the way out and again on the way back, seven metres
+    each way. The two legs largely cancel over one feature, which is why nothing
+    ever looked wrong.
+
+    Both legs are recorded, each asked of PROJ on its own pair, because the trip
+    is two operations and not one applied twice. Until 2026-09-07 this wrote the
+    outbound leg and `"applied_twice": True` — a constant, never computed, and
+    an inference: PROJ is free to pick a different operation for the reverse
+    pair, and on the README's own example it does, an operation and its inverse.
+
+    **Why it is a function of its own, and called late.** Until 2026-09-23 the
+    pair was built inside `alignment_decisions`, which three of the four callers
+    invoke *before* the return leg runs — and the return leg runs inside
+    `audit_on_failure`. So a `to_crs` that raised on the way back produced a
+    manifest asserting a round trip that never completed: the audit trail
+    surviving the error, which is invariant 3 working, carrying a claim that had
+    become false, which is invariant 3 defeated. `buffer_layer` was the only one
+    with the right order and it was right by accident — the Esri branch forced
+    the assignment down, not a thought about the error path.
+
+    So the order is now the contract: `alignment_decisions` says where the work
+    happened, this says the output came home, and it can only be called where
+    that is true.
+    """
+    from . import datum
+
+    if returned_to is None or _same_crs(returned_to, analysis_crs):
+        return
+    record.crs_decisions[ROUND_TRIP] = {
+        "transformation": datum.default_operation(returned_to, analysis_crs),
+        "return_transformation": datum.default_operation(analysis_crs, returned_to),
+    }
 
 
 def _crs_label(crs: Any) -> str:

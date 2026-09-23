@@ -303,10 +303,13 @@ def test_buffering_a_geographic_layer_records_the_round_trip_it_makes(tmp_path):
     # can, and it is the pair in the README's example manifest: the way back
     # carries `+inv`. That is the evidence `applied_twice` was a description and
     # not a measurement -- it called an operation and its inverse the same one.
-    from mapsmith.provenance import alignment_decisions
+    from types import SimpleNamespace
 
-    wgs = alignment_decisions("EPSG:32632", "worked example", returned_to="EPSG:4326")
-    legs = wgs[ROUND_TRIP]
+    from mapsmith.provenance import record_round_trip
+
+    scratch = SimpleNamespace(crs_decisions={})
+    record_round_trip(scratch, "EPSG:32632", "EPSG:4326")
+    legs = scratch.crs_decisions[ROUND_TRIP]
     assert legs["transformation"]["pipeline"] != legs["return_transformation"]["pipeline"], (
         "the two legs were asked of PROJ separately, so where it names them at "
         f"all they must not come back identical: {legs}"
@@ -524,4 +527,93 @@ def test_no_new_operation_transforms_coordinates_in_silence():
     assert not gone, (
         f"these are listed as silent but no longer reproject: {gone}. "
         "Remove them from STILL_SILENT - a ratchet that is not tightened is a list."
+    )
+
+
+def test_a_round_trip_that_never_came_home_is_not_recorded_as_one(tmp_path, monkeypatch):
+    """The audit trail survives the error; the claim inside it must not.
+
+    Invariant 3 says verification is recorded before a critical failure raises,
+    so the diagnosis outlives the crash. `x-mapsmith:round_trip` used to be
+    written by `alignment_decisions`, which three of the four callers invoke
+    *before* the return leg runs -- and the return leg runs inside
+    `audit_on_failure`. So a `to_crs` that raised on the way back produced a
+    manifest asserting a trip that never completed: the mechanism that keeps the
+    audit trail honest, carrying a sentence that had become false.
+
+    `buffer_layer` was the only one with the right order, and it was right by
+    accident: the Esri branch forced the assignment down the function, not a
+    thought about the error path. That is why this test drives all four.
+
+    The sabotage is the return leg itself, so the failure is the one the defect
+    needs: the outbound trip happens, the work happens, and only the way home
+    raises.
+    """
+    gpd = pytest.importorskip("geopandas")
+    pytest.importorskip("shapely")
+    from shapely.geometry import Point
+
+    from mapsmith.engines import vector
+    from mapsmith.provenance import ROUND_TRIP
+
+    left = tmp_path / "wells.gpkg"
+    gpd.GeoDataFrame(
+        {"name": ["a", "b"]},
+        geometry=[Point(-104.9, 39.7), Point(-104.8, 39.8)],
+        crs="EPSG:4267",
+    ).to_file(left, layer="wells", driver="GPKG")
+    right = tmp_path / "towns.gpkg"
+    gpd.GeoDataFrame(
+        {"town": ["x"]}, geometry=[Point(-104.85, 39.75)], crs="EPSG:4267"
+    ).to_file(right, layer="towns", driver="GPKG")
+
+    real_to_crs = gpd.GeoDataFrame.to_crs
+
+    def to_crs_that_never_returns(self, crs=None, *args, **kwargs):
+        # The RETURN leg only: the one heading back to the caller's geographic
+        # CRS. The way out has to succeed, or the trip is never claimed at all
+        # and there is nothing for this test to catch.
+        target = crs if crs is not None else kwargs.get("crs")
+        if target is not None and str(target).endswith("4267"):
+            raise RuntimeError("the way back failed")
+        return real_to_crs(self, crs, *args, **kwargs)
+
+    monkeypatch.setattr(gpd.GeoDataFrame, "to_crs", to_crs_that_never_returns)
+
+    cases = [
+        ("buffer", lambda out: vector.buffer(str(left), 50.0, str(out))),
+        ("simplify", lambda out: vector.simplify(str(left), 1.0, str(out))),
+        ("centroid", lambda out: vector.centroid(str(left), str(out))),
+        ("nearest_join", lambda out: vector.nearest_join(
+            str(left), str(right), str(out))),
+    ]
+    audited = []
+    for name, call in cases:
+        destination = tmp_path / f"{name}.gpkg"
+        # `RuntimeError` and not `Exception`: the first version of this test
+        # asked for `Exception` and swallowed three `AttributeError`s, because
+        # three of the four function names in it were wrong. It drove one
+        # operation and passed anyway -- including with the defect put back.
+        # The sabotage caught that; reading the green did not.
+        with pytest.raises(RuntimeError, match="the way back failed"):
+            call(destination)
+        manifest_path = destination.with_suffix(
+            destination.suffix + ".provenance.json"
+        )
+        if not manifest_path.exists():
+            # An operation can fail before its audit opens: there is no record
+            # there, so there is no claim to contradict.
+            continue
+        audited.append(name)
+        written = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert ROUND_TRIP not in written.get("crs_decisions", {}), (
+            f"{name}: the return leg raised and the manifest still claims a "
+            f"completed round trip: {written['crs_decisions'][ROUND_TRIP]}"
+        )
+    # Three of the four write a manifest on the failing path, and they are the
+    # three that had the wrong order. The count is asserted because on a day it
+    # dropped, this test would keep passing while guarding less.
+    assert len(audited) >= 3, (
+        f"only {audited} reached their own audit on the way back: the sabotage "
+        "is landing too early and this test guards less than it claims"
     )
