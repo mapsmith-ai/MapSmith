@@ -354,6 +354,13 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
     # The field section 3.7 of the manifest spec calls "where this format earns
     # its keep", and which this operation left empty until 2026-08-27 -- the one
     # operation whose entire purpose IS a decision about the CRS.
+    # Split in two, on 2026-09-23, for the reason `record_round_trip` exists.
+    # What is true before anything moves goes here; what only becomes true once
+    # the coordinates have actually moved goes after the transform. Until then
+    # all of it was written up front, so a `_transformed` that raised left a
+    # manifest saying `target_crs: EPSG:4326` and a seven-metre transformation
+    # beside coordinates that had not gone anywhere -- and section 3.7 defines
+    # `target_crs` as "the coordinate system they WERE PUT INTO".
     record.crs_decisions = {
         "analysis_crs": verify.crs_label(target),
         "reason": (
@@ -361,26 +368,29 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
             "stated accuracy and the choice is recorded beside it"
         ),
         "source_crs": verify.crs_label(gdf.crs),
-        "target_crs": verify.crs_label(target),
-        "transformation": shift,
     }
-    if shift.get("x-mapsmith:default_was_ballpark"):
-        record.notes.append(
-            "the transformation this library selects by default for this pair is a "
-            "ballpark one, which applies no datum shift at all; a published operation "
-            f"with a stated accuracy of {shift['accuracy_m']} m was used instead"
-        )
-    if shift["is_ballpark"]:
-        record.notes.append(
-            "no datum transformation is available for this pair, so the coordinates "
-            "were carried across as if the two datums coincided (PROJ calls this a "
-            "ballpark transformation). The result is not shifted; how far it is from "
-            "the true position depends on the datums and can be tens of metres."
-        )
     with verify.audit_on_failure(record, output_path, pre):
         reprojected = gdf.set_geometry(
             gdf.geometry.apply(lambda g: _transformed(g, transformer))
         ).set_crs(target, allow_override=True)
+        # The coordinates are there now, so the record may say where they went
+        # and by which operation. The notes are the same claim in prose and move
+        # with it: both say what WAS applied.
+        record.crs_decisions["target_crs"] = verify.crs_label(target)
+        record.crs_decisions["transformation"] = shift
+        if shift.get("x-mapsmith:default_was_ballpark"):
+            record.notes.append(
+                "the transformation this library selects by default for this pair is a "
+                "ballpark one, which applies no datum shift at all; a published operation "
+                f"with a stated accuracy of {shift['accuracy_m']} m was used instead"
+            )
+        if shift["is_ballpark"]:
+            record.notes.append(
+                "no datum transformation is available for this pair, so the coordinates "
+                "were carried across as if the two datums coincided (PROJ calls this a "
+                "ballpark transformation). The result is not shifted; how far it is from "
+                "the true position depends on the datums and can be tens of metres."
+            )
         _write(reprojected, output_path)
     # reprojection carries geometry through verbatim, so an invalid input gives
     # an invalid output: this is where mechanical repair actually earns its keep
@@ -612,8 +622,7 @@ def nearest_join(
         record.crs_decisions = {
             **alignment_decisions(
                 analysis_crs,
-                "estimated UTM zone for metric nearest-distance on a geographic CRS; "
-                "output geometries are returned in the input CRS",
+                "estimated UTM zone for metric nearest-distance on a geographic CRS",
                 moved_right,
                 # The right layer went to the LEFT layer's CRS, not to the UTM
                 # zone: both are taken out to UTM together on the next line.
@@ -847,8 +856,7 @@ def simplify(input_path: str, tolerance_meters: float, output_path: str) -> dict
         analysis_crs = gdf.estimate_utm_crs()
         record.crs_decisions = alignment_decisions(
             analysis_crs,
-            "estimated UTM zone for metric simplification on a geographic CRS; "
-            "output geometries are returned in the input CRS",
+            "estimated UTM zone for metric simplification on a geographic CRS",
         )
         work = gdf.to_crs(analysis_crs)
         restore = True
@@ -941,8 +949,7 @@ def centroid(input_path: str, output_path: str) -> dict[str, Any]:
         analysis_crs = gdf.estimate_utm_crs()
         record.crs_decisions = alignment_decisions(
             analysis_crs,
-            "estimated UTM zone for planar centroids on a geographic CRS; "
-            "output points are returned in the input CRS",
+            "estimated UTM zone for planar centroids on a geographic CRS",
         )
         work = gdf.to_crs(analysis_crs)
         restore = True

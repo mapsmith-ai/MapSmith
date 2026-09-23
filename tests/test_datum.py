@@ -617,3 +617,132 @@ def test_a_round_trip_that_never_came_home_is_not_recorded_as_one(tmp_path, monk
         f"only {audited} reached their own audit on the way back: the sabotage "
         "is landing too early and this test guards less than it claims"
     )
+
+
+def test_a_reprojection_that_raised_does_not_claim_the_coordinates_moved(
+    tmp_path, monkeypatch
+):
+    """`reproject_layer` had the defect its three siblings were fixed for.
+
+    Found by the `conformita-manifest` agent on 2026-09-23, straight after the
+    round-trip fix, by asking the question that fix left open: is any other key
+    assigned before the fact it asserts? One was. `target_crs` and
+    `transformation` were written before the `with audit_on_failure`, while the
+    coordinates only move inside it -- so a `_transformed` that raised left a
+    manifest reporting `target_crs: EPSG:4326` and a seven-metre transformation
+    beside geometry that had not gone anywhere.
+
+    Section 3.7 defines `target_crs` as "the coordinate system they were put
+    into". Nothing was put anywhere. `x-mapsmith:operation_completed` comes back
+    false in that record, which a careful consumer sees -- and that mitigation
+    was judged insufficient for the round trip this morning, so it is
+    insufficient here.
+
+    `source_crs`, `reason` and `analysis_crs` stay where they were: they are
+    true before anything moves, and a failed run still needs them to be
+    diagnosable.
+    """
+    gpd = pytest.importorskip("geopandas")
+    pytest.importorskip("shapely")
+    from shapely.geometry import Point
+
+    from mapsmith.engines import vector
+
+    source = tmp_path / "points.gpkg"
+    gpd.GeoDataFrame(
+        {"name": ["a"]}, geometry=[Point(-104.9, 39.7)], crs="EPSG:4267"
+    ).to_file(source, layer="points", driver="GPKG")
+
+    def transform_that_fails(geometry, transformer):
+        raise RuntimeError("the transform failed")
+
+    monkeypatch.setattr(vector, "_transformed", transform_that_fails)
+
+    out = tmp_path / "out.gpkg"
+    with pytest.raises(RuntimeError, match="the transform failed"):
+        vector.reproject(str(source), "EPSG:4326", str(out))
+
+    manifest_path = out.with_suffix(out.suffix + ".provenance.json")
+    assert manifest_path.exists(), (
+        "audit_on_failure must still write the record: the diagnosis outliving "
+        "the error is invariant 3, and this test is about what the record says, "
+        "not about whether it exists"
+    )
+    written = json.loads(manifest_path.read_text(encoding="utf-8"))
+    decisions = written["crs_decisions"]
+    for claim in ("target_crs", "transformation"):
+        assert claim not in decisions, (
+            f"the transform raised and the manifest still reports {claim!r}: "
+            f"{decisions[claim]}"
+        )
+    assert decisions["source_crs"] == "EPSG:4267", (
+        "what was true before the attempt has to survive it, or a failed run "
+        f"cannot be diagnosed: {decisions}"
+    )
+    assert not [n for n in written.get("notes", []) if "were carried across" in n], (
+        "the ballpark note says the coordinates were carried across; on a run "
+        "where nothing was carried anywhere it is the same false claim in prose"
+    )
+
+
+def test_every_operation_that_travels_records_the_trip(tmp_path):
+    """All four callers of `record_round_trip`, on the branch that travels.
+
+    The `conformita-manifest` agent measured, on 2026-09-23, that across the
+    whole suite `record_round_trip` was reached by two of the four: `buffer`,
+    through the test above, and `centroid`, through the conformance sweep.
+    `simplify` and `nearest_join` reached it from nowhere.
+
+    That mattered because of what the sibling test checks. It drives all four,
+    but on a path where the return leg raises, so the call never runs and the
+    assertion is about the key being ABSENT -- which stays true if somebody
+    deletes the call. Two of the three operations that actually had the wrong
+    order had no test that the key is written at all.
+
+    So this is the positive half, and the two halves together pin the contract:
+    the key appears when the output came home, and does not when it did not.
+    """
+    gpd = pytest.importorskip("geopandas")
+    pytest.importorskip("shapely")
+    from shapely.geometry import Point
+
+    from mapsmith.engines import vector
+    from mapsmith.provenance import ROUND_TRIP
+
+    left = tmp_path / "wells.gpkg"
+    gpd.GeoDataFrame(
+        {"name": ["a", "b"]},
+        geometry=[Point(-93.10, 34.50), Point(-93.00, 34.60)],
+        crs="EPSG:4267",
+    ).to_file(left, layer="wells", driver="GPKG")
+    right = tmp_path / "towns.gpkg"
+    gpd.GeoDataFrame(
+        {"town": ["x"]}, geometry=[Point(-93.05, 34.55)], crs="EPSG:4267"
+    ).to_file(right, layer="towns", driver="GPKG")
+
+    cases = [
+        ("buffer", lambda out: vector.buffer(str(left), 100.0, str(out))),
+        ("simplify", lambda out: vector.simplify(str(left), 1.0, str(out))),
+        ("centroid", lambda out: vector.centroid(str(left), str(out))),
+        ("nearest_join", lambda out: vector.nearest_join(
+            str(left), str(right), str(out))),
+    ]
+    for name, call in cases:
+        out = tmp_path / f"{name}.gpkg"
+        call(out)
+        manifest = json.loads(
+            Path(f"{out}.provenance.json").read_text(encoding="utf-8")
+        )
+        trip = manifest["crs_decisions"].get(ROUND_TRIP)
+        assert trip is not None, (
+            f"{name} went out to an estimated UTM zone and came back in the "
+            "caller's CRS, and its manifest says nothing about the trip: "
+            f"{sorted(manifest['crs_decisions'])}"
+        )
+        assert set(trip) == {"transformation", "return_transformation"}, (
+            f"{name}: both legs, and only the legs, belong in this key: {trip}"
+        )
+        assert gpd.read_file(out).crs.to_epsg() == 4267, (
+            f"{name}: the output has to come back in the caller's CRS, or the "
+            "key describes a trip that did not end where it claims"
+        )
