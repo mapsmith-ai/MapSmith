@@ -122,6 +122,47 @@ def _is_in_degrees(crs: Any) -> bool:
         return False
 
 
+def naive_crossings(gdf: Any) -> list[int]:
+    """Polygons drawn across the 180th meridian as one ring, which the plane inverts.
+
+    A zone from 170°E to 170°W written as a single ring --
+    `(170, -5), (-170, -5), (-170, 5), (170, 5)` -- is, to shapely and every other
+    planar library, the band from 170°W to 170°E: the rest of the planet. Measured
+    on 2026-09-24 with `count_in_polygons` over two points, one at 175°E inside the
+    real zone and one at 0°: the first was dropped, the second counted, and the
+    total was 1 -- the same as the truth. So no number in the output betrays it.
+    Split at 180 the way RFC 7946 §3.1.9 prescribes, the same zone is right.
+
+    The signature is an edge that jumps more than half the world in longitude
+    between two consecutive vertices. A real edge that long, drawn straight in a
+    geographic CRS, is not a thing anybody means; the crossing artefact is exactly
+    that. Returns the positions of the offending features, so a caller can refuse
+    with their indices. Degrees only, for the reason `_is_in_degrees` gives.
+    """
+    import numpy as np
+
+    if gdf.crs is None or not _is_in_degrees(gdf.crs):
+        return []
+
+    def rings(geometry: Any) -> list[Any]:
+        if geometry is None or geometry.is_empty:
+            return []
+        if geometry.geom_type == "Polygon":
+            return [geometry.exterior, *geometry.interiors]
+        if geometry.geom_type == "MultiPolygon":
+            return [ring for part in geometry.geoms for ring in rings(part)]
+        return []
+
+    offending = []
+    for position, geometry in enumerate(gdf.geometry):
+        for ring in rings(geometry):
+            longitudes = np.asarray(ring.coords)[:, 0]
+            if longitudes.size > 1 and np.abs(np.diff(longitudes)).max() > HALF_THE_WORLD:
+                offending.append(position)
+                break
+    return offending
+
+
 def describe_extent(gdf: Any) -> dict[str, Any]:
     """The extent of a layer, and what it means if it crosses the antimeridian.
 

@@ -2388,6 +2388,28 @@ def validate_geometry(input_path: str, output_path: str) -> dict[str, Any]:
     }
 
 
+def _refuse_naive_antimeridian(polygons: gpd.GeoDataFrame, polygons_path: str) -> None:
+    """Refuse a polygon drawn across the 180th meridian as a single ring.
+
+    The plane reads such a ring as its complement -- the rest of the planet --
+    so a point inside the real zone is dropped and one on the far side is
+    counted, and the total can equal the truth. See
+    `antimeridian.naive_crossings`. Refused rather than repaired: splitting the
+    ring means deciding which side is meant, which is the caller's decision
+    and the reason the file is ambiguous in the first place.
+    """
+    offending = antimeridian.naive_crossings(polygons)
+    if offending:
+        raise ValueError(
+            f"{polygons_path}: feature(s) {offending[:5]}"
+            f"{' and more' if len(offending) > 5 else ''} cross the 180th meridian "
+            "as a single ring, which every planar library reads as the rest of the "
+            "planet: points inside the zone would be dropped and points on the far "
+            "side counted. Split the ring at 180 into two parts (RFC 7946 section "
+            "3.1.9), or use a projected CRS centred on the zone."
+        )
+
+
 #: How a point is placed in a polygon, and only these two. `contains` was the
 #: third until 2026-09-24 and placed nothing, ever: `sjoin(points, polygons,
 #: predicate)` evaluates `predicate(point, polygon)`, so it asked whether a POINT
@@ -2421,6 +2443,22 @@ def count_in_polygons(
         )
     points = _read(points_path)
     polygons = _read(polygons_path)
+    _refuse_naive_antimeridian(polygons, polygons_path)
+    # Points only, and for the reason its sibling found first: a MultiPoint
+    # straddling two polygons was counted in both, as two points, and a polygon
+    # layer passed as the points was counted without a word. Measured on
+    # 2026-09-24. Null and empty geometries are not refused -- they have no
+    # position, which is a different fact from a wrong one, and they are
+    # counted apart below.
+    has_position = points.geometry.notna() & ~points.geometry.is_empty
+    kinds = set(points.geometry[has_position].geom_type)
+    if kinds - {"Point"}:
+        raise ValueError(
+            f"{points_path} holds {sorted(kinds - {'Point'})} geometries, and this "
+            "operation counts points: a multi-part or areal feature can fall in "
+            "several polygons at once and be counted in each. Explode multi-points "
+            "into single points first (explode_layer)."
+        )
     record = ProvenanceRecord(
         operation="count_in_polygons",
         parameters={"predicate": predicate, "count_column": count_column},
@@ -2436,26 +2474,32 @@ def count_in_polygons(
     if verify.has_critical_failure(pre):
         record.add_verification(pre).finish().write_for(output_path)
         verify.enforce(pre, "count_in_polygons")
-    aligned = not verify.same_crs(points.crs, polygons.crs)
+    original_points_crs = points.crs
+    aligned = not verify.same_crs(original_points_crs, polygons.crs)
+    if aligned:
+        points = points.to_crs(polygons.crs)
+    # After the move, and one call for both branches. This wrote the decision
+    # before `to_crs` and then overwrote it by hand when nothing moved -- no
+    # false record reached disk, because nothing is written between the two
+    # lines, but it is the order six operations were fixed for on 2026-09-23.
     record.crs_decisions = alignment_decisions(
         polygons.crs,
         "the points are brought onto the polygons' CRS before counting"
         if aligned
-        else "the points are already in the polygons' CRS; nothing was reprojected",
-        [("points_path", points.crs)] if aligned else [],
+        else "both layers share a CRS; nothing was reprojected",
+        [("points_path", original_points_crs)] if aligned else [],
     )
-    if aligned:
-        points = points.to_crs(polygons.crs)
-    else:
-        record.crs_decisions = {
-            "analysis_crs": verify.crs_label(polygons.crs),
-            "reason": "both layers share a CRS; no reprojection needed",
-        }
     pre += verify.verify_input_pairs(
         "count_in_polygons", points_path=points, polygons_path=polygons
     )
+    without_geometry = int((~has_position).sum())
+    located = points.loc[has_position, [points.geometry.name]]
     with verify.audit_on_failure(record, output_path, pre):
-        joined = gpd.sjoin(points, polygons, predicate=predicate, how="inner")
+        # Geometry only on both sides: the counts need nothing else, and the
+        # join used to carry every column of both layers.
+        joined = gpd.sjoin(
+            located, polygons[[polygons.geometry.name]], predicate=predicate, how="inner"
+        )
         counts = joined.groupby("index_right").size()
         result = polygons.copy()
         result[count_column] = [int(counts.get(i, 0)) for i in result.index]
@@ -2463,20 +2507,28 @@ def count_in_polygons(
 
     matched = int(joined["index_right"].notna().sum())
     distinct_points = len(set(joined.index))
-    unplaced = len(points) - distinct_points
+    # Over the points that HAVE a position. A null or empty geometry used to
+    # land here as a point "in no polygon", and the hint sent the reader to
+    # check the boundaries while the defect was in the points.
+    unplaced = len(located) - distinct_points
     record.notes.append(
-        f"{distinct_points} of {len(points)} points fall in at least one polygon "
-        f"under `{predicate}`; the counts sum to {matched}, which exceeds the "
+        f"{distinct_points} of {len(located)} located points fall in at least one "
+        f"polygon under `{predicate}`; the counts sum to {matched}, which exceeds the "
         "number of points when polygons overlap or share edges"
         if matched != distinct_points
-        else f"{distinct_points} of {len(points)} points fall in a polygon under "
-        f"`{predicate}`"
+        else f"{distinct_points} of {len(located)} located points fall in a polygon "
+        f"under `{predicate}`"
     )
+    if without_geometry:
+        record.notes.append(
+            f"{without_geometry} of {len(points)} points have no geometry (null or "
+            "empty), so they have no position and are in no count"
+        )
     checks = [
         verify.Check(
             "x-mapsmith:every_point_placed",
             unplaced == 0,
-            f"{unplaced} of {len(points)} points fall in no polygon",
+            f"{unplaced} of {len(located)} located points fall in no polygon",
             critical=False,
             hint=None
             if unplaced == 0
@@ -2507,6 +2559,7 @@ def count_in_polygons(
         "polygon_count": len(result),
         "points_placed": distinct_points,
         "points_unplaced": unplaced,
+        "points_without_geometry": without_geometry,
         "provenance": manifest,
         "verified": True,
         **extras,
@@ -2566,6 +2619,7 @@ def summarize_points_in_polygons(
 
     points = _read(points_path)
     polygons = _read(polygons_path)
+    _refuse_naive_antimeridian(polygons, polygons_path)
     if field not in points.columns or field == points.geometry.name:
         raise ValueError(
             f"{points_path} has no attribute {field!r}. Attributes: "

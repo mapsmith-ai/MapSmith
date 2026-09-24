@@ -63,6 +63,22 @@ All notable changes to MapSmith are documented here, in the format of
   something for points; a caller using it was getting zeros, so nothing that
   worked stops working. Found while building its sibling above, which had
   inherited the same line.
+- **`count_in_polygons` counted a MultiPoint once in every polygon it touched,
+  and blamed the polygons for points that had no position.** Both measured
+  before the fix: a MultiPoint straddling two squares came back as one point in
+  each, and a null and an empty geometry were reported as "2 of 3 points fall
+  in no polygon" with a hint about checking the boundaries. Multi-part and
+  areal geometries are refused now, with the way out; points without a
+  geometry are counted apart as `points_without_geometry` and no longer fail
+  the placement check.
+- **A zone drawn across the 180th meridian as one ring counted the wrong
+  points, and the total could be right.** Every planar library reads such a
+  ring as its complement, the rest of the planet. Measured with two points, one
+  at 175°E inside the zone and one at 0°: the first was dropped, the second
+  counted, and the total was 1 — the same as the truth. Both point-in-polygon
+  operations now refuse that ring with the way out (split it at 180, as RFC
+  7946 §3.1.9 prescribes, which then places correctly). The detector is in
+  `antimeridian.naive_crossings` and only looks at layers in degrees.
 
 - **Six operations wrote a fact into the manifest before it happened.** The
   record survives a crash, which is the point of it, and on these paths it

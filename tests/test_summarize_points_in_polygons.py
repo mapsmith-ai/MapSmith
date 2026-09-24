@@ -396,3 +396,95 @@ def test_a_boolean_attribute_is_refused(tmp_path):
         vector.summarize_points_in_polygons(
             str(points), str(polygons), str(tmp_path / "o.gpkg"), field="wet"
         )
+
+
+# --- the same two defects in the sibling, measured on 2026-09-24 ---------------
+
+
+def test_count_in_polygons_counts_points_without_geometry_apart(tmp_path):
+    """Measured before the fix: a null and an empty geometry were reported as
+    "2 of 3 points fall in no polygon", with a hint about the boundaries."""
+    polygons = _one_block(tmp_path, box(0, 0, 10, 10))
+    points = tmp_path / "s.parquet"
+    gpd.GeoDataFrame(
+        {"n": [1, 2, 3]},
+        geometry=gpd.GeoSeries.from_wkt(["POINT (5 5)", None, "POINT EMPTY"]),
+        crs=CRS,
+    ).to_parquet(points)
+    out = tmp_path / "c.gpkg"
+    result = vector.count_in_polygons(str(points), str(polygons), str(out))
+    assert result["points_without_geometry"] == 2
+    assert result["points_unplaced"] == 0
+    record = json.loads(Path(f"{out}.provenance.json").read_text(encoding="utf-8"))
+    placed = next(c for c in record["verification"] if c["name"] == "x-mapsmith:every_point_placed")
+    assert placed["passed"] is True, placed
+
+
+def test_count_in_polygons_refuses_a_multipoint_it_would_count_twice(tmp_path):
+    """Measured before the fix: a MultiPoint straddling A and B was counted in
+    both, `{'A': 1, 'B': 1}`, as if it were two points."""
+    from shapely.geometry import MultiPoint
+
+    polygons = _one_block(tmp_path, box(0, 0, 10, 10), box(10, 0, 20, 10))
+    points = tmp_path / "s.gpkg"
+    gpd.GeoDataFrame({"n": [1]}, geometry=[MultiPoint([(5, 5), (15, 5)])], crs=CRS).to_file(points)
+    with pytest.raises(ValueError, match="explode_layer"):
+        vector.count_in_polygons(str(points), str(polygons), str(tmp_path / "c.gpkg"))
+
+
+# --- the antimeridian, measured on 2026-09-24 -------------------------------
+
+
+def _pacific_zone(tmp_path, geometry):
+    path = tmp_path / "zone.gpkg"
+    gpd.GeoDataFrame({"z": ["pacific"]}, geometry=[geometry], crs="EPSG:4326").to_file(path)
+    return path
+
+
+@pytest.mark.parametrize("operation", ["count", "summarize"])
+def test_a_ring_drawn_across_180_is_refused(tmp_path, operation):
+    """The plane reads it as the rest of the planet. Measured before this was
+    refused: the point at 175E inside the zone was dropped and the point at 0
+    was counted -- a total of 1, the same as the truth, so no number showed it."""
+    from shapely.geometry import Polygon
+
+    zone = _pacific_zone(tmp_path, Polygon([(170, -5), (-170, -5), (-170, 5), (170, 5)]))
+    points = tmp_path / "p.gpkg"
+    gpd.GeoDataFrame(
+        {"n": [1.0]}, geometry=[Point(175, 0)], crs="EPSG:4326"
+    ).to_file(points)
+    with pytest.raises(ValueError, match="cross the 180th meridian"):
+        if operation == "count":
+            vector.count_in_polygons(str(points), str(zone), str(tmp_path / "c.gpkg"))
+        else:
+            vector.summarize_points_in_polygons(
+                str(points), str(zone), str(tmp_path / "s_out.gpkg"), field="n"
+            )
+
+
+def test_a_zone_split_at_180_is_placed_right(tmp_path):
+    """The form RFC 7946 prescribes, and the one this refusal points to."""
+    from shapely.geometry import MultiPolygon
+
+    zone = _pacific_zone(
+        tmp_path, MultiPolygon([box(170, -5, 180, 5), box(-180, -5, -170, 5)])
+    )
+    points = tmp_path / "p.gpkg"
+    gpd.GeoDataFrame(
+        {"n": [1.0, 2.0]}, geometry=[Point(175, 0), Point(0, 0)], crs="EPSG:4326"
+    ).to_file(points)
+    out = tmp_path / "c.gpkg"
+    result = vector.count_in_polygons(str(points), str(zone), str(out))
+    assert int(gpd.read_file(out)["point_count"][0]) == 1
+    assert result["points_placed"] == 1 and result["points_unplaced"] == 1
+
+
+def test_the_detector_ignores_projected_layers_and_ordinary_zones():
+    """No false alarm on a projected CRS, where a large jump is just metres, or
+    on an ordinary zone in degrees."""
+    from mapsmith import antimeridian
+
+    projected = gpd.GeoDataFrame(geometry=[box(0, 0, 500000, 10)], crs="EPSG:32632")
+    ordinary = gpd.GeoDataFrame(geometry=[box(-10, -5, 10, 5)], crs="EPSG:4326")
+    assert antimeridian.naive_crossings(projected) == []
+    assert antimeridian.naive_crossings(ordinary) == []
