@@ -2413,7 +2413,7 @@ def _refuse_naive_antimeridian(polygons: gpd.GeoDataFrame, polygons_path: str) -
     offending = antimeridian.naive_crossings(polygons)
     if offending:
         raise ValueError(
-            f"{polygons_path}: feature(s) {offending[:5]}"
+            f"Refusing {polygons_path}: feature(s) {offending[:5]}"
             f"{' and more' if len(offending) > 5 else ''} cross the 180th meridian "
             "as a single ring, which every planar library reads as the rest of the "
             "planet: whatever lies inside the zone is treated as outside it, and "
