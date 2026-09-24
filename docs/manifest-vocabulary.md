@@ -23,7 +23,7 @@ whether this system verified anything at all.
 | `x-mapsmith:operation_completed` | The engine finished. Recorded as a failed check when it did not, so a crash leaves a conforming manifest saying what went wrong instead of a dataset with no record beside it. |
 | `x-mapsmith:verification_present` | Nothing looked at the output. It exists because the specification requires a record for every dataset written and requires at least one check in it; the absence of verification is itself recorded as a failed check rather than papered over. No shipped operation emits it, and a test fails if one starts to. |
 
-## Extension check names (52)
+## Extension check names (53)
 
 Each is a proposition about the dataset that was written. A failed one is
 recorded, never suppressed — the audit trail has to survive the error it
@@ -70,6 +70,7 @@ documents.
 | `x-mapsmith:shape_matches_resolution` | `raster` |
 | `x-mapsmith:snapping_did_not_break_a_geometry` | `linework` |
 | `x-mapsmith:spheroid_axis_order` | `duckdb_engine` |
+| `x-mapsmith:summary_columns_intact` | `vector` |
 | `x-mapsmith:the_correction_only_removes_findings` | `spatial_stats` |
 | `x-mapsmith:the_dem_at_a_contour_vertex_is_the_contour_height` | `whitebox_engine` |
 | `x-mapsmith:the_fit_reproduces_its_control_points` | `linework` |

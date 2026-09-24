@@ -25,6 +25,20 @@ All notable changes to MapSmith are documented here, in the format of
   than a limitation: an upload box would mean running GDAL on files from
   strangers, which is the assumption `SECURITY.md` is built on refusing.
 
+- **`summarize_points_in_polygons`**: a numeric attribute of the points in each
+  polygon — count, sum, mean, median, min, max, stdev, range. "Average pH by
+  field block" used to take two operations, which to somebody searching is an
+  operation that does not exist. Three decisions about the number are in the
+  record: a polygon with no points is kept with its statistics null, because
+  the mean of no values is not zero; a point with no value is placed and not
+  summarised, so `<field>_count` can be smaller than `point_count` and says so;
+  and the boundary rule is the caller's, with the number of points it counted
+  twice or dropped. A check reads the output back and verifies the counts add
+  up to what the join found. Points only: a MultiPoint is refused rather than
+  carried whole into every polygon it touches, and a Shapefile output is
+  refused where the driver would truncate a column into the attribute's own
+  name. Reached through `run_operation`; the tool count is unchanged.
+
 ### Changed
 
 - **Records declare `spec_version` `1.0.0-draft.6`, and `x-mapsmith:round_trip`
@@ -37,6 +51,18 @@ All notable changes to MapSmith are documented here, in the format of
   so a reader needs to change the key it looks up and nothing else.
 
 ### Fixed
+
+- **`count_in_polygons(predicate="contains")` never placed a point, and said it
+  had verified.** `sjoin(points, polygons, predicate)` evaluates the predicate
+  as `predicate(point, polygon)`, so `contains` asked whether a point contains
+  a polygon — false for any polygon with area. Every count came back zero, the
+  record said `verified: true`, and the one check that noticed was
+  non-critical and blamed the points for lying outside every polygon. Even the
+  reading that was meant, the polygon containing the point, is exactly
+  `within`. `contains` is refused now, with the two predicates that mean
+  something for points; a caller using it was getting zeros, so nothing that
+  worked stops working. Found while building its sibling above, which had
+  inherited the same line.
 
 - **Six operations wrote a fact into the manifest before it happened.** The
   record survives a crash, which is the point of it, and on these paths it

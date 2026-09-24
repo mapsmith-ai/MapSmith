@@ -2766,7 +2766,8 @@ OPERATIONS: list[dict[str, Any]] = [
         "summary": "Points per polygon with the boundary rule stated, and the points that fell nowhere counted",
         "phrasings": "tally by area; how many fall inside each; count per district; incidents per neighbourhood",
         "distinguishes": "Counts how many features fall inside each polygon, with the boundary rule stated. "
-        "Not spatial_join, which labels each point with its polygon instead of counting "
+        "Not summarize_points_in_polygons, which summarises an attribute of those points (a mean, a sum); "
+        "not spatial_join, which labels each point with its polygon instead of counting "
         "them; not zonal_statistics, which reads a grid rather than counting features.",
         "description": (
             "Count points in each polygon. 'intersects' (default) includes points on the boundary; 'within' excludes them — and on a partition of districts that share edges, that is the difference between counting every point and dropping the ones on the seams, silently, because a join returning fewer rows looks exactly like a join that had fewer to find. The points that fall in no polygon are counted and reported, which is the number that makes the difference visible. Called through run_operation."
@@ -2794,7 +2795,7 @@ OPERATIONS: list[dict[str, Any]] = [
                 "name": "predicate",
                 "type": "str",
                 "required": False,
-                "description": "intersects (default), within, or contains",
+                "description": "intersects (default: a point on the boundary counts) or within (strictly inside)",
             },
             {
                 "name": "count_column",
@@ -2821,6 +2822,59 @@ OPERATIONS: list[dict[str, Any]] = [
                     "arguments": {
                         "operation": "count_in_polygons",
                         "arguments": {"points_path": "incidents.parquet", "polygons_path": "tracts.parquet", "output_path": "tract_counts.parquet", "predicate": "within"},
+                    },
+                },
+            },
+        ],
+    },
+    {
+        "name": "summarize_points_in_polygons",
+        "status": "available",
+        "tool": None,
+        "workload": "heavy_join",
+        "category": "vector",
+        "produces": "dataset:vector",
+        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2},
+        "summary": "Average, total, min or max of a point attribute within each polygon, with empty polygons kept",
+        "phrasings": "average pH by field block; mean value per zone; total population per district; highest reading in each area; sum of sales per territory",
+        "distinguishes": "Summarises a numeric ATTRIBUTE of the points inside each polygon -- a mean, a sum, a maximum -- "
+        "and keeps polygons with no points, with null statistics. Not count_in_polygons, which only counts "
+        "them; not summarize_field, which groups by a column the points already carry instead of by where "
+        "they fall; not spatial_join, which labels each point and summarises nothing; not zonal_statistics, "
+        "which reads a raster grid rather than point features.",
+        "description": (
+            "Place points in polygons and summarise one numeric attribute per polygon: count, sum, mean, median, min, max, stdev, range. "
+            "Three decisions about the number are recorded rather than left implicit. A polygon with no points is kept with point_count 0 and every statistic null, because the mean of no values is not zero and dropping it would fake coverage. "
+            "A point with no value is placed but not summarised, so <field>_count can be smaller than point_count and says so. "
+            "The boundary rule is the caller's: 'intersects' (default) counts a point on an edge two polygons share in both, 'within' in neither, and the record states how many were counted twice or fell nowhere. "
+            "The points are brought onto the polygons' CRS if they differ. Called through run_operation."
+        ),
+        "parameters": [
+            {"name": "points_path", "type": "str", "required": True, "description": "Point layer carrying the attribute"},
+            {"name": "polygons_path", "type": "str", "required": True, "description": "Polygon layer to summarise into"},
+            {"name": "output_path", "type": "str", "required": True, "description": "Output: the polygons with point_count and one column per statistic, named <field>_<statistic>"},
+            {"name": "field", "type": "str", "required": True, "description": "Numeric attribute of the points to summarise"},
+            {"name": "statistics", "type": "list[str]", "required": False, "description": "Any of count, sum, mean, median, min, max, stdev, range (default count, mean, min, max); count is always included"},
+            {"name": "predicate", "type": "str", "required": False, "description": "intersects (default: a point on the boundary counts) or within (strictly inside)"},
+        ],
+        "examples": [
+            {
+                "goal": "Average pH by field block",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "summarize_points_in_polygons",
+                        "arguments": {"points_path": "soil_samples.gpkg", "polygons_path": "field_blocks.gpkg", "output_path": "block_ph.parquet", "field": "ph", "statistics": ["mean", "min", "max"]},
+                    },
+                },
+            },
+            {
+                "goal": "Total population of the census points in each district, strictly inside only",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "summarize_points_in_polygons",
+                        "arguments": {"points_path": "census_points.parquet", "polygons_path": "districts.parquet", "output_path": "district_population.parquet", "field": "population", "statistics": ["sum"], "predicate": "within"},
                     },
                 },
             },

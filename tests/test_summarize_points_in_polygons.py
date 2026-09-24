@@ -1,0 +1,398 @@
+"""summarize_points_in_polygons: closed-form fixtures, and the three decisions about the number.
+
+Three squares on EPSG:32632. A and B share the edge x = 10; C holds no point.
+
+    A (0..10)   ph 4, 6, 8, and one sample with no value
+    B (10..20)  ph 7, 9
+    on x = 10   ph 11      <- the edge A and B share
+    outside     ph 1       <- in no polygon
+
+Under `intersects` the edge sample is in BOTH squares:
+    A: 4, 6, 8, 11 -> count 4, sum 29, mean 7.25, min 4, max 11; point_count 5
+    B: 7, 9, 11    -> count 3, sum 27, mean 9
+Under `within` it is in NEITHER:
+    A: 4, 6, 8     -> count 3, mean 6; point_count 4
+    B: 7, 9        -> count 2, mean 8
+C is kept either way, with point_count 0 and every statistic null.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+gpd = pytest.importorskip("geopandas")
+from shapely.geometry import Point, box
+
+from mapsmith.engines import vector
+
+CRS = "EPSG:32632"
+
+
+@pytest.fixture
+def layers(tmp_path):
+    polygons = tmp_path / "blocks.gpkg"
+    gpd.GeoDataFrame(
+        {"block": ["A", "B", "C"]},
+        geometry=[box(0, 0, 10, 10), box(10, 0, 20, 10), box(30, 0, 40, 10)],
+        crs=CRS,
+    ).to_file(polygons, driver="GPKG")
+    points = tmp_path / "samples.gpkg"
+    gpd.GeoDataFrame(
+        {"ph": [4.0, 6.0, 8.0, None, 7.0, 9.0, 11.0, 1.0]},
+        geometry=[
+            Point(2, 2), Point(5, 5), Point(8, 8), Point(3, 7),
+            Point(15, 5), Point(12, 2),
+            Point(10, 5),
+            Point(50, 50),
+        ],
+        crs=CRS,
+    ).to_file(points, driver="GPKG")
+    return points, polygons
+
+
+def _by_block(path: str) -> dict:
+    out = gpd.read_file(path)
+    return {row["block"]: row for _, row in out.iterrows()}
+
+
+def test_intersects_counts_the_edge_sample_in_both_squares(layers, tmp_path):
+    points, polygons = layers
+    out = tmp_path / "ph.gpkg"
+    result = vector.summarize_points_in_polygons(
+        str(points), str(polygons), str(out), field="ph",
+        statistics=["count", "sum", "mean", "min", "max"],
+    )
+    rows = _by_block(str(out))
+    assert rows["A"]["point_count"] == 5
+    assert rows["A"]["ph_count"] == 4
+    assert rows["A"]["ph_sum"] == 29.0
+    assert rows["A"]["ph_mean"] == 7.25
+    assert rows["A"]["ph_min"] == 4.0 and rows["A"]["ph_max"] == 11.0
+    assert rows["B"]["ph_count"] == 3 and rows["B"]["ph_mean"] == 9.0
+    assert result["points_counted_twice"] == 1
+    assert result["points_unplaced"] == 1
+    assert result["points_without_value"] == 1
+
+
+def test_within_drops_the_edge_sample_from_both(layers, tmp_path):
+    points, polygons = layers
+    out = tmp_path / "ph.gpkg"
+    result = vector.summarize_points_in_polygons(
+        str(points), str(polygons), str(out), field="ph", predicate="within"
+    )
+    rows = _by_block(str(out))
+    assert rows["A"]["point_count"] == 4 and rows["A"]["ph_mean"] == 6.0
+    assert rows["B"]["ph_count"] == 2 and rows["B"]["ph_mean"] == 8.0
+    # The edge sample and the outside one: the two predicates are two numbers,
+    # and the record has to say which the caller got.
+    assert result["points_unplaced"] == 2
+    assert result["points_counted_twice"] == 0
+
+
+def test_a_polygon_with_no_points_is_kept_with_null_statistics(layers, tmp_path):
+    """The mean of nothing is not zero, and a missing row fakes coverage."""
+    points, polygons = layers
+    out = tmp_path / "ph.gpkg"
+    result = vector.summarize_points_in_polygons(
+        str(points), str(polygons), str(out), field="ph"
+    )
+    rows = _by_block(str(out))
+    assert "C" in rows, "a polygon with no samples disappeared from the output"
+    assert rows["C"]["point_count"] == 0
+    assert rows["C"]["ph_count"] == 0
+    for name in ("mean", "min", "max"):
+        value = rows["C"][f"ph_{name}"]
+        assert pd.isna(value), (  # None, or NaN once written to a file
+            f"block C has no samples and its ph_{name} is {value!r}: an empty "
+            "polygon must not report a number"
+        )
+    assert result["polygons_without_points"] == 1
+
+
+def test_the_manifest_records_the_three_decisions(layers, tmp_path):
+    points, polygons = layers
+    out = tmp_path / "ph.gpkg"
+    vector.summarize_points_in_polygons(str(points), str(polygons), str(out), field="ph")
+    record = json.loads(Path(f"{out}.provenance.json").read_text(encoding="utf-8"))
+    assert record["parameters"]["predicate"] == "intersects"
+    notes = " ".join(record["notes"])
+    assert "counted in more than one polygon" in notes
+    assert "no value" in notes
+    assert "hold no point" in notes
+    placed = next(
+        c for c in record["verification"] if c["name"] == "x-mapsmith:every_point_placed"
+    )
+    assert placed["passed"] is False and placed["critical"] is False
+
+
+def test_points_in_another_crs_are_brought_onto_the_polygons(tmp_path):
+    """No edge sample here: a round trip through degrees can move a point off a
+    boundary by a rounding error, and this test is about the CRS record, not the
+    boundary rule."""
+    polygons = tmp_path / "blocks.gpkg"
+    gpd.GeoDataFrame(
+        {"block": ["A"]}, geometry=[box(500000, 5000000, 501000, 5001000)], crs=CRS
+    ).to_file(polygons, driver="GPKG")
+    points = tmp_path / "samples.gpkg"
+    gpd.GeoDataFrame(
+        {"ph": [5.0, 7.0]},
+        geometry=[Point(500200, 5000200), Point(500800, 5000800)],
+        crs=CRS,
+    ).to_crs("EPSG:4326").to_file(points, driver="GPKG")
+    out = tmp_path / "ph.gpkg"
+    vector.summarize_points_in_polygons(str(points), str(polygons), str(out), field="ph")
+    assert _by_block(str(out))["A"]["ph_mean"] == 6.0
+    record = json.loads(Path(f"{out}.provenance.json").read_text(encoding="utf-8"))
+    moved = record["crs_decisions"]["x-mapsmith:inputs_reprojected"]
+    assert moved == [{"argument": "points_path", "from": "EPSG:4326"}]
+    assert record["crs_decisions"]["analysis_crs"] == CRS
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"field": "nope"}, "no attribute 'nope'"),
+        ({"field": "ph", "statistics": ["mode"]}, "unknown statistic"),
+        ({"field": "ph", "predicate": "touches"}, "predicate must be one of"),
+    ],
+)
+def test_bad_arguments_are_refused_with_the_way_out(layers, tmp_path, kwargs, message):
+    points, polygons = layers
+    with pytest.raises(ValueError, match=message):
+        vector.summarize_points_in_polygons(
+            str(points), str(polygons), str(tmp_path / "x.gpkg"), **kwargs
+        )
+
+
+def test_a_text_attribute_is_refused(tmp_path):
+    polygons = tmp_path / "p.gpkg"
+    gpd.GeoDataFrame({"k": [1]}, geometry=[box(0, 0, 10, 10)], crs=CRS).to_file(polygons)
+    points = tmp_path / "s.gpkg"
+    gpd.GeoDataFrame({"soil": ["clay"]}, geometry=[Point(5, 5)], crs=CRS).to_file(points)
+    with pytest.raises(ValueError, match="not numbers"):
+        vector.summarize_points_in_polygons(
+            str(points), str(polygons), str(tmp_path / "x.gpkg"), field="soil"
+        )
+
+
+def test_an_existing_column_is_not_overwritten(tmp_path):
+    """The output must not silently replace a value that was in the input."""
+    polygons = tmp_path / "p.gpkg"
+    gpd.GeoDataFrame(
+        {"ph_mean": [99.0]}, geometry=[box(0, 0, 10, 10)], crs=CRS
+    ).to_file(polygons)
+    points = tmp_path / "s.gpkg"
+    gpd.GeoDataFrame({"ph": [5.0]}, geometry=[Point(5, 5)], crs=CRS).to_file(points)
+    with pytest.raises(ValueError, match="would overwrite"):
+        vector.summarize_points_in_polygons(
+            str(points), str(polygons), str(tmp_path / "x.gpkg"), field="ph"
+        )
+
+
+def test_a_valueless_point_outside_every_polygon_is_not_said_to_be_counted(tmp_path):
+    """The note about missing values may only speak of the points it placed.
+
+    The first version counted every point with no value and said all of them
+    were "in `point_count`". One that fell in no polygon is in no count at all,
+    and the fixture above never showed it because its only valueless sample sat
+    inside block A. Found by the `conformita-manifest` review.
+    """
+    polygons = tmp_path / "p.gpkg"
+    gpd.GeoDataFrame({"block": ["A"]}, geometry=[box(0, 0, 10, 10)], crs=CRS).to_file(polygons)
+    points = tmp_path / "s.gpkg"
+    gpd.GeoDataFrame(
+        {"ph": [5.0, None]}, geometry=[Point(5, 5), Point(50, 50)], crs=CRS
+    ).to_file(points)
+    out = tmp_path / "ph.gpkg"
+    result = vector.summarize_points_in_polygons(str(points), str(polygons), str(out), field="ph")
+    record = json.loads(Path(f"{out}.provenance.json").read_text(encoding="utf-8"))
+    notes = " ".join(record["notes"])
+    assert "placed points have no value" not in notes, (
+        f"no PLACED point lacks a value, and the record says one does: {record['notes']}"
+    )
+    assert "are not in any polygon, so they are in no count" in notes
+    assert result["points_without_value"] == 1
+
+
+def test_a_repeated_statistic_is_recorded_once(tmp_path):
+    polygons = tmp_path / "p.gpkg"
+    gpd.GeoDataFrame({"block": ["A"]}, geometry=[box(0, 0, 10, 10)], crs=CRS).to_file(polygons)
+    points = tmp_path / "s.gpkg"
+    gpd.GeoDataFrame({"ph": [5.0]}, geometry=[Point(5, 5)], crs=CRS).to_file(points)
+    out = tmp_path / "ph.gpkg"
+    vector.summarize_points_in_polygons(
+        str(points), str(polygons), str(out), field="ph", statistics=["mean", "mean"]
+    )
+    record = json.loads(Path(f"{out}.provenance.json").read_text(encoding="utf-8"))
+    assert record["parameters"]["statistics"] == ["count", "mean"]
+
+
+# --- the defects the `geo-reviewer` measured on 2026-09-24 --------------------
+
+
+def _one_block(tmp_path, *boxes):
+    polygons = tmp_path / "p.gpkg"
+    gpd.GeoDataFrame(
+        {"block": [chr(65 + i) for i in range(len(boxes))]}, geometry=list(boxes), crs=CRS
+    ).to_file(polygons)
+    return polygons
+
+
+@pytest.mark.parametrize("operation", ["count", "summarize"])
+def test_contains_is_refused_because_it_never_placed_a_point(tmp_path, operation):
+    """`sjoin(points, polygons, "contains")` asks whether a POINT contains a
+    polygon: false for any polygon with area. Both operations returned all zeros
+    under it with `verified: True`. It is refused now, and the refusal names the
+    two predicates that mean something for points."""
+    polygons = _one_block(tmp_path, box(0, 0, 10, 10))
+    points = tmp_path / "s.gpkg"
+    gpd.GeoDataFrame({"ph": [5.0]}, geometry=[Point(5, 5)], crs=CRS).to_file(points)
+    with pytest.raises(ValueError, match="predicate must be one of"):
+        if operation == "count":
+            vector.count_in_polygons(
+                str(points), str(polygons), str(tmp_path / "c.gpkg"), predicate="contains"
+            )
+        else:
+            vector.summarize_points_in_polygons(
+                str(points), str(polygons), str(tmp_path / "s_out.gpkg"),
+                field="ph", predicate="contains",
+            )
+
+
+@pytest.mark.parametrize("predicate", sorted(vector.COUNT_PREDICATES))
+def test_every_accepted_predicate_places_a_point_well_inside(tmp_path, predicate):
+    """The guard that would have caught `contains`: a predicate that is accepted
+    must place a point that sits in the middle of a polygon, far from any edge."""
+    polygons = _one_block(tmp_path, box(0, 0, 10, 10))
+    points = tmp_path / "s.gpkg"
+    gpd.GeoDataFrame({"ph": [5.0]}, geometry=[Point(5, 5)], crs=CRS).to_file(points)
+    result = vector.summarize_points_in_polygons(
+        str(points), str(polygons), str(tmp_path / "o.gpkg"), field="ph", predicate=predicate
+    )
+    assert result["points_placed"] == 1, (
+        f"`{predicate}` is accepted and did not place a point at the centre of a square"
+    )
+
+
+def test_a_point_in_three_overlapping_polygons_is_one_point_counted_twice_too_often(tmp_path):
+    polygons = _one_block(tmp_path, box(0, 0, 10, 10), box(2, 2, 12, 12), box(4, 4, 14, 14))
+    points = tmp_path / "s.gpkg"
+    gpd.GeoDataFrame({"ph": [5.0]}, geometry=[Point(6, 6)], crs=CRS).to_file(points)
+    out = tmp_path / "o.gpkg"
+    result = vector.summarize_points_in_polygons(str(points), str(polygons), str(out), field="ph")
+    assert result["points_counted_twice"] == 1
+    notes = " ".join(json.loads(Path(f"{out}.provenance.json").read_text(encoding="utf-8"))["notes"])
+    assert "1 of them are counted in more than one polygon (2 extra memberships" in notes, notes
+
+
+def test_points_without_geometry_are_counted_apart_and_not_blamed_on_the_polygons(tmp_path):
+    """A null or empty geometry has no position. It used to land among the points
+    "in no polygon", and the hint sent the reader to check the boundaries."""
+    polygons = _one_block(tmp_path, box(0, 0, 10, 10))
+    points = tmp_path / "s.parquet"
+    gpd.GeoDataFrame(
+        {"ph": [5.0, 6.0, 7.0]},
+        geometry=gpd.GeoSeries.from_wkt(["POINT (5 5)", None, "POINT EMPTY"]),
+        crs=CRS,
+    ).to_parquet(points)
+    out = tmp_path / "o.gpkg"
+    result = vector.summarize_points_in_polygons(str(points), str(polygons), str(out), field="ph")
+    assert result["points_without_geometry"] == 2
+    assert result["points_unplaced"] == 0, (
+        "points with no position were counted as points outside every polygon"
+    )
+    record = json.loads(Path(f"{out}.provenance.json").read_text(encoding="utf-8"))
+    placed = next(c for c in record["verification"] if c["name"] == "x-mapsmith:every_point_placed")
+    assert placed["passed"] is True
+
+
+def test_a_multipoint_is_refused_rather_than_counted_in_two_polygons(tmp_path):
+    from shapely.geometry import MultiPoint
+
+    polygons = _one_block(tmp_path, box(0, 0, 10, 10), box(10, 0, 20, 10))
+    points = tmp_path / "s.gpkg"
+    gpd.GeoDataFrame(
+        {"ph": [5.0]}, geometry=[MultiPoint([(5, 5), (15, 5)])], crs=CRS
+    ).to_file(points)
+    with pytest.raises(ValueError, match="explode_layer"):
+        vector.summarize_points_in_polygons(
+            str(points), str(polygons), str(tmp_path / "o.gpkg"), field="ph"
+        )
+
+
+@pytest.mark.parametrize("suffix", [".gpkg", ".parquet"])
+def test_a_statistic_null_everywhere_is_still_written_as_a_number(tmp_path, suffix):
+    """stdev over single samples is null in every polygon, and was written as
+    TEXT in GeoPackage and as a null type in GeoParquet: the output's schema
+    depended on the data."""
+    polygons = _one_block(tmp_path, box(0, 0, 10, 10))
+    points = tmp_path / "s.gpkg"
+    gpd.GeoDataFrame({"ph": [5.0]}, geometry=[Point(5, 5)], crs=CRS).to_file(points)
+    out = tmp_path / f"o{suffix}"
+    vector.summarize_points_in_polygons(
+        str(points), str(polygons), str(out), field="ph", statistics=["stdev"]
+    )
+    written = gpd.read_parquet(out) if suffix == ".parquet" else gpd.read_file(out)
+    assert pd.api.types.is_float_dtype(written["ph_stdev"]), (
+        f"ph_stdev was written as {written['ph_stdev'].dtype}, not a number"
+    )
+    assert pd.isna(written["ph_stdev"].iloc[0]), "stdev of one value must be null"
+    assert pd.api.types.is_integer_dtype(written["ph_count"])
+
+
+def test_a_shapefile_that_would_rename_a_column_is_refused(tmp_path):
+    """`population_count` came back from the Shapefile driver as `population`:
+    a count, sitting in a column that reads as the attribute."""
+    polygons = _one_block(tmp_path, box(0, 0, 10, 10))
+    points = tmp_path / "s.gpkg"
+    gpd.GeoDataFrame({"population": [5]}, geometry=[Point(5, 5)], crs=CRS).to_file(points)
+    with pytest.raises(ValueError, match="Shapefile cannot hold"):
+        vector.summarize_points_in_polygons(
+            str(points), str(polygons), str(tmp_path / "o.shp"), field="population"
+        )
+
+
+def test_the_summary_is_checked_back_from_the_file(layers, tmp_path):
+    """A check on the number, not the shape: columns present under their names,
+    counts adding up to the join's memberships."""
+    points, polygons = layers
+    out = tmp_path / "ph.gpkg"
+    vector.summarize_points_in_polygons(str(points), str(polygons), str(out), field="ph")
+    record = json.loads(Path(f"{out}.provenance.json").read_text(encoding="utf-8"))
+    intact = next(
+        c for c in record["verification"] if c["name"] == "x-mapsmith:summary_columns_intact"
+    )
+    assert intact["passed"] is True
+    # 5 in A (the edge sample included) + 3 in B (the edge sample again) = 8.
+    assert "point_count sums to 8" in intact["detail"], intact["detail"]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [({"statistics": []}, "empty list"), ({"field": "index_right"}, "Rename it first")],
+)
+def test_two_more_arguments_are_refused_with_a_reason(tmp_path, kwargs, message):
+    polygons = _one_block(tmp_path, box(0, 0, 10, 10))
+    points = tmp_path / "s.gpkg"
+    gpd.GeoDataFrame(
+        {"ph": [5.0], "index_right": [1.0]}, geometry=[Point(5, 5)], crs=CRS
+    ).to_file(points)
+    arguments = {"field": "ph", **kwargs}
+    with pytest.raises(ValueError, match=message):
+        vector.summarize_points_in_polygons(
+            str(points), str(polygons), str(tmp_path / "o.gpkg"), **arguments
+        )
+
+
+def test_a_boolean_attribute_is_refused(tmp_path):
+    polygons = _one_block(tmp_path, box(0, 0, 10, 10))
+    points = tmp_path / "s.gpkg"
+    gpd.GeoDataFrame({"wet": [True]}, geometry=[Point(5, 5)], crs=CRS).to_file(points)
+    with pytest.raises(ValueError, match="not numbers"):
+        vector.summarize_points_in_polygons(
+            str(points), str(polygons), str(tmp_path / "o.gpkg"), field="wet"
+        )

@@ -1331,6 +1331,9 @@ def _spec_fixtures(tmp_path):
         "count_in_polygons": lambda: vector.count_in_polygons(
             str(points), str(layer), out("counts.parquet")
         ),
+        "summarize_points_in_polygons": lambda: vector.summarize_points_in_polygons(
+            str(points), str(layer), out("point_summary.parquet"), field="n"
+        ),
         # Four points, because two collinear ones give two cells and no corner.
         "voronoi_polygons": lambda: vector.voronoi_polygons(
             str(quad), out("vor.parquet")

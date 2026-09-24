@@ -349,7 +349,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   </p>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1.5rem;margin:2rem 0 1.5rem">
     <div class="stat"><b>118</b><span>REQUESTS WE DID NOT WRITE</span></div>
-    <div class="stat"><b>58%</b><span>OUR RANKING, FOUND@3</span></div>
+    <div class="stat"><b>55%</b><span>OUR RANKING, FOUND@3</span></div>
     <div class="stat"><b>69%</b><span>A MODEL <em>CHOOSING</em> FROM THE SET</span></div>
     <div class="stat"><b>70%</b><span>WHERE THE TWO MODEL LABELLERS AGREE WITH EACH OTHER<br><em>labels written 2026-08-28, catalogue of 51</em></span></div>
   </div>
@@ -371,7 +371,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   </p>
   <p>
     <strong>It narrows first, deterministically, on facts the caller already has.</strong> What data
-    is in hand, and what should come back. Declaring those two takes the candidates from 75 to 30 —
+    is in hand, and what should come back. Declaring those two takes the candidates from 76 to 31 —
     and below thirty survivors the search stops choosing for you: it returns
     <code>status: "choose"</code> with every candidate, ordered as a hint that says so, each carrying
     the sentence that separates it from its neighbours. On 116 of those 118 requests the right
@@ -422,9 +422,9 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   <p>
     So the figure to watch is not found@3. A ranker gets worse as a catalogue grows and it is a hint
     either way. It is the <em>average</em> surviving set at the fullest declaration — 9 at fifty-one
-    operations, 14 at sixty-one, 16 at seventy-two, 16 at seventy-four, 16 at seventy-five.
+    operations, 14 at sixty-one, 16 at seventy-two, 16 at seventy-four, 16 at seventy-five, 16 at seventy-six.
     (This page said
-    <em>median</em> until 29 August and published the mean; the median at seventy-five is 14. The
+    <em>median</em> until 29 August and published the mean; the median at seventy-six is 15. The
     distribution is skewed, so the two say different things, and the mean is the pessimistic one.)
     When that crosses thirty, delivery stops being a
     property and becomes a ranking again, and the answer will be another fact the caller already
@@ -488,9 +488,9 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <tr>
       <td>ablation</td>
       <td>Each facet is worth measuring alone, over the 118 independent requests: nothing declared
-      → 75 candidates, 17% found@3 with embeddings and 31% with BM25; what data I have → 49,
-      21% and 32%; + what I want back → 30, 38% and 45%; + how many datasets I have →
-      <strong>16, 58% ranked and 98% delivered</strong>. Both engines, because this row carried one
+      → 76 candidates, 17% found@3 with embeddings and 29% with BM25; what data I have → 50,
+      22% and 31%; + what I want back → 31, 40% and 45%; + how many datasets I have →
+      <strong>16, 55% ranked and 98% delivered</strong>. Both engines, because this row carried one
       unnamed column until a CI run met a rate limit from the model host, fell back to BM25 and
       recomputed the first figure as 28% — the published number had been a measurement of what
       the machine could download. The jump in the last column is not the ranker getting better

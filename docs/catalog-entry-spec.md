@@ -21,10 +21,10 @@ catalogue is written: *"the coastline is 400 000 nodes and the browser dies"*, n
 
 | what the caller declares | candidates left | ranked, found@3 | **in what comes back** |
 |---|---|---|---|
-| nothing — words alone | 75 | 31% | 31% |
-| the input kind | 49 | 32% | 33% |
-| + what it should produce | 30 | 45% | 53% |
-| **+ how many datasets** | **16** | **58%** | **98%** |
+| nothing — words alone | 76 | 29% | 29% |
+| the input kind | 50 | 31% | 32% |
+| + what it should produce | 31 | 45% | 53% |
+| **+ how many datasets** | **16** | **55%** | **98%** |
 
 **Ranking is not the mechanism; narrowing is** — and the last column is why. Once
 the two facts a caller genuinely knows have cut the catalogue to something readable,
@@ -36,7 +36,7 @@ Three more numbers say why the answer is a set rather than a pick:
 
 | | |
 |---|---|
-| the ranker puts the answer in the top three | 58% |
+| the ranker puts the answer in the top three | 55% |
 | a model handed the same candidates and asked to **choose** | **69%** |
 | the two labellers who wrote the ground truth agreeing **with each other** | **70%** |
 
@@ -208,7 +208,7 @@ operation DOES differently, not around a list of names.
 
 1. **It is read at selection time, not at search time — and selection is where the
    accuracy is.** A model handed the surviving candidates and asked to choose gets
-   its first pick right 69% of the time, against 58% for the ranker putting it in the
+   its first pick right 69% of the time, against 55% for the ranker putting it in the
    top three. Entries that all say "one point per polygon" give it nothing to choose
    on. `distinguishes` is the only field written to be read *against its neighbours*,
    and that is the moment it pays. Measured against retrieval it is worth nothing;

@@ -2388,7 +2388,15 @@ def validate_geometry(input_path: str, output_path: str) -> dict[str, Any]:
     }
 
 
-COUNT_PREDICATES = {"intersects", "within", "contains"}
+#: How a point is placed in a polygon, and only these two. `contains` was the
+#: third until 2026-09-24 and placed nothing, ever: `sjoin(points, polygons,
+#: predicate)` evaluates `predicate(point, polygon)`, so it asked whether a POINT
+#: contains a polygon -- false for any polygon with area. `count_in_polygons`
+#: returned all zeros under it with `verified: True`, and one non-critical check
+#: blamed the points for being "in no polygon". Even the intended reading, the
+#: polygon containing the point, is exactly `within`: three names for two
+#: behaviours, and the third broken. Found by the `geo-reviewer`.
+COUNT_PREDICATES = {"intersects", "within"}
 
 
 def count_in_polygons(
@@ -2499,6 +2507,301 @@ def count_in_polygons(
         "polygon_count": len(result),
         "points_placed": distinct_points,
         "points_unplaced": unplaced,
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
+def summarize_points_in_polygons(
+    points_path: str,
+    polygons_path: str,
+    output_path: str,
+    field: str,
+    statistics: list[str] | None = None,
+    predicate: str = "intersects",
+) -> dict[str, Any]:
+    """Statistics of one attribute of the points in each polygon: count_in_polygons' sibling.
+
+    "Average pH by field block" was two operations -- a spatial join to stamp the
+    block on every sample, then `summarize_field` grouped by it -- and a request
+    that is two operations is, to somebody searching, an operation that does not
+    exist. The arithmetic is `summarize_field`'s, so the vocabulary and the
+    stdev rule are the same; the placement is `count_in_polygons'`, so the
+    boundary rule is the same. Three decisions about the NUMBER, each recorded:
+
+    * **A polygon with no points stays, with every statistic null.** The mean of
+      nothing is not zero, and dropping the polygon makes the output look like
+      coverage the samples never had.
+    * **A point with no value is placed but not summarised.** `point_count` counts
+      every point in the polygon and `<field>_count` the ones with a value, so a
+      mean over three of five samples says so beside itself.
+    * **The boundary rule is the caller's, and stated.** Under `intersects` a
+      point on an edge two polygons share is counted in both; under `within`, in
+      neither. Both are defensible and they give different totals, so the one
+      used is in the record with how many points it double-counted or dropped.
+    """
+    from .summaries import STATISTICS, _describe
+
+    if predicate not in COUNT_PREDICATES:
+        raise ValueError(
+            f"predicate must be one of {sorted(COUNT_PREDICATES)}, got {predicate!r}"
+        )
+    if statistics is not None and not statistics:
+        raise ValueError(
+            "statistics is an empty list, which asks for nothing. Leave it out for "
+            f"the default (count, mean, min, max), or name some of {list(STATISTICS)}"
+        )
+    wanted = list(statistics) if statistics else ["count", "mean", "min", "max"]
+    unknown = [name for name in wanted if name not in STATISTICS]
+    if unknown:
+        raise ValueError(f"unknown statistic(s) {unknown}. Available: {list(STATISTICS)}")
+    if "count" not in wanted:
+        # The count of summarised values is what makes every other statistic
+        # readable: a mean without it cannot say how many values it is a mean of.
+        wanted = ["count", *wanted]
+    # Once each, in order: `["mean", "mean"]` made one column and a manifest
+    # listing two, so two records of the same output differed by a duplicate.
+    wanted = list(dict.fromkeys(wanted))
+
+    points = _read(points_path)
+    polygons = _read(polygons_path)
+    if field not in points.columns or field == points.geometry.name:
+        raise ValueError(
+            f"{points_path} has no attribute {field!r}. Attributes: "
+            f"{sorted(c for c in points.columns if c != points.geometry.name)}"
+        )
+    if field == "index_right":
+        # The name the spatial join gives its own index column. Refused here
+        # with a reason, instead of geopandas' message about a collision the
+        # caller never chose.
+        raise ValueError(
+            "the attribute is called 'index_right', which the spatial join uses for "
+            "its own column. Rename it first."
+        )
+    values = points[field]
+    numeric = values.map(lambda v: isinstance(v, int | float) and not isinstance(v, bool))
+    if not numeric[values.notna()].all():
+        raise ValueError(
+            f"attribute {field!r} holds values that are not numbers, so a sum or a mean "
+            "of it would be meaningless. Summarise a numeric attribute, or count "
+            "points per polygon with count_in_polygons."
+        )
+    # Points only. A MultiPoint straddling two polygons carried its whole value
+    # into both, and the note blamed overlap; a polygon layer passed as the
+    # points was summarised without a word. Measured by the `geo-reviewer`.
+    # Null and empty geometries are not refused -- they are counted and left
+    # out, because they have no position rather than a wrong one.
+    has_position = points.geometry.notna() & ~points.geometry.is_empty
+    kinds = set(points.geometry[has_position].geom_type)
+    if kinds - {"Point"}:
+        raise ValueError(
+            f"{points_path} holds {sorted(kinds - {'Point'})} geometries, and this "
+            "operation places points: a multi-part or areal feature can fall in "
+            "several polygons at once and carry its whole value into each. Explode "
+            "multi-points into single points first (explode_layer), or summarise "
+            "areas with an overlay."
+        )
+    new_columns = ["point_count", *(f"{field}_{name}" for name in wanted)]
+    clashing = sorted(set(new_columns) & set(polygons.columns))
+    if clashing:
+        raise ValueError(
+            f"the polygons already have column(s) {clashing}, which this operation "
+            "would overwrite. Rename them first, so the output cannot silently "
+            "replace a value that was in the input."
+        )
+    if str(output_path).lower().endswith(".shp"):
+        # The Shapefile driver truncates names to ten characters, and here that
+        # is not cosmetic: `population_count` came back as `population`, so a
+        # count sat in a column that reads as the attribute it counts.
+        too_long = [name for name in new_columns if len(name) > 10]
+        if too_long:
+            raise ValueError(
+                f"a Shapefile cannot hold the column name(s) {too_long}: the driver cuts "
+                "them to ten characters, and one of them would come back named like the "
+                "attribute it summarises. Write GeoPackage or GeoParquet instead."
+            )
+
+    record = ProvenanceRecord(
+        operation="summarize_points_in_polygons",
+        parameters={"field": field, "statistics": wanted, "predicate": predicate},
+        inputs=[
+            InputRecord.from_path(points_path, crs=verify.crs_label(points.crs)),
+            InputRecord.from_path(polygons_path, crs=verify.crs_label(polygons.crs)),
+        ],
+        engine=_engine_info(),
+    )
+    pre = verify.verify_loaded_inputs(
+        "summarize_points_in_polygons", points_path=points, polygons_path=polygons
+    )
+    if verify.has_critical_failure(pre):
+        record.add_verification(pre).finish().write_for(output_path)
+        verify.enforce(pre, "summarize_points_in_polygons")
+    original_points_crs = points.crs
+    aligned = not verify.same_crs(original_points_crs, polygons.crs)
+    if aligned:
+        points = points.to_crs(polygons.crs)
+    # Written after the move, not before it: on 2026-09-23 six operations were
+    # found recording a reprojection before it happened.
+    record.crs_decisions = alignment_decisions(
+        polygons.crs,
+        "the points are brought onto the polygons' CRS before they are placed"
+        if aligned
+        else "both layers share a CRS; nothing was reprojected",
+        [("points_path", original_points_crs)] if aligned else [],
+    )
+    pre += verify.verify_input_pairs(
+        "summarize_points_in_polygons", points_path=points, polygons_path=polygons
+    )
+    without_geometry = int((~has_position).sum())
+    located = points.loc[has_position, [field, points.geometry.name]]
+
+    with verify.audit_on_failure(record, output_path, pre):
+        joined = gpd.sjoin(
+            located, polygons[[polygons.geometry.name]], predicate=predicate, how="inner"
+        )
+        result = polygons.copy()
+        placed_counts = joined.groupby("index_right").size()
+        result["point_count"] = pd.Series(
+            [int(placed_counts.get(i, 0)) for i in result.index],
+            index=result.index, dtype="int64",
+        )
+        per_polygon = {
+            index: _describe(group[field].dropna().to_numpy(dtype=float))
+            for index, group in joined.groupby("index_right")
+        }
+        # Typed explicitly. A statistic that is null in every polygon -- stdev
+        # over single samples, anything over an empty layer -- was written as
+        # TEXT in GeoPackage and as a null type in GeoParquet, so the schema of
+        # the output depended on the data and two runs of one flow disagreed.
+        for name in wanted:
+            column = [per_polygon.get(i, {"count": 0}).get(name) for i in result.index]
+            if name == "count":
+                result[f"{field}_{name}"] = pd.Series(
+                    [int(v or 0) for v in column], index=result.index, dtype="int64"
+                )
+            else:
+                result[f"{field}_{name}"] = pd.Series(
+                    [float("nan") if v is None else float(v) for v in column],
+                    index=result.index, dtype="float64",
+                )
+        _write(result, output_path)
+
+    distinct = len(set(joined.index))
+    unplaced = len(located) - distinct
+    memberships = joined.index.value_counts()
+    # Two different numbers, which the first version reported as one: how many
+    # POINTS are counted in more than one polygon, and how many memberships
+    # beyond one each. A point in three overlapping polygons is one point, and
+    # the note said "1 of 1 points ...; 2 of them are counted in more than one".
+    counted_twice = int((memberships > 1).sum())
+    extra_memberships = len(joined) - distinct
+    missing = int(points[field].isna().sum())
+    # Of those, the ones that were PLACED -- only they are in a `point_count`.
+    # The first version said all of them were, and a point with no value that
+    # fell in no polygon is in no count at all: the `conformita-manifest`
+    # review measured the note saying so beside a layer of zero polygons.
+    missing_placed = int(points.loc[sorted(set(joined.index)), field].isna().sum())
+    empty = int((result["point_count"] == 0).sum())
+    record.notes.append(
+        f"{distinct} of {len(located)} located points fall in a polygon under `{predicate}`"
+        + (
+            f"; {counted_twice} of them are counted in more than one polygon "
+            f"({extra_memberships} extra memberships in all), because polygons overlap "
+            "or a point sits on an edge they share"
+            if counted_twice
+            else ""
+        )
+    )
+    if without_geometry:
+        record.notes.append(
+            f"{without_geometry} of {len(points)} points have no geometry (null or "
+            "empty), so they have no position and are in no polygon and no statistic"
+        )
+    if missing_placed:
+        record.notes.append(
+            f"{missing_placed} of the {distinct} placed points have no value in "
+            f"{field!r}: they are in `point_count` and in no statistic, so "
+            f"`{field}_count` is smaller than `point_count` wherever one of them fell"
+        )
+    if missing - missing_placed:
+        record.notes.append(
+            f"{missing - missing_placed} more points with no value in {field!r} are "
+            "not in any polygon, so they are in no count either"
+        )
+    if empty:
+        record.notes.append(
+            f"{empty} of {len(result)} polygons hold no point: they are kept, with "
+            "`point_count` 0, the count of values 0 and every other statistic null, "
+            "because the mean of no values is not zero"
+        )
+    checks = [
+        verify.Check(
+            "x-mapsmith:every_point_placed",
+            unplaced == 0,
+            f"{unplaced} of {len(located)} located points fall in no polygon",
+            critical=False,
+            hint=None if unplaced == 0 else (
+                f"Those points are outside every polygon under `{predicate}` and are "
+                "in no statistic. With `within`, a point exactly on a shared edge "
+                "belongs to neither side."
+            ),
+        ),
+    ]
+
+    def summary_intact() -> list[Any]:
+        # A check on the NUMBER, read back from the file rather than trusted
+        # from memory: the columns the manifest promises are there under their
+        # declared names, the counts add up to the memberships the join found,
+        # and no polygon summarises more values than it holds points.
+        written = readers.read_vector_or_table(output_path)
+        absent = [name for name in new_columns if name not in written.columns]
+        problems = []
+        if absent:
+            problems.append(f"columns {absent} are not in the output")
+        else:
+            total = int(written["point_count"].sum())
+            if total != len(joined):
+                problems.append(
+                    f"point_count sums to {total}, the join found {len(joined)} memberships"
+                )
+            if (written[f"{field}_count"] > written["point_count"]).any():
+                problems.append("some polygon summarises more values than it holds points")
+        return [
+            verify.Check(
+                "x-mapsmith:summary_columns_intact",
+                not problems,
+                "; ".join(problems) if problems else (
+                    f"{len(new_columns)} columns present; point_count sums to "
+                    f"{len(joined)}, and no {field}_count exceeds its point_count"
+                ),
+            )
+        ]
+
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="summarize_points_in_polygons",
+        preconditions=pre,
+        checks_fn=lambda: checks + summary_intact() + verify.verify_vector_output(
+            output_path,
+            expect_crs=polygons.crs,
+            expect_count=len(polygons),
+            on_empty="ignore",
+        ),
+    )
+    return {
+        "output": str(output_path),
+        "field": field,
+        "statistics": wanted,
+        "predicate": predicate,
+        "polygon_count": len(result),
+        "polygons_without_points": empty,
+        "points_placed": distinct,
+        "points_unplaced": unplaced,
+        "points_without_geometry": without_geometry,
+        "points_counted_twice": counted_twice,
+        "points_without_value": missing,
         "provenance": manifest,
         "verified": True,
         **extras,

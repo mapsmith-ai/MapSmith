@@ -278,6 +278,12 @@ def _count_in_polygons() -> Callable[..., dict[str, Any]]:
     return vector.count_in_polygons
 
 
+def _summarize_points_in_polygons() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.summarize_points_in_polygons
+
+
 def _focal_statistics() -> Callable[..., dict[str, Any]]:
     from ..engines import whitebox_engine
 
@@ -698,6 +704,14 @@ BINDINGS: dict[str, Binding] = {
     ),
     "count_in_polygons": Binding(
         _count_in_polygons,
+        ("points_path", "polygons_path"),
+        "output_path",
+        None,
+        ("same_as", "polygons_path"),
+        "vector",
+    ),
+    "summarize_points_in_polygons": Binding(
+        _summarize_points_in_polygons,
         ("points_path", "polygons_path"),
         "output_path",
         None,

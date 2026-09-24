@@ -690,13 +690,13 @@ def test_the_scaling_curve_and_the_median_are_current_on_every_surface():
     total = len(catalog.OPERATIONS)
 
     root = Path(__file__).resolve().parent.parent
-    words = {
-        10: "ten", 14: "fourteen", 16: "sixteen", 17: "seventeen", 51: "fifty-one",
-        61: "sixty-one", 72: "seventy-two", 74: "seventy-four", 75: "seventy-five",
-    }
-
-    def spoken(value: int) -> str:
-        return words.get(value, str(value))
+    # The DERIVED spelling, shared with `test_published_figures`. This held its
+    # own finite map, which stopped at seventy-five: on 2026-09-24 the catalogue
+    # reached 76, and a page that correctly said "seventy-six" would have been
+    # accused by a guard looking for "76". That is the sixth appearance of one
+    # shape here, and `in_words` was written on 2026-09-21 to end it -- this copy
+    # was the one nobody moved across.
+    from test_published_figures import in_words as spoken
 
     surfaces = {
         "README.md": (
