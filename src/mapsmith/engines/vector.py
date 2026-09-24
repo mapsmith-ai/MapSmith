@@ -247,6 +247,8 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
 def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
     gdf = _read(input_path)
     mask = _read(mask_path)
+    _refuse_naive_antimeridian(gdf, input_path)
+    _refuse_naive_antimeridian(mask, mask_path)
     record = ProvenanceRecord(
         operation="clip_layer",
         parameters={},
@@ -450,6 +452,8 @@ def overlay(
         raise ValueError(f"how must be one of {sorted(OVERLAY_HOWS)}, got {how!r}")
     left = _read(input_path)
     right = _read(overlay_path)
+    _refuse_naive_antimeridian(left, input_path)
+    _refuse_naive_antimeridian(right, overlay_path)
     record = ProvenanceRecord(
         operation="overlay_layers",
         parameters={"how": how, "keep_geom_type": True},
@@ -593,6 +597,8 @@ def nearest_join(
         raise ValueError(f"max_distance_meters must be positive, got {max_distance_meters}")
     left = _read(left_path)
     right = _read(right_path)
+    _refuse_naive_antimeridian(left, left_path)
+    _refuse_naive_antimeridian(right, right_path)
     record = ProvenanceRecord(
         operation="nearest_join",
         parameters={
@@ -1337,6 +1343,8 @@ def spatial_join(
         raise ValueError(f"predicate must be one of {sorted(allowed)}, got {predicate!r}")
     left = _read(left_path)
     right = _read(right_path)
+    _refuse_naive_antimeridian(left, left_path)
+    _refuse_naive_antimeridian(right, right_path)
     record = ProvenanceRecord(
         operation="spatial_join",
         parameters={"predicate": predicate},
@@ -2391,9 +2399,13 @@ def validate_geometry(input_path: str, output_path: str) -> dict[str, Any]:
 def _refuse_naive_antimeridian(polygons: gpd.GeoDataFrame, polygons_path: str) -> None:
     """Refuse a polygon drawn across the 180th meridian as a single ring.
 
-    The plane reads such a ring as its complement -- the rest of the planet --
-    so a point inside the real zone is dropped and one on the far side is
-    counted, and the total can equal the truth. See
+    The plane reads such a ring as its complement -- the rest of the planet.
+    Measured on 2026-09-24 in five operations: `count_in_polygons` dropped the
+    point inside the zone and counted one at 0 (a total equal to the truth),
+    and `clip_layer`, `spatial_join` and `overlay_layers` each returned the
+    feature on the far side of the world instead of the one inside. Not
+    `measure_area`, whose geodesic area follows the edge the short way and is
+    right. `nearest_join` returned an empty result. See
     `antimeridian.naive_crossings`. Refused rather than repaired: splitting the
     ring means deciding which side is meant, which is the caller's decision
     and the reason the file is ambiguous in the first place.
@@ -2404,9 +2416,10 @@ def _refuse_naive_antimeridian(polygons: gpd.GeoDataFrame, polygons_path: str) -
             f"{polygons_path}: feature(s) {offending[:5]}"
             f"{' and more' if len(offending) > 5 else ''} cross the 180th meridian "
             "as a single ring, which every planar library reads as the rest of the "
-            "planet: points inside the zone would be dropped and points on the far "
-            "side counted. Split the ring at 180 into two parts (RFC 7946 section "
-            "3.1.9), or use a projected CRS centred on the zone."
+            "planet: whatever lies inside the zone is treated as outside it, and "
+            "whatever lies on the far side of the world as inside. Split the ring at "
+            "180 into two parts (RFC 7946 section 3.1.9), or use a projected CRS "
+            "centred on the zone."
         )
 
 

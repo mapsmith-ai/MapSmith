@@ -79,6 +79,12 @@ All notable changes to MapSmith are documented here, in the format of
   operations now refuse that ring with the way out (split it at 180, as RFC
   7946 §3.1.9 prescribes, which then places correctly). The detector is in
   `antimeridian.naive_crossings` and only looks at layers in degrees.
+  Measured the same way on the other region operations before extending it:
+  `clip_layer`, `spatial_join` and `overlay_layers` each returned the feature
+  on the far side of the world instead of the one inside the zone, and
+  `nearest_join` returned nothing; all four refuse that ring now, on either
+  input. `measure_area` is not affected — its geodesic area follows the edge
+  the short way — and is left alone.
 
 - **Six operations wrote a fact into the manifest before it happened.** The
   record survives a crash, which is the point of it, and on these paths it

@@ -488,3 +488,28 @@ def test_the_detector_ignores_projected_layers_and_ordinary_zones():
     ordinary = gpd.GeoDataFrame(geometry=[box(-10, -5, 10, 5)], crs="EPSG:4326")
     assert antimeridian.naive_crossings(projected) == []
     assert antimeridian.naive_crossings(ordinary) == []
+
+
+@pytest.mark.parametrize("operation", ["clip", "overlay", "spatial_join", "nearest_join"])
+def test_the_other_region_operations_refuse_a_ring_drawn_across_180(tmp_path, operation):
+    """Measured on 2026-09-24 before the refusal: clip, spatial_join and overlay
+    each returned the feature on the FAR side of the world instead of the one
+    inside the zone, and nearest_join returned nothing. Not measure_area, whose
+    geodesic area follows the edge the short way and is right."""
+    from shapely.geometry import Polygon
+
+    zone = _pacific_zone(tmp_path, Polygon([(170, -5), (-170, -5), (-170, 5), (170, 5)]))
+    other = tmp_path / "other.gpkg"
+    gpd.GeoDataFrame(
+        {"id": ["inside", "far"]}, geometry=[box(172, -2, 178, 2), box(0, -2, 6, 2)],
+        crs="EPSG:4326",
+    ).to_file(other)
+    out = str(tmp_path / "o.gpkg")
+    calls = {
+        "clip": lambda: vector.clip(str(other), str(zone), out),
+        "overlay": lambda: vector.overlay(str(other), str(zone), out, how="intersection"),
+        "spatial_join": lambda: vector.spatial_join(str(other), str(zone), out),
+        "nearest_join": lambda: vector.nearest_join(str(other), str(zone), out),
+    }
+    with pytest.raises(ValueError, match="cross the 180th meridian"):
+        calls[operation]()
