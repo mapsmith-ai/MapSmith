@@ -64,6 +64,48 @@ def _optional(
     return True
 
 
+def _check_transformation(out: list[str], shift: dict, where: str) -> None:
+    """One transformation object, wherever section 3.7 puts one.
+
+    A function since 1.0.0-draft.6, when `round_trip` added two more places
+    that hold the same shape. Until then this was inline under
+    `crs_decisions.transformation`; copying it twice would have given the
+    three copies three chances to disagree with the schema, and the one time
+    this file has disagreed with it already is recorded just below.
+    """
+    # `pipeline` is NULLABLE, like `source_crs` and `accuracy_m`: PROJ does not
+    # always give a pipeline string for a transformation it performed. This used
+    # to be `_optional(..., str)`, the only nullable field in this file written
+    # the non-nullable way, and the schema said `["string", "null"]` -- so the
+    # two implementations disagreed, and section 3 says the schema wins.
+    #
+    # The record that exposed it is not exotic: a reprojection from EPSG:4267 to
+    # EPSG:4326, which is the NAD27-to-WGS84 pair section 3.7 uses as its
+    # headline example. The conformance suite did not see it for two reasons,
+    # both now closed: it mutated `crs_decisions.transformation` as a container
+    # and never descended into the three keys draft.3 added, and it only ever
+    # checked that both implementations REJECT a bad value, never that both
+    # ACCEPT a permitted one -- and null on a nullable field is exactly that case.
+    if shift.get("pipeline") is not None and not isinstance(shift["pipeline"], str):
+        out.append(f"`{where}.pipeline` must be a string or null")
+    _optional(out, shift, "is_ballpark", bool, where)
+    accuracy = shift.get("accuracy_m")
+    # `isinstance(True, int)` is True in Python, and a boolean accuracy is not a
+    # number in JSON: the two implementations must agree on that.
+    if accuracy is not None and (
+        isinstance(accuracy, bool) or not isinstance(accuracy, (int, float))
+    ):
+        out.append(f"`{where}.accuracy_m` must be a number or null")
+    # New in 1.0.0-draft.4, and the reason it exists is in section 3.7: it is the
+    # only field that tells "no operation exists for this pair" apart from "one
+    # does and this machine has not got the grid".
+    better = shift.get("better_available_m")
+    if better is not None and (
+        isinstance(better, bool) or not isinstance(better, (int, float))
+    ):
+        out.append(f"`{where}.better_available_m` must be a number or null")
+
+
 def problems(record: object) -> list[str]:
     """Every way this record fails to conform, in schema order. Empty = conforming."""
     out: list[str] = []
@@ -183,45 +225,41 @@ def problems(record: object) -> list[str]:
         # transformation?" could only be answered in prose -- which is what
         # section 7 faults other formats for.
         if _optional(out, decisions, "transformation", dict, "crs_decisions"):
-            shift = decisions["transformation"]
-            # `pipeline` is NULLABLE, like `source_crs` above and `accuracy_m`
-            # below: PROJ does not always give a pipeline string for a
-            # transformation it performed. This used to be `_optional(..., str)`,
-            # the only nullable field in this file written the non-nullable way,
-            # and the schema said `["string", "null"]` — so the two
-            # implementations disagreed, and section 3 says the schema wins.
-            #
-            # The record that exposed it is not exotic: a reprojection from
-            # EPSG:4267 to EPSG:4326, which is the NAD27-to-WGS84 pair section
-            # 3.7 uses as its headline example. The conformance suite did not
-            # see it for two reasons, both now closed: it mutated
-            # `crs_decisions.transformation` as a container and never descended
-            # into the three keys draft.3 added, and it only ever checked that
-            # both implementations REJECT a bad value, never that both ACCEPT a
-            # permitted one — and null on a nullable field is exactly that case.
-            if shift.get("pipeline") is not None and not isinstance(
-                shift["pipeline"], str
-            ):
+            _check_transformation(out, decisions["transformation"], "crs_decisions.transformation")
+        # New in 1.0.0-draft.6. Two legs of the same shape as `transformation`,
+        # each checked by the same code: a second copy of the checks above
+        # would be a second chance for the two to drift, and the one place
+        # this file has already drifted from the schema was a nullable field
+        # written the non-nullable way (see `_check_transformation`).
+        if _optional(out, decisions, "round_trip", dict, "crs_decisions"):
+            trip = decisions["round_trip"]
+            for leg in ("transformation", "return_transformation"):
+                if leg not in trip:
+                    out.append(
+                        f"`crs_decisions.round_trip` is missing `{leg}`: section 3.7 "
+                        "records both legs, each as the engine reported it for its "
+                        "direction, and neither may be derived from the other"
+                    )
+                elif _optional(out, trip, leg, dict, "crs_decisions.round_trip"):
+                    _check_transformation(out, trip[leg], f"crs_decisions.round_trip.{leg}")
+        # The fact has one name since draft.6. A prefixed key for it is the
+        # reference implementation's own old name, and the likeliest way a
+        # producer gets this wrong is by not migrating -- so that is the case
+        # checked. It is a proxy for "the same fact under another name", which
+        # no program can recognise in general, and it is stated as one.
+        # The same grammar as the schema's `patternProperties`, and not a looser
+        # one: `startswith("x-") and endswith(":round_trip")` also caught
+        # `x-a:b:round_trip` and `x-:round_trip`, which the schema accepts, so the
+        # two implementations disagreed on two spellings -- found by the
+        # `conformita-manifest` review before draft.6 was tagged. Section 3 says
+        # the schema wins, so this follows it.
+        for key in decisions:
+            if re.fullmatch(r"x-[^:]+:round_trip", key):
                 out.append(
-                    "`crs_decisions.transformation.pipeline` must be a string or null"
-                )
-            _optional(out, shift, "is_ballpark", bool, "crs_decisions.transformation")
-            accuracy = shift.get("accuracy_m")
-            # `isinstance(True, int)` is True in Python, and a boolean accuracy is
-            # not a number in JSON: the two implementations must agree on that.
-            if accuracy is not None and (
-                isinstance(accuracy, bool) or not isinstance(accuracy, (int, float))
-            ):
-                out.append("`crs_decisions.transformation.accuracy_m` must be a number or null")
-            # New in 1.0.0-draft.4, and the reason it exists is in section 3.7:
-            # it is the only field that tells "no operation exists for this pair"
-            # apart from "one does and this machine has not got the grid".
-            better = shift.get("better_available_m")
-            if better is not None and (
-                isinstance(better, bool) or not isinstance(better, (int, float))
-            ):
-                out.append(
-                    "`crs_decisions.transformation.better_available_m` must be a number or null"
+                    f"`crs_decisions.{key}` records a CRS round trip under an "
+                    "extension name; since 1.0.0-draft.6 section 3.7 names it "
+                    "`round_trip`, and a core fact under a prefixed name does not "
+                    "conform"
                 )
     if _optional(out, record, "environment", dict):
         for key, value in record["environment"].items():

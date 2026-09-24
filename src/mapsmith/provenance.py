@@ -22,7 +22,7 @@ from . import __version__
 # implementation of that format, not its definition: the spec, its schema, a
 # toolchain-free validator and the conformance suite live in their own
 # repository, and a CI test validates real MapSmith output against them.
-SPEC_VERSION = "1.0.0-draft.5"
+SPEC_VERSION = "1.0.0-draft.6"
 
 #: One `crs_decisions` key for "a secondary input was brought into the analysis
 #: CRS", and a structured value rather than a sentence.
@@ -39,11 +39,18 @@ SPEC_VERSION = "1.0.0-draft.5"
 INPUTS_REPROJECTED = "x-mapsmith:inputs_reprojected"
 
 
-#: The output was computed in one CRS and written in another, because the
-#: operation needed metres and the caller's data is in degrees. Its own key
-#: because it is a different fact from `INPUTS_REPROJECTED`: nothing of the
-#: caller's moved permanently, and the transformation was applied twice.
-ROUND_TRIP = "x-mapsmith:round_trip"
+#: The output was computed in one CRS and written back in the caller's, because
+#: the operation needed metres and the caller's data is in degrees. A different
+#: fact from `INPUTS_REPROJECTED`: nothing of the caller's moved permanently.
+#:
+#: A core key of the specification since `1.0.0-draft.6` (D-091), and no longer
+#: an extension: until then it was `x-mapsmith:round_trip`, which a producer
+#: reading only the specification would have had to reinvent under its own
+#: name. The two legs are an operation and its INVERSE, each asked of PROJ --
+#: this comment said "the transformation was applied twice" until 2026-09-23,
+#: sixteen days after that description was found false and removed from the
+#: record itself. The key moved; the sentence beside its definition did not.
+ROUND_TRIP = "round_trip"
 
 #: The two `crs_decisions` keys `grid` contributes. Here rather than there so
 #: that every extension MapSmith adds to that object is declared in one place.
@@ -70,16 +77,6 @@ CRS_EXTENSIONS: dict[str, str] = {
         "Not `source_crs`: that says where the OPERATION's coordinates were, and "
         "these are other inputs brought to meet them. The output never was in "
         "the CRS named here."
-    ),
-    ROUND_TRIP: (
-        "Not `target_crs`: nothing ended up there. The coordinates went out to "
-        "`analysis_crs` and came back, so the specification's pair would describe "
-        "a move that was undone. Both legs are recorded -- `transformation` for "
-        "the way out and `return_transformation` for the way back -- because they "
-        "are an operation and its inverse, not one applied twice. The CRS the "
-        "output ended in is deliberately NOT here: section 3.7 says that belongs "
-        "in `output`, and a claim about a file, made by code that has not yet "
-        "written one, is false on every path that fails before it does."
     ),
     "x-mapsmith:input_crs_discarded": (
         "Not `source_crs`, which the specification defines as the system the "

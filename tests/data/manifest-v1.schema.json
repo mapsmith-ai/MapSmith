@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mapsmith.dev/spec/manifest-v1.schema.json",
-  "x-spec-version": "1.0.0-draft.5",
+  "x-spec-version": "1.0.0-draft.6",
   "title": "Provenance manifest for a geospatial dataset",
   "description": "One record, written next to one output dataset, complete enough that someone who was not there can re-run the operation and disagree with it. A manifest records what was done; it does not certify that it was right \u2014 those are different claims, and this format only makes the first.",
   "type": "object",
@@ -199,7 +199,7 @@
     },
     "crs_decisions": {
       "type": "object",
-      "description": "RECOMMENDED. Coordinate-system decisions and the reason for each. `analysis_crs` and `reason` are strings; other values may be of any type, because the question a consumer most needs answered here (was the transformation a ballpark one?) has to be answerable in a form a program can branch on. Section 3.7 fixes the keys.",
+      "description": "RECOMMENDED. Coordinate-system decisions and the reason for each. `analysis_crs` and `reason` are strings; `transformation` and `round_trip` are objects of the shapes defined here; other values may be of any type, because the question a consumer most needs answered here (was the transformation a ballpark one?) has to be answerable in a form a program can branch on. Section 3.7 fixes the keys. `round_trip` is the only name for a completed CRS round trip; a prefixed name for the same fact does not conform.",
       "properties": {
         "analysis_crs": {
           "type": "string",
@@ -254,9 +254,31 @@
             }
           },
           "description": "How the coordinates were transformed. Section 3.7."
+        },
+        "round_trip": {
+          "type": "object",
+          "required": [
+            "transformation",
+            "return_transformation"
+          ],
+          "additionalProperties": true,
+          "properties": {
+            "transformation": {
+              "$ref": "#/properties/crs_decisions/properties/transformation",
+              "description": "The outbound leg: the caller's CRS to analysis_crs, as the engine reported it for that direction."
+            },
+            "return_transformation": {
+              "$ref": "#/properties/crs_decisions/properties/transformation",
+              "description": "The return leg: analysis_crs back to the caller's CRS, as the engine reported it for THAT direction. Not derived from the outbound leg: even on WGS 84 to a UTM zone the two are different records, the projection and its inverse, so a copy of the outbound record names the wrong operation."
+            }
+          },
+          "description": "The operation computed in analysis_crs and wrote its output back in the caller's CRS. New in 1.0.0-draft.6. MUST be written only once the output is back in the caller's CRS, and MUST NOT appear on a record written for a trip that did not complete. Section 3.7."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": true,
+      "patternProperties": {
+        "^x-[^:]+:round_trip$": false
+      }
     },
     "notes": {
       "type": "array",

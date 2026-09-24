@@ -147,7 +147,23 @@ def _spec_object_paths() -> dict[str, frozenset[str]]:
     )
     paths: dict[str, frozenset[str]] = {}
 
+    def resolve(node: object) -> object:
+        # Local `$ref`s followed, since `1.0.0-draft.6` declares both legs of
+        # `crs_decisions.round_trip` as a reference to `transformation`. The walk
+        # read `properties` and a reference has none, so it stepped over both
+        # legs and nothing checked that a key of ours inside them carries the
+        # prefix -- while `docs/manifest-vocabulary.md` says the rule holds
+        # there. Found by the `conformita-manifest` review before the draft was
+        # tagged, together with the same hole in the specification's own suite.
+        if isinstance(node, dict) and isinstance(node.get("$ref"), str):
+            target: object = schema
+            for step in node["$ref"].removeprefix("#/").split("/"):
+                target = target[step]
+            return {**target, **{k: v for k, v in node.items() if k != "$ref"}}
+        return node
+
     def walk(node: object, path: str) -> None:
+        node = resolve(node)
         if not isinstance(node, dict):
             return
         described = node.get("properties")
@@ -164,7 +180,12 @@ def _spec_object_paths() -> dict[str, frozenset[str]]:
     # must find: these four are `required` or all but universal in the schema,
     # so a walk that misses them is broken rather than looking at a lean
     # schema. `engine` is named explicitly because it is the one that slipped.
-    for expected in ("", "engine", "crs_decisions", "verification[]"):
+    for expected in (
+        "", "engine", "crs_decisions", "verification[]",
+        # Reached only through a `$ref`: if the resolver stops working, the legs
+        # drop out of the derivation again and this says so.
+        "crs_decisions.round_trip.return_transformation",
+    ):
         assert expected in paths, (
             f"the schema walk found no described object at {expected!r}: "
             f"it reached {sorted(paths)}. The walk is broken, or the schema "

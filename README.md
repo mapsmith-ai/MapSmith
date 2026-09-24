@@ -43,9 +43,10 @@ The manifest is a [specified format](https://github.com/mapsmith-ai/manifest-spe
 MapSmith's private output: JSON Schema, a toolchain-free validator, a conformance suite, and a
 hundred-line emitter that never imports MapSmith. Records carry `spec_version`, and CI validates
 real MapSmith output against the spec's own validator. The specification is archived and citable
-as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213) — that DOI holds
-`1.0.0-draft.3`, while MapSmith emits `1.0.0-draft.5`, so follow the repository for the text
-these records are written against. The names MapSmith puts
+as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213), a concept DOI that
+resolves to the latest *archived* draft. These records declare `1.0.0-draft.6`; if the DOI shows
+an earlier one, the archive has not caught up, and the
+[repository](https://github.com/mapsmith-ai/manifest-spec) holds the text they are written against. The names MapSmith puts
 in a record beyond the ones the specification defines — every extension check name, and every
 extension field in `crs_decisions` with the reason it is not a synonym of a key the specification
 already has — are listed in [`docs/manifest-vocabulary.md`](docs/manifest-vocabulary.md),
@@ -229,8 +230,10 @@ changed, no tool, operation or count moved, and the pages that render them are b
 **If you read manifests written by 0.4.0, 0.5.0 renames several fields**, and the changelog
 lists every one with what to read instead: eight `crs_decisions` keys, the top-level
 `mapsmith_version` (read `producer.version`), two fields of `x-mapsmith:round_trip`, two of
-`repairs[]`, and `engine.geometry_library`. Records now declare `spec_version`
-`1.0.0-draft.5`.
+`repairs[]`, and `engine.geometry_library`. **After 0.5.1 one more key moves**:
+`x-mapsmith:round_trip` is now `round_trip`, because the specification made it a core key in
+`1.0.0-draft.6` and forbids recording that fact under a prefixed name. The shape is unchanged.
+Records now declare `spec_version` `1.0.0-draft.6`.
 
 Then ask your agent things like:
 
@@ -256,7 +259,7 @@ for it:
 
 ```json
 {
-  "spec_version": "1.0.0-draft.5",
+  "spec_version": "1.0.0-draft.6",
   "producer": {"name": "mapsmith", "version": "0.5.1"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
@@ -268,7 +271,7 @@ for it:
   "crs_decisions": {
     "analysis_crs": "EPSG:32632",
     "reason": "estimated UTM zone for metric buffering on a geographic CRS",
-    "x-mapsmith:round_trip": {
+    "round_trip": {
       "transformation": {
         "pipeline": "+proj=pipeline +step +proj=unitconvert +xy_in=deg +xy_out=rad +step +proj=utm +zone=32 +ellps=WGS84",
         "accuracy_m": 0.0,
@@ -308,8 +311,9 @@ the specification's own validator and re-runs the operation to compare its `crs_
 keys with the emitted ones, because a record typed by hand drifts silently while every
 generated surface stays correct: it lacked `spec_version` for two releases, and on
 2026-09-06 it was still recording a round trip without the
-[`x-mapsmith:round_trip`](docs/manifest-vocabulary.md) key that says the coordinates came
-back. This is the record a third-party implementer copies.
+key that says the coordinates came back — `x-mapsmith:round_trip` then, and
+[`round_trip`](https://github.com/mapsmith-ai/manifest-spec/blob/main/spec/manifest-v1.md#37-crs_decisions-the-shape)
+in the specification since `1.0.0-draft.6`. This is the record a third-party implementer copies.
 
 Trimmed for the page, not for the file: the real record also carries the output's own path
 and hash, any geometry MapSmith had to repair, and the notes it made about how the inputs

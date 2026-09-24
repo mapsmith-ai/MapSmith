@@ -2,7 +2,7 @@
 
 # The names MapSmith writes into a manifest
 
-Against `1.0.0-draft.5` of the [manifest specification](https://github.com/mapsmith-ai/manifest-spec).
+Against `1.0.0-draft.6` of the [manifest specification](https://github.com/mapsmith-ai/manifest-spec).
 
 Section 3.6 of that specification makes `verification[].name` a closed core
 plus extensions spelled `x-<producer>:<name>`, so a consumer can branch on it
@@ -125,7 +125,7 @@ only `crs_decisions` was missing the half that makes its own case.
 The settings read straight from the engine, unprefixed because they are its
 words and not ours: `GDAL_GEOREF_SOURCES` · `GDAL_PAM_ENABLED`.
 
-## Extension fields in `crs_decisions` (6)
+## Extension fields in `crs_decisions` (5)
 
 Section 3.7 recommends the keys of that object and permits more. These are
 MapSmith's, and each one carries the reason it is **not** a synonym of a key
@@ -139,15 +139,20 @@ and two keys that started as synonyms are why this list exists.
 | `x-mapsmith:inputs_reprojected` | Not `source_crs`: that says where the OPERATION's coordinates were, and these are other inputs brought to meet them. The output never was in the CRS named here. |
 | `x-mapsmith:raster_registration` | Cell registration is not a coordinate system. Section 3.7 has no key for it, and section 3.8 lists AREA_OR_POINT under `environment` -- which is a tag INSIDE the file, not configuration beside it, so that list and this key disagree and the specification is the one to fix. |
 | `x-mapsmith:raster_registration_reason` | Not `reason`, which belongs to the CRS decision and is already taken. Two different reasons under one key silently replaced each other once, and a test caught it. |
-| `x-mapsmith:round_trip` | Not `target_crs`: nothing ended up there. The coordinates went out to `analysis_crs` and came back, so the specification's pair would describe a move that was undone. Both legs are recorded -- `transformation` for the way out and `return_transformation` for the way back -- because they are an operation and its inverse, not one applied twice. The CRS the output ended in is deliberately NOT here: section 3.7 says that belongs in `output`, and a claim about a file, made by code that has not yet written one, is false on every path that fails before it does. |
 
 ## Extension fields inside `crs_decisions.transformation` (2)
 
 One level further down, and it is the same rule read again: the prefix follows
 the container. `transformation` is an object section 3.7 defines — four keys
-since `1.0.0-draft.4` — so a key of ours in there has to say so. A key of ours
-directly inside `x-mapsmith:round_trip` does not, because that whole object is
-already ours: the difference is the container, never the datum.
+since `1.0.0-draft.4` — so a key of ours in there has to say so, and so is
+`round_trip` since `1.0.0-draft.6`, whose two legs have that same shape. A key
+of ours inside an entry of `x-mapsmith:inputs_reprojected` does not need the
+prefix, because that whole object is already ours: the difference is the
+container, never the datum.
+
+This paragraph used `x-mapsmith:round_trip` as its example of a container that
+is ours until 2026-09-23, when the key entered the specification. The example
+changed sides; the rule did not.
 
 | key | why it is not one section 3.7 already has |
 |---|---|

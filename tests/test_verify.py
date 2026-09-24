@@ -310,13 +310,28 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
         # stopped at the first level. Inside a container of OURS, by the same
         # rule, sub-keys carry no prefix and there is nothing to check: the whole
         # object already said whose it is.
-        inner = (record.get("crs_decisions") or {}).get("transformation")
-        if isinstance(inner, dict):
+        #
+        # And in THREE places since `1.0.0-draft.6`, not one: the two legs of
+        # `round_trip` are the same specification object. This read only the
+        # top-level `transformation`, so a key of ours without the prefix inside
+        # a leg would have passed -- the `conformita-manifest` review measured
+        # `x-mapsmith:chosen_by` in both legs of a NAD27 buffer, conforming only
+        # because nobody had got the spelling wrong yet.
+        decisions = record.get("crs_decisions") or {}
+        trip = decisions.get("round_trip") if isinstance(decisions.get("round_trip"), dict) else {}
+        holders = {
+            "crs_decisions.transformation": decisions.get("transformation"),
+            "crs_decisions.round_trip.transformation": trip.get("transformation"),
+            "crs_decisions.round_trip.return_transformation": trip.get("return_transformation"),
+        }
+        for where, inner in holders.items():
+            if not isinstance(inner, dict):
+                continue
             for key in inner:
                 assert key in spec_transformation_keys or (
                     _EXTENSION_KEY.fullmatch(key) and key in TRANSFORMATION_EXTENSIONS
                 ), (
-                    f"{name} wrote `crs_decisions.transformation.{key}`. That object "
+                    f"{name} wrote `{where}.{key}`. That object "
                     "belongs to section 3.7, so a key of ours in it must be spelled "
                     "`x-mapsmith:<name>` AND declared in "
                     "`provenance.TRANSFORMATION_EXTENSIONS` with the sentence saying "
@@ -2408,10 +2423,15 @@ def test_every_extension_name_the_source_emits_is_on_the_published_page():
     # Anti-vacuity on what the sweep must SEE, not on what it must find. These
     # three live in three different containers, so a change that narrows the
     # sweep to one of them fails here instead of quietly checking less.
+    # The `crs_decisions` anchor was `x-mapsmith:round_trip` until 2026-09-23,
+    # when that key entered the specification as `round_trip` (draft.6, D-091)
+    # and stopped being ours to prefix. Its replacement is one every raster
+    # manifest with a registration carries, so the anchor names a key that is
+    # really emitted and not one that is merely declared.
     for expected in (
         "x-mapsmith:geometry_library",     # engine
         "x-mapsmith:round",                # repairs[]
-        "x-mapsmith:round_trip",           # crs_decisions
+        "x-mapsmith:raster_registration",  # crs_decisions
     ):
         assert expected in emitted, (
             f"the sweep no longer reads {expected} out of the source, so whatever "

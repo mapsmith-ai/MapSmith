@@ -25,6 +25,41 @@ All notable changes to MapSmith are documented here, in the format of
   than a limitation: an upload box would mean running GDAL on files from
   strangers, which is the assumption `SECURITY.md` is built on refusing.
 
+### Changed
+
+- **Records declare `spec_version` `1.0.0-draft.6`, and `x-mapsmith:round_trip`
+  is now `round_trip`.** Breaking for anyone who reads that key. The
+  specification gained a core key for "computed in another CRS and written back
+  in the caller's", with the two legs MapSmith already recorded, and draft.6
+  forbids recording that fact under a prefixed name: two producers naming the
+  same fact differently is two facts to a consumer. The shape is unchanged —
+  `transformation` for the way out, `return_transformation` for the way back —
+  so a reader needs to change the key it looks up and nothing else.
+
+### Fixed
+
+- **Six operations wrote a fact into the manifest before it happened.** The
+  record survives a crash, which is the point of it, and on these paths it
+  survived carrying a sentence that had become false.
+  - `simplify_layer`, `centroid_layer` and `nearest_join` recorded the round
+    trip before the way back ran, and the way back runs inside the block that
+    writes the record on failure. A return leg that raised left a manifest
+    asserting a trip that never finished. `buffer_layer` had the right order
+    by accident. The trip is recorded only once the output is home, and
+    draft.6 now requires exactly that of every producer.
+  - `reproject_layer` and `reproject_raster` recorded `target_crs` and the
+    transformation before any coordinate moved, so a failed reprojection said
+    where the data had been put and by which operation — with a seven-metre
+    datum shift, on a NAD27 input, beside geometry that had not gone anywhere.
+  - Three `reason` strings said "output geometries are returned in the input
+    CRS", written before the work and surviving on the failing path while the
+    key correctly disappeared. The key says it now, when it is true.
+- **`reproject_raster` could leave a raster with no manifest beside it.** A
+  warp that raised on the second of three bands left a 19608-byte file on disk
+  — band one warped, two and three zero-filled — and nothing describing it.
+  The write is inside the failure audit now, and a partial file carries a
+  record that says `x-mapsmith:operation_completed: false`.
+
 ## [0.5.1] - 2026-09-21
 
 ### Fixed

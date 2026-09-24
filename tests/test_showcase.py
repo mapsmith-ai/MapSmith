@@ -1380,7 +1380,15 @@ def test_the_changelog_block_for_this_version_counts_what_is_actually_here():
     # the block, so a correct historical sentence failed the release. That is
     # the same shape as a guard accusing a page that is right, which this
     # repository has now met in three different files.
-    declared = re.findall(r"`spec_version`\s+`(1\.0\.0-draft\.\d+)`", block)
+    # The NEWEST section that declares a spec_version is the one that speaks for
+    # the product, and the older ones are history. Until 2026-09-24 this read
+    # every declaration in `[Unreleased]` and `[{__version__}]` together, so the
+    # moment `[Unreleased]` announced draft.6 the 0.5.1 section's true sentence
+    # "records still declare `spec_version` `1.0.0-draft.5`" failed the build --
+    # the fourth time here a guard has accused a page that was right.
+    unreleased = next((b for b in blocks if b.startswith("Unreleased]")), "")
+    newest = unreleased if re.search(r"`spec_version`\s+`1\.0\.0-draft", unreleased) else block
+    declared = re.findall(r"`spec_version`\s+`(1\.0\.0-draft\.\d+)`", newest)
     assert declared, (
         "the [Unreleased] block no longer declares which spec_version the "
         "records carry; that sentence is what a consumer of the manifests reads"

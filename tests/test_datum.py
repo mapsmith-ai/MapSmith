@@ -746,3 +746,55 @@ def test_every_operation_that_travels_records_the_trip(tmp_path):
             f"{name}: the output has to come back in the caller's CRS, or the "
             "key describes a trip that did not end where it claims"
         )
+
+
+def test_keys_of_ours_inside_the_round_trip_legs_carry_the_prefix(tmp_path):
+    """The prefix rule, inside the two legs of `round_trip`, on a run that fills them.
+
+    Both legs are `transformation` objects, which the specification defines, so
+    a key of ours in either has to be spelled `x-mapsmith:<name>` and declared.
+    The conformance sweep checks that, but on its own records only one
+    operation makes the trip, and none produces a leg carrying a key of ours --
+    so the check over the legs had nothing to look at. Sabotaging the spelling
+    of `x-mapsmith:chosen_by` was caught, but by the TOP-LEVEL check on
+    `reproject_raster`, which proves nothing about the legs.
+
+    NAD27 outside its area of use does fill them: PROJ picks the operation, so
+    both legs carry `x-mapsmith:chosen_by`. The premise is asserted first, so a
+    day when the legs stop carrying it is a failure here and not a pass over
+    nothing.
+    """
+    gpd = pytest.importorskip("geopandas")
+    from shapely.geometry import Point
+
+    from mapsmith.engines import vector
+    from mapsmith.provenance import ROUND_TRIP, TRANSFORMATION_EXTENSIONS
+
+    source = tmp_path / "outside_nad27.gpkg"
+    gpd.GeoDataFrame(
+        {"id": [1]}, geometry=[Point(9.0, 45.0)], crs="EPSG:4267"
+    ).to_file(source, driver="GPKG")
+    out = tmp_path / "buffered.gpkg"
+    vector.buffer(str(source), 100.0, str(out))
+    record = json.loads(Path(f"{out}.provenance.json").read_text(encoding="utf-8"))
+    trip = record["crs_decisions"][ROUND_TRIP]
+
+    spec_keys = {"pipeline", "accuracy_m", "is_ballpark", "better_available_m"}
+    # The premise is "the legs hold something beyond the specification's keys",
+    # and NOT "a key starting with x-": the first version asked for the prefix,
+    # so a sabotage that dropped it emptied the premise and failed there -- red,
+    # for the wrong reason, which is the reading D-079 warns against.
+    beyond = [key for leg in trip.values() for key in leg if key not in spec_keys]
+    assert beyond, (
+        "neither leg carries a key beyond the specification's, so this test "
+        f"checks nothing: {trip}"
+    )
+    for leg_name, leg in trip.items():
+        for key in leg:
+            assert key in spec_keys or (
+                key.startswith("x-mapsmith:") and key in TRANSFORMATION_EXTENSIONS
+            ), (
+                f"`crs_decisions.{ROUND_TRIP}.{leg_name}.{key}`: the legs are "
+                "specification objects, so a key of ours needs the prefix and a "
+                "declaration in `provenance.TRANSFORMATION_EXTENSIONS`"
+            )
