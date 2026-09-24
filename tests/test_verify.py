@@ -188,6 +188,7 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
     with_repairs: list[str] = []
     undeclared: list[str] = []
     containers_seen: set[str] = set()
+    _records_seen: dict[str, dict] = {}
     spec_objects = _spec_object_paths()
     from pathlib import Path as _Path
 
@@ -218,6 +219,7 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
             skipped.append(name)
             continue
         record = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+        _records_seen[name] = record
         assert _spec_problems(record) == [], f"{name} writes a manifest the spec rejects"
         assert record["operation"] == name
         assert record["spec_version"].startswith("1."), name
@@ -436,6 +438,18 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
         "the specification's must say it is ours -- `x-mapsmith:<name>`. If "
         "the key is not ours to name, add its container to "
         "SPEC_OBJECTS_NOT_OURS with the reason."
+    )
+
+    carried = [
+        name for name, record in _records_seen.items()
+        if INPUTS_REPROJECTED in (record.get("crs_decisions") or {})
+    ]
+    assert carried, (
+        f"no record in this sweep carries `{INPUTS_REPROJECTED}`, so it is a key "
+        "the vocabulary page documents and nothing emits end to end. The clip "
+        "fixture gives the mask another CRS for exactly this; if it stopped "
+        "producing the key, restore it rather than letting the page describe a "
+        "record nobody has seen."
     )
 
     assert with_repairs, (
@@ -1058,6 +1072,16 @@ def _spec_fixtures(tmp_path):
     gpd.GeoDataFrame({"k": ["x"], "v": [1]}, geometry=[square], crs=crs).to_parquet(layer)
     second = tmp_path / "b.parquet"
     gpd.GeoDataFrame({"j": [2]}, geometry=[other], crs=crs).to_parquet(second)
+    # The same polygon in ANOTHER CRS, for the one two-layer call here that
+    # reprojects its second input. Until 2026-09-24 every pair in this sweep
+    # shared a CRS, so `x-mapsmith:inputs_reprojected` was declared, documented
+    # on the vocabulary page, and produced by none of the fifty-eight records --
+    # the `conformita-manifest` review measured 0 of 58. It is the other thing
+    # `alignment_decisions` writes, and that function changed on 2026-09-23.
+    elsewhere = tmp_path / "b_geographic.parquet"
+    gpd.GeoDataFrame({"j": [2]}, geometry=[other], crs=crs).to_crs(
+        "EPSG:4326"
+    ).to_parquet(elsewhere)
     # One fixture on a GEOGRAPHIC datum, and NAD27 rather than WGS 84 on
     # purpose. Every other layer here is already projected, so until 2026-09-07
     # not one of the fifty-eight records this sweep collects had ever taken the
@@ -1219,7 +1243,7 @@ def _spec_fixtures(tmp_path):
             out("cheapest.parquet"),
         ),
         "buffer_layer": lambda: vector.buffer(str(layer), 10.0, out("buf.parquet")),
-        "clip_layer": lambda: vector.clip(str(layer), str(second), out("clip.parquet")),
+        "clip_layer": lambda: vector.clip(str(layer), str(elsewhere), out("clip.parquet")),
         "overlay_layers": lambda: vector.overlay(
             str(layer), str(second), out("ov.parquet")
         ),
