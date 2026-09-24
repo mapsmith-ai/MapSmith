@@ -85,6 +85,16 @@ All notable changes to MapSmith are documented here, in the format of
   `nearest_join` returned nothing; all four refuse that ring now, on either
   input. `measure_area` is not affected — its geodesic area follows the edge
   the short way — and is left alone.
+- **`nearest_join` measured distances 5-6% too long across the antimeridian,
+  with no warning.** It works in an estimated UTM zone, and GeoPandas centres
+  that estimate on the mean of `minx` and `maxx`: for data straddling 180 that
+  is about 0, so two points at 175°E and 175°W were given EPSG:32630, centred on
+  3°W. Their distances to a zone three degrees away came back as 351.7 and
+  354.0 km where the truth is 334.0. `antimeridian.estimate_utm_crs` centres on
+  the true extent instead (here UTM 1N, within one per cent), and changes
+  nothing for data that does not cross. `buffer_layer`, `simplify_layer` and
+  `centroid_layer` use it too; a 1 km buffer had measured correctly even in the
+  far zone, so for them it is the right zone rather than a fix.
 
 - **Six operations wrote a fact into the manifest before it happened.** The
   record survives a crash, which is the point of it, and on these paths it

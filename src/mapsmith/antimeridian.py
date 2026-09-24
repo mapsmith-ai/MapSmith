@@ -122,6 +122,50 @@ def _is_in_degrees(crs: Any) -> bool:
         return False
 
 
+def estimate_utm_crs(gdf: Any) -> Any:
+    """`GeoDataFrame.estimate_utm_crs`, for data that straddles the 180th meridian.
+
+    GeoPandas centres its estimate on the mean of `minx` and `maxx`. For a
+    layer in degrees that crosses the antimeridian -- split there as RFC 7946
+    prescribes -- those are about -180 and 180, the mean is about 0, and the zone
+    it picks is on the opposite side of the planet. Measured on 2026-09-24: two
+    points at 175E and 175W came back with EPSG:32630, centred on 3W. (GeoPandas
+    handles the crossing only when the input is projected; the geographic branch
+    takes the plain mean.)
+
+    Not every operation is hurt by that: PROJ's transverse Mercator holds up far
+    from its central meridian, and a 1 km buffer measured the same in the far
+    zone as in the right one. `nearest_join` was, because polygons touching
+    +/-180 projected into a zone 180 degrees away come out invalid. So this is
+    the right zone rather than a rescue, and it changes nothing for data that
+    does not cross: those go straight to GeoPandas.
+    """
+    extent = describe_extent(gdf)
+    if not extent.get("crosses_antimeridian"):
+        return gdf.estimate_utm_crs()
+
+    from pyproj import CRS
+    from pyproj.aoi import AreaOfInterest
+    from pyproj.database import query_utm_crs_info
+
+    true = extent["true_extent"]
+    # West is GREATER than east here (RFC 7946 5.2), so the centre is found by
+    # carrying the eastern edge past 180 and folding the mean back.
+    centre = (true["minx"] + true["maxx"] + 360.0) / 2.0
+    centre = ((centre + 180.0) % 360.0) - 180.0
+    latitude = (true["miny"] + true["maxy"]) / 2.0
+    found = query_utm_crs_info(
+        datum_name="WGS 84",
+        area_of_interest=AreaOfInterest(centre, latitude, centre, latitude),
+    )
+    if not found:
+        raise RuntimeError(
+            "no UTM zone found for data centred on the antimeridian at "
+            f"{centre:.3f}, {latitude:.3f}"
+        )
+    return CRS.from_epsg(found[0].code)
+
+
 def naive_crossings(gdf: Any) -> list[int]:
     """Polygons drawn across the 180th meridian as one ring, which the plane inverts.
 

@@ -112,7 +112,7 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
     original_crs = gdf.crs
     on_a_geographic_crs = bool(original_crs.is_geographic)
     if on_a_geographic_crs:
-        analysis_crs = gdf.estimate_utm_crs()
+        analysis_crs = antimeridian.estimate_utm_crs(gdf)
         open_source_decision = alignment_decisions(
             analysis_crs,
             "estimated UTM zone for metric buffering on a geographic CRS",
@@ -624,7 +624,7 @@ def nearest_join(
         # The distance column is in METERS, always: nearest-in-degrees is the
         # classic silent killer of this operation (a degree of longitude is not
         # a degree of latitude, and neither is a metre).
-        analysis_crs = left.estimate_utm_crs()
+        analysis_crs = antimeridian.estimate_utm_crs(left)
         record.crs_decisions = {
             **alignment_decisions(
                 analysis_crs,
@@ -859,7 +859,7 @@ def simplify(input_path: str, tolerance_meters: float, output_path: str) -> dict
     # raises a raw pyproj error), and nothing to simplify: it passes through in
     # its own CRS with the reason recorded, instead of crashing without a manifest.
     if original_crs.is_geographic and len(gdf):
-        analysis_crs = gdf.estimate_utm_crs()
+        analysis_crs = antimeridian.estimate_utm_crs(gdf)
         record.crs_decisions = alignment_decisions(
             analysis_crs,
             "estimated UTM zone for metric simplification on a geographic CRS",
@@ -952,7 +952,7 @@ def centroid(input_path: str, output_path: str) -> dict[str, Any]:
     if original_crs.is_geographic and len(gdf):
         # A planar centroid of degree coordinates lands in the wrong place —
         # quietly, and by more the farther from the equator the data sits.
-        analysis_crs = gdf.estimate_utm_crs()
+        analysis_crs = antimeridian.estimate_utm_crs(gdf)
         record.crs_decisions = alignment_decisions(
             analysis_crs,
             "estimated UTM zone for planar centroids on a geographic CRS",

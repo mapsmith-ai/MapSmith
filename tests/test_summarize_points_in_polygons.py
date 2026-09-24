@@ -513,3 +513,39 @@ def test_the_other_region_operations_refuse_a_ring_drawn_across_180(tmp_path, op
     }
     with pytest.raises(ValueError, match="cross the 180th meridian"):
         calls[operation]()
+
+
+def test_the_utm_estimate_centres_on_the_antimeridian_when_the_data_does(tmp_path):
+    """GeoPandas centres on the mean of minx and maxx, which for data straddling
+    180 is about 0: two points at 175E and 175W came back with EPSG:32630,
+    centred on 3W, the opposite side of the planet."""
+    from mapsmith import antimeridian
+
+    both = gpd.GeoDataFrame(geometry=[Point(175, 0), Point(-175, 1)], crs="EPSG:4326")
+    zone = antimeridian.estimate_utm_crs(both).to_epsg()
+    assert zone in (32601, 32660), f"data around 180 was given UTM EPSG:{zone}"
+    # Data that does not cross goes straight to GeoPandas, unchanged.
+    rome = gpd.GeoDataFrame(geometry=[Point(12.5, 41.9)], crs="EPSG:4326")
+    assert antimeridian.estimate_utm_crs(rome) == rome.estimate_utm_crs()
+
+
+def test_nearest_join_measures_true_distances_across_the_antimeridian(tmp_path):
+    """Measured before the fix: 351.7 and 354.0 km where the truth is about 334,
+    five to six per cent too far, with no warning -- because the distances were
+    computed in a UTM zone 180 degrees away. After: within one per cent."""
+    from pyproj import Geod
+    from shapely.geometry import MultiPolygon
+
+    points = tmp_path / "p.gpkg"
+    gpd.GeoDataFrame(
+        {"id": ["175E", "175W"]}, geometry=[Point(175, 0), Point(-175, 0)], crs="EPSG:4326"
+    ).to_file(points)
+    zone = _pacific_zone(tmp_path, MultiPolygon([box(178, -1, 180, 1), box(-180, -1, -178, 1)]))
+    result = vector.nearest_join(str(points), str(zone), str(tmp_path / "n.gpkg"))
+    out = gpd.read_file(result["output"])
+    truth = Geod(ellps="WGS84").inv(175, 0, 178, 0)[2]  # three degrees along the equator
+    for _, row in out.iterrows():
+        measured = float(row[result["distance_column"]])
+        assert abs(measured / truth - 1) < 0.01, (
+            f"{row['id']}: {measured / 1000:.1f} km, the truth is {truth / 1000:.1f}"
+        )
