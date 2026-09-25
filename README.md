@@ -221,20 +221,18 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.6.0**, which is what that command installs. When `main` runs ahead of
+This page describes **0.6.1**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **`main` is ahead of 0.6.0 today** by
-two corrections to the antimeridian refusal — a layer written in 0..360 longitudes is no longer
-refused for closing along 0 and 360, and two error messages now give the right way out — and
-by records that declare `1.0.0-draft.8` instead of `draft.6`. No tool, operation or manifest
-key moved; [`[Unreleased]` in the changelog](CHANGELOG.md#unreleased) has all three.
+have to find out by calling a tool that is not there. `main` is at 0.6.1 today, with nothing
+unreleased beyond it.
 
-**If you read manifests, 0.6.0 moves one key**: `x-mapsmith:round_trip` is now `round_trip`,
-because the specification made it a core key in `1.0.0-draft.6` and forbids recording that
-fact under a prefixed name. The shape is unchanged, and records declare `spec_version`
-`1.0.0-draft.6`. From 0.4.0, 0.5.0 had already renamed eight `crs_decisions` keys, the
-top-level `mapsmith_version` (read `producer.version`), two fields of the round trip, two of
-`repairs[]` and `engine.geometry_library`; the changelog lists each with what to read instead.
+**If you read manifests, 0.6.1 moves no key**: records declare `spec_version`
+`1.0.0-draft.8`, two drafts past 0.6.0's `draft.6`, and both drafts only narrowed where a
+producer may add a key of its own — which MapSmith already did the narrower way. From 0.5.x,
+0.6.0 renamed `x-mapsmith:round_trip` to `round_trip`; from 0.4.0, 0.5.0 had renamed eight
+`crs_decisions` keys, the top-level `mapsmith_version` (read `producer.version`), two fields of
+the round trip, two of `repairs[]` and `engine.geometry_library`. The changelog lists each with
+what to read instead.
 
 Then ask your agent things like:
 
@@ -261,7 +259,7 @@ for it:
 ```json
 {
   "spec_version": "1.0.0-draft.8",
-  "producer": {"name": "mapsmith", "version": "0.6.0"},
+  "producer": {"name": "mapsmith", "version": "0.6.1"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{

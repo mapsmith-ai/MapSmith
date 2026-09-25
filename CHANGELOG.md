@@ -6,6 +6,15 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.6.1] - 2026-09-25
+
+A small release on the day of 0.6.0. It moves no manifest key and changes no
+answer that 0.6.0 got right: it stops a refusal 0.6.0 introduced from firing on
+a layer written in 0..360 longitudes, gives two refusals the right way out, and
+declares the specification's current draft.
+
 ### Changed
 
 - **Records declare `spec_version` `1.0.0-draft.8`.** Two drafts in one day,
