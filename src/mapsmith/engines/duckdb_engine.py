@@ -227,26 +227,29 @@ def run_sql(query: str, output_path: str | None = None) -> dict[str, Any]:
         engine=_engine_info(),
     )
     if output_path:
-        con.sql(f"COPY ({query}) TO '{_quote(output_path)}' ({_COPY_OPTIONS})")
-        count = con.sql(
-            f"SELECT count(*) FROM read_parquet('{_quote(output_path)}')"
-        ).fetchone()[0]
-        # SQL is opaque to static analysis: the cheapest honest check is whether
-        # the materialized result carries georeference metadata (non-critical —
-        # a purely tabular result is legitimate).
-        out_crs = verify.probe_crs(output_path)
-        checks = [
-            verify.Check(
-                "crs_present",
-                out_crs != verify.UNKNOWN_CRS,
-                out_crs if out_crs != verify.UNKNOWN_CRS else
-                "no geo metadata (non-spatial result?)",
-                critical=False,
-            )
-        ]
-        used = _mentions_spheroid_function(query)
-        if used and (axis := _axis_order_check(con, used)):
-            checks.append(axis)
+        # The same net as `spatial_join` below. Without it a COPY or a check that
+        # raised left the result on disk and nothing beside it (measured 2026-09-25).
+        with verify.audit_on_failure(record, output_path, []):
+            con.sql(f"COPY ({query}) TO '{_quote(output_path)}' ({_COPY_OPTIONS})")
+            count = con.sql(
+                f"SELECT count(*) FROM read_parquet('{_quote(output_path)}')"
+            ).fetchone()[0]
+            # SQL is opaque to static analysis: the cheapest honest check is whether
+            # the materialized result carries georeference metadata (non-critical —
+            # a purely tabular result is legitimate).
+            out_crs = verify.probe_crs(output_path)
+            checks = [
+                verify.Check(
+                    "crs_present",
+                    out_crs != verify.UNKNOWN_CRS,
+                    out_crs if out_crs != verify.UNKNOWN_CRS else
+                    "no geo metadata (non-spatial result?)",
+                    critical=False,
+                )
+            ]
+            used = _mentions_spheroid_function(query)
+            if used and (axis := _axis_order_check(con, used)):
+                checks.append(axis)
         manifest = record.add_verification(checks).finish().write_for(output_path)
         # Both checks above are non-critical, so this raises nothing today. It
         # is here because the alternative is a writer whose critical failures

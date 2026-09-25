@@ -357,16 +357,21 @@ def hillshade(
         result = wbe.terrain.general.hillshade(
             input=dem, azimuth=azimuth, altitude=altitude, z_factor=z_factor
         )
-        wbe.write_raster(result, str(output_path))
+        # From the first byte of the output to the last check, a failure must leave a
+        # record beside whatever landed (invariant 2). Measured on 2026-09-25: a check
+        # that raised after this write left the raster on disk and no manifest, and so
+        # did ten other writers in this module. The same net is on each of them.
+        with verify.audit_on_failure(record, output_path, []):
+            wbe.write_raster(result, str(output_path))
 
-        meta = dem.metadata()
-        checks = _raster_checks(
-            wbe,
-            output_path,
-            expect_epsg=dem.crs_epsg(),
-            expect_shape=(meta.rows, meta.columns),
-            value_range=(0, HILLSHADE_MAX),
-        )
+            meta = dem.metadata()
+            checks = _raster_checks(
+                wbe,
+                output_path,
+                expect_epsg=dem.crs_epsg(),
+                expect_shape=(meta.rows, meta.columns),
+                value_range=(0, HILLSHADE_MAX),
+            )
         if input_note:
             record.notes.append(input_note)
         manifest = record.add_verification(checks).finish().write_for(output_path)
@@ -482,18 +487,19 @@ def _derivative(
             ),
         }
         result = call(wbe, dem)
-        wbe.write_raster(result, str(output_path))
+        with verify.audit_on_failure(record, output_path, []):
+            wbe.write_raster(result, str(output_path))
 
-        meta = dem.metadata()
-        checks = _raster_checks(
-            wbe,
-            output_path,
-            expect_epsg=dem.crs_epsg(),
-            expect_shape=(meta.rows, meta.columns),
-            value_range=value_range,
-        )
-        if extra_checks is not None:
-            checks.extend(extra_checks(output_path))
+            meta = dem.metadata()
+            checks = _raster_checks(
+                wbe,
+                output_path,
+                expect_epsg=dem.crs_epsg(),
+                expect_shape=(meta.rows, meta.columns),
+                value_range=value_range,
+            )
+            if extra_checks is not None:
+                checks.extend(extra_checks(output_path))
         if input_note:
             record.notes.append(input_note)
         manifest = record.add_verification(checks).finish().write_for(output_path)
@@ -553,22 +559,23 @@ def flow_accumulation(
         accum = wbe.hydrology.flow_routing.d8_flow_accum(
             input=pointer, out_type=out_type, log_transform=log_transform, input_is_pointer=True
         )
-        wbe.write_raster(accum, str(output_path))
+        with verify.audit_on_failure(record, output_path, []):
+            wbe.write_raster(accum, str(output_path))
 
-        meta = dem.metadata()
-        cells = meta.rows * meta.columns
-        # 'cells' accumulation counts each cell itself, so valid values live in [1, n_cells]
-        # (or their natural log when log-transformed).
-        bounds = (1.0, float(cells)) if out_type == "cells" else None
-        if bounds and log_transform:
-            bounds = (0.0, math.log(cells))
-        checks = _raster_checks(
-            wbe,
-            output_path,
-            expect_epsg=dem.crs_epsg(),
-            expect_shape=(meta.rows, meta.columns),
-            value_range=bounds,
-        )
+            meta = dem.metadata()
+            cells = meta.rows * meta.columns
+            # 'cells' accumulation counts each cell itself, so valid values live in [1, n_cells]
+            # (or their natural log when log-transformed).
+            bounds = (1.0, float(cells)) if out_type == "cells" else None
+            if bounds and log_transform:
+                bounds = (0.0, math.log(cells))
+            checks = _raster_checks(
+                wbe,
+                output_path,
+                expect_epsg=dem.crs_epsg(),
+                expect_shape=(meta.rows, meta.columns),
+                value_range=bounds,
+            )
         if input_note:
             record.notes.append(input_note)
         manifest = record.add_verification(checks).finish().write_for(output_path)
@@ -630,22 +637,23 @@ def watershed(
         # whitebox reads vectors as shapefiles: hand it the (possibly reprojected)
         # points through a temporary shapefile so any GeoPandas-readable input works.
         # Under a workspace even scratch data must not leave it (data governance).
-        ws = workspace.root()
-        with tempfile.TemporaryDirectory(dir=str(ws) if ws else None) as tmp:
-            shp = Path(tmp) / "pour_points.shp"
-            points.to_file(shp)
-            vec = wbe.read_vector(str(shp))
-            basins = wbe.hydrology.watersheds_basins.watershed(d8_pointer=pointer, pour_pts=vec)
-            wbe.write_raster(basins, str(output_path))
+        with verify.audit_on_failure(record, output_path, []):
+            ws = workspace.root()
+            with tempfile.TemporaryDirectory(dir=str(ws) if ws else None) as tmp:
+                shp = Path(tmp) / "pour_points.shp"
+                points.to_file(shp)
+                vec = wbe.read_vector(str(shp))
+                basins = wbe.hydrology.watersheds_basins.watershed(d8_pointer=pointer, pour_pts=vec)
+                wbe.write_raster(basins, str(output_path))
 
-        meta = dem.metadata()
-        checks = _raster_checks(
-            wbe,
-            output_path,
-            expect_epsg=dem.crs_epsg(),
-            expect_shape=(meta.rows, meta.columns),
-            value_range=(1.0, float(len(points))),
-        )
+            meta = dem.metadata()
+            checks = _raster_checks(
+                wbe,
+                output_path,
+                expect_epsg=dem.crs_epsg(),
+                expect_shape=(meta.rows, meta.columns),
+                value_range=(1.0, float(len(points))),
+            )
         if input_note:
             record.notes.append(input_note)
         manifest = record.add_verification(checks).finish().write_for(output_path)
@@ -733,16 +741,17 @@ def focal_statistics(
         # introspecting the installed package.
         method = getattr(wbe.remote_sensing, FOCAL_STATISTICS[statistic])
         result = method(input=raster, filter_size_x=window, filter_size_y=window)
-        wbe.write_raster(result, str(output_path))
+        with verify.audit_on_failure(record, output_path, []):
+            wbe.write_raster(result, str(output_path))
 
-        meta = raster.metadata()
-        checks = _raster_checks(
-            wbe,
-            output_path,
-            expect_epsg=raster.crs_epsg(),
-            expect_shape=(meta.rows, meta.columns),
-            value_range=None,
-        )
+            meta = raster.metadata()
+            checks = _raster_checks(
+                wbe,
+                output_path,
+                expect_epsg=raster.crs_epsg(),
+                expect_shape=(meta.rows, meta.columns),
+                value_range=None,
+            )
         if input_note:
             record.notes.append(input_note)
         manifest = record.add_verification(checks).finish().write_for(output_path)
@@ -809,16 +818,17 @@ def extract_streams(
             threshold=threshold,
             zero_background=zero_background,
         )
-        wbe.write_raster(result, str(output_path))
+        with verify.audit_on_failure(record, output_path, []):
+            wbe.write_raster(result, str(output_path))
 
-        meta = accumulation.metadata()
-        checks = _raster_checks(
-            wbe,
-            output_path,
-            expect_epsg=accumulation.crs_epsg(),
-            expect_shape=(meta.rows, meta.columns),
-            value_range=None,
-        )
+            meta = accumulation.metadata()
+            checks = _raster_checks(
+                wbe,
+                output_path,
+                expect_epsg=accumulation.crs_epsg(),
+                expect_shape=(meta.rows, meta.columns),
+                value_range=None,
+            )
         if note:
             record.notes.append(note)
         manifest = record.add_verification(checks).finish().write_for(output_path)
@@ -1085,23 +1095,24 @@ def euclidean_distance(input_path: str, output_path: str) -> dict[str, Any]:
         }
         meta = source.metadata()
         result = wbe.raster.distance_cost.euclidean_distance(input=source)
-        wbe.write_raster(result, str(output_path))
-        checks = _raster_checks(
-            wbe,
-            output_path,
-            expect_epsg=source.crs_epsg(),
-            expect_shape=(meta.rows, meta.columns),
-            # Both ends are closed form from the grid: a distance cannot be
-            # negative, and nothing in the raster can be farther from a source
-            # than the grid's own diagonal.
-            value_range=(
-                0.0,
-                math.hypot(
-                    meta.rows * abs(meta.resolution_y),
-                    meta.columns * abs(meta.resolution_x),
+        with verify.audit_on_failure(record, output_path, []):
+            wbe.write_raster(result, str(output_path))
+            checks = _raster_checks(
+                wbe,
+                output_path,
+                expect_epsg=source.crs_epsg(),
+                expect_shape=(meta.rows, meta.columns),
+                # Both ends are closed form from the grid: a distance cannot be
+                # negative, and nothing in the raster can be farther from a source
+                # than the grid's own diagonal.
+                value_range=(
+                    0.0,
+                    math.hypot(
+                        meta.rows * abs(meta.resolution_y),
+                        meta.columns * abs(meta.resolution_x),
+                    ),
                 ),
-            ),
-        )
+            )
         if input_note:
             record.notes.append(input_note)
         manifest = record.add_verification(checks).finish().write_for(output_path)
@@ -1206,29 +1217,30 @@ def viewshed(
         if aligned:
             stations = stations.to_crs(crs)
 
-        ws = workspace.root()
-        with tempfile.TemporaryDirectory(dir=str(ws) if ws else None) as tmp:
-            shp = Path(tmp) / "stations.shp"
-            stations.to_file(shp)
-            vec = wbe.read_vector(str(shp))
-            seen = wbe.terrain.visibility.viewshed(
-                input=dem, stations=vec, height=station_height
-            )
-            wbe.write_raster(seen, str(output_path))
+        with verify.audit_on_failure(record, output_path, []):
+            ws = workspace.root()
+            with tempfile.TemporaryDirectory(dir=str(ws) if ws else None) as tmp:
+                shp = Path(tmp) / "stations.shp"
+                stations.to_file(shp)
+                vec = wbe.read_vector(str(shp))
+                seen = wbe.terrain.visibility.viewshed(
+                    input=dem, stations=vec, height=station_height
+                )
+                wbe.write_raster(seen, str(output_path))
 
-        meta = dem.metadata()
-        checks = _raster_checks(
-            wbe,
-            output_path,
-            expect_epsg=dem.crs_epsg(),
-            expect_shape=(meta.rows, meta.columns),
-            # 0..n, because it counts. Written as the station count rather than
-            # 1.0 precisely because the documentation says 1.0: if a future
-            # version really does turn it into a boolean, this range still
-            # passes and the note below stops being true — so there is also a
-            # test that asserts the count semantics directly.
-            value_range=(0.0, float(len(stations))),
-        )
+            meta = dem.metadata()
+            checks = _raster_checks(
+                wbe,
+                output_path,
+                expect_epsg=dem.crs_epsg(),
+                expect_shape=(meta.rows, meta.columns),
+                # 0..n, because it counts. Written as the station count rather than
+                # 1.0 precisely because the documentation says 1.0: if a future
+                # version really does turn it into a boolean, this range still
+                # passes and the note below stops being true — so there is also a
+                # test that asserts the count semantics directly.
+                value_range=(0.0, float(len(stations))),
+            )
         if input_note:
             record.notes.append(input_note)
         record.notes.append(
@@ -1336,22 +1348,24 @@ def idw_interpolation(
         min_points=min_points,
         cell_size=cell_size,
     )
-    wbe.write_raster(result, str(output_path))
     meta = result.metadata()
     epsg = result.crs_epsg()
+    # Decided before the write, so a record written on failure carries it.
     record.crs_decisions = {
         "analysis_crs": f"EPSG:{epsg}" if epsg else verify.crs_label(crs),
         "reason": "the surface is built in the point layer's own CRS, which is "
         "projected — refused otherwise — so the cell size and the distance "
         "weighting are both in that CRS's linear unit",
     }
-    checks = _raster_checks(
-        wbe,
-        output_path,
-        expect_epsg=epsg,
-        expect_shape=(meta.rows, meta.columns),
-        value_range=None,
-    )
+    with verify.audit_on_failure(record, output_path, []):
+        wbe.write_raster(result, str(output_path))
+        checks = _raster_checks(
+            wbe,
+            output_path,
+            expect_epsg=epsg,
+            expect_shape=(meta.rows, meta.columns),
+            value_range=None,
+        )
     manifest = record.add_verification(checks).finish().write_for(output_path)
     verify.enforce(checks, "idw_interpolation")
     return {
@@ -1494,14 +1508,10 @@ def contour_lines(
     lines = lines.rename(columns={height_column: "elevation"})
     lines["geometry"] = lines.geometry.translate(xoff=shift_x, yoff=shift_y)
     lines = lines[["elevation", "geometry"]].set_crs(crs, allow_override=True)
-    _write_vector(lines, output_path)
 
-    # The check that looks at the number: read the DEM back at the finished
-    # vertices and compare with the elevation each line claims. This is what
-    # `measure_area` does for area and what nothing did for terrain until now.
-    sampled = _sample_along(dem_path, lines)
-    worst = max((abs(value - height) for value, height in sampled), default=0.0)
-
+    # The record exists BEFORE the write. It used to be built after it, so a
+    # write that died halfway left contour lines on disk with nothing to write
+    # beside them: the failure net needs a record to put in the manifest.
     record = ProvenanceRecord(
         operation="contour_lines",
         parameters={
@@ -1532,6 +1542,14 @@ def contour_lines(
             "moved to make the lines look better. These contours are a drawing, not "
             "a measurement: a vertex no longer sits exactly on the elevation it names."
         )
+
+    with verify.audit_on_failure(record, output_path, []):
+        _write_vector(lines, output_path)
+        # The check that looks at the number: read the DEM back at the finished
+        # vertices and compare with the elevation each line claims. This is what
+        # `measure_area` does for area and what nothing did for terrain until now.
+        sampled = _sample_along(dem_path, lines)
+        worst = max((abs(value - height) for value, height in sampled), default=0.0)
     record.notes.append(
         f"the DEM read back at {len(sampled)} contour vertices differs from the "
         f"elevation each line claims by at most {worst:.6g} (Z unit)"

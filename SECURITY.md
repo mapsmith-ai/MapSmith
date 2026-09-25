@@ -34,6 +34,19 @@ below:
 - **Provenance integrity**: a `<output>.provenance.json` manifest must
   faithfully record what produced the dataset. A way to make MapSmith write
   a misleading manifest is a vulnerability.
+
+  Broken in 0.5.1 and earlier, fixed in 0.6.0, found by our own reviews: five
+  operations recorded a round trip or a reprojection before it happened, so a
+  failure in between left a manifest asserting a move that never finished;
+  28 of 58 writers could leave a dataset with no manifest beside it when the write
+  or a check raised after bytes reached the disk; and
+  `count_in_polygons(predicate="contains")` returned zero for every polygon
+  under `verified: true`. None got an advisory under the criterion below: the
+  first two occur only on a path where the tool call has already returned an
+  error, and the third returned zeros, which a caller sees before trusting the
+  record. A misleading record is still the defect this bullet names, so it is
+  written here and in the CHANGELOG, and `tests/test_failure_manifest.py`
+  injects both failures into every writer the catalogue lists.
 - **No credentials in a manifest.** Manifests are meant to be shared — attached
   to a review, a bug report, a paper — so a credential must never reach one.
   Since 0.2.2 that is enforced in two layers, in this order:

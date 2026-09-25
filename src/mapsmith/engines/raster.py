@@ -347,7 +347,14 @@ def resample(
         for key in ("blockxsize", "blockysize", "tiled"):
             profile.pop(key, None)
 
-        with rasterio.open(output_path, "w", **profile) as dst:
+        # Measured on 2026-09-25: a warp that raised on the second band left a raster
+        # on disk and no manifest -- the defect fixed in `reproject_raster` two days
+        # earlier, in its twin. The write and the reading-back of the output are both
+        # inside the net, here and in every writer in this module.
+        with (
+            verify.audit_on_failure(record, output_path, []),
+            rasterio.open(output_path, "w", **profile) as dst,
+        ):
             grid.preserve(src, dst)
             for band in range(1, src.count + 1):
                 warp(
@@ -361,7 +368,7 @@ def resample(
                 )
 
     checks: list[verify.Check] = []
-    with rasterio.open(output_path) as out:
+    with verify.audit_on_failure(record, output_path, []), rasterio.open(output_path) as out:
         checks.append(
             verify.Check(
                 "x-mapsmith:shape_matches_resolution",
@@ -589,7 +596,7 @@ def clip_raster(
         source_shape = (src.height, src.width)
 
     checks: list[verify.Check] = []
-    with rasterio.open(output_path) as out:
+    with verify.audit_on_failure(record, output_path, pre), rasterio.open(output_path) as out:
         checks.append(
             verify.Check(
                 "crs_matches",
@@ -732,43 +739,44 @@ def reclassify(
             f"({nodata_out}); they are not left at their original values, which "
             "would mix old codes with new ones in one band"
         )
-    with rasterio.open(output_path, "w", **profile) as dst:
-        grid.preserve(source_registration, dst)
-        dst.write(result_band, 1)
+    with verify.audit_on_failure(record, output_path, []):
+        with rasterio.open(output_path, "w", **profile) as dst:
+            grid.preserve(source_registration, dst)
+            dst.write(result_band, 1)
 
-    checks: list[verify.Check] = []
-    with rasterio.open(output_path) as out:
-        checks.append(
-            verify.Check(
-                "shape_preserved",
-                (out.height, out.width) == source_shape,
-                f"{out.height}x{out.width}",
+        checks: list[verify.Check] = []
+        with rasterio.open(output_path) as out:
+            checks.append(
+                verify.Check(
+                    "shape_preserved",
+                    (out.height, out.width) == source_shape,
+                    f"{out.height}x{out.width}",
+                )
             )
-        )
-        checks.append(
-            verify.Check(
-                "crs_matches",
-                verify.same_crs(out.crs, record.inputs[0].crs),
-                verify.crs_label(out.crs),
+            checks.append(
+                verify.Check(
+                    "crs_matches",
+                    verify.same_crs(out.crs, record.inputs[0].crs),
+                    verify.crs_label(out.crs),
+                )
             )
-        )
-        written = out.read(1, masked=True)
-        produced = {float(v) for v in np.unique(written.compressed())}
-        declared = {new for _, _, new in parsed}
-        # Closed form: every value in the output must be one of the codes the
-        # caller asked for. Anything else means the mapping did not do what the
-        # intervals say, and a reclassified raster nobody can trust is worse
-        # than one that failed.
-        checks.append(
-            verify.Check(
-                "x-mapsmith:values_are_declared_codes",
-                produced <= declared,
-                f"unexpected codes {sorted(produced - declared)}"
-                if produced - declared
-                else f"all values in {sorted(declared)}",
+            written = out.read(1, masked=True)
+            produced = {float(v) for v in np.unique(written.compressed())}
+            declared = {new for _, _, new in parsed}
+            # Closed form: every value in the output must be one of the codes the
+            # caller asked for. Anything else means the mapping did not do what the
+            # intervals say, and a reclassified raster nobody can trust is worse
+            # than one that failed.
+            checks.append(
+                verify.Check(
+                    "x-mapsmith:values_are_declared_codes",
+                    produced <= declared,
+                    f"unexpected codes {sorted(produced - declared)}"
+                    if produced - declared
+                    else f"all values in {sorted(declared)}",
+                )
             )
-        )
-        result_shape = [out.height, out.width]
+            result_shape = [out.height, out.width]
 
     manifest = record.add_verification(checks).finish().write_for(output_path)
     verify.enforce(checks, "reclassify_raster")
@@ -971,46 +979,47 @@ def band_math(input_path: str, output_path: str, expression: str) -> dict[str, A
     profile.update(count=1, dtype="float32", nodata=nodata_out)
     for key in ("blockxsize", "blockysize", "tiled"):
         profile.pop(key, None)
-    with rasterio.open(output_path, "w", **profile) as dst:
-        grid.preserve(source_registration, dst)
-        dst.write(computed.filled(nodata_out).astype("float32"), 1)
+    with verify.audit_on_failure(record, output_path, []):
+        with rasterio.open(output_path, "w", **profile) as dst:
+            grid.preserve(source_registration, dst)
+            dst.write(computed.filled(nodata_out).astype("float32"), 1)
 
-    checks: list[verify.Check] = []
-    with rasterio.open(output_path) as out:
-        checks.append(
-            verify.Check(
-                "shape_preserved",
-                (out.height, out.width) == source_shape,
-                f"{out.height}x{out.width}",
+        checks: list[verify.Check] = []
+        with rasterio.open(output_path) as out:
+            checks.append(
+                verify.Check(
+                    "shape_preserved",
+                    (out.height, out.width) == source_shape,
+                    f"{out.height}x{out.width}",
+                )
             )
-        )
-        checks.append(
-            verify.Check(
-                "x-mapsmith:written_as_float",
-                out.dtypes[0].startswith("float"),
-                out.dtypes[0],
+            checks.append(
+                verify.Check(
+                    "x-mapsmith:written_as_float",
+                    out.dtypes[0].startswith("float"),
+                    out.dtypes[0],
+                )
             )
-        )
-        band = out.read(1, masked=True)
-        valid = int(band.count())
-        invalid = int(band.size - valid)
-        checks.append(
-            verify.Check(
-                "result_not_empty",
-                valid > 0,
-                f"{valid} of {band.size} cells carry a value",
-                critical=False,
-                hint=None
+            band = out.read(1, masked=True)
+            valid = int(band.count())
+            invalid = int(band.size - valid)
+            checks.append(
+                verify.Check(
+                    "result_not_empty",
+                    valid > 0,
+                    f"{valid} of {band.size} cells carry a value",
+                    critical=False,
+                    hint=None
+                    if valid
+                    else "Every cell is nodata: the expression divided by zero or "
+                    "operated on nodata everywhere. Check the bands' nodata values.",
+                )
+            )
+            stats = (
+                {"min": float(band.min()), "max": float(band.max()), "mean": float(band.mean())}
                 if valid
-                else "Every cell is nodata: the expression divided by zero or "
-                "operated on nodata everywhere. Check the bands' nodata values.",
+                else {}
             )
-        )
-        stats = (
-            {"min": float(band.min()), "max": float(band.max()), "mean": float(band.mean())}
-            if valid
-            else {}
-        )
 
     manifest = record.add_verification(checks).finish().write_for(output_path)
     verify.enforce(checks, "band_math")
@@ -1180,7 +1189,7 @@ def reproject_raster(
                 )
 
     checks: list[verify.Check] = []
-    with rasterio.open(output_path) as out:
+    with verify.audit_on_failure(record, output_path, []), rasterio.open(output_path) as out:
         checks.append(
             verify.Check(
                 "crs_matches",
@@ -1318,34 +1327,35 @@ def extract_band(input_path: str, output_path: str, band: int) -> dict[str, Any]
             record.notes.append(f"band {band} is described in the source as {label!r}")
         checksum = src.checksum(band)
 
-    with rasterio.open(output_path, "w", **profile) as dst:
-        grid.preserve(source_registration, dst)
-        dst.write(data, 1)
-        if label:
-            dst.set_band_description(1, label)
+    with verify.audit_on_failure(record, output_path, []):
+        with rasterio.open(output_path, "w", **profile) as dst:
+            grid.preserve(source_registration, dst)
+            dst.write(data, 1)
+            if label:
+                dst.set_band_description(1, label)
 
-    with rasterio.open(output_path) as out:
-        checks = [
-            verify.Check(
-                "shape_preserved",
-                (out.height, out.width) == data.shape,
-                f"{out.height}x{out.width}",
-            ),
-            verify.Check(
-                "crs_matches",
-                verify.same_crs(out.crs, record.inputs[0].crs),
-                f"{verify.crs_label(out.crs)}",
-            ),
-            verify.Check(
-                # The band that landed is the band that was asked for, compared
-                # by the source's own checksum rather than by trusting the index
-                # we passed: an off-by-one is exactly what this operation exists
-                # not to make, so it is the one thing worth verifying.
-                "x-mapsmith:band_content_matches_source",
-                out.checksum(1) == checksum,
-                f"checksum {out.checksum(1)} against source band {band}'s {checksum}",
-            ),
-        ]
+        with rasterio.open(output_path) as out:
+            checks = [
+                verify.Check(
+                    "shape_preserved",
+                    (out.height, out.width) == data.shape,
+                    f"{out.height}x{out.width}",
+                ),
+                verify.Check(
+                    "crs_matches",
+                    verify.same_crs(out.crs, record.inputs[0].crs),
+                    f"{verify.crs_label(out.crs)}",
+                ),
+                verify.Check(
+                    # The band that landed is the band that was asked for, compared
+                    # by the source's own checksum rather than by trusting the index
+                    # we passed: an off-by-one is exactly what this operation exists
+                    # not to make, so it is the one thing worth verifying.
+                    "x-mapsmith:band_content_matches_source",
+                    out.checksum(1) == checksum,
+                    f"checksum {out.checksum(1)} against source band {band}'s {checksum}",
+                ),
+            ]
 
     manifest = record.add_verification(checks).finish().write_for(output_path)
     verify.enforce(checks, "extract_band")

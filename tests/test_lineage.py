@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from mapsmith.lineage import MAX_DEPTH, lineage
+from mapsmith.provenance import SPEC_VERSION
 
 sys.path.insert(0, str(Path(__file__).parent / "data"))
 import manifest_spec_validator as validator
@@ -78,7 +79,7 @@ def manifest(
             for item in inputs
         ],
         "output": {"path": output.name, "sha256": output_digest or digest_of(output)},
-        "spec_version": "1.0.0-draft.5",
+        "spec_version": SPEC_VERSION,
         "crs_decisions": {},
         "engine": {"name": "test", "version": "1.0"},
         "verification": list(checks if checks is not None else PASSED),
@@ -368,7 +369,7 @@ def test_a_record_that_checked_nothing_is_not_a_record_that_passed(tmp_path):
                 "parameters": {},
                 "inputs": [{"path": source.name, "sha256": digest_of(source)}],
                 "output": {"path": final.name, "sha256": digest_of(final)},
-                "spec_version": "1.0.0-draft.5",
+                "spec_version": SPEC_VERSION,
                 "engine": {"name": "test", "version": "1.0"},
                 "verification": [],
                 "started_at": "2026-09-21T08:00:00Z",
@@ -516,7 +517,7 @@ def test_a_planted_record_does_not_become_a_verified_step(tmp_path):
                 "parameters": {},
                 "inputs": [],
                 "output": {"path": "aaa_planted", "sha256": digest_of(source)},
-                "spec_version": "1.0.0-draft.5",
+                "spec_version": SPEC_VERSION,
                 "engine": {"name": "test", "version": "1.0"},
                 "verification": PASSED,
                 "started_at": "2026-09-21T08:00:00Z",

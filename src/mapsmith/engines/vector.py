@@ -1466,62 +1466,64 @@ def join_table(
         joined = gdf.merge(table, on=on, how=how)
         _write(joined, output_path)
 
-    if duplicated_keys:
-        record.notes.append(
-            f"{duplicated_keys} duplicate key(s) in the table: the join produced "
-            f"{len(joined)} features from {len(gdf)}, so any sum over the result "
-            "counts the multiplied features more than once — aggregate the table "
-            "before joining if that is not what you want"
-        )
-    if unmatched:
-        record.notes.append(
-            f"{unmatched} feature(s) matched no row in the table"
-            + (
-                " and were dropped by the inner join"
-                if how == "inner"
-                else " and carry null attributes"
+        # Still inside the net: everything between the write and `audited` is, so a
+        # note or a check that raises here cannot leave the output without a record.
+        if duplicated_keys:
+            record.notes.append(
+                f"{duplicated_keys} duplicate key(s) in the table: the join produced "
+                f"{len(joined)} features from {len(gdf)}, so any sum over the result "
+                "counts the multiplied features more than once — aggregate the table "
+                "before joining if that is not what you want"
             )
-        )
+        if unmatched:
+            record.notes.append(
+                f"{unmatched} feature(s) matched no row in the table"
+                + (
+                    " and were dropped by the inner join"
+                    if how == "inner"
+                    else " and carry null attributes"
+                )
+            )
 
-    checks: list[verify.Check] = [
-        verify.Check(
-            # `feature_count_exact` and not an extension: the predicate here is
-            # word for word the core definition in section 3.6 of the spec --
-            # the output's feature count equals a count derived before the
-            # operation ran -- and §3.6 says a producer performing a core check
-            # MUST use the core name. `validate_geometry` in this same file
-            # already emits `feature_count_exact` for the identical comparison,
-            # so calling it something else here answered "does this system check
-            # that the count was preserved?" with yes for one operation and no
-            # for the other. The fan-out diagnosis lives in `hint`, which is
-            # where a name cannot carry it anyway.
-            "feature_count_exact",
-            len(joined) == len(gdf),
-            f"{len(gdf)} features in, {len(joined)} out",
-            critical=False,
-            hint=None
-            if len(joined) == len(gdf)
-            else (
-                "The table has more than one row per key, so features were "
-                "duplicated. Summing an area or a population over this result "
-                "counts the duplicated features once per row — the classic "
-                "fan-out. Aggregate the table first, or count distinct."
+        checks: list[verify.Check] = [
+            verify.Check(
+                # `feature_count_exact` and not an extension: the predicate here is
+                # word for word the core definition in section 3.6 of the spec --
+                # the output's feature count equals a count derived before the
+                # operation ran -- and §3.6 says a producer performing a core check
+                # MUST use the core name. `validate_geometry` in this same file
+                # already emits `feature_count_exact` for the identical comparison,
+                # so calling it something else here answered "does this system check
+                # that the count was preserved?" with yes for one operation and no
+                # for the other. The fan-out diagnosis lives in `hint`, which is
+                # where a name cannot carry it anyway.
+                "feature_count_exact",
+                len(joined) == len(gdf),
+                f"{len(gdf)} features in, {len(joined)} out",
+                critical=False,
+                hint=None
+                if len(joined) == len(gdf)
+                else (
+                    "The table has more than one row per key, so features were "
+                    "duplicated. Summing an area or a population over this result "
+                    "counts the duplicated features once per row — the classic "
+                    "fan-out. Aggregate the table first, or count distinct."
+                ),
             ),
-        ),
-        verify.Check(
-            "x-mapsmith:every_feature_matched",
-            unmatched == 0,
-            f"{unmatched} of {len(gdf)} features matched nothing",
-            critical=False,
-            hint=None
-            if unmatched == 0
-            else (
-                "Keys were compared as text, so this is a real mismatch rather "
-                "than a type problem. Check for whitespace, case, or codes that "
-                "exist on one side only."
+            verify.Check(
+                "x-mapsmith:every_feature_matched",
+                unmatched == 0,
+                f"{unmatched} of {len(gdf)} features matched nothing",
+                critical=False,
+                hint=None
+                if unmatched == 0
+                else (
+                    "Keys were compared as text, so this is a real mismatch rather "
+                    "than a type problem. Check for whitespace, case, or codes that "
+                    "exist on one side only."
+                ),
             ),
-        ),
-    ]
+        ]
     manifest, extras = verify.audited(
         record,
         output_path,
@@ -1679,29 +1681,29 @@ def measure_length(
     with verify.audit_on_failure(record, output_path, pre):
         _write(measured, output_path)
 
-    checks: list[verify.Check] = [
-        _mixed_geometry_check(gdf, "measure_length", "length")
-    ]
-    if has_z and method != "3d":
-        three_d = float(sum(_length_3d(geom) for geom in gdf.geometry))
-        difference = abs(three_d - total) / three_d * 100 if three_d else 0.0
-        checks.append(
-            verify.Check(
-                "x-mapsmith:flat_length_on_3d_geometry",
-                difference < 0.01,
-                f"the layer carries Z: {method} gives {total:.3f} m, the 3D length "
-                f"is {three_d:.3f} m ({difference:.2f}% apart)",
-                critical=False,
-                hint=(
-                    "The geometry has elevations and this measurement ignored them. "
-                    "For anything that follows the ground — a pipe, a cable, a path "
-                    "— use method='3d'. If the plan-view length is what you wanted, "
-                    "this check is the record that you chose it."
+        checks: list[verify.Check] = [
+            _mixed_geometry_check(gdf, "measure_length", "length")
+        ]
+        if has_z and method != "3d":
+            three_d = float(sum(_length_3d(geom) for geom in gdf.geometry))
+            difference = abs(three_d - total) / three_d * 100 if three_d else 0.0
+            checks.append(
+                verify.Check(
+                    "x-mapsmith:flat_length_on_3d_geometry",
+                    difference < 0.01,
+                    f"the layer carries Z: {method} gives {total:.3f} m, the 3D length "
+                    f"is {three_d:.3f} m ({difference:.2f}% apart)",
+                    critical=False,
+                    hint=(
+                        "The geometry has elevations and this measurement ignored them. "
+                        "For anything that follows the ground — a pipe, a cable, a path "
+                        "— use method='3d'. If the plan-view length is what you wanted, "
+                        "this check is the record that you chose it."
+                    )
+                    if difference >= 0.01
+                    else None,
                 )
-                if difference >= 0.01
-                else None,
             )
-        )
     manifest, extras = verify.audited(
         record,
         output_path,
@@ -1832,25 +1834,25 @@ def aggregate_weighted(
         merged[f"{weight_column}_total"] = total_weight
         _write(merged, output_path)
 
-    difference = abs(weighted - unweighted)
-    relative = difference / abs(weighted) * 100 if weighted else 0.0
-    checks = [
-        verify.Check(
-            "x-mapsmith:weighting_changed_the_answer",
-            relative < 1.0,
-            f"weighted {weighted:.6g} against unweighted {unweighted:.6g} "
-            f"({relative:.1f}% apart)",
-            critical=False,
-            hint=(
-                "The units being aggregated differ enough in weight that averaging "
-                "the values would have given a materially different answer. That is "
-                "not an error here — this operation weights — but it is the number "
-                "to quote if anyone compares this result with a plain mean."
+        difference = abs(weighted - unweighted)
+        relative = difference / abs(weighted) * 100 if weighted else 0.0
+        checks = [
+            verify.Check(
+                "x-mapsmith:weighting_changed_the_answer",
+                relative < 1.0,
+                f"weighted {weighted:.6g} against unweighted {unweighted:.6g} "
+                f"({relative:.1f}% apart)",
+                critical=False,
+                hint=(
+                    "The units being aggregated differ enough in weight that averaging "
+                    "the values would have given a materially different answer. That is "
+                    "not an error here — this operation weights — but it is the number "
+                    "to quote if anyone compares this result with a plain mean."
+                )
+                if relative >= 1.0
+                else None,
             )
-            if relative >= 1.0
-            else None,
-        )
-    ]
+        ]
     manifest, extras = verify.audited(
         record,
         output_path,
@@ -2019,20 +2021,20 @@ def point_on_surface(input_path: str, output_path: str) -> dict[str, Any]:
         points[points.geometry.name] = gdf.geometry.representative_point()
         _write(points, output_path)
 
-    inside = int(
-        sum(
-            point.intersects(polygon)
-            for point, polygon in zip(points.geometry, gdf.geometry)
-            if point is not None and polygon is not None
+        inside = int(
+            sum(
+                point.intersects(polygon)
+                for point, polygon in zip(points.geometry, gdf.geometry)
+                if point is not None and polygon is not None
+            )
         )
-    )
-    checks = [
-        verify.Check(
-            "x-mapsmith:point_lies_on_its_feature",
-            inside == len(gdf),
-            f"{inside} of {len(gdf)} points lie on their own feature",
-        )
-    ]
+        checks = [
+            verify.Check(
+                "x-mapsmith:point_lies_on_its_feature",
+                inside == len(gdf),
+                f"{inside} of {len(gdf)} points lie on their own feature",
+            )
+        ]
     manifest, extras = verify.audited(
         record,
         output_path,
@@ -2342,40 +2344,40 @@ def validate_geometry(input_path: str, output_path: str) -> dict[str, Any]:
     checked["validity_reason"] = reasons
     with verify.audit_on_failure(record, output_path, pre):
         _write(checked, output_path)
-    if invalid:
-        record.notes.append(
-            f"{invalid} of {len(gdf)} features are invalid; nothing was repaired "
-            "here by design — the reasons are in the validity_reason column"
-        )
-    # The generic output checks are the wrong ones here: `geometry_valid` is
-    # critical everywhere else, and this operation exists precisely to carry an
-    # invalid geometry through to disk with its diagnosis attached. Failing on
-    # that would make the inspection impossible to perform.
-    output_checks = [
-        verify.Check(
-            "crs_present",
-            _read_output_crs(output_path) is not None,
-            verify.crs_label(gdf.crs),
-        ),
-        verify.Check(
-            "feature_count_exact",
-            len(checked) == len(gdf),
-            f"{len(checked)} of {len(gdf)} features written",
-        ),
-        verify.Check(
-            # This used to be `passed=True`, a constant -- a declaration wearing
-            # a check's clothes, which raised the count of passing checks
-            # without adding evidence. That is the defect this project measures
-            # in other systems. The predicate now asserts what the operation
-            # actually promises: every feature it calls invalid carries a reason
-            # a reader can act on. It fails if GEOS ever returns an empty
-            # explanation, which is the only way the promise could break.
-            "x-mapsmith:invalid_geometry_explained",
-            all(r.strip() for r in reasons),
-            f"{invalid} of {len(gdf)} features invalid, every one with a reason "
-            "in validity_reason; nothing was repaired",
-        ),
-    ]
+        if invalid:
+            record.notes.append(
+                f"{invalid} of {len(gdf)} features are invalid; nothing was repaired "
+                "here by design — the reasons are in the validity_reason column"
+            )
+        # The generic output checks are the wrong ones here: `geometry_valid` is
+        # critical everywhere else, and this operation exists precisely to carry an
+        # invalid geometry through to disk with its diagnosis attached. Failing on
+        # that would make the inspection impossible to perform.
+        output_checks = [
+            verify.Check(
+                "crs_present",
+                _read_output_crs(output_path) is not None,
+                verify.crs_label(gdf.crs),
+            ),
+            verify.Check(
+                "feature_count_exact",
+                len(checked) == len(gdf),
+                f"{len(checked)} of {len(gdf)} features written",
+            ),
+            verify.Check(
+                # This used to be `passed=True`, a constant -- a declaration wearing
+                # a check's clothes, which raised the count of passing checks
+                # without adding evidence. That is the defect this project measures
+                # in other systems. The predicate now asserts what the operation
+                # actually promises: every feature it calls invalid carries a reason
+                # a reader can act on. It fails if GEOS ever returns an empty
+                # explanation, which is the only way the promise could break.
+                "x-mapsmith:invalid_geometry_explained",
+                all(r.strip() for r in reasons),
+                f"{invalid} of {len(gdf)} features invalid, every one with a reason "
+                "in validity_reason; nothing was repaired",
+            ),
+        ]
     manifest, extras = verify.audited(
         record,
         output_path,
@@ -2518,41 +2520,41 @@ def count_in_polygons(
         result[count_column] = [int(counts.get(i, 0)) for i in result.index]
         _write(result, output_path)
 
-    matched = int(joined["index_right"].notna().sum())
-    distinct_points = len(set(joined.index))
-    # Over the points that HAVE a position. A null or empty geometry used to
-    # land here as a point "in no polygon", and the hint sent the reader to
-    # check the boundaries while the defect was in the points.
-    unplaced = len(located) - distinct_points
-    record.notes.append(
-        f"{distinct_points} of {len(located)} located points fall in at least one "
-        f"polygon under `{predicate}`; the counts sum to {matched}, which exceeds the "
-        "number of points when polygons overlap or share edges"
-        if matched != distinct_points
-        else f"{distinct_points} of {len(located)} located points fall in a polygon "
-        f"under `{predicate}`"
-    )
-    if without_geometry:
+        matched = int(joined["index_right"].notna().sum())
+        distinct_points = len(set(joined.index))
+        # Over the points that HAVE a position. A null or empty geometry used to
+        # land here as a point "in no polygon", and the hint sent the reader to
+        # check the boundaries while the defect was in the points.
+        unplaced = len(located) - distinct_points
         record.notes.append(
-            f"{without_geometry} of {len(points)} points have no geometry (null or "
-            "empty), so they have no position and are in no count"
+            f"{distinct_points} of {len(located)} located points fall in at least one "
+            f"polygon under `{predicate}`; the counts sum to {matched}, which exceeds the "
+            "number of points when polygons overlap or share edges"
+            if matched != distinct_points
+            else f"{distinct_points} of {len(located)} located points fall in a polygon "
+            f"under `{predicate}`"
         )
-    checks = [
-        verify.Check(
-            "x-mapsmith:every_point_placed",
-            unplaced == 0,
-            f"{unplaced} of {len(located)} located points fall in no polygon",
-            critical=False,
-            hint=None
-            if unplaced == 0
-            else (
-                f"Those points are outside every polygon under `{predicate}`. If the "
-                "polygons are meant to cover the whole study area, check the "
-                "boundaries: with `within`, a point exactly on a shared edge belongs "
-                "to neither side and disappears from the totals."
-            ),
-        )
-    ]
+        if without_geometry:
+            record.notes.append(
+                f"{without_geometry} of {len(points)} points have no geometry (null or "
+                "empty), so they have no position and are in no count"
+            )
+        checks = [
+            verify.Check(
+                "x-mapsmith:every_point_placed",
+                unplaced == 0,
+                f"{unplaced} of {len(located)} located points fall in no polygon",
+                critical=False,
+                hint=None
+                if unplaced == 0
+                else (
+                    f"Those points are outside every polygon under `{predicate}`. If the "
+                    "polygons are meant to cover the whole study area, check the "
+                    "boundaries: with `within`, a point exactly on a shared edge belongs "
+                    "to neither side and disappears from the totals."
+                ),
+            )
+        ]
     manifest, extras = verify.audited(
         record,
         output_path,
@@ -2754,96 +2756,96 @@ def summarize_points_in_polygons(
                 )
         _write(result, output_path)
 
-    distinct = len(set(joined.index))
-    unplaced = len(located) - distinct
-    memberships = joined.index.value_counts()
-    # Two different numbers, which the first version reported as one: how many
-    # POINTS are counted in more than one polygon, and how many memberships
-    # beyond one each. A point in three overlapping polygons is one point, and
-    # the note said "1 of 1 points ...; 2 of them are counted in more than one".
-    counted_twice = int((memberships > 1).sum())
-    extra_memberships = len(joined) - distinct
-    missing = int(points[field].isna().sum())
-    # Of those, the ones that were PLACED -- only they are in a `point_count`.
-    # The first version said all of them were, and a point with no value that
-    # fell in no polygon is in no count at all: the `conformita-manifest`
-    # review measured the note saying so beside a layer of zero polygons.
-    missing_placed = int(points.loc[sorted(set(joined.index)), field].isna().sum())
-    empty = int((result["point_count"] == 0).sum())
-    record.notes.append(
-        f"{distinct} of {len(located)} located points fall in a polygon under `{predicate}`"
-        + (
-            f"; {counted_twice} of them are counted in more than one polygon "
-            f"({extra_memberships} extra memberships in all), because polygons overlap "
-            "or a point sits on an edge they share"
-            if counted_twice
-            else ""
-        )
-    )
-    if without_geometry:
+        distinct = len(set(joined.index))
+        unplaced = len(located) - distinct
+        memberships = joined.index.value_counts()
+        # Two different numbers, which the first version reported as one: how many
+        # POINTS are counted in more than one polygon, and how many memberships
+        # beyond one each. A point in three overlapping polygons is one point, and
+        # the note said "1 of 1 points ...; 2 of them are counted in more than one".
+        counted_twice = int((memberships > 1).sum())
+        extra_memberships = len(joined) - distinct
+        missing = int(points[field].isna().sum())
+        # Of those, the ones that were PLACED -- only they are in a `point_count`.
+        # The first version said all of them were, and a point with no value that
+        # fell in no polygon is in no count at all: the `conformita-manifest`
+        # review measured the note saying so beside a layer of zero polygons.
+        missing_placed = int(points.loc[sorted(set(joined.index)), field].isna().sum())
+        empty = int((result["point_count"] == 0).sum())
         record.notes.append(
-            f"{without_geometry} of {len(points)} points have no geometry (null or "
-            "empty), so they have no position and are in no polygon and no statistic"
-        )
-    if missing_placed:
-        record.notes.append(
-            f"{missing_placed} of the {distinct} placed points have no value in "
-            f"{field!r}: they are in `point_count` and in no statistic, so "
-            f"`{field}_count` is smaller than `point_count` wherever one of them fell"
-        )
-    if missing - missing_placed:
-        record.notes.append(
-            f"{missing - missing_placed} more points with no value in {field!r} are "
-            "not in any polygon, so they are in no count either"
-        )
-    if empty:
-        record.notes.append(
-            f"{empty} of {len(result)} polygons hold no point: they are kept, with "
-            "`point_count` 0, the count of values 0 and every other statistic null, "
-            "because the mean of no values is not zero"
-        )
-    checks = [
-        verify.Check(
-            "x-mapsmith:every_point_placed",
-            unplaced == 0,
-            f"{unplaced} of {len(located)} located points fall in no polygon",
-            critical=False,
-            hint=None if unplaced == 0 else (
-                f"Those points are outside every polygon under `{predicate}` and are "
-                "in no statistic. With `within`, a point exactly on a shared edge "
-                "belongs to neither side."
-            ),
-        ),
-    ]
-
-    def summary_intact() -> list[Any]:
-        # A check on the NUMBER, read back from the file rather than trusted
-        # from memory: the columns the manifest promises are there under their
-        # declared names, the counts add up to the memberships the join found,
-        # and no polygon summarises more values than it holds points.
-        written = readers.read_vector_or_table(output_path)
-        absent = [name for name in new_columns if name not in written.columns]
-        problems = []
-        if absent:
-            problems.append(f"columns {absent} are not in the output")
-        else:
-            total = int(written["point_count"].sum())
-            if total != len(joined):
-                problems.append(
-                    f"point_count sums to {total}, the join found {len(joined)} memberships"
-                )
-            if (written[f"{field}_count"] > written["point_count"]).any():
-                problems.append("some polygon summarises more values than it holds points")
-        return [
-            verify.Check(
-                "x-mapsmith:summary_columns_intact",
-                not problems,
-                "; ".join(problems) if problems else (
-                    f"{len(new_columns)} columns present; point_count sums to "
-                    f"{len(joined)}, and no {field}_count exceeds its point_count"
-                ),
+            f"{distinct} of {len(located)} located points fall in a polygon under `{predicate}`"
+            + (
+                f"; {counted_twice} of them are counted in more than one polygon "
+                f"({extra_memberships} extra memberships in all), because polygons overlap "
+                "or a point sits on an edge they share"
+                if counted_twice
+                else ""
             )
+        )
+        if without_geometry:
+            record.notes.append(
+                f"{without_geometry} of {len(points)} points have no geometry (null or "
+                "empty), so they have no position and are in no polygon and no statistic"
+            )
+        if missing_placed:
+            record.notes.append(
+                f"{missing_placed} of the {distinct} placed points have no value in "
+                f"{field!r}: they are in `point_count` and in no statistic, so "
+                f"`{field}_count` is smaller than `point_count` wherever one of them fell"
+            )
+        if missing - missing_placed:
+            record.notes.append(
+                f"{missing - missing_placed} more points with no value in {field!r} are "
+                "not in any polygon, so they are in no count either"
+            )
+        if empty:
+            record.notes.append(
+                f"{empty} of {len(result)} polygons hold no point: they are kept, with "
+                "`point_count` 0, the count of values 0 and every other statistic null, "
+                "because the mean of no values is not zero"
+            )
+        checks = [
+            verify.Check(
+                "x-mapsmith:every_point_placed",
+                unplaced == 0,
+                f"{unplaced} of {len(located)} located points fall in no polygon",
+                critical=False,
+                hint=None if unplaced == 0 else (
+                    f"Those points are outside every polygon under `{predicate}` and are "
+                    "in no statistic. With `within`, a point exactly on a shared edge "
+                    "belongs to neither side."
+                ),
+            ),
         ]
+
+        def summary_intact() -> list[Any]:
+            # A check on the NUMBER, read back from the file rather than trusted
+            # from memory: the columns the manifest promises are there under their
+            # declared names, the counts add up to the memberships the join found,
+            # and no polygon summarises more values than it holds points.
+            written = readers.read_vector_or_table(output_path)
+            absent = [name for name in new_columns if name not in written.columns]
+            problems = []
+            if absent:
+                problems.append(f"columns {absent} are not in the output")
+            else:
+                total = int(written["point_count"].sum())
+                if total != len(joined):
+                    problems.append(
+                        f"point_count sums to {total}, the join found {len(joined)} memberships"
+                    )
+                if (written[f"{field}_count"] > written["point_count"]).any():
+                    problems.append("some polygon summarises more values than it holds points")
+            return [
+                verify.Check(
+                    "x-mapsmith:summary_columns_intact",
+                    not problems,
+                    "; ".join(problems) if problems else (
+                        f"{len(new_columns)} columns present; point_count sums to "
+                        f"{len(joined)}, and no {field}_count exceeds its point_count"
+                    ),
+                )
+            ]
 
     manifest, extras = verify.audited(
         record,

@@ -263,16 +263,20 @@ def sample_raster_at_points(
 
     out = points.copy()
     out[column_name] = values
-    _write_vector(out, output_path)
+    # `audited` below covers the checks; this covers the write before it, which
+    # left a dataset with no record when it raised (measured 2026-09-25). The
+    # preconditions are computed BEFORE the write: as an argument to `audited`
+    # they ran after it and outside both nets.
+    pre = verify.verify_loaded_inputs("sample_raster_at_points", points_path=points)
+    with verify.audit_on_failure(record, output_path, pre):
+        _write_vector(out, output_path)
 
     read = sum(1 for v in values if v is not None)
     manifest, extras = verify.audited(
         record,
         output_path,
         operation="sample_raster_at_points",
-        preconditions=verify.verify_loaded_inputs(
-            "sample_raster_at_points", points_path=points
-        ),
+        preconditions=pre,
         checks_fn=lambda: [
             *verify.verify_vector_output(
                 output_path,
@@ -401,13 +405,15 @@ def elevation_profile(
         geometry=[Point(r["x"], r["y"]) for r in rows],
         crs=working.crs,
     )
-    _write_vector(out, output_path)
+    pre = verify.verify_loaded_inputs("elevation_profile", line_path=working)
+    with verify.audit_on_failure(record, output_path, pre):
+        _write_vector(out, output_path)
 
     manifest, extras = verify.audited(
         record,
         output_path,
         operation="elevation_profile",
-        preconditions=verify.verify_loaded_inputs("elevation_profile", line_path=working),
+        preconditions=pre,
         checks_fn=lambda: [
             *verify.verify_vector_output(
                 output_path,
