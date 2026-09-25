@@ -13,17 +13,30 @@ All notable changes to MapSmith are documented here, in the format of
   `weighted_variance` and `weighted_frac`: the mean heat of a district weighted
   by the population living in each cell, which used to take three operations
   and a division and is a different number from the plain mean wherever people
-  are not spread evenly. Two decisions are in the record, both measured on the
-  engine first. The weights must sit on the value raster's own grid -- same
-  CRS, cells and registration -- because exactextract accepts a coarser grid by
-  repeating each coarse cell whole in every fine one, which inflates a
-  weighted sum of counts, and never compares the two coordinate systems; a
-  weights raster off the grid, with two bands or with a negative weight is
-  refused with how to align it. And a cell with a value and no weight counts
-  with weight 0, because exactextract's own default turns the zone's weighted
-  statistics into NaN for a single missing weight; a non-critical check names
-  the zones where that happened. Reached through the same tool; the tool count
-  is unchanged.
+  are not spread evenly. Both rules were measured on the engine first.
+
+  One is in the record: a cell with a value and no weight -- nodata or NaN --
+  counts with weight 0, because exactextract's own default turns the zone's
+  weighted statistics into NaN for a single missing weight. The record carries
+  `weight_of_a_cell_with_no_weight: 0.0` and the weights by name
+  (`weights_path`) as well as in `inputs[]`, and a non-critical check,
+  `x-mapsmith:every_valued_cell_has_a_weight`, names the zones where it
+  happened.
+
+  The other is a refusal, so a record exists only when it held: the weights
+  must sit on the value raster's own grid -- same CRS, cells (compared relative
+  to the cell size) and registration -- because exactextract accepts a coarser
+  grid by repeating each coarse cell whole in every fine one, which inflates a
+  weighted sum of counts, and never compares the two coordinate systems. A
+  weights raster off the grid, with two bands, or with a negative weight inside
+  a zone is refused with how to align it; a negative weight outside every zone
+  changes no number and is not.
+
+  With two rasters in one record, each one's georeferencing facts stay with
+  it: the top-level `environment` describes `inputs[0]`, and the weights' are
+  on their own entry under `x-mapsmith:environment`. Records of operations
+  that read one raster are unchanged. Reached through the same tool; the tool
+  count is unchanged.
 
 ## [0.6.1] - 2026-09-25
 

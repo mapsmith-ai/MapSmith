@@ -163,6 +163,15 @@ CONTAINER_EXTENSIONS: dict[str, dict[str, str]] = {
             "indistinguishable from one entry written twice."
         ),
     },
+    "inputs[]": {
+        "x-mapsmith:environment": (
+            "The `environment` facts of THIS input, when it is not the first. Not "
+            "the top-level `environment`, which describes `inputs[0]`: the spec "
+            "makes it one flat object for the whole record, and with two rasters "
+            "(weighted zonal statistics) merging both files' facts into it read "
+            "one file's sidecar as the other's."
+        ),
+    },
 }
 
 
@@ -682,7 +691,17 @@ class ProvenanceRecord:
         """
         from . import grid
 
-        for entry in self.inputs:
+        # The facts in `environment` describe `inputs[0]`, the operation's
+        # primary dataset; any OTHER input's go on its own entry, under
+        # `x-mapsmith:environment`. Until 2026-09-25 every input's facts were
+        # merged into one flat object, which was harmless while no operation
+        # read two rasters and wrong the day weighted zonal statistics did: a
+        # weights raster with a sidecar beside values without one produced
+        # `georeferencing_source: internal` next to the weights' sidecar name,
+        # two statements about two files read as one (found by the
+        # `conformita-manifest` review).
+        self._input_environment: dict[int, dict[str, str]] = {}
+        for index, entry in enumerate(self.inputs):
             try:
                 found = grid.manifest_environment(entry.path)
             except Exception:  # noqa: BLE001, S112 — see below
@@ -690,8 +709,13 @@ class ProvenanceRecord:
                 # a failure to LOOK is not a finding. Swallowing cannot hide a
                 # defect here: nothing downstream reads a value this did not set.
                 continue
-            for key, value in found.items():
-                self.environment.setdefault(key, value)
+            if not found:
+                continue
+            if index == 0:
+                for key, value in found.items():
+                    self.environment.setdefault(key, value)
+            else:
+                self._input_environment[index] = redact_secrets(found)
 
     def add_verification(self, checks: list[Any]) -> ProvenanceRecord:
         """Attach deterministic check results (objects with .as_dict())."""
@@ -811,6 +835,10 @@ class ProvenanceRecord:
                 record[key] = value
                 if key == "inputs":
                     record["output"] = entry
+        # Added only where there is something to say, so that a record with a
+        # single raster -- every one written before 2026-09-25 -- is unchanged.
+        for index, found in getattr(self, "_input_environment", {}).items():
+            record["inputs"][index]["x-mapsmith:environment"] = found
         manifest_path = Path(f"{output_path}.provenance.json")
         manifest_path.write_text(
             json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8"

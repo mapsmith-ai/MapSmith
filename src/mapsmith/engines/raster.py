@@ -366,7 +366,8 @@ def _refuse_negative_weights(exactextract: Any, weights: Any, zones: Any, weight
     negative = [int(i) for i in np.flatnonzero(lowest < 0)]
     if negative:
         raise ValueError(
-            f"Refusing weights {weights_path}: zones {negative[:10]} contain negative weights "
+            f"Refusing weights {weights_path}: rows {negative[:10]} of the zones layer (from 0) "
+            "contain negative weights "
             f"(smallest {float(np.nanmin(lowest)):g}), and a negative weight makes a weighted "
             "mean meaningless. Clip or rescale the weights first."
         )
@@ -399,7 +400,8 @@ def _every_valued_cell_has_a_weight(exactextract: Any, ds: Any, weights: Any, zo
         "x-mapsmith:every_valued_cell_has_a_weight",
         not affected,
         f"{len(affected)} of {len(zones)} zones have cells with a value and no weight, "
-        f"left out of the weighted statistics: zones {affected[:10]}"
+        f"left out of the weighted statistics: rows {affected[:10]} of the zones layer, "
+        "counted from 0"
         + (" and more" if len(affected) > 10 else "")
         if affected
         else "every cell with a value inside a zone also has a weight",

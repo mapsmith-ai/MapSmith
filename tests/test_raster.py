@@ -122,6 +122,8 @@ def test_weighted_mean_and_sum_in_closed_form(dem, zone, tmp_path):
         "dem.tif", "zones.gpkg", "w.tif"
     ]
     assert manifest["parameters"]["weight_of_a_cell_with_no_weight"] == 0.0
+    # By name, not only by position: inputs[] order is not significant (schema).
+    assert manifest["parameters"]["weights_path"].endswith("/w.tif")
     check = next(
         c for c in manifest["verification"]
         if c["name"] == "x-mapsmith:every_valued_cell_has_a_weight"
@@ -147,7 +149,7 @@ def test_a_cell_with_no_weight_counts_zero_and_the_zone_is_named(dem, zone, tmp_
         if c["name"] == "x-mapsmith:every_valued_cell_has_a_weight"
     )
     assert check["passed"] is False and check["critical"] is False
-    assert "zones [0]" in check["detail"]
+    assert "rows [0]" in check["detail"]
 
 
 @pytest.mark.parametrize(
@@ -197,7 +199,7 @@ def test_a_nan_weight_is_a_missing_weight_and_does_not_hide_a_negative(dem, zone
         c for c in manifest["verification"]
         if c["name"] == "x-mapsmith:every_valued_cell_has_a_weight"
     )
-    assert check["passed"] is False and "zones [0]" in check["detail"]
+    assert check["passed"] is False and "rows [0]" in check["detail"]
 
     data[3, 3] = -5.0
     weights = _weights(tmp_path, data, name="nanneg.tif", nodata=-9999.0)
@@ -282,6 +284,31 @@ def test_the_grid_comparison_catches_what_shape_alone_does_not(dem, zone, tmp_pa
         raster.zonal_statistics(
             dem, zone, str(tmp_path / "g.parquet"), ["weighted_mean"], weights_path=weights
         )
+
+
+@pytest.mark.parametrize("sidecars", ["weights_only", "both"])
+def test_each_raster_s_georeferencing_facts_stay_with_that_raster(dem, zone, tmp_path, sidecars):
+    """Every input's facts used to be merged into one flat `environment`: with
+    a sidecar beside the weights only, the record said `internal` next to the
+    weights' sidecar name -- two files described as one -- and with a sidecar
+    beside both, the weights' disappeared (conformita-manifest review)."""
+    weights = _weights(tmp_path, _column_weights())
+    agreeing = '<PAMDataset><SRS>EPSG:32631</SRS></PAMDataset>'
+    Path(f"{weights}.aux.xml").write_text(agreeing, encoding="utf-8")
+    if sidecars == "both":
+        Path(f"{dem}.aux.xml").write_text(agreeing, encoding="utf-8")
+    result = raster.zonal_statistics(
+        dem, zone, str(tmp_path / "e.parquet"), ["weighted_mean"], weights_path=weights
+    )
+    record = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+    on_weights = record["inputs"][2]["x-mapsmith:environment"]
+    assert on_weights["x-mapsmith:georeferencing_sidecar_present"] == "w.tif.aux.xml"
+    environment = record.get("environment", {})
+    if sidecars == "weights_only":
+        assert not environment, environment
+    else:
+        assert environment["x-mapsmith:georeferencing_sidecar_present"] == "dem.tif.aux.xml"
+    assert "x-mapsmith:environment" not in record["inputs"][0]
 
 
 def test_the_unweighted_form_still_writes_a_conforming_record(dem, zone, tmp_path):
