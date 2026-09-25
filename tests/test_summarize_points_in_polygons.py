@@ -523,6 +523,41 @@ def test_an_edge_along_the_seam_is_not_a_crossing():
     assert antimeridian.naive_crossings(points) == []
 
 
+def test_a_layer_in_0_to_360_has_its_seam_at_0_and_360(tmp_path):
+    """Found on 2026-09-25 writing the message below: the world written as
+    box(0, -90, 360, 90) was refused as Antarctica had been, because the seam
+    was hard-coded at +/-180. And the ring that IS naive in such a layer crosses
+    0/360, so the refusal must say so instead of sending its author to 180."""
+    from shapely.geometry import Polygon
+
+    from mapsmith import antimeridian
+
+    world = gpd.GeoDataFrame(geometry=[box(0, -90, 360, 90)], crs="EPSG:4326")
+    assert antimeridian.naive_crossings(world) == []
+    across_zero = Polygon([(350, -5), (10, -5), (10, 5), (350, 5)])
+    assert antimeridian.naive_crossings(
+        gpd.GeoDataFrame(geometry=[across_zero], crs="EPSG:4326")
+    ) == [0]
+
+    zone = _pacific_zone(tmp_path, across_zero)
+    points = tmp_path / "p.gpkg"
+    gpd.GeoDataFrame({"n": [1.0]}, geometry=[Point(355, 0)], crs="EPSG:4326").to_file(points)
+    with pytest.raises(ValueError, match=r"prime meridian \(0/360") as refused:
+        vector.count_in_polygons(str(points), str(zone), str(tmp_path / "c.gpkg"))
+    assert "180th" not in str(refused.value)
+
+
+def test_no_utm_zone_says_why_and_what_to_use():
+    """It said "centred on the antimeridian" for data centred anywhere, and
+    gave no way out. Polar data is the realistic case: UTM stops at 84N."""
+    from mapsmith import antimeridian
+
+    arctic = gpd.GeoDataFrame(geometry=[Point(10, 88), Point(20, 89)], crs="EPSG:4326")
+    with pytest.raises(RuntimeError, match="EPSG:32661") as refused:
+        antimeridian.estimate_utm_crs(arctic)
+    assert "antimeridian" not in str(refused.value)
+
+
 def test_natural_earth_countries_are_not_refused():
     """The real file the review measured: Antarctica is feature 159."""
     from pathlib import Path

@@ -6,7 +6,20 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **A layer written in 0..360 longitudes had its seam in the wrong place.**
+  The antimeridian refusal of 0.6.0 took the edge of the plane to be -180/180,
+  so the world written as `box(0, -90, 360, 90)` was refused, the way 0.6.0's
+  own review had found Antarctica refused in -180..180. For such a layer the
+  edge is 0/360, and the ring that really is drawn naively crosses the prime
+  meridian: the refusal now says so and tells its author to split there, where
+  it used to send them to 180.
+- **"No UTM zone" said the data was centred on the antimeridian, whatever the
+  data, and offered no way out.** The realistic cause is latitude — UTM stops
+  at 84N and 80S — and the message now says that and names a polar CRS to use
+  (UPS, or a polar stereographic), for data that crosses 180 and for data that
+  does not.
 
 ## [0.6.0] - 2026-09-25
 

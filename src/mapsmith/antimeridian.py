@@ -142,7 +142,15 @@ def estimate_utm_crs(gdf: Any) -> Any:
     """
     extent = describe_extent(gdf)
     if not extent.get("crosses_antimeridian"):
-        return gdf.estimate_utm_crs()
+        try:
+            return gdf.estimate_utm_crs()
+        except RuntimeError as exc:
+            bounds = gdf.total_bounds
+            raise RuntimeError(
+                _no_utm_zone(
+                    (bounds[0] + bounds[2]) / 2.0, (bounds[1] + bounds[3]) / 2.0
+                )
+            ) from exc
 
     from pyproj import CRS
     from pyproj.aoi import AreaOfInterest
@@ -159,11 +167,30 @@ def estimate_utm_crs(gdf: Any) -> Any:
         area_of_interest=AreaOfInterest(centre, latitude, centre, latitude),
     )
     if not found:
-        raise RuntimeError(
-            "no UTM zone found for data centred on the antimeridian at "
-            f"{centre:.3f}, {latitude:.3f}"
-        )
+        raise RuntimeError(_no_utm_zone(centre, latitude))
     return CRS.from_epsg(found[0].code)
+
+
+def _no_utm_zone(longitude: float, latitude: float) -> str:
+    """Why no UTM zone came back, and what to use instead.
+
+    It said "data centred on the antimeridian" whatever the data, which was
+    false for a layer centred anywhere else, and it offered no way out. The
+    realistic cause is latitude: UTM is defined between 80S and 84N.
+    """
+    polar = latitude > 84.0 or latitude < -80.0
+    return (
+        f"no UTM zone covers the centre of this data ({longitude:.3f}, {latitude:.3f})"
+        + (
+            ": UTM is defined only between 80S and 84N. Reproject to a polar CRS "
+            "first -- UPS (EPSG:32661 north, EPSG:32761 south), or a polar "
+            "stereographic such as EPSG:3413 (Arctic) or EPSG:3031 (Antarctic) -- "
+            "and run the operation on that."
+            if polar
+            else ". Reproject the layer to a projected CRS suited to its extent and "
+            "run the operation on that."
+        )
+    )
 
 
 def naive_crossings(gdf: Any) -> list[int]:
@@ -215,7 +242,11 @@ def naive_crossings(gdf: Any) -> list[int]:
     if len(coords) < 2:
         return []
     x = coords[:, 0]
-    on_seam = np.abs(np.abs(x) - 180.0) <= _SEAM_TOLERANCE
+    # The edge of the plane is where the layer's longitudes end: -180/180, or
+    # 0/360 for a layer written in 0..360, where the rectangle covering the
+    # world closes along 0 and 360 and was refused exactly as Antarctica was.
+    seams = np.asarray(seam_longitudes(x))
+    on_seam = np.abs(x[:, None] - seams[None, :]).min(axis=1) <= _SEAM_TOLERANCE
     jump = (
         (coord_ring[1:] == coord_ring[:-1])
         & (np.abs(np.diff(x)) > HALF_THE_WORLD)
@@ -231,6 +262,21 @@ def naive_crossings(gdf: Any) -> list[int]:
 #: below any survey precision, far above the round trip of a float through a
 #: file format.
 _SEAM_TOLERANCE = 1e-9
+
+
+def seam_longitudes(longitudes: Any) -> tuple[float, float]:
+    """The two longitudes where a layer's plane ends: (-180, 180), or (0, 360).
+
+    A layer is taken to be written in 0..360 when any longitude exceeds 180,
+    which no layer in -180..180 can do. For such a layer the seam a single ring
+    can be drawn across naively is the prime meridian, 0/360, not the 180th.
+    """
+    import numpy as np
+
+    values = np.asarray(longitudes, dtype="float64")
+    if values.size and float(np.nanmax(values)) > 180.0 + _SEAM_TOLERANCE:
+        return (0.0, 360.0)
+    return (-180.0, 180.0)
 
 
 def describe_extent(gdf: Any) -> dict[str, Any]:

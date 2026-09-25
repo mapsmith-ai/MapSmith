@@ -2414,13 +2414,24 @@ def _refuse_naive_antimeridian(polygons: gpd.GeoDataFrame, polygons_path: str) -
     """
     offending = antimeridian.naive_crossings(polygons)
     if offending:
+        # Which seam, and so which advice: a layer written in 0..360 longitudes
+        # ends at 0/360, and telling its author to split at 180 -- which it
+        # did until 2026-09-25 -- sends them to the one meridian their ring
+        # does not cross.
+        _, high = antimeridian.seam_longitudes([polygons.total_bounds[2]])
+        seam = (
+            "the 180th meridian"
+            if high == 180.0
+            else "the prime meridian (0/360: this layer is written in 0..360 longitudes)"
+        )
+        split = "180" if high == 180.0 else "0/360, or rewrite the layer in -180..180"
         raise ValueError(
             f"Refusing {polygons_path}: feature(s) {offending[:5]}"
-            f"{' and more' if len(offending) > 5 else ''} cross the 180th meridian "
+            f"{' and more' if len(offending) > 5 else ''} cross {seam} "
             "as a single ring, which every planar library reads as the rest of the "
             "planet: whatever lies inside the zone is treated as outside it, and "
             "whatever lies on the far side of the world as inside. Split the ring at "
-            "180 into two parts (RFC 7946 section 3.1.9), or use a projected CRS "
+            f"{split} into two parts (RFC 7946 section 3.1.9), or use a projected CRS "
             "centred on the zone."
         )
 

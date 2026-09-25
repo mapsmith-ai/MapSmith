@@ -223,8 +223,11 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 
 This page describes **0.6.0**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. `main` is at 0.6.0 today, with nothing
-unreleased beyond it.
+have to find out by calling a tool that is not there. **`main` is ahead of 0.6.0 today** by
+two corrections to the antimeridian refusal: a layer written in 0..360 longitudes is no longer
+refused for closing along 0 and 360, and two error messages now give the right way out. No
+tool, operation or manifest key moved; [`[Unreleased]` in the changelog](CHANGELOG.md#unreleased)
+has both.
 
 **If you read manifests, 0.6.0 moves one key**: `x-mapsmith:round_trip` is now `round_trip`,
 because the specification made it a core key in `1.0.0-draft.6` and forbids recording that
