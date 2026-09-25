@@ -184,6 +184,7 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
     ]
     validated: list[str] = []
     skipped: list[str] = []
+    with_environment: list[str] = []
     with_crs: list[str] = []
     with_repairs: list[str] = []
     undeclared: list[str] = []
@@ -375,6 +376,8 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
                     "sentence saying what it claims -- and why a setting the "
                     "engine already reports does not say it."
                 )
+        if record.get("environment"):
+            with_environment.append(name)
         decisions = record.get("crs_decisions", {})
         if INPUTS_REPROJECTED in decisions:
             shift = decisions.get("transformation")
@@ -394,6 +397,17 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
     # fixtures for an absent extra. Comparing the two sets says the true thing
     # in either environment, and needs no maintenance when the 35th operation
     # lands.
+    # The loop over `environment` keys above passes on a sweep where no record
+    # has the field at all, which is the state this sweep was in until
+    # 2026-09-06 and would return to in silence if the agreeing sidecar next to
+    # `grid.tif` went away. The raster operations read that grid, so when they
+    # ran, at least one record must carry the field the key rules are about.
+    if "resample_raster" in validated:
+        assert with_environment, (
+            "no record in the sweep carries `environment`, so its shape rules "
+            "checked nothing: the agreeing .aux.xml beside grid.tif is gone or no "
+            "longer recorded"
+        )
     assert set(validated) | set(skipped) == set(writing), (
         "every writing operation must be either validated or explicitly skipped; "
         f"unaccounted for: {sorted(set(writing) - set(validated) - set(skipped))}"
