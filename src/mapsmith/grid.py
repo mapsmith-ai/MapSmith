@@ -157,8 +157,9 @@ def manifest_decisions(dataset: Any) -> dict[str, Any]:
     """The same two facts, named for the manifest's `crs_decisions`.
 
     Prefixed, and that is the whole difference from `describe`. Section 3.7 of
-    the manifest specification recommends the keys of `crs_decisions` and
-    permits more under section 3.5's extension rule. The reason that decided
+    the manifest specification recommends the keys of `crs_decisions`, and
+    since draft.7 requires every other key to be `x-<producer>:<name>` -- the
+    rule MapSmith applied before the specification said it. The reason that decided
     the prefix is the reader's rather than the registry's: MapSmith already
     prefixes its check names, for exactly this -- so that a consumer can tell
     the format's vocabulary from one producer's -- and a field is no different.

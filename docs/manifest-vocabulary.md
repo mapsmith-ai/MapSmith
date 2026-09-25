@@ -107,7 +107,7 @@ reads them as check results.
 ## Extension fields in `environment` (4)
 
 Section 3.8 asks for the configuration **as the engine reports it**, and its
-examples are `PROJ_NETWORK`, the `GDAL_*` variables and `AREA_OR_POINT`. So a
+examples are `PROJ_NETWORK` and the `GDAL_*` variables. So a
 real setting keeps the engine's own spelling and anything MapSmith worked out
 carries the prefix. Inside one object the difference is visible without a
 lookup: an UPPER_SNAKE key is a setting, a prefixed one is our reading of it.
@@ -128,7 +128,8 @@ words and not ours: `GDAL_GEOREF_SOURCES` · `GDAL_PAM_ENABLED`.
 
 ## Extension fields in `crs_decisions` (5)
 
-Section 3.7 recommends the keys of that object and permits more. These are
+Section 3.7 recommends the keys of that object, and since draft.7 every other
+key MUST be named `x-<producer>:<name>`. These are
 MapSmith's, and each one carries the reason it is **not** a synonym of a key
 the specification already has — because a prefix cannot answer that question,
 and two keys that started as synonyms are why this list exists.
@@ -138,7 +139,7 @@ and two keys that started as synonyms are why this list exists.
 | `x-mapsmith:computed_in` | Not `analysis_crs`, and its absence is the point. The Esri stack buffers geodesically in the input's own geographic CRS, so no analysis CRS was chosen; naming one would let a consumer read EPSG:4326 as the CRS a metric computation happened in. |
 | `x-mapsmith:input_crs_discarded` | Not `source_crs`, which the specification defines as the system the coordinates WERE IN. This operation exists because that declaration is wrong: a traverse on an assumed grid was never in the CRS its file claimed, so the spec key would state what the run denies. |
 | `x-mapsmith:inputs_reprojected` | Not `source_crs`: that says where the OPERATION's coordinates were, and these are other inputs brought to meet them. The output never was in the CRS named here. |
-| `x-mapsmith:raster_registration` | Cell registration is not a coordinate system. Section 3.7 has no key for it, and section 3.8 lists AREA_OR_POINT under `environment` -- which is a tag INSIDE the file, not configuration beside it, so that list and this key disagree and the specification is the one to fix. |
+| `x-mapsmith:raster_registration` | Cell registration is not a coordinate system, and section 3.7 has no key for it. Not `environment` either: AREA_OR_POINT is a tag INSIDE the file, so it is data, and section 3.8 says a producer's reading of it goes in `crs_decisions` under the producer's own prefixed key. |
 | `x-mapsmith:raster_registration_reason` | Not `reason`, which belongs to the CRS decision and is already taken. Two different reasons under one key silently replaced each other once, and a test caught it. |
 
 ## Extension fields inside `crs_decisions.transformation` (2)

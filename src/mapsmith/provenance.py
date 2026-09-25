@@ -91,10 +91,10 @@ CRS_EXTENSIONS: dict[str, str] = {
         "metric computation happened in."
     ),
     REGISTRATION_KEY: (
-        "Cell registration is not a coordinate system. Section 3.7 has no key for "
-        "it, and section 3.8 lists AREA_OR_POINT under `environment` -- which is a "
-        "tag INSIDE the file, not configuration beside it, so that list and this "
-        "key disagree and the specification is the one to fix."
+        "Cell registration is not a coordinate system, and section 3.7 has no key "
+        "for it. Not `environment` either: AREA_OR_POINT is a tag INSIDE the file, "
+        "so it is data, and section 3.8 says a producer's reading of it goes in "
+        "`crs_decisions` under the producer's own prefixed key."
     ),
     REGISTRATION_REASON_KEY: (
         "Not `reason`, which belongs to the CRS decision and is already taken. Two "

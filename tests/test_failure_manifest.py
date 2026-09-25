@@ -3,11 +3,13 @@
 Invariant 2 says a dataset without a manifest did not come from MapSmith, and
 section 4 of the specification says a conforming producer "emits a conforming
 record for every dataset it writes, including failed runs". On 2026-09-25 a
-pre-release conformance review measured that 20 of 59 writers broke both on
+pre-release conformance review found about twenty writers breaking both on
 their failure path: a write or a check that raised left the dataset on disk
 with nothing beside it -- `resample_raster` among them, two days after the
 same defect was fixed in its twin `reproject_raster`. Each had been fixed or
-left one at a time, which is how the twin was missed.
+left one at a time, which is how the twin was missed. Injecting the failure
+into every writer, as this file does, found 28 of the 58 that 0.5.1 shipped
+(and a 29th that had not shipped yet).
 
 So the list here is the catalogue, and the failure is injected rather than
 waited for, in the two places a writer can die once bytes exist:

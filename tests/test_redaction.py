@@ -157,7 +157,9 @@ def test_redaction_covers_the_other_manifest_fields(tmp_path):
         operation="run_sql",
         parameters={},
         inputs=[InputRecord.from_path(source)],
-        crs_decisions={"input": "read from https://u:hunter2@host/x.parquet"},
+        # A prefixed key: since draft.7 an undefined key of crs_decisions without
+        # one does not conform, and a test record should not show the wrong shape.
+        crs_decisions={"x-mapsmith:input": "read from https://u:hunter2@host/x.parquet"},
         notes=["retried with token='live_abc'"],
     )
     record.inputs[0].path = "https://b.s3.amazonaws.com/x.parquet?X-Amz-Signature=deadbeef"
