@@ -222,10 +222,12 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 
 This page describes **0.5.1**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **`main` is ahead of 0.5.1 today**, by the
-two cases below that a visitor can step through on the site: nothing in the installable product
-changed, no tool, operation or count moved, and the pages that render them are built from `main`.
-[`[Unreleased]` in the changelog](CHANGELOG.md#unreleased) is where anything more would appear.
+have to find out by calling a tool that is not there. **`main` is ahead of 0.5.1 today, and
+the difference is in answers**: six operations refuse a zone drawn across the 180th meridian as
+one ring, which 0.5.1 reads as the rest of the planet; `nearest_join` measures true distances
+there; 28 writers that could leave a dataset with no manifest on a failure no longer do; one
+operation is new and one manifest key is renamed (below). Every item, with what was measured,
+is in [`[Unreleased]` in the changelog](CHANGELOG.md#unreleased).
 
 **If you read manifests written by 0.4.0, 0.5.0 renames several fields**, and the changelog
 lists every one with what to read instead: eight `crs_decisions` keys, the top-level

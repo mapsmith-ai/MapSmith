@@ -83,20 +83,34 @@ All notable changes to MapSmith are documented here, in the format of
   `clip_layer`, `spatial_join` and `overlay_layers` each returned the feature
   on the far side of the world instead of the one inside the zone, and
   `nearest_join` returned nothing; all four refuse that ring now, on either
-  input. `measure_area` is not affected — its geodesic area follows the edge
-  the short way — and is left alone.
+  input, and `spatial_join` on every engine — GeoParquet in one CRS is routed
+  to DuckDB or SedonaDB, which read the ring the same planar way. `measure_area`
+  is not affected — its geodesic area follows the edge the short way — and is
+  left alone.
+
+  What is **not** refused, because it is not the defect: an edge that runs
+  from -180 to 180 along the edge of the plane. That is how a rectangle
+  covering the world, a latitude band, a polar cap and Antarctica in the
+  Natural Earth countries file close their rings, and a first version of the
+  detector refused all four — so "points per country" would have been refused.
+  Found by the pre-release review, and the Natural Earth file is a test now.
 - **`nearest_join` measured distances 5-6% too long across the antimeridian,
   with no warning.** It works in an estimated UTM zone, and GeoPandas centres
   that estimate on the mean of `minx` and `maxx`: for data straddling 180 that
   is about 0, so two points at 175°E and 175°W were given EPSG:32630, centred on
   3°W. Their distances to a zone three degrees away came back as 351.7 and
   354.0 km where the truth is 334.0. `antimeridian.estimate_utm_crs` centres on
-  the true extent instead (here UTM 1N, within one per cent), and changes
-  nothing for data that does not cross. `buffer_layer`, `simplify_layer` and
-  `centroid_layer` use it too; a 1 km buffer had measured correctly even in the
-  far zone, so for them it is the right zone rather than a fix.
+  the true extent instead (here UTM 1N, within one per cent), and returns
+  exactly what GeoPandas does for data that `describe_dataset` does not report
+  as crossing. That definition is wider than touching 180: points at 100°E and
+  170°W are closer going across it, and now get UTM 55N, centred on 147°E,
+  where GeoPandas gave 25N, centred on 33°W. A layer split at 180 as a single MultiPolygon, the
+  form the refusal above asks for, is read part by part and counts as crossing.
+  `buffer_layer`, `simplify_layer` and `centroid_layer` use it too; a 1 km
+  buffer had measured correctly even in the far zone, so for them it is the
+  right zone rather than a fix.
 
-- **Six operations wrote a fact into the manifest before it happened.** The
+- **Five operations wrote a fact into the manifest before it happened.** The
   record survives a crash, which is the point of it, and on these paths it
   survived carrying a sentence that had become false.
   - `simplify_layer`, `centroid_layer` and `nearest_join` recorded the round
@@ -117,6 +131,29 @@ All notable changes to MapSmith are documented here, in the format of
   — band one warped, two and three zero-filled — and nothing describing it.
   The write is inside the failure audit now, and a partial file carries a
   record that says `x-mapsmith:operation_completed: false`.
+- **The same defect was in 28 of the 58 writers 0.5.1 shipped, found by
+  looking for it everywhere instead of where it had last been seen.** A write
+  that died halfway, or a check that raised after the output reached the disk,
+  left the dataset with nothing beside it: in `resample_raster` — the twin of
+  the operation above — and in the thirteen Whitebox operations, `run_sql`,
+  five more raster operations (`reproject_raster` among them, whose write was
+  covered and whose reading-back was not), both sampling operations and six
+  vector ones. Every writer now holds the net from its first byte to its
+  manifest, and `tests/test_failure_manifest.py` injects both failures into
+  every writing operation the catalogue lists. Run against the code just
+  before this change, it fails on those 28 and on one more,
+  `summarize_points_in_polygons`, which had inherited the shape before it ever
+  shipped — and on no other.
+
+### Security
+
+- **No workflow job that runs this repository's code can mint an OIDC token.**
+  The MCP Registry grants `io.github.mapsmith-ai/*` to a token from any
+  workflow of this owner. The site workflow granted `id-token: write` to all
+  its jobs, including the one that runs `pip install` and our own build
+  scripts; only the deploy job, which runs one pinned action, holds it now.
+  The new registry workflow publishes a tag only if its commit is on `main` and
+  its own CI run passed — a dry run on `v0.5.0`, whose CI failed, stops there.
 
 ## [0.5.1] - 2026-09-21
 

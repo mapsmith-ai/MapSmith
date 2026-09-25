@@ -1017,6 +1017,43 @@ def test_the_readme_says_which_release_it_describes():
         )
 
 
+def test_the_readme_does_not_say_the_product_is_unchanged_while_it_is_not():
+    """The pointer to `[Unreleased]` is checked above; what the paragraph SAYS
+    about the difference was not, and on 2026-09-25 it was false.
+
+    It said main was ahead of 0.5.1 by two pages of the site and "nothing in
+    the installable product changed" -- true when written on 2026-09-22, false
+    from 2026-09-24, when `[Unreleased]` gained a Changed and six Fixed entries:
+    a renamed manifest key and six operations that stopped giving wrong
+    answers. The pointer was there, so the guard above was green. A reader who
+    trusts the sentence does not follow the link.
+
+    So the reassurance is allowed only while it can be true: while the
+    unreleased section changes and fixes nothing.
+    """
+    # Whitespace collapsed first: the sentence that started this was wrapped
+    # after "product", and the first version of this check searched the raw
+    # text, found nothing and passed on the very paragraph it was written for.
+    text = " ".join(README.read_text(encoding="utf-8").split())
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    unreleased = changelog.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+    touches_the_product = [
+        heading
+        for heading in ("### Changed", "### Fixed", "### Removed", "### Security")
+        if heading in unreleased
+    ]
+    reassurances = [
+        phrase
+        for phrase in ("nothing in the installable product changed",)
+        if phrase in text.lower()
+    ]
+    assert not (touches_the_product and reassurances), (
+        f"the README says {reassurances[0]!r} while [Unreleased] has "
+        f"{', '.join(touches_the_product)}: rewrite the paragraph to name what "
+        "main changes, or release it"
+    )
+
+
 def test_declared_dependencies_are_not_advertised_as_future_work():
     """"More to come: X" for an X that already ships reads as either sloppy or
     dishonest, and both cost the same."""
