@@ -50,7 +50,14 @@ All notable changes to MapSmith are documented here, in the format of
   degrees says 2% where the track climbs 1.41%; the window slides by the
   spacing, so it answers "any 100 m stretch" and not "every 100 m from the
   start"; and the base length has no default and must be a whole number of
-  steps. A check recomputes every stored grade from the profile as written.
+  steps. A window never crosses the gap between two parts of a multi-part line
+  that do not touch (each point carries `run_index`), nor a point the raster
+  could not read; a stretch is one direction of travel, so a climb and the
+  descent after it are two. A line whose unit is not the metre needs
+  `grade_height_unit`, because the rise comes from the raster's values, which
+  state no unit, and metres over US survey feet is 3.28 times too steep. A check
+  recomputes every stored grade from the profile as written and fails on a
+  grade missing where a window fits, with the count in its detail.
   The new search phrasings moved discovery figures the right way: words alone
   under BM25 at 76 entries from 50% to 55%.
 
@@ -62,9 +69,22 @@ All notable changes to MapSmith are documented here, in the format of
   meant 100 degrees, and the only trace was a GeoPandas warning on the console.
   Positions are now measured along the line in its own projected CRS -- a
   geographic line was already refused -- and only the sample points go to the
-  raster's CRS to be read; the output stays in the line's CRS and the record
-  says the line's points were what moved. When line and DEM share a CRS
-  nothing changes. Found while building a gradient on top of it.
+  raster's CRS to be read. **The output is now in the line's CRS**: when the two
+  differed it used to be in the raster's, and a plan step reading it must now
+  expect the line's (the plan validator does). The record says what was
+  transformed in the specification's own keys: `source_crs` the line's,
+  `target_crs` the raster's, and the `transformation` the sample points took to
+  be read, while `output.crs` says where the result is. It used to list the line
+  under `x-mapsmith:inputs_reprojected` from its own CRS, which that key's
+  definition makes a contradiction. When line and DEM share a CRS nothing
+  changes. Found while building a gradient on top of it.
+
+- **`elevation_profile` stopped short of the far end of a line.** A line whose
+  length is not a whole number of steps ended on the last whole step: 15 m at a
+  step of 4 ended at 12, and a summit in the last 3 m was not in the profile,
+  while the docstring and the name of the test said both ends were included --
+  and the test asserted the opposite. The far end is now a last, shorter step,
+  and the stepping check requires it.
 
 ## [0.6.1] - 2026-09-25
 

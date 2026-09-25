@@ -521,7 +521,10 @@ BINDINGS: dict[str, Binding] = {
         ("raster_path", "line_path"),
         "output_path",
         "raster",
-        ("same_as", "raster_path"),
+        # The line's: distances are measured there and the points are written
+        # there. It said the raster's until 2026-09-25, hours after the operation
+        # stopped writing in it, so a plan simulated the wrong CRS downstream.
+        ("same_as", "line_path"),
         "vector",
     ),
     # Reads only: an answer, no dataset, so no manifest and nothing to place.

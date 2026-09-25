@@ -262,10 +262,41 @@ def test_the_spacing_is_metres_along_the_line_even_on_a_dem_in_degrees(tmp_path)
     assert list(got["value"]) == pytest.approx([7.0] * 11)  # every point landed on the DEM
     assert got.crs.to_epsg() == 32632
     record = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
-    assert record["crs_decisions"]["analysis_crs"] == "EPSG:32632"
-    assert record["crs_decisions"]["x-mapsmith:inputs_reprojected"] == [
-        {"argument": "line_path", "from": "EPSG:32632"}
-    ]
+    decisions = record["crs_decisions"]
+    assert decisions["analysis_crs"] == "EPSG:32632"
+    # Nothing of the caller's moved for the result: the points only visited the
+    # DEM's CRS to be read. `inputs_reprojected` naming the line's own CRS said
+    # the output never was in a CRS it is written in.
+    assert "x-mapsmith:inputs_reprojected" not in decisions
+    # What was transformed is the sample points, to be read: the spec's own pair.
+    assert (decisions["source_crs"], decisions["target_crs"]) == ("EPSG:32632", "EPSG:4326")
+    assert record["output"]["crs"] == "EPSG:32632"
+    assert decisions["transformation"]["is_ballpark"] is False  # same datum, a real operation
+
+
+def test_a_plan_places_the_profile_in_the_crs_the_operation_writes(tmp_path):
+    """The plan validator simulates each step's output CRS from its binding, and
+    the binding kept saying the raster's after the operation stopped writing
+    there. Derived from a run with two different CRSs, not from the binding's
+    text: whatever input the binding names must be the one the output is in."""
+    from mapsmith.plans.registry import BINDINGS
+
+    dem = tmp_path / "dem4326.tif"
+    with rasterio.open(
+        dem, "w", driver="GTiff", height=200, width=200, count=1, dtype="float32",
+        crs="EPSG:4326", transform=from_origin(11.0, 44.0, 0.001, 0.001),
+    ) as dst:
+        dst.write(np.full((200, 200), 7.0, dtype="float32"), 1)
+    line = tmp_path / "line.gpkg"
+    gpd.GeoDataFrame(
+        geometry=[LineString([(670000, 4860000), (671000, 4860000)])], crs="EPSG:32632"
+    ).to_file(line)
+    out = tmp_path / "p.parquet"
+    sampling.elevation_profile(str(dem), str(line), str(out), spacing=100)
+    kind, argument = BINDINGS["elevation_profile"].crs_effect
+    assert kind == "same_as"
+    named = {"raster_path": "EPSG:4326", "line_path": "EPSG:32632"}[argument]
+    assert gpd.read_parquet(out).crs.to_string() == named
 
 
 @pytest.fixture
@@ -307,7 +338,12 @@ def test_the_grade_along_a_track_is_not_the_slope_of_the_ground(incline, tmp_pat
     assert summary["steepest_grade_percent"] == pytest.approx(2.0)
     assert summary["total_ascent"] == pytest.approx(20.0)
     assert summary["total_descent"] == pytest.approx(0.0)
-    assert summary["stretches_above_threshold"] == [[0.0, 1000.0]]
+    assert summary["stretches_above_threshold"] == [
+        {"from": 0.0, "to": 1000.0, "direction": "up"}
+    ]
+    assert result["grade_units"] == {
+        "base_length": "metre", "heights": "metre", "heights_assumed": True
+    }
 
     diagonal = LineString([(100, 100), (800, 800)])
     result, points = _grade_run(incline, tmp_path, diagonal, grade_threshold_percent=1.5)
@@ -325,10 +361,127 @@ def test_the_grade_along_a_track_is_not_the_slope_of_the_ground(incline, tmp_pat
     assert check["passed"] is True
 
 
+def test_a_window_never_spans_the_gap_between_two_parts(incline, tmp_path):
+    """Two north-south tracks 100 m long and 1000 m apart, stored as ONE
+    MultiLineString on the eastward 2% plane. Both are level: 0% everywhere.
+    Shapely measures the parts end to end, so before runs existed a 50 m window
+    starting 60 m in reached across the gap and came back 40%, every check green."""
+    from shapely.geometry import MultiLineString
+
+    track = MultiLineString([[(500, 500), (500, 600)], [(1500, 500), (1500, 600)]])
+    lines = tmp_path / "two_parts.gpkg"
+    gpd.GeoDataFrame(geometry=[track], crs="EPSG:32632").to_file(lines)
+    out = tmp_path / "parts.parquet"
+    result = sampling.elevation_profile(
+        str(incline), str(lines), str(out), spacing=10.0,
+        grade_base_length=50.0, grade_threshold_percent=1.0,
+    )
+    points = gpd.read_parquet(out)
+    assert points["run_index"].tolist() == [0] * 11 + [1] * 10
+    assert list(points["grade_percent"].dropna()) == pytest.approx(
+        [0.0] * int(points["grade_percent"].notna().sum())
+    )
+    summary = result["grade"][0]
+    assert summary["runs"] == 2
+    assert summary["steepest_grade_percent"] == pytest.approx(0.0)
+    assert summary["stretches_above_threshold"] == []
+    # And the rise between the parts is not an ascent: 20 m of it, none walked.
+    assert summary["total_ascent"] == pytest.approx(0.0)
+    check = next(
+        c for c in _manifest(out)["verification"]
+        if c["name"] == "x-mapsmith:grades_follow_the_written_profile"
+    )
+    assert check["passed"] is True
+    assert check["detail"].startswith("11 grade(s)")  # 6 windows on the first run, 5 on the second
+
+
+def test_a_climb_and_the_descent_after_it_are_two_stretches(incline, tmp_path):
+    """East 500 m and back: +2% then -2%. One merged stretch [0, 1000] said
+    neither which way nor that the crest was in the middle of it."""
+    result, _ = _grade_run(
+        incline, tmp_path, LineString([(100, 1000), (600, 1000), (100, 1000.001)]),
+        grade_threshold_percent=1.5,
+    )
+    summary = result["grade"][0]
+    directions = [s["direction"] for s in summary["stretches_above_threshold"]]
+    assert directions == ["up", "down"]
+    assert summary["total_ascent"] == pytest.approx(10.0)
+    assert summary["total_descent"] == pytest.approx(10.0)
+
+
+def test_a_window_over_an_unreadable_point_has_no_grade(tmp_path):
+    """One nodata column across the path. The windows that contain it carry no
+    grade rather than a rise between two readable ends -- and the summary says
+    how many points it could not read instead of quietly summing around them."""
+    path = tmp_path / "holed.tif"
+    values = np.tile(0.02 * (np.arange(200, dtype="float32") * 10 + 5), (200, 1))
+    values[:, 50] = -9999.0
+    with rasterio.open(
+        path, "w", driver="GTiff", height=200, width=200, count=1, dtype="float32",
+        crs="EPSG:32632", transform=from_origin(0.0, 2000.0, 10.0, 10.0), nodata=-9999.0,
+    ) as dst:
+        dst.write(values, 1)
+    result, points = _grade_run(path, tmp_path, LineString([(100, 1000), (1100, 1000)]))
+    unreadable = points["value"].isna().to_numpy()
+    assert unreadable.any()
+    grades = points["grade_percent"].to_numpy()
+    for start in range(len(points) - 10):
+        if unreadable[start:start + 11].any():
+            assert np.isnan(grades[start])
+        else:
+            assert grades[start] == pytest.approx(2.0)
+    assert result["grade"][0]["unreadable_points"] == int(unreadable.sum())
+    check = next(
+        c for c in _manifest(tmp_path / "grade.parquet")["verification"]
+        if c["name"] == "x-mapsmith:grades_follow_the_written_profile"
+    )
+    assert check["passed"] is True
+
+
+@pytest.fixture
+def incline_feet(tmp_path: Path) -> Path:
+    """The same 2% plane in NY State Plane (US survey feet): z rises 0.02 per
+    foot of easting -- in whatever unit the values are, which the file cannot say."""
+    path = tmp_path / "incline_ft.tif"
+    columns = np.arange(200, dtype="float32") * 10 + 5
+    with rasterio.open(
+        path, "w", driver="GTiff", height=200, width=200, count=1, dtype="float32",
+        crs="EPSG:2263", transform=from_origin(980000.0, 202000.0, 10.0, 10.0),
+    ) as dst:
+        dst.write(np.tile(0.02 * columns, (200, 1)), 1)
+    return path
+
+
+def _feet_run(raster, tmp_path, **kwargs):
+    lines = tmp_path / "track_ft.gpkg"
+    gpd.GeoDataFrame(
+        geometry=[LineString([(980100, 201000), (981100, 201000)])], crs="EPSG:2263"
+    ).to_file(lines)
+    out = tmp_path / "grade_ft.parquet"
+    return sampling.elevation_profile(
+        str(raster), str(lines), str(out), spacing=10.0, grade_base_length=100.0, **kwargs
+    ), gpd.read_parquet(out)
+
+
+def test_a_line_in_feet_needs_the_height_unit_said(incline_feet, tmp_path):
+    """Heights in metres over a run in feet come out 3.28 times too steep, on
+    every point, plausibly. Nothing in either file settles it, so the caller does."""
+    with pytest.raises(ValueError, match="grade_height_unit"):
+        _feet_run(incline_feet, tmp_path)
+    result, points = _feet_run(incline_feet, tmp_path, grade_height_unit="US survey foot")
+    assert list(points["grade_percent"].dropna()) == pytest.approx([2.0] * 91)
+    assert result["grade_units"]["heights_assumed"] is False
+    _, points = _feet_run(incline_feet, tmp_path, grade_height_unit="metre")
+    # 0.2 m of rise over 10 US survey feet (3.048 m): 2% times 3937/1200.
+    assert list(points["grade_percent"].dropna()) == pytest.approx([2.0 * 3937 / 1200] * 91)
+
+
 @pytest.mark.parametrize("kwargs, match", [
     ({"grade_base_length": 105.0}, "not a whole number of spacing steps"),
     ({"grade_base_length": -1.0}, "must be positive"),
     ({"grade_threshold_percent": 2.5}, "needs grade_base_length"),
+    ({"grade_base_length": 100.0, "grade_threshold_percent": -1.0}, "must not be negative"),
+    ({"grade_base_length": 100.0, "grade_height_unit": "yard"}, "must be one of"),
 ])
 def test_the_gradient_window_is_the_caller_s_and_must_fit_the_steps(incline, tmp_path, kwargs, match):
     lines = tmp_path / "t.gpkg"
@@ -341,8 +494,9 @@ def test_the_gradient_window_is_the_caller_s_and_must_fit_the_steps(incline, tmp
 
 def test_a_profile_includes_both_ends_even_when_the_step_does_not_divide(ramp, tmp_path):
     """15 m at 4 m is three whole steps and a remainder. The far end still
-    appears, clamped to the line's length, because a profile that silently stops
-    short of the summit is the worst kind of nearly-right."""
+    appears, as a last shorter step, because a profile that silently stops
+    short of the summit is the worst kind of nearly-right. Until 2026-09-25
+    this test had that docstring and asserted [0, 4, 8, 12]: it stopped short."""
     line = tmp_path / "odd.gpkg"
     gpd.GeoDataFrame(
         {"n": [1]}, geometry=[LineString([(2, 10), (17, 10)])], crs="EPSG:32632"
@@ -351,8 +505,10 @@ def test_a_profile_includes_both_ends_even_when_the_step_does_not_divide(ramp, t
     out = tmp_path / "odd.parquet"
     sampling.elevation_profile(str(ramp), str(line), str(out), spacing=4.0)
     got = gpd.read_parquet(out)
-    assert got["distance"].tolist() == [0.0, 4.0, 8.0, 12.0]
-    assert got["value"].tolist() == pytest.approx([2.0, 6.0, 10.0, 14.0])
+    assert got["distance"].tolist() == [0.0, 4.0, 8.0, 12.0, 15.0]
+    assert got["value"].tolist() == pytest.approx([2.0, 6.0, 10.0, 14.0, 17.0])
+    named = {c["name"]: c["passed"] for c in _manifest(out)["verification"]}
+    assert named["x-mapsmith:each_profile_starts_at_zero_and_steps_by_the_spacing"] is True
 
 
 def test_two_lines_profile_separately_and_say_which_is_which(ramp, tmp_path):

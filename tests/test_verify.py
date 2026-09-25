@@ -1161,6 +1161,11 @@ def _spec_fixtures(tmp_path):
         ],
         crs=crs,
     ).to_parquet(streets)
+    # The same streets in another projected CRS: an operation that reads a
+    # raster under a line in a different CRS records a transformation, and the
+    # sweep has to see that record, not only the one where nothing moved.
+    streets_elsewhere = tmp_path / "streets_3857.parquet"
+    gpd.read_parquet(streets).to_crs("EPSG:3857").to_parquet(streets_elsewhere)
     areas = tmp_path / "areas.parquet"
     gpd.GeoDataFrame(
         {"cases": [1.0, 1.0, 5.0, 1.0], "pop": [100.0, 200.0, 300.0, 400.0]},
@@ -1498,9 +1503,11 @@ def _spec_fixtures(tmp_path):
         "sample_raster_at_points": lambda: sampling.sample_raster_at_points(
             str(dem), str(points), out("sampled.parquet"), "bilinear"
         ),
-        # With the gradient: it adds parameters and a check to the record.
+        # With the gradient: it adds parameters and a check to the record. The
+        # line in another CRS than the DEM, so the record carries source_crs,
+        # target_crs and a transformation the output did not take.
         "elevation_profile": lambda: sampling.elevation_profile(
-            str(dem), str(streets), out("profile.parquet"), spacing=25.0,
+            str(dem), str(streets_elsewhere), out("profile.parquet"), spacing=25.0,
             grade_base_length=50.0, grade_threshold_percent=5.0,
         ),
     })

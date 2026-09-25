@@ -224,12 +224,14 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 This page describes **0.6.1**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
 have to find out by calling a tool that is not there. **`main` is ahead of 0.6.1 today** by
-two capabilities and one fix: `zonal_statistics` computes weighted statistics with a weights
-raster, such as mean heat per district weighted by population; `elevation_profile` gives the
-gradient along a line over a sliding window, such as the steepest 100 m of a rail alignment;
-and `elevation_profile` measures its spacing in metres along the line even when the DEM is in
-degrees, where it returned a single point. No tool or manifest key moved;
-[`[Unreleased]` in the changelog](CHANGELOG.md#unreleased) has all three.
+two capabilities and two fixes, all four in
+[`[Unreleased]` in the changelog](CHANGELOG.md#unreleased): weighted `zonal_statistics`, such
+as mean heat per district weighted by population; the gradient along a line in
+`elevation_profile`, such as the steepest 100 m of a rail alignment; its spacing measured in
+metres along the line even on a DEM in degrees, where it returned a single point; and its far
+end reached when the step does not divide the line. No tool moved. When line and DEM are in
+different CRSs the profile is now written in the line's, and `crs_decisions` names the DEM's
+as the `target_crs` its sample points were read in.
 
 **If you read manifests, 0.6.1 moves no key**: records declare `spec_version`
 `1.0.0-draft.8`, two drafts past 0.6.0's `draft.6`, and both drafts only narrowed where a
@@ -414,9 +416,9 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 76 | 30% | 19% | 30% |
+| nothing — words alone | 76 | 29% | 18% | 29% |
 | what data I have | 50 | 32% | 21% | 33% |
-| + what I want back | 31 | 44% | 40% | 53% |
+| + what I want back | 31 | 45% | 40% | 53% |
 | **+ how many datasets I have** | **17** | **53%** | **49%** | **98%** |
 
 **Two ranking columns, and that is a correction.** This table used to carry one,

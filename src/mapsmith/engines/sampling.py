@@ -20,6 +20,7 @@ check, not a footnote.
 
 from __future__ import annotations
 
+import bisect
 import math
 from itertools import pairwise
 from typing import Any
@@ -38,6 +39,13 @@ from ..provenance import InputRecord, ProvenanceRecord, alignment_decisions
 #: shot does not land on a cell centre, and snapping it to one introduces up to
 #: half a cell of horizontal error before the vertical difference is computed.
 SAMPLING_METHODS = ("nearest", "bilinear")
+
+#: Metres per unit, for the heights a DEM stores. A gradient divides a rise by
+#: a length, and the two come from different files: the length from the line's
+#: CRS, the rise from the raster's values, which almost never declare a unit.
+#: A State Plane line in US survey feet over a DEM in metres gives a grade 3.28
+#: times too steep, plausible on every point, with nothing to show for it.
+HEIGHT_UNITS = {"metre": 1.0, "foot": 0.3048, "US survey foot": 1200 / 3937}
 
 #: Mean Earth radius, metres (IUGG). Used only for the curvature drop in
 #: `line_of_sight`, where the alternative is silently pretending the planet is
@@ -314,8 +322,10 @@ def elevation_profile(
     band: int = 1,
     grade_base_length: float | None = None,
     grade_threshold_percent: float | None = None,
+    grade_height_unit: str | None = None,
 ) -> dict[str, Any]:
-    """One point every `spacing` along each line, carrying the surface value.
+    """One point every `spacing` along each line, and one at its far end,
+    carrying the surface value.
 
     `spacing` is a length in the LINE's linear unit, so a geographic line is
     refused: 20 of a degree is not 20 metres, and the profile would come back
@@ -338,6 +348,13 @@ def elevation_profile(
     where sampling every base length answers only a fixed-offset version of it;
     and the base length has no default, because 2.5% over 10 m and over 100 m
     are different questions on rough ground.
+
+    The heights are assumed to be in metres only when the line's unit is the
+    metre; otherwise `grade_height_unit` is required, because the rise and the
+    run come from two files and only one of them states its unit. A grade is
+    positive where the line climbs in the direction it was digitised. A window
+    that runs over a gap between the parts of a multi-part line, or over a point
+    the raster could not answer for, carries no grade.
     """
     rasterio = _require_rasterio()
     # Two georeferencings and nobody chose: refuse rather than compute
@@ -372,6 +389,9 @@ def elevation_profile(
             "different distance at every longitude. Reproject to a projected CRS "
             "first, or the distance axis of the profile is meaningless."
         )
+    scale, unit, heights_assumed = (
+        _height_scale(lines.crs, grade_height_unit) if window else (1.0, "", False)
+    )
 
     with rasterio.open(raster_path) as dataset:
         raster_crs = dataset.crs
@@ -387,6 +407,8 @@ def elevation_profile(
             parameters["grade_window_steps"] = window
             if grade_threshold_percent is not None:
                 parameters["grade_threshold_percent"] = grade_threshold_percent
+            if grade_height_unit is not None:
+                parameters["grade_height_unit"] = grade_height_unit
         record = ProvenanceRecord(
             operation="elevation_profile",
             parameters=parameters,
@@ -410,11 +432,26 @@ def elevation_profile(
             "the sample points are brought to the raster's CRS only to read the values"
             if aligned
             else "line and raster share the same CRS",
-            # The sample points of the line are what moves, to the raster's CRS;
-            # the transformation recorded is that pair, the one PROJ was asked.
-            [("line_path", lines.crs)] if aligned else [],
-            moved_to=raster_crs,
         )
+        if aligned:
+            # Nothing of the caller's was reprojected for the result: the output
+            # is written in the line's CRS, where the distances were measured.
+            # What the operation transformed is the sample points, to the
+            # raster's CRS, to read a value there -- which is exactly what the
+            # specification's `source_crs` / `target_crs` / `transformation`
+            # describe ("the coordinate system they were put into, when the
+            # operation transformed them"); `output.crs` says where the result
+            # is. Until 2026-09-25 this was `inputs_reprojected` naming the
+            # line's own CRS, whose definition says the output never was in the
+            # CRS it names. Not an extension key either: one here would be a
+            # second name for `target_crs`.
+            from .. import datum
+
+            record.crs_decisions["source_crs"] = verify.crs_label(lines.crs)
+            record.crs_decisions["target_crs"] = verify.crs_label(raster_crs)
+            record.crs_decisions["transformation"] = datum.default_operation(
+                lines.crs, raster_crs
+            )
 
         rows = _profile_positions(working, spacing)
         read_x, read_y = [r["x"] for r in rows], [r["y"] for r in rows]
@@ -438,21 +475,35 @@ def elevation_profile(
     grades: list[float | None] = []
     summary: list[dict[str, Any]] = []
     if window:
-        grades = _grades(rows, values, window, grade_base_length)
+        grades = _grades(rows, values, window, grade_base_length, scale)
+        columns["run_index"] = [r["run"] for r in rows]
         columns["grade_percent"] = [float("nan") if g is None else g for g in grades]
         summary = _grade_summary(rows, values, grades, grade_base_length, grade_threshold_percent)
-        unit = working.crs.axis_info[0].unit_name if working.crs.axis_info else "unit"
+        heights = unit if heights_assumed else grade_height_unit
         record.notes.append(
             f"grade_percent is the rise of the surface over a window of {grade_base_length} "
-            f"{unit} along the line, starting at each point, divided by that length: it is a "
-            f"percentage only if the raster's values are heights in {unit}. The last "
-            f"{window} points of each line start a window that does not fit and carry none."
+            f"{unit} along the line, starting at each point, divided by that length. The "
+            f"raster's values are taken as heights in {heights}"
+            + (
+                " -- ASSUMED, because the line is in metres and the raster declares no "
+                "unit for its values; pass grade_height_unit if they are not metres."
+                if heights_assumed
+                else ", as the caller stated."
+            )
+            + " A point carries no grade where its window runs past the end of its run "
+            "(run_index: the connected pieces of a multi-part line), or over a point the "
+            "raster could not answer for. total_ascent and total_descent are in the "
+            "raster's height unit and skip the steps that touch such a point."
         )
     out = gpd.GeoDataFrame(
         columns,
         geometry=[Point(r["x"], r["y"]) for r in rows],
         crs=working.crs,
     )
+    lengths_by_line = {
+        i: float(g.length) for i, g in enumerate(working.geometry) if g is not None and not g.is_empty
+    }
+    regular = _stepping_is_regular(rows, spacing, lengths_by_line)
     pre = verify.verify_loaded_inputs("elevation_profile", line_path=working)
     with verify.audit_on_failure(record, output_path, pre):
         _write_vector(out, output_path)
@@ -477,11 +528,11 @@ def elevation_profile(
             # whole step that fits.
             verify.Check(
                 "x-mapsmith:each_profile_starts_at_zero_and_steps_by_the_spacing",
-                _stepping_is_regular(rows, spacing),
-                _stepping_detail(rows, spacing),
+                regular,
+                _stepping_detail(rows, spacing, regular),
             ),
             _unreadable_check(values, len(rows)),
-            *([_grades_follow_the_written_profile(output_path, window, grade_base_length)]
+            *([_grades_follow_the_written_profile(output_path, window, grade_base_length, scale)]
               if window else []),
         ],
     )
@@ -498,7 +549,37 @@ def elevation_profile(
     }
     if window:
         result["grade"] = summary
+        result["grade_units"] = {
+            "base_length": unit,
+            "heights": unit if heights_assumed else grade_height_unit,
+            "heights_assumed": heights_assumed,
+        }
     return result
+
+
+def _height_scale(line_crs: Any, height_unit: str | None) -> tuple[float, str, bool]:
+    """(heights to line units factor, the line's unit, whether heights were assumed).
+
+    Assumed only in the one case where assuming is ordinary: a line in metres,
+    over a DEM whose values are, as nearly every DEM's are, metres. Anywhere
+    else the caller says, because the 3.28 in a feet-over-metres grade is a
+    number nobody would notice.
+    """
+    axis = line_crs.axis_info[0] if line_crs.axis_info else None
+    unit = axis.unit_name if axis else "unit"
+    if height_unit is None:
+        if unit != "metre":
+            raise ValueError(
+                f"the line is in {unit!r} and the raster's values state no unit, so a "
+                f"grade needs grade_height_unit, one of {list(HEIGHT_UNITS)}: heights in "
+                f"metres over a run in feet come out 3.28 times too steep."
+            )
+        return 1.0, unit, True
+    if height_unit not in HEIGHT_UNITS:
+        raise ValueError(
+            f"grade_height_unit must be one of {list(HEIGHT_UNITS)}, got {height_unit!r}"
+        )
+    return HEIGHT_UNITS[height_unit] / axis.unit_conversion_factor, unit, False
 
 
 def _grade_window(spacing: float, base: float | None, threshold: float | None) -> int:
@@ -516,6 +597,12 @@ def _grade_window(spacing: float, base: float | None, threshold: float | None) -
         return 0
     if base <= 0:
         raise ValueError(f"grade_base_length must be positive, got {base}")
+    if threshold is not None and threshold < 0:
+        raise ValueError(
+            f"grade_threshold_percent must not be negative, got {threshold}: it is compared "
+            "with the size of the grade, climbing or falling, so a negative one would mark "
+            "every window of every line."
+        )
     steps = base / spacing
     whole = round(steps)
     if whole < 1 or abs(steps - whole) > 1e-9 * max(1.0, steps):
@@ -527,23 +614,41 @@ def _grade_window(spacing: float, base: float | None, threshold: float | None) -
     return whole
 
 
+def _spans_the_base(span: float, base: float) -> bool:
+    return abs(span - base) <= 1e-6 * base
+
+
 def _grades(
-    rows: list[dict[str, Any]], values: list[float | None], window: int, base: float
+    rows: list[dict[str, Any]],
+    values: list[float | None],
+    window: int,
+    base: float,
+    scale: float,
 ) -> list[float | None]:
     """The rise over the window starting at each point, as a percentage of the base.
 
-    None where the window runs past the end of its line or touches a point the
-    raster could not answer for: a gradient over a gap is not a gradient.
+    None where the window runs past the end of its run, where it would end on
+    the line's far end (a shorter last step, so the window is not `base` long),
+    or where ANY point inside it is one the raster could not answer for: a
+    gradient over a gap is not a gradient, and neither is one over the gap
+    between two parts of a multi-part line that do not touch.
     """
+    missing = [0]
+    for value in values:
+        missing.append(missing[-1] + (value is None))
     grades: list[float | None] = [None] * len(rows)
     for start in range(len(rows)):
         end = start + window
-        if end >= len(rows) or rows[end]["line_index"] != rows[start]["line_index"]:
+        if end >= len(rows):
             continue
-        low, high = values[start], values[end]
-        if low is None or high is None:
+        first, last = rows[start], rows[end]
+        if (last["line_index"], last["run"]) != (first["line_index"], first["run"]):
             continue
-        grades[start] = (high - low) / base * 100.0
+        if not _spans_the_base(last["distance"] - first["distance"], base):
+            continue
+        if missing[end + 1] - missing[start]:
+            continue
+        grades[start] = (values[end] - values[start]) * scale / base * 100.0
     return grades
 
 
@@ -554,7 +659,13 @@ def _grade_summary(
     base: float,
     threshold: float | None,
 ) -> list[dict[str, Any]]:
-    """Per line: the steepest window, total ascent and descent, stretches above threshold."""
+    """Per line: the steepest window, total ascent and descent, stretches above threshold.
+
+    `steepest_grade_percent` is the grade of largest size and keeps its sign, so
+    -3.1 is the steepest and it falls; on a tie the first window wins. A stretch
+    is one direction of travel: a climb and the descent after it are two
+    stretches, even where the windows around the crest overlap.
+    """
     by_line: dict[int, list[int]] = {}
     for position, row in enumerate(rows):
         by_line.setdefault(row["line_index"], []).append(position)
@@ -564,6 +675,8 @@ def _grade_summary(
         steepest = max(known, key=lambda p: abs(grades[p])) if known else None
         ascent = descent = 0.0
         for a, b in pairwise(positions):
+            if rows[a]["run"] != rows[b]["run"]:
+                continue
             if values[a] is not None and values[b] is not None:
                 step = values[b] - values[a]
                 ascent += max(step, 0.0)
@@ -574,54 +687,78 @@ def _grade_summary(
             "steepest_window_starts_at": None if steepest is None else rows[steepest]["distance"],
             "total_ascent": ascent,
             "total_descent": descent,
+            "unreadable_points": sum(1 for p in positions if values[p] is None),
+            "runs": len({rows[p]["run"] for p in positions}),
         }
         if threshold is not None:
-            stretches: list[list[float]] = []
+            stretches: list[dict[str, Any]] = []
+            last_run = None
             for p in known:
-                if abs(grades[p]) > threshold:
-                    start, end = rows[p]["distance"], rows[p]["distance"] + base
-                    if stretches and start <= stretches[-1][1]:
-                        stretches[-1][1] = max(stretches[-1][1], end)
-                    else:
-                        stretches.append([start, end])
+                if abs(grades[p]) <= threshold:
+                    continue
+                start, end = rows[p]["distance"], rows[p]["distance"] + base
+                direction = "up" if grades[p] > 0 else "down"
+                if (
+                    stretches
+                    and last_run == rows[p]["run"]
+                    and stretches[-1]["direction"] == direction
+                    and start <= stretches[-1]["to"]
+                ):
+                    stretches[-1]["to"] = max(stretches[-1]["to"], end)
+                else:
+                    stretches.append({"from": start, "to": end, "direction": direction})
+                last_run = rows[p]["run"]
             entry["stretches_above_threshold"] = stretches
         summary.append(entry)
     return summary
 
 
-def _grades_follow_the_written_profile(output_path: str, window: int, base: float) -> Any:
+def _grades_follow_the_written_profile(
+    output_path: str, window: int, base: float, scale: float
+) -> Any:
     """Recompute every grade from the distances and values ON DISK and compare.
 
     A check of the number, not of the run: it reads the written profile, rebuilds
     each window from the points that are there, and fails if a stored grade is
-    not the rise over the distance those points actually span.
+    not the rise over the distance those points actually span -- or if a grade
+    is missing where the written points say a window fits, which is the half
+    that a comparison of stored values alone cannot see. The count goes in the
+    detail, so that "every grade agrees" over zero grades reads as what it is.
     """
-    import math
+    written = readers.read_vector(output_path)
 
-    written = gpd.read_parquet(output_path) if str(output_path).endswith(".parquet") else (
-        gpd.read_file(output_path)
-    )
-    mismatches = 0
+    def absent(value: Any) -> bool:
+        return value is None or (isinstance(value, float) and math.isnan(value))
+
+    compared = mismatches = 0
     for _, part in written.groupby("line_index", sort=False):
         part = part.sort_values("point_index")
-        distances, heights, stored = (
-            part["distance"].tolist(), part["value"].tolist(), part["grade_percent"].tolist()
+        distances, heights, stored, runs = (
+            part["distance"].tolist(), part["value"].tolist(),
+            part["grade_percent"].tolist(), part["run_index"].tolist(),
         )
         for i, grade in enumerate(stored):
-            if grade is None or (isinstance(grade, float) and math.isnan(grade)):
-                continue
             j = i + window
-            span = distances[j] - distances[i] if j < len(distances) else None
-            if span is None or abs(span - base) > 1e-6 * base or not math.isclose(
-                grade, (heights[j] - heights[i]) / span * 100.0, rel_tol=1e-9, abs_tol=1e-12
-            ):
+            fits = (
+                j < len(distances)
+                and runs[i] == runs[j]
+                and _spans_the_base(distances[j] - distances[i], base)
+                and not any(absent(h) for h in heights[i:j + 1])
+            )
+            if not fits:
+                mismatches += not absent(grade)
+                continue
+            compared += 1
+            expected = (heights[j] - heights[i]) * scale / base * 100.0
+            if absent(grade) or not math.isclose(grade, expected, rel_tol=1e-9, abs_tol=1e-12):
                 mismatches += 1
     return verify.Check(
         "x-mapsmith:grades_follow_the_written_profile",
         mismatches == 0,
-        "every stored grade is the rise over its window as written"
+        f"{compared} grade(s) recomputed from the written profile, all agree"
+        + ("; no window fits on any readable run" if compared == 0 else "")
         if mismatches == 0
-        else f"{mismatches} stored grades disagree with the written profile",
+        else f"{mismatches} grade(s) disagree with the written profile ({compared} expected)",
     )
 
 
@@ -629,27 +766,72 @@ def _usable(lines: gpd.GeoDataFrame) -> list[Any]:
     return [g for g in lines.geometry if g is not None and not g.is_empty]
 
 
-def _stepping_is_regular(rows: list[dict[str, Any]], spacing: float) -> bool:
-    """Every line starts at 0 and advances by exactly `spacing`."""
+def _stepping_is_regular(
+    rows: list[dict[str, Any]], spacing: float, lengths: dict[int, float]
+) -> bool:
+    """Every line starts at 0, advances by exactly `spacing`, and ends at its length.
+
+    The last step may be shorter than the spacing -- it is the remainder that
+    reaches the far end -- and never longer.
+    """
     by_line: dict[int, list[float]] = {}
     for row in rows:
         by_line.setdefault(row["line_index"], []).append(row["distance"])
-    for distances in by_line.values():
+    for line_index, distances in by_line.items():
         if distances[0] != 0.0:
             return False
-        for previous, current in pairwise(distances):
+        length = lengths[line_index]
+        if len(distances) > 1 and not math.isclose(distances[-1], length, rel_tol=1e-9):
+            return False
+        for previous, current in pairwise(distances[:-1]):
             if not math.isclose(current - previous, spacing, rel_tol=1e-9):
                 return False
+        if len(distances) > 1 and distances[-1] - distances[-2] > spacing * (1 + 1e-9):
+            return False
     return True
 
 
-def _stepping_detail(rows: list[dict[str, Any]], spacing: float) -> str:
+def _stepping_detail(rows: list[dict[str, Any]], spacing: float, regular: bool) -> str:
     lines = len({row["line_index"] for row in rows})
-    return f"{len(rows)} point(s) over {lines} line(s) at a step of {spacing}"
+    return f"{len(rows)} point(s) over {lines} line(s) at a step of {spacing}, " + (
+        "the last step reaching each line's far end"
+        if regular
+        else "and some line does not start at 0, step by the spacing, or reach its far end"
+    )
+
+
+def _run_starts(geometry: Any) -> list[float]:
+    """Distances along `geometry` at which a new connected run begins.
+
+    Shapely measures a MultiLineString as one line with its parts laid end to
+    end in stored order, so a distance keeps counting across a gap between two
+    parts that do not touch -- and a gradient window laid over that gap
+    compares two heights a kilometre apart as if they were fifty metres apart.
+    Measured before this existed: two parallel level tracks on a 2% plane came
+    back with a 40% stretch, and every check passed.
+    """
+    if geometry.geom_type != "MultiLineString":
+        return []
+    parts = [p for p in geometry.geoms if not p.is_empty]
+    tolerance = 1e-9 * max(1.0, geometry.length)
+    starts: list[float] = []
+    travelled = 0.0
+    for previous, current in pairwise(parts):
+        travelled += previous.length
+        (x0, y0), (x1, y1) = previous.coords[-1][:2], current.coords[0][:2]
+        if math.hypot(x1 - x0, y1 - y0) > tolerance:
+            starts.append(travelled)
+    return starts
 
 
 def _profile_positions(lines: gpd.GeoDataFrame, spacing: float) -> list[dict[str, Any]]:
-    """Positions along each line at a fixed step, both ends included."""
+    """Positions along each line at a fixed step, and one at the far end.
+
+    Until 2026-09-25 this docstring said "both ends included" and the code
+    stopped at the last whole step: 15 m at a step of 4 ended at 12, and the
+    test named for including the far end asserted that it did not. A profile
+    that silently stops short of the summit is the worst kind of nearly-right.
+    """
     rows: list[dict[str, Any]] = []
     for line_index, geometry in enumerate(lines.geometry):
         # `network._build` guards these and this did not: a null geometry died on
@@ -661,14 +843,20 @@ def _profile_positions(lines: gpd.GeoDataFrame, spacing: float) -> list[dict[str
             continue
         length = geometry.length
         steps = math.floor(length / spacing)
-        for point_index in range(steps + 1):
-            distance = min(point_index * spacing, length)
+        distances = [point_index * spacing for point_index in range(steps + 1)]
+        if length - distances[-1] > 1e-9 * max(1.0, length):
+            distances.append(length)
+        starts = _run_starts(geometry)
+        for point_index, distance in enumerate(distances):
             position = geometry.interpolate(distance)
             rows.append(
                 {
                     "line_index": line_index,
                     "point_index": point_index,
                     "distance": float(distance),
+                    # A point exactly at a gap is the end of the earlier part,
+                    # which is where Shapely's `interpolate` puts it.
+                    "run": bisect.bisect_left(starts, distance),
                     "x": position.x,
                     "y": position.y,
                 }

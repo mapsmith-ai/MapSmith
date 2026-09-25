@@ -21,9 +21,9 @@ catalogue is written: *"the coastline is 400 000 nodes and the browser dies"*, n
 
 | what the caller declares | candidates left | ranked, found@3 | **in what comes back** |
 |---|---|---|---|
-| nothing — words alone | 76 | 30% | 30% |
+| nothing — words alone | 76 | 29% | 29% |
 | the input kind | 50 | 32% | 33% |
-| + what it should produce | 31 | 44% | 53% |
+| + what it should produce | 31 | 45% | 53% |
 | **+ how many datasets** | **17** | **53%** | **98%** |
 
 **Ranking is not the mechanism; narrowing is** — and the last column is why. Once

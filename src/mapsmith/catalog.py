@@ -3713,8 +3713,8 @@ OPERATIONS: list[dict[str, Any]] = [
                        "in the LINE's linear unit, so a geographic line is refused: 20 "
                        'of a degree is not 20 metres and the distance axis would mean '
                        'nothing at a plausible-looking scale; the DEM may be in any CRS. '
-                       'Each line starts at 0 and advances by exactly the spacing, and '
-                       'that stepping is checked on the written points. With '
+                       'Each line starts at 0, advances by exactly the spacing and ends '
+                       'on its far end, and that stepping is checked. With '
                        'grade_base_length every point carries grade_percent, the rise '
                        'over the window of that length starting there, and the result '
                        'gives per line the steepest window and where it starts, total '
@@ -3742,7 +3742,12 @@ OPERATIONS: list[dict[str, Any]] = [
                                        'spacing 10). No default: the base is the question'},
                        {'name': 'grade_threshold_percent', 'type': 'float', 'required': False,
                         'description': 'Report the stretches whose gradient exceeds this, '
-                                       'in either direction. Needs grade_base_length'}],
+                                       'each with its direction (up or down, as the line '
+                                       'is digitised). Needs grade_base_length'},
+                       {'name': 'grade_height_unit', 'type': 'str', 'required': False,
+                        'description': "Unit of the raster's values: 'metre', 'foot' or "
+                                       "'US survey foot'. Assumed 'metre' only when the "
+                                       'line is in metres; required otherwise'}],
         'examples': [{'goal': 'Elevation every 20 metres along the road centreline, to plot a profile',
                       'call': {'tool': 'run_operation',
                                'arguments': {'operation': 'elevation_profile',
