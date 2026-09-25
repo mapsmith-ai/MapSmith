@@ -112,10 +112,18 @@ jobs:
       - name: Publish
         if: ${{ !inputs.dry_run }}
         # PyPI can take a moment to serve a new version, and the registry
-        # refuses with a 404 until it does: retry a few times, then fail.
+        # refuses with a 404 until it does: retry a few times, then fail. A
+        # failure can also come AFTER the registry accepted the version (a
+        # timeout on the response), and every retry would then be refused as a
+        # duplicate: so before retrying, ask the registry whether it has it.
         run: |
+          version_url="${REGISTRY}/v0.1/servers/io.github.mapsmith-ai%2Fmapsmith/versions/${TAG#v}"
           for attempt in 1 2 3 4 5; do
             if ./mcp-publisher publish server.json; then exit 0; fi
+            if curl -fsS -o /dev/null "$version_url"; then
+              echo "publish reported a failure, but the registry already serves ${TAG#v}"
+              exit 0
+            fi
             echo "publish failed (attempt $attempt), retrying in 30s"
             sleep 30
           done
