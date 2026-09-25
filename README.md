@@ -12,8 +12,9 @@
 
 Most GIS servers hand an agent a tool to run. MapSmith takes the question, works out the
 *analysis* — usually several operations, in an order that has to be right — validates the
-plan before a single file is touched, runs it, and leaves a record of every step that
-somebody else can check afterwards without rerunning anything.
+plan before a single file is touched, runs it, and leaves a record of every step — which
+bytes went in, with which parameters and CRS decisions, and which checks ran — that somebody
+else can read afterwards and rerun to confirm.
 
 ### Try it
 
@@ -595,7 +596,7 @@ it read 78/83, 47/65, 40/55 — embeddings ahead at every size — and the sente
 BM25 degrades faster, which is why the embedding engine became a dependency rather than an extra.
 Recomputed today the crossover has moved: embeddings still lead on ten entries, and from thirty
 up BM25 leads by a margin that widens with size. Part of that is the catalogue itself, because
-the distractors are drawn from it and it has grown from fifty-one entries to seventy-four — which
+the distractors are drawn from it and it has grown from fifty-one entries to the last row — which
 is the point rather than a caveat. **The near-neighbour effect the eight-hundred-operation test
 predicted has arrived in our own catalogue**, and the two tables that used to disagree now agree.
 
@@ -603,7 +604,7 @@ The curve is recomputed by `tests/test_retrieval_degradation.py` and compared wi
 it cannot go stale again in silence — which it did for three catalogue sizes.
 
 **And that finding does not survive being scaled up — measured the same day it was
-published.** The distractors above are drawn from our own seventy-four entries, which are
+published.** The distractors above are drawn from our own entries, which are
 semantically spread out. Growing this catalog means adding *near neighbours*: hundreds of
 raster and terrain operations that resemble each other. Re-run against 800 real GIS
 operations, taken from a library that ships them with their own descriptions, the ranking
@@ -1184,7 +1185,7 @@ detects it, converts the input first, and discloses the workaround in the manife
   workspace — which is what the container runs with by default. DuckDB's own HTTP and S3
   filesystems stay off in every mode, so `read_parquet('s3://…')` does not work even with
   the opt-in: fetch the data down first, or run unconfined with remote reads on.
-- **You want the full breadth of a desktop GIS.** 75 operations, and a catalogue that tells
+- **You want the full breadth of a desktop GIS.** 76 operations, and a catalogue that tells
   the agent what does *not* exist yet rather than letting it improvise. The ~900 QGIS
   Processing algorithms are on the roadmap, not in the box.
 - **You expect plan validation to make a weak model strong.** Our own A/B says advisory

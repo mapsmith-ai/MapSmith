@@ -1592,6 +1592,19 @@ def test_the_readme_catalog_counts_are_the_real_ones():
         1 for entry in catalog.OPERATIONS if entry.get("tool") is None
     )
 
+    # And the one in "When not to use MapSmith", which said 75 on the release
+    # commit of 0.6.0 while three other lines of the page said 76. A reader
+    # deciding whether the product is broad enough reads that bullet and not
+    # the discovery section.
+    breadth = re.search(
+        r"full breadth of a desktop GIS\.\*\*\s+(\d+) operations", text
+    )
+    assert breadth, "the 'full breadth of a desktop GIS' bullet has been reworded"
+    assert int(breadth.group(1)) == len(catalog.OPERATIONS), (
+        f"'When not to use MapSmith' says {breadth.group(1)} operations; the "
+        f"catalogue has {len(catalog.OPERATIONS)}"
+    )
+
 
 def test_the_retrieval_numbers_agree_between_the_readme_and_the_site():
     """The same measurement is quoted on two surfaces, in prose, in two formats.
