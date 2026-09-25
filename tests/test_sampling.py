@@ -268,6 +268,77 @@ def test_the_spacing_is_metres_along_the_line_even_on_a_dem_in_degrees(tmp_path)
     ]
 
 
+@pytest.fixture
+def incline(tmp_path: Path) -> Path:
+    """A plane rising 2 m per 100 m eastward: z = 0.02 * x, on 10 m cells.
+
+    Bilinear interpolation on a plane is exact, so the gradient along any line
+    is 2% times the cosine of its angle to the east -- by arithmetic."""
+    path = tmp_path / "incline.tif"
+    columns = np.arange(200, dtype="float32") * 10 + 5
+    with rasterio.open(
+        path, "w", driver="GTiff", height=200, width=200, count=1, dtype="float32",
+        crs="EPSG:32632", transform=from_origin(0.0, 2000.0, 10.0, 10.0),
+    ) as dst:
+        dst.write(np.tile(0.02 * columns, (200, 1)), 1)
+    return path
+
+
+def _grade_run(incline, tmp_path, line, **kwargs):
+    lines = tmp_path / "track.gpkg"
+    gpd.GeoDataFrame(geometry=[line], crs="EPSG:32632").to_file(lines)
+    out = tmp_path / "grade.parquet"
+    result = sampling.elevation_profile(
+        str(incline), str(lines), str(out), spacing=10.0, grade_base_length=100.0, **kwargs
+    )
+    return result, gpd.read_parquet(out)
+
+
+def test_the_grade_along_a_track_is_not_the_slope_of_the_ground(incline, tmp_path):
+    """The trap Fable named for the four railway requests: `slope` here is 2%
+    everywhere, and a track crossing the incline at 45 degrees climbs 2*cos45."""
+    result, points = _grade_run(
+        incline, tmp_path, LineString([(100, 1000), (1100, 1000)]), grade_threshold_percent=1.5
+    )
+    grades = points["grade_percent"].dropna()
+    assert len(grades) == len(points) - 10  # the last window-length of points has none
+    assert list(grades) == pytest.approx([2.0] * len(grades))
+    summary = result["grade"][0]
+    assert summary["steepest_grade_percent"] == pytest.approx(2.0)
+    assert summary["total_ascent"] == pytest.approx(20.0)
+    assert summary["total_descent"] == pytest.approx(0.0)
+    assert summary["stretches_above_threshold"] == [[0.0, 1000.0]]
+
+    diagonal = LineString([(100, 100), (800, 800)])
+    result, points = _grade_run(incline, tmp_path, diagonal, grade_threshold_percent=1.5)
+    assert list(points["grade_percent"].dropna()) == pytest.approx(
+        [2.0 * np.cos(np.pi / 4)] * int(points["grade_percent"].notna().sum())
+    )
+    assert result["grade"][0]["stretches_above_threshold"] == []
+    record = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+    assert record["parameters"]["grade_base_length"] == 100.0
+    assert record["parameters"]["grade_window_steps"] == 10
+    check = next(
+        c for c in record["verification"]
+        if c["name"] == "x-mapsmith:grades_follow_the_written_profile"
+    )
+    assert check["passed"] is True
+
+
+@pytest.mark.parametrize("kwargs, match", [
+    ({"grade_base_length": 105.0}, "not a whole number of spacing steps"),
+    ({"grade_base_length": -1.0}, "must be positive"),
+    ({"grade_threshold_percent": 2.5}, "needs grade_base_length"),
+])
+def test_the_gradient_window_is_the_caller_s_and_must_fit_the_steps(incline, tmp_path, kwargs, match):
+    lines = tmp_path / "t.gpkg"
+    gpd.GeoDataFrame(geometry=[LineString([(100, 1000), (600, 1000)])], crs="EPSG:32632").to_file(lines)
+    with pytest.raises(ValueError, match=match):
+        sampling.elevation_profile(
+            str(incline), str(lines), str(tmp_path / "x.parquet"), spacing=10.0, **kwargs
+        )
+
+
 def test_a_profile_includes_both_ends_even_when_the_step_does_not_divide(ramp, tmp_path):
     """15 m at 4 m is three whole steps and a remainder. The far end still
     appears, clamped to the line's length, because a profile that silently stops

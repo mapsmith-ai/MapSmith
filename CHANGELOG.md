@@ -38,6 +38,22 @@ All notable changes to MapSmith are documented here, in the format of
   that read one raster are unchanged. Reached through the same tool; the tool
   count is unchanged.
 
+- **The gradient along a line.** `elevation_profile` takes `grade_base_length`
+  and, optionally, `grade_threshold_percent`: every point carries
+  `grade_percent`, the rise over the window of that length starting there, and
+  the result gives per line the steepest window and where it starts, the total
+  ascent and descent, and the stretches above the threshold. It closes four
+  railway requests that each took a plan -- "the steepest section in percent",
+  "the maximum gradient over any 100 m", "does any part exceed 2.5%" -- and
+  three traps are decided rather than defaulted: this is not `slope`, which is
+  the ground's steepest direction and on a track crossing a hillside at 45
+  degrees says 2% where the track climbs 1.41%; the window slides by the
+  spacing, so it answers "any 100 m stretch" and not "every 100 m from the
+  start"; and the base length has no default and must be a whole number of
+  steps. A check recomputes every stored grade from the profile as written.
+  The new search phrasings moved discovery figures the right way: words alone
+  under BM25 at 76 entries from 50% to 55%.
+
 ### Fixed
 
 - **`elevation_profile` measured the spacing in the DEM's units, and on a DEM

@@ -3695,24 +3695,35 @@ OPERATIONS: list[dict[str, Any]] = [
         "produces": "dataset:vector",
         'applicability': {'inputs': ['raster', 'vector'], 'requires_projected_crs': True, 'dataset_inputs': 2},
         'summary': 'One point every N metres along each line, carrying the surface '
-                   'value and the distance travelled. Requires the [raster] extra',
+                   'value and the distance travelled, and optionally the gradient along '
+                   'the line over a sliding window. Requires the [raster] extra',
         "phrasings": "elevation every 20 metres along the centreline so I can plot it; "
                      "how does the ground change along this slice; cross section of the "
-                     "terrain",
-        "distinguishes": "Walks a line and reads the surface at a fixed step. Not "
+                     "terrain; steepest section of this track in percent; maximum "
+                     "gradient over any 100 m stretch; does any part of the ramp exceed "
+                     "2.5%; total climb along the route",
+        "distinguishes": "Walks a line and reads the surface at a fixed step, and with "
+                         "grade_base_length gives the gradient OF THE ROUTE. Not "
                          "sample_raster_at_points, which reads at positions you already "
-                         "have; not slope, which describes steepness everywhere rather "
-                         "than along one route.",
+                         "have; not slope, which is the steepest direction of the ground "
+                         "in each cell -- a line crossing a hillside obliquely climbs far "
+                         "less than the slope says.",
         'description': 'Produces a point layer with distance, value, point_index and '
                        'line_index, ordered along each line. The spacing is a length '
-                       "in the raster's own linear unit, so a geographic CRS is "
-                       'refused: 20 of a degree is not 20 metres and the distance axis '
-                       'would mean nothing at a plausible-looking scale. Both ends of '
-                       'each line are always included, the far one clamped to the '
-                       "line's length when the step does not divide evenly \u2014 a "
-                       'profile that silently stops short of the summit is the worst '
-                       'kind of nearly-right. The point count is checked in closed '
-                       'form against floor(length/spacing) + 1.',
+                       "in the LINE's linear unit, so a geographic line is refused: 20 "
+                       'of a degree is not 20 metres and the distance axis would mean '
+                       'nothing at a plausible-looking scale; the DEM may be in any CRS. '
+                       'Each line starts at 0 and advances by exactly the spacing, and '
+                       'that stepping is checked on the written points. With '
+                       'grade_base_length every point carries grade_percent, the rise '
+                       'over the window of that length starting there, and the result '
+                       'gives per line the steepest window and where it starts, total '
+                       'ascent and descent, and with grade_threshold_percent the '
+                       'stretches above it. The window slides by the spacing, so it '
+                       'answers "any 100 m stretch" rather than every 100 m from the '
+                       'start; the base length has no default because 2.5% over 10 m '
+                       'and over 100 m are different questions; and the stored grades '
+                       'are recomputed from the written profile as a check.',
         'parameters': [{'name': 'raster_path', 'type': 'str', 'required': True,
                         'description': 'Surface to read, usually a DEM'},
                        {'name': 'line_path', 'type': 'str', 'required': True,
@@ -3720,11 +3731,18 @@ OPERATIONS: list[dict[str, Any]] = [
                        {'name': 'output_path', 'type': 'str', 'required': True,
                         'description': 'Output point layer (.parquet or .gpkg)'},
                        {'name': 'spacing', 'type': 'float', 'required': True,
-                        'description': "Step between samples, in the raster CRS's linear unit"},
+                        'description': "Step between samples, in the line CRS's linear unit"},
                        {'name': 'method', 'type': 'str', 'required': False,
                         'description': "'bilinear' (default) or 'nearest'"},
                        {'name': 'band', 'type': 'int', 'required': False,
-                        'description': '1-based band number (default 1)'}],
+                        'description': '1-based band number (default 1)'},
+                       {'name': 'grade_base_length', 'type': 'float', 'required': False,
+                        'description': 'Length of the gradient window along the line, a '
+                                       'whole number of spacing steps (e.g. 100 with '
+                                       'spacing 10). No default: the base is the question'},
+                       {'name': 'grade_threshold_percent', 'type': 'float', 'required': False,
+                        'description': 'Report the stretches whose gradient exceeds this, '
+                                       'in either direction. Needs grade_base_length'}],
         'examples': [{'goal': 'Elevation every 20 metres along the road centreline, to plot a profile',
                       'call': {'tool': 'run_operation',
                                'arguments': {'operation': 'elevation_profile',
@@ -3738,7 +3756,16 @@ OPERATIONS: list[dict[str, Any]] = [
                                              'arguments': {'raster_path': 'dem.tif',
                                                            'line_path': 'slice.gpkg',
                                                            'output_path': 'slice_profile.parquet',
-                                                           'spacing': 5.0}}}}]},
+                                                           'spacing': 5.0}}}},
+                     {'goal': 'Does any 100 m stretch of the rail alignment exceed a 2.5% gradient',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'elevation_profile',
+                                             'arguments': {'raster_path': 'dem.tif',
+                                                           'line_path': 'alignment.gpkg',
+                                                           'output_path': 'alignment_grade.parquet',
+                                                           'spacing': 10.0,
+                                                           'grade_base_length': 100.0,
+                                                           'grade_threshold_percent': 2.5}}}}]},
     {   'name': 'line_of_sight',
         'status': 'available',
         'tool': None,

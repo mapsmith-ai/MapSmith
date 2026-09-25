@@ -224,11 +224,12 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 This page describes **0.6.1**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
 have to find out by calling a tool that is not there. **`main` is ahead of 0.6.1 today** by
-one capability and one fix: `zonal_statistics` computes weighted statistics with a weights
-raster, such as mean heat per district weighted by population, and `elevation_profile` measures
-its spacing in metres along the line even when the DEM is in degrees, where it returned a single
-point. No tool or manifest key moved; [`[Unreleased]` in the changelog](CHANGELOG.md#unreleased)
-has both.
+two capabilities and one fix: `zonal_statistics` computes weighted statistics with a weights
+raster, such as mean heat per district weighted by population; `elevation_profile` gives the
+gradient along a line over a sliding window, such as the steepest 100 m of a rail alignment;
+and `elevation_profile` measures its spacing in metres along the line even when the DEM is in
+degrees, where it returned a single point. No tool or manifest key moved;
+[`[Unreleased]` in the changelog](CHANGELOG.md#unreleased) has all three.
 
 **If you read manifests, 0.6.1 moves no key**: records declare `spec_version`
 `1.0.0-draft.8`, two drafts past 0.6.0's `draft.6`, and both drafts only narrowed where a
@@ -413,10 +414,10 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 76 | 30% | 18% | 30% |
-| what data I have | 50 | 31% | 21% | 32% |
+| nothing — words alone | 76 | 30% | 19% | 30% |
+| what data I have | 50 | 32% | 21% | 33% |
 | + what I want back | 31 | 44% | 40% | 53% |
-| **+ how many datasets I have** | **17** | **53%** | **50%** | **98%** |
+| **+ how many datasets I have** | **17** | **53%** | **49%** | **98%** |
 
 **Two ranking columns, and that is a correction.** This table used to carry one,
 computed with the default engine — which is the embedding one where its model
@@ -429,7 +430,7 @@ published under a sentence promising it could be checked.
 The two also differ in a way worth seeing, and this page had it backwards
 until 2026-08-30. It said the embedding engine overtakes BM25 once the facets
 have narrowed. It does not overtake it anywhere: BM25 leads at every row of the
-table above, by twelve points on words alone and by three at the fullest
+table above, by eleven points on words alone and by four at the fullest
 declaration, where the entries that survive are told apart by the words that
 distinguish them — which is what `distinguishes` is for, and what an exact term
 either matches or does not. The embedding engine earns its place on the
@@ -600,7 +601,7 @@ catalog grows:
 |---|---|---|
 | 10 | 77% | 80% |
 | 30 | 63% | 58% |
-| 76 | 50% | 40% |
+| 76 | 55% | 40% |
 
 **This table used to say the opposite, and the reversal is the finding.** Published at 10/30/51
 it read 78/83, 47/65, 40/55 — embeddings ahead at every size — and the sentence under it said

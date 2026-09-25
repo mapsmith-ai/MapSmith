@@ -1498,8 +1498,10 @@ def _spec_fixtures(tmp_path):
         "sample_raster_at_points": lambda: sampling.sample_raster_at_points(
             str(dem), str(points), out("sampled.parquet"), "bilinear"
         ),
+        # With the gradient: it adds parameters and a check to the record.
         "elevation_profile": lambda: sampling.elevation_profile(
-            str(dem), str(streets), out("profile.parquet"), spacing=25.0
+            str(dem), str(streets), out("profile.parquet"), spacing=25.0,
+            grade_base_length=50.0, grade_threshold_percent=5.0,
         ),
     })
     return fixtures
