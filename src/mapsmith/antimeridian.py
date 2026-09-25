@@ -145,6 +145,11 @@ def estimate_utm_crs(gdf: Any) -> Any:
         try:
             return gdf.estimate_utm_crs()
         except RuntimeError as exc:
+            # Only GeoPandas' own "no zone" answer. pyproj's errors subclass
+            # RuntimeError too, and relabelling them "no UTM zone covers..."
+            # would replace the real diagnosis with a plausible one.
+            if "Unable to determine UTM CRS" not in str(exc):
+                raise
             bounds = gdf.total_bounds
             raise RuntimeError(
                 _no_utm_zone(
@@ -223,29 +228,18 @@ def naive_crossings(gdf: Any) -> list[int]:
     have no ring at all.
     """
     import numpy as np
-    import shapely
 
-    if gdf.crs is None or not _is_in_degrees(gdf.crs) or not len(gdf):
+    rings = _ring_longitudes(gdf)
+    if rings is None:
         return []
-    geometries = np.asarray(gdf.geometry.array, dtype=object)
-    areal = np.flatnonzero(
-        np.isin(
-            shapely.get_type_id(geometries),
-            (shapely.GeometryType.POLYGON, shapely.GeometryType.MULTIPOLYGON),
-        )
-    )
-    if not areal.size:
-        return []
-    parts, part_feature = shapely.get_parts(geometries[areal], return_index=True)
-    rings, ring_part = shapely.get_rings(parts, return_index=True)
-    coords, coord_ring = shapely.get_coordinates(rings, return_index=True)
-    if len(coords) < 2:
-        return []
-    x = coords[:, 0]
-    # The edge of the plane is where the layer's longitudes end: -180/180, or
-    # 0/360 for a layer written in 0..360, where the rectangle covering the
-    # world closes along 0 and 360 and was refused exactly as Antarctica was.
-    seams = np.asarray(seam_longitudes(x))
+    x, coord_ring, ring_part, part_feature, areal = rings
+    # An edge running along the edge of the plane is not the artefact, and the
+    # plane ends at -180/180 or, for a layer written in 0..360, at 0/360. Both
+    # pairs are exempt whatever the layer's convention: the rectangle covering
+    # the world written as box(0, -90, 360, 90) was refused on 2026-09-25 as
+    # Antarctica had been, and a first fix that picked ONE pair per layer from
+    # its maximum refused the world beside a polygon overshooting 180 by 1e-7.
+    seams = np.asarray(_ALL_SEAMS)
     on_seam = np.abs(x[:, None] - seams[None, :]).min(axis=1) <= _SEAM_TOLERANCE
     jump = (
         (coord_ring[1:] == coord_ring[:-1])
@@ -258,23 +252,73 @@ def naive_crossings(gdf: Any) -> list[int]:
     return sorted({int(p) for p in areal[part_feature[ring_part[bad_rings]]]})
 
 
+def layer_seam(gdf: Any) -> tuple[float, float]:
+    """The seam a naive ring in this layer crosses, read from the same vertices.
+
+    The refusal message used to decide the convention from `total_bounds`,
+    which covers every geometry in the layer, while the detector reads polygon
+    rings only: a point at 200 degrees beside a ring drawn 170 -> -170 made the
+    message send its author to 0/360, the one meridian that ring does not cross.
+    """
+    rings = _ring_longitudes(gdf)
+    return seam_longitudes(rings[0] if rings is not None else [])
+
+
+def _ring_longitudes(gdf: Any):
+    """The longitudes of every polygon ring vertex, with the indices back to features.
+
+    `None` when there is nothing to look at: no CRS in degrees, no polygon, or
+    fewer than two vertices.
+    """
+    import numpy as np
+    import shapely
+
+    if gdf.crs is None or not _is_in_degrees(gdf.crs) or not len(gdf):
+        return None
+    geometries = np.asarray(gdf.geometry.array, dtype=object)
+    areal = np.flatnonzero(
+        np.isin(
+            shapely.get_type_id(geometries),
+            (shapely.GeometryType.POLYGON, shapely.GeometryType.MULTIPOLYGON),
+        )
+    )
+    if not areal.size:
+        return None
+    parts, part_feature = shapely.get_parts(geometries[areal], return_index=True)
+    rings, ring_part = shapely.get_rings(parts, return_index=True)
+    coords, coord_ring = shapely.get_coordinates(rings, return_index=True)
+    if len(coords) < 2:
+        return None
+    return coords[:, 0], coord_ring, ring_part, part_feature, areal
+
+
 #: How close to +/-180 a longitude must be to count as lying on the seam. Far
 #: below any survey precision, far above the round trip of a float through a
 #: file format.
 _SEAM_TOLERANCE = 1e-9
 
+#: Both places a plane of longitudes can end.
+_ALL_SEAMS = (-180.0, 180.0, 0.0, 360.0)
+
 
 def seam_longitudes(longitudes: Any) -> tuple[float, float]:
     """The two longitudes where a layer's plane ends: (-180, 180), or (0, 360).
 
-    A layer is taken to be written in 0..360 when any longitude exceeds 180,
-    which no layer in -180..180 can do. For such a layer the seam a single ring
-    can be drawn across naively is the prime meridian, 0/360, not the 180th.
+    A layer is taken to be written in 0..360 when it has NO negative longitude
+    and some longitude beyond 180. Beyond 180 alone was the first rule, and one
+    vertex overshooting 180 by 1e-7 -- ordinary noise after a reprojection --
+    moved the seam of a whole -180..180 layer. For a 0..360 layer the seam a
+    single ring can be drawn across naively is the prime meridian.
     """
     import numpy as np
 
     values = np.asarray(longitudes, dtype="float64")
-    if values.size and float(np.nanmax(values)) > 180.0 + _SEAM_TOLERANCE:
+    values = values[np.isfinite(values)]
+    if (
+        values.size
+        and float(values.min()) >= -_SEAM_TOLERANCE
+        and float(values.max()) > 180.0 + _SEAM_TOLERANCE
+    ):
         return (0.0, 360.0)
     return (-180.0, 180.0)
 

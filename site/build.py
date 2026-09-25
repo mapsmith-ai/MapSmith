@@ -422,20 +422,27 @@ def unreleased_html(changelog: str, version: str) -> str:
     if "## [Unreleased]" not in changelog:
         raise RuntimeError("CHANGELOG.md has no [Unreleased] section to read")
     section = changelog.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
-    leads = re.findall(r"^- \*\*(.+?)\*\*", section, flags=re.MULTILINE | re.DOTALL)
-    if not leads:
-        return ""
 
     def inline(text: str) -> str:
         text = html.escape(" ".join(text.split()))
         return re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
 
-    items = "".join(f"<li>{inline(lead)}</li>" for lead in leads)
+    # Each lead with the heading it sits under. A "Fixed" entry's lead names
+    # the DEFECT ("...had its seam in the wrong place"), and listed bare under
+    # "what the release does not have" it read as though main had the defect --
+    # found on the live page by the 0.6.1 pre-release showcase review.
+    items = []
+    for block in re.split(r"^### ", section, flags=re.MULTILINE)[1:]:
+        heading, _, body = block.partition("\n")
+        for lead in re.findall(r"^- \*\*(.+?)\*\*", body, flags=re.MULTILINE | re.DOTALL):
+            items.append(f"<li>{html.escape(heading.strip())}: {inline(lead)}</li>")
+    if not items:
+        return ""
     return (
         '<p style="font-size:0.94rem;color:var(--ink-soft)">'
         f"<strong><code>main</code> is ahead of {html.escape(version)} today</strong>, "
-        "and this page is built from it. What the installable release does not "
-        f"have yet:</p><ul style=\"font-size:0.94rem;color:var(--ink-soft)\">{items}</ul>"
+        "and this page is built from it. What it changes against the installable "
+        f"release:</p><ul style=\"font-size:0.94rem;color:var(--ink-soft)\">{''.join(items)}</ul>"
         f'<p style="font-size:0.94rem;color:var(--ink-soft)">Each with what was '
         f'measured: <a href="{CHANGELOG_UNRELEASED}">[Unreleased] in the changelog</a>.</p>'
     )

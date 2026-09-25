@@ -27,7 +27,11 @@ All notable changes to MapSmith are documented here, in the format of
   own review had found Antarctica refused in -180..180. For such a layer the
   edge is 0/360, and the ring that really is drawn naively crosses the prime
   meridian: the refusal now says so and tells its author to split there, where
-  it used to send them to 180.
+  it used to send them to 180. A layer is read as 0..360 when it has no
+  negative longitude and some beyond 180 -- not whenever one vertex passes
+  180, which the first version of this fix did, and which refused the world
+  beside a polygon overshooting 180 by 1e-7. Edges along either pair of seams
+  are exempt in every layer.
 - **"No UTM zone" said the data was centred on the antimeridian, whatever the
   data, and offered no way out.** The realistic cause is latitude — UTM stops
   at 84N and 80S — and the message now says that and names a polar CRS to use

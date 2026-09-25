@@ -1046,7 +1046,9 @@ def test_the_site_names_what_main_has_that_the_release_does_not():
     quiet = "# Changelog\n\n## [Unreleased]\n\nNothing yet.\n\n## [1.0.0] - 2026-01-01\n\n- **Old.**\n"
     assert build.unreleased_html(quiet, "1.0.0") == ""
     busy = quiet.replace("Nothing yet.", "### Fixed\n\n- **A `thing` was\n  wrong.** Details.")
-    assert "<li>A <code>thing</code> was wrong.</li>" in build.unreleased_html(busy, "1.0.0")
+    # With its heading: a Fixed lead names the defect, and bare it read as
+    # though main had it.
+    assert "<li>Fixed: A <code>thing</code> was wrong.</li>" in build.unreleased_html(busy, "1.0.0")
     with pytest.raises(RuntimeError):
         build.unreleased_html("# Changelog\n", "1.0.0")
 

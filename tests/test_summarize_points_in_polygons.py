@@ -547,6 +547,42 @@ def test_a_layer_in_0_to_360_has_its_seam_at_0_and_360(tmp_path):
     assert "180th" not in str(refused.value)
 
 
+def test_one_vertex_past_180_does_not_move_the_seam_of_the_layer(tmp_path):
+    """The first 0..360 fix picked the convention from the maximum alone, and
+    the 0.6.1 pre-release review measured two refusals 0.6.0 had not made: the
+    world beside a polygon overshooting 180 by 1e-7 (ordinary reprojection
+    noise), and a polar cap beside a Fiji zone written as 177..182."""
+    from shapely.geometry import Polygon
+
+    from mapsmith import antimeridian
+
+    noisy = gpd.GeoDataFrame(
+        geometry=[box(-180, -90, 180, 90), box(170, 0, 180.0000001, 1)], crs="EPSG:4326"
+    )
+    assert antimeridian.naive_crossings(noisy) == []
+    fiji = gpd.GeoDataFrame(
+        geometry=[box(-180, -90, 180, -80), box(177, -18, 182, -16)], crs="EPSG:4326"
+    )
+    assert antimeridian.naive_crossings(fiji) == []
+
+    # And the message reads the seam from the same vertices the detector does:
+    # a point at 200 beside a ring drawn 170 -> -170 used to send its author to
+    # 0/360, the one meridian that ring does not cross.
+    zone = tmp_path / "z.gpkg"
+    gpd.GeoDataFrame(
+        geometry=[Polygon([(170, -5), (-170, -5), (-170, 5), (170, 5)])], crs="EPSG:4326"
+    ).to_file(zone)
+    mixed = gpd.GeoDataFrame(
+        geometry=[Polygon([(170, -5), (-170, -5), (-170, 5), (170, 5)]), Point(200, 0)],
+        crs="EPSG:4326",
+    )
+    assert antimeridian.layer_seam(mixed) == (-180.0, 180.0)
+    points = tmp_path / "p.gpkg"
+    gpd.GeoDataFrame({"n": [1.0]}, geometry=[Point(175, 0)], crs="EPSG:4326").to_file(points)
+    with pytest.raises(ValueError, match="180th meridian"):
+        vector.count_in_polygons(str(points), str(zone), str(tmp_path / "c.gpkg"))
+
+
 def test_no_utm_zone_says_why_and_what_to_use():
     """It said "centred on the antimeridian" for data centred anywhere, and
     gave no way out. Polar data is the realistic case: UTM stops at 84N."""

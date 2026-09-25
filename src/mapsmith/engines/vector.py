@@ -2418,7 +2418,7 @@ def _refuse_naive_antimeridian(polygons: gpd.GeoDataFrame, polygons_path: str) -
         # ends at 0/360, and telling its author to split at 180 -- which it
         # did until 2026-09-25 -- sends them to the one meridian their ring
         # does not cross.
-        _, high = antimeridian.seam_longitudes([polygons.total_bounds[2]])
+        _, high = antimeridian.layer_seam(polygons)
         seam = (
             "the 180th meridian"
             if high == 180.0
