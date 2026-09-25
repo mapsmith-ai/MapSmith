@@ -36,7 +36,7 @@ Three more numbers say why the answer is a set rather than a pick:
 
 | | |
 |---|---|
-| the ranker puts the answer in the top three | 55% |
+| the ranker puts the answer in the top three | 53% |
 | a model handed the same candidates and asked to **choose** | **69%** |
 | the two labellers who wrote the ground truth agreeing **with each other** | **70%** |
 
@@ -129,7 +129,7 @@ kind and projected-CRS are facts about the data in hand, `produces` is what they
 want back, but the family is a guess about *your* taxonomy, which they cannot see.
 
 Measured on the same set: as a hard filter it removes six candidates out of
-sixteen, and when the guess is wrong it removes **the right operation**, with no
+seventeen, and when the guess is wrong it removes **the right operation**, with no
 error, leaving a confident answer assembled from neighbours. Every request in the
 set has 4.4 plausible families. At 800 operations the guess is among 43.
 
@@ -208,7 +208,7 @@ operation DOES differently, not around a list of names.
 
 1. **It is read at selection time, not at search time — and selection is where the
    accuracy is.** A model handed the surviving candidates and asked to choose gets
-   its first pick right 69% of the time, against 55% for the ranker putting it in the
+   its first pick right 69% of the time, against 53% for the ranker putting it in the
    top three. Entries that all say "one point per polygon" give it nothing to choose
    on. `distinguishes` is the only field written to be read *against its neighbours*,
    and that is the moment it pays. Measured against retrieval it is worth nothing;

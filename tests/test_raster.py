@@ -181,6 +181,125 @@ def test_weights_off_the_value_grid_are_refused(dem, zone, tmp_path, case, match
         )
 
 
+def test_a_nan_weight_is_a_missing_weight_and_does_not_hide_a_negative(dem, zone, tmp_path):
+    """Measured by the 0.6.2 pre-release review on the first version, which
+    read the band with numpy: one NaN made the minimum NaN, `nan < 0` was
+    false, and a -5 weight went through to a plausible wrong mean. And the
+    check passed a zone that had lost a NaN-weighted cell."""
+    data = _column_weights()
+    data[0, 0] = np.nan  # value 0, weight 1: out of the weighted statistics
+    weights = _weights(tmp_path, data, name="nan.tif", nodata=-9999.0)
+    out = tmp_path / "nan.parquet"
+    result = raster.zonal_statistics(dem, zone, str(out), ["weighted_mean"], weights_path=weights)
+    assert gpd.read_parquet(out).iloc[0]["weighted_mean"] == pytest.approx(1700 / 74)
+    manifest = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+    check = next(
+        c for c in manifest["verification"]
+        if c["name"] == "x-mapsmith:every_valued_cell_has_a_weight"
+    )
+    assert check["passed"] is False and "zones [0]" in check["detail"]
+
+    data[3, 3] = -5.0
+    weights = _weights(tmp_path, data, name="nanneg.tif", nodata=-9999.0)
+    with pytest.raises(ValueError, match="negative weights"):
+        raster.zonal_statistics(
+            dem, zone, str(tmp_path / "nn.parquet"), ["weighted_mean"], weights_path=weights
+        )
+
+
+def test_a_negative_weight_outside_every_zone_changes_nothing_and_is_not_refused(
+    dem, zone, tmp_path
+):
+    data = _column_weights()
+    data[9, 9] = -5.0  # the zone is the top-left 5x5 block
+    weights = _weights(tmp_path, data, nodata=-9999.0)
+    out = tmp_path / "far.parquet"
+    raster.zonal_statistics(dem, zone, str(out), ["weighted_mean"], weights_path=weights)
+    assert gpd.read_parquet(out).iloc[0]["weighted_mean"] == pytest.approx(1700 / 75)
+
+
+def test_a_cell_with_neither_value_nor_weight_is_not_a_lost_cell(zone, tmp_path):
+    """The other half of what the first check got wrong: a NaN VALUE with a
+    missing weight on the same cell was reported as a cell lost to the
+    weights, when it had no value to lose."""
+    data = np.arange(100, dtype=np.float32).reshape(10, 10)
+    data[0, 0] = np.nan
+    values = tmp_path / "nanvalues.tif"
+    with rasterio.open(
+        values, "w", driver="GTiff", height=10, width=10, count=1, dtype="float32",
+        crs="EPSG:32631", transform=from_origin(0.0, 10.0, 1.0, 1.0),
+    ) as dst:
+        dst.write(data, 1)
+    weights_data = _column_weights()
+    weights_data[0, 0] = -1.0
+    weights = _weights(tmp_path, weights_data)
+    result = raster.zonal_statistics(
+        str(values), zone, str(tmp_path / "both.parquet"), ["weighted_mean"], weights_path=weights
+    )
+    manifest = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+    check = next(
+        c for c in manifest["verification"]
+        if c["name"] == "x-mapsmith:every_valued_cell_has_a_weight"
+    )
+    assert check["passed"] is True, check["detail"]
+
+
+@pytest.mark.parametrize("case, match", [
+    ("same_shape_other_origin", "its grid is"),
+    ("finer_degrees", "its grid is"),
+    ("no_crs", "declares no CRS"),
+    ("point_registered", "point-registered"),
+])
+def test_the_grid_comparison_catches_what_shape_alone_does_not(dem, zone, tmp_path, case, match):
+    """The first grid test changed the shape too, so the transform comparison
+    was never exercised on its own; and its tolerance was an absolute 1e-5,
+    which accepted a 1.8e-5 degree grid beside a 9e-6 one."""
+    if case == "same_shape_other_origin":
+        weights = _weights(tmp_path, _column_weights(), transform=from_origin(0.5, 10.0, 1.0, 1.0))
+    elif case == "finer_degrees":
+        values = tmp_path / "deg.tif"
+        with rasterio.open(
+            values, "w", driver="GTiff", height=10, width=10, count=1, dtype="float32",
+            crs="EPSG:4326", transform=from_origin(12.0, 42.0, 9e-6, 9e-6),
+        ) as dst:
+            dst.write(np.ones((10, 10), dtype=np.float32), 1)
+        dem = str(values)
+        gpd.GeoDataFrame(
+            geometry=[box(12.0, 42.0 - 9e-5, 12.0 + 9e-5, 42.0)], crs="EPSG:4326"
+        ).to_file(tmp_path / "degzone.gpkg")
+        zone = str(tmp_path / "degzone.gpkg")
+        weights = _weights(
+            tmp_path, _column_weights(), crs="EPSG:4326",
+            transform=from_origin(12.0, 42.0, 1.8e-5, 1.8e-5),
+        )
+    elif case == "no_crs":
+        weights = _weights(tmp_path, _column_weights(), crs=None)
+    else:
+        weights = _weights(tmp_path, _column_weights())
+        with rasterio.open(weights, "r+") as dst:
+            dst.update_tags(AREA_OR_POINT="Point")
+    with pytest.raises(ValueError, match=match):
+        raster.zonal_statistics(
+            dem, zone, str(tmp_path / "g.parquet"), ["weighted_mean"], weights_path=weights
+        )
+
+
+def test_the_unweighted_form_still_writes_a_conforming_record(dem, zone, tmp_path):
+    """The conformance sweep exercises the weighted form; the unweighted one
+    has code of its own and is checked here, against the vendored validator."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "validator", Path(__file__).parent / "data" / "manifest_spec_validator.py"
+    )
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    result = raster.zonal_statistics(dem, zone, str(tmp_path / "u.parquet"), ["mean"])
+    record = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+    assert validator.problems(record) == []
+    assert "weights_path" not in record["parameters"]
+
+
 def test_a_weighted_statistic_needs_weights_and_weights_need_one(dem, zone, tmp_path):
     with pytest.raises(ValueError, match="need weights_path"):
         raster.zonal_statistics(dem, zone, str(tmp_path / "a.parquet"), ["weighted_mean"])

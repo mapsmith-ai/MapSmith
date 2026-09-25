@@ -90,15 +90,15 @@ flowchart TB
   ASK --> PLAN{{"plan validated<br/>before anything runs"}}
   PLAN -. "rejected: FORWARD_REFERENCE" .-> BAD["'mask_path' references '$buffer' which runs later — move step 'buffer' before 'near'"]
   BAD:::bad
-  BUFFER["<b>buffer_layer</b><br/>76 operations &rarr; 29 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
+  BUFFER["<b>buffer_layer</b><br/>76 operations &rarr; 30 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
   PLAN --> BUFFER
   NEAR["<b>clip_layer</b><br/>76 operations &rarr; 15 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>12/12 checks"]
   BUFFER --> NEAR
   HEIGHT["<b>zonal_statistics</b><br/>76 operations &rarr; 4 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
   NEAR --> HEIGHT
-  AREA["<b>measure_area</b><br/>76 operations &rarr; 29 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>10/10 checks"]
+  AREA["<b>measure_area</b><br/>76 operations &rarr; 30 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>10/10 checks"]
   HEIGHT --> AREA
-  FILTER["<b>select_features</b><br/>76 operations &rarr; 29 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>10/10 checks"]
+  FILTER["<b>select_features</b><br/>76 operations &rarr; 30 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>10/10 checks"]
   AREA --> FILTER
   OUT[["3 parcels, each with elevation and ground area"]]
   FILTER --> OUT
@@ -107,11 +107,11 @@ flowchart TB
 
 | what the agent asks for | it declares | candidates | picked | at position |
 |---|---|---|---|---|
-| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s) | **29** of 76 | `buffer_layer` | 2 |
+| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s) | **30** of 76 | `buffer_layer` | 2 |
 | “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s) | **15** of 76 | `clip_layer` | 1 |
 | “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s) | **4** of 76 | `zonal_statistics` | 3 |
-| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s) | **29** of 76 | `measure_area` | 1 |
-| “drop the ones where the ground is above 120 metres” | vector, dataset:vector, 1 dataset(s) | **29** of 76 | `select_features` | 2 |
+| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s) | **30** of 76 | `measure_area` | 1 |
+| “drop the ones where the ground is above 120 metres” | vector, dataset:vector, 1 dataset(s) | **30** of 76 | `select_features` | 2 |
 
 | step | operation | arguments that mattered | CRS decision, recorded | checks |
 |---|---|---|---|---|
@@ -539,7 +539,7 @@ against a human answer where there is one.
 
 All three are over the same 118 requests, which matters: agreement measured over all 155 requests
 in the file is 68%, and the difference is the 21 pairs where both labellers agreed a request was
-unanswerable — true, and the easy half. Quoting that 68% beside a 55% computed over the 118 would
+unanswerable — true, and the easy half. Quoting that 68% beside a 53% computed over the 118 would
 be comparing two populations, which this table did for half a day.
 
 **The last row is a ceiling, not a baseline**, and the second row sits at it rather than below it.
@@ -561,7 +561,7 @@ numbers are reported as *agreement with model-written labels* and never as accur
 used to be a hard filter like the others. It is not like the others: input kind and projected-CRS
 are facts about the data in hand and output kind is what the caller wants, but *family* is a guess
 about our taxonomy, which the caller cannot see. Measured, it removed six candidates out of
-sixteen — and when the guess was wrong it removed the right operation, with no error, leaving a
+seventeen — and when the guess was wrong it removed the right operation, with no error, leaving a
 confident answer assembled from neighbours. Every request in the independent set has 4.4 plausible
 families. That is the silent-failure class [Argleton](https://argleton.org) measures in other
 people's systems, sitting in our own discovery layer, so it now sorts: declaring the family lifts

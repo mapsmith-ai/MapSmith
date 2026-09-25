@@ -15,6 +15,7 @@ from __future__ import annotations
 import ast
 import contextlib
 import re
+from pathlib import Path
 from typing import Any
 
 import geopandas as gpd
@@ -136,8 +137,10 @@ def zonal_statistics(
     stats: list[str] | None = None,
     weights_path: str | None = None,
 ) -> dict[str, Any]:
-    """Statistics of a single-band raster within each vector zone.
+    """Statistics of a raster within each vector zone, one column per statistic.
 
+    A multi-band raster gives one column per band and statistic, named by
+    exactextract: `band_1_mean`, and with weights `band_1_weight_weighted_mean`.
     With `weights_path`, the weighted statistics too: the mean heat of a zone
     weighted by the population living in each cell, which is a different
     number from the plain mean whenever people are not spread evenly -- and
@@ -188,6 +191,9 @@ def zonal_statistics(
         raster_crs = ds.crs
         parameters: dict[str, Any] = {"stats": ops, "bands": ds.count}
         if weights_ds is not None:
+            # By name as well as by position in `inputs`: an auditor should not
+            # have to know that the third input is the one that weighs.
+            parameters["weights_path"] = Path(weights_path).as_posix()
             parameters["weight_of_a_cell_with_no_weight"] = 0.0
         record = ProvenanceRecord(
             operation="zonal_statistics",
@@ -236,6 +242,8 @@ def zonal_statistics(
                 f"is the caller's, unmoved."
             )
         asked_zones = zones.set_geometry(asked)
+        if weights_ds is not None:
+            _refuse_negative_weights(exactextract, weights_ds, asked_zones, weights_path)
         if weights_ds is None:
             stats_df = exactextract.exact_extract(ds, asked_zones, ops, output="pandas")
             weight_checks: list[verify.Check] = []
@@ -255,9 +263,7 @@ def zonal_statistics(
                 "of the weighted statistics and kept in the unweighted ones"
             )
             weight_checks = [
-                _every_valued_cell_has_a_weight(
-                    exactextract, rasterio, ds, weights_ds, asked_zones
-                )
+                _every_valued_cell_has_a_weight(exactextract, ds, weights_ds, asked_zones)
             ]
 
     out = gpd.GeoDataFrame(
@@ -308,6 +314,10 @@ def _refuse_unaligned_weights(ds: Any, weights: Any, raster_path: str, weights_p
     a weighted_sum inflated k-by-k times for a count -- and it never compares
     the two coordinate systems. Each of those is a plausible wrong number, so
     the grids must be the same one, and aligning them is the caller's step.
+
+    The grid comparison is relative to the cell. `almost_equals` defaults to an
+    ABSOLUTE 1e-5, and the 0.6.2 review measured it accepting a weights grid of
+    1.8e-5 degree cells beside values at 9e-6: two grids, one answer.
     """
     problems = []
     if weights.count != 1:
@@ -319,8 +329,9 @@ def _refuse_unaligned_weights(ds: Any, weights: Any, raster_path: str, weights_p
             f"it is in {verify.crs_label(weights.crs)} and the values in "
             f"{verify.crs_label(ds.crs)}"
         )
+    cell = min(abs(ds.transform.a), abs(ds.transform.e)) or 1.0
     if (weights.height, weights.width) != (ds.height, ds.width) or not weights.transform.almost_equals(
-        ds.transform
+        ds.transform, precision=cell * 1e-6
     ):
         problems.append(
             f"its grid is {weights.height}x{weights.width} at {tuple(weights.transform)[:6]}, "
@@ -335,61 +346,63 @@ def _refuse_unaligned_weights(ds: Any, weights: Any, raster_path: str, weights_p
             "reproject_raster or resample_raster onto the value raster's grid, choosing "
             "the resampling for what the weights are (a density averages, a count sums)."
         )
-    band = weights.read(1, masked=True)
-    if band.count() and float(band.min()) < 0:
+
+
+def _refuse_negative_weights(exactextract: Any, weights: Any, zones: Any, weights_path: str) -> None:
+    """A negative weight inside a zone makes a weighted mean meaningless.
+
+    Asked of exactextract, per zone, rather than of the whole band in memory:
+    it streams by window, it treats a NaN as nodata -- the first version read
+    the band with numpy, where one NaN made the minimum NaN, `nan < 0` was
+    false, and a -5 weight went through to a plausible wrong mean (measured by
+    the 0.6.2 review) -- and a negative weight outside every zone changes no
+    number, so it is no reason to refuse.
+    """
+    import numpy as np
+
+    lowest = np.asarray(
+        exactextract.exact_extract(weights, zones, ["min"], output="pandas")["min"], dtype=float
+    )
+    negative = [int(i) for i in np.flatnonzero(lowest < 0)]
+    if negative:
         raise ValueError(
-            f"Refusing weights {weights_path}: its smallest weight is {float(band.min())}, "
-            "and a negative weight makes a weighted mean meaningless. Clip or rescale "
-            "the weights first."
+            f"Refusing weights {weights_path}: zones {negative[:10]} contain negative weights "
+            f"(smallest {float(np.nanmin(lowest)):g}), and a negative weight makes a weighted "
+            "mean meaningless. Clip or rescale the weights first."
         )
 
 
-def _every_valued_cell_has_a_weight(
-    exactextract: Any, rasterio: Any, ds: Any, weights: Any, zones: Any
-) -> Any:
+def _every_valued_cell_has_a_weight(exactextract: Any, ds: Any, weights: Any, zones: Any) -> Any:
     """Name the zones where a cell had a value and no weight.
 
     Those cells count with weight 0, which is the only choice that leaves a
     number: exactextract's own default turns the zone's weighted statistics
     into NaN. So the answer is still defensible -- and the record says where
     it rests on fewer cells than the unweighted one.
+
+    That same default is the detector: `weighted_sum(default_weight=nan)` is
+    NaN exactly in the zones where a cell has a value and no weight (measured),
+    with exactextract's own reading of nodata and NaN on BOTH rasters and by
+    window. The first version built the mask with numpy, which did not see a
+    NaN as nodata: it passed a zone that had lost a cell and failed one that
+    had not (both measured by the 0.6.2 review), and held the grid in memory
+    five times over. On a multi-band raster a zone counts if any band lost one.
     """
     import numpy as np
-    from rasterio.io import MemoryFile
 
-    # Band 1 of the values decides "has a value", and the detail says so: on a
-    # multi-band raster the other bands can have gaps in other places.
-    values = ds.read(1, masked=True)
-    weight_band = weights.read(1, masked=True)
-    of_band = " (band 1 of the values)" if ds.count > 1 else ""
-    dropped = (~np.ma.getmaskarray(values) & np.ma.getmaskarray(weight_band)).astype("float32")
-    if not dropped.any():
-        return verify.Check(
-            "x-mapsmith:every_valued_cell_has_a_weight",
-            True,
-            f"every cell with a value{of_band} also has a weight",
-            critical=False,
-        )
-    profile = {
-        "driver": "GTiff", "height": ds.height, "width": ds.width, "count": 1,
-        "dtype": "float32", "crs": ds.crs, "transform": ds.transform,
-    }
-    # Written, then reopened for reading: exactextract takes a rasterio
-    # DatasetReader and refuses the writer ("Unhandled raster datatype").
-    with MemoryFile() as memory:
-        with memory.open(**profile) as writer:
-            writer.write(dropped, 1)
-        with memory.open() as mask:
-            lost = exactextract.exact_extract(mask, zones, ["sum"], output="pandas")["sum"]
-    affected = [int(i) for i in np.flatnonzero(np.asarray(lost) > 0)]
+    probe = exactextract.exact_extract(
+        ds, zones, ["weighted_sum(default_weight=nan)"], weights=weights, output="pandas"
+    )
+    lost = np.isnan(probe.to_numpy(dtype=float)).any(axis=1)
+    affected = [int(i) for i in np.flatnonzero(lost)]
     return verify.Check(
         "x-mapsmith:every_valued_cell_has_a_weight",
         not affected,
-        f"{len(affected)} of {len(zones)} zones have cells with a value{of_band} and no weight, "
+        f"{len(affected)} of {len(zones)} zones have cells with a value and no weight, "
         f"left out of the weighted statistics: zones {affected[:10]}"
         + (" and more" if len(affected) > 10 else "")
         if affected
-        else f"every cell with a value{of_band} inside a zone also has a weight",
+        else "every cell with a value inside a zone also has a weight",
         critical=False,
         hint=None
         if not affected
