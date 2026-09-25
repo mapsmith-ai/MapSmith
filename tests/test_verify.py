@@ -352,8 +352,8 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
         # section 3.8 asks for the configuration AS THE ENGINE REPORTS IT, so a
         # real setting name stays exactly as the engine spells it and only our
         # own readings carry the prefix. UPPER_SNAKE is the shape of a setting
-        # -- `PROJ_NETWORK`, `GDAL_PAM_ENABLED`, `AREA_OR_POINT`, all three
-        # named by the specification itself -- and it is derived from the key
+        # -- `PROJ_NETWORK`, `GDAL_PAM_ENABLED`, both named by the specification
+        # itself -- and it is derived from the key
         # rather than checked against a list of variables somebody keeps
         # filling in.
         for key in record.get("environment", {}):
@@ -364,8 +364,8 @@ def test_every_writing_operation_conforms_to_the_spec(tmp_path):
             )
             # And DECLARED, for the reason `CRS_EXTENSIONS` is declared: the
             # prefix says a key is ours and cannot say it is not a synonym.
-            # `AREA_OR_POINT` is named by section 3.8 itself, so
-            # `x-mapsmith:area_or_point` passes the shape rule above and is
+            # `PROJ_NETWORK` is named by section 3.8 itself, so
+            # `x-mapsmith:proj_network` passes the shape rule above and is
             # precisely the mistake that produced D-077 -- one object over. The
             # ratchet cannot judge synonymy; it makes whoever adds a key write
             # the answer down next to the declaration.

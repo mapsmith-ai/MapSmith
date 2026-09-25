@@ -300,7 +300,7 @@ GEOREF_VARIABLES = ("GDAL_PAM_ENABLED", "GDAL_GEOREF_SOURCES")
 #: The keys `georeferencing_source` contributes that are MapSmith's own
 #: statements rather than the name of a setting. Section 3.8 asks for the
 #: configuration *as the engine reports it* -- `PROJ_NETWORK`, the `GDAL_*`
-#: variables, `AREA_OR_POINT` -- so a real variable name stays exactly as the
+#: variables -- so a real variable name stays exactly as the
 #: engine spells it, and anything we worked out ourselves carries the prefix
 #: (D-077). Inside one object the difference is visible at a glance: an
 #: UPPER_SNAKE key is a setting, a prefixed one is our reading of it.
@@ -439,8 +439,10 @@ def manifest_environment(path: str) -> dict[str, str]:
     """The same facts, named for the manifest's `environment`.
 
     Section 3.8 asks for the configuration *as the engine reports it*, and
-    lists `PROJ_NETWORK`, the `GDAL_*` variables and `AREA_OR_POINT` -- so a
-    real variable name is left exactly as the engine spells it. The four keys
+    lists `PROJ_NETWORK` and the `GDAL_*` variables -- so a real variable name
+    is left exactly as the engine spells it. (It listed `AREA_OR_POINT` too
+    until a clarification after draft.6: that is a tag in the file, and our
+    reading of it is in `crs_decisions`, see `manifest_decisions`.) The four keys
     MapSmith works out for itself are not settings, they are our reading of
     them, and they carry the prefix (D-077). Inside one object the difference
     is then visible without the specification in hand: UPPER_SNAKE is a
