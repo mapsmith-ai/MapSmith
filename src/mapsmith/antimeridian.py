@@ -182,29 +182,55 @@ def naive_crossings(gdf: Any) -> list[int]:
     geographic CRS, is not a thing anybody means; the crossing artefact is exactly
     that. Returns the positions of the offending features, so a caller can refuse
     with their indices. Degrees only, for the reason `_is_in_degrees` gives.
+
+    **An edge that runs from -180 to 180 is not one.** The first version flagged
+    it, and so refused the rectangle covering the world, a latitude band round
+    the whole planet, a polar cap -- and Antarctica in the Natural Earth
+    countries file, found by the pre-release review of 0.6.0 before it shipped:
+    "points per country" would have been refused. Those edges run along the edge
+    of the plane, where the planar reading is the one meant. The artefact always
+    has at least one end strictly inside (-180, 180), so that is the test.
+
+    Vectorised: it runs on every input of six operations, and the loop it
+    replaces took 29 s on 200 000 polygons and 12 s on as many points, which
+    have no ring at all.
     """
     import numpy as np
+    import shapely
 
-    if gdf.crs is None or not _is_in_degrees(gdf.crs):
+    if gdf.crs is None or not _is_in_degrees(gdf.crs) or not len(gdf):
         return []
-
-    def rings(geometry: Any) -> list[Any]:
-        if geometry is None or geometry.is_empty:
-            return []
-        if geometry.geom_type == "Polygon":
-            return [geometry.exterior, *geometry.interiors]
-        if geometry.geom_type == "MultiPolygon":
-            return [ring for part in geometry.geoms for ring in rings(part)]
+    geometries = np.asarray(gdf.geometry.array, dtype=object)
+    areal = np.flatnonzero(
+        np.isin(
+            shapely.get_type_id(geometries),
+            (shapely.GeometryType.POLYGON, shapely.GeometryType.MULTIPOLYGON),
+        )
+    )
+    if not areal.size:
         return []
+    parts, part_feature = shapely.get_parts(geometries[areal], return_index=True)
+    rings, ring_part = shapely.get_rings(parts, return_index=True)
+    coords, coord_ring = shapely.get_coordinates(rings, return_index=True)
+    if len(coords) < 2:
+        return []
+    x = coords[:, 0]
+    on_seam = np.abs(np.abs(x) - 180.0) <= _SEAM_TOLERANCE
+    jump = (
+        (coord_ring[1:] == coord_ring[:-1])
+        & (np.abs(np.diff(x)) > HALF_THE_WORLD)
+        & ~(on_seam[1:] & on_seam[:-1])
+    )
+    if not jump.any():
+        return []
+    bad_rings = np.unique(coord_ring[1:][jump])
+    return sorted({int(p) for p in areal[part_feature[ring_part[bad_rings]]]})
 
-    offending = []
-    for position, geometry in enumerate(gdf.geometry):
-        for ring in rings(geometry):
-            longitudes = np.asarray(ring.coords)[:, 0]
-            if longitudes.size > 1 and np.abs(np.diff(longitudes)).max() > HALF_THE_WORLD:
-                offending.append(position)
-                break
-    return offending
+
+#: How close to +/-180 a longitude must be to count as lying on the seam. Far
+#: below any survey precision, far above the round trip of a float through a
+#: file format.
+_SEAM_TOLERANCE = 1e-9
 
 
 def describe_extent(gdf: Any) -> dict[str, Any]:
@@ -231,16 +257,22 @@ def describe_extent(gdf: Any) -> dict[str, Any]:
     if gdf.crs is None or not len(gdf) or not _is_in_degrees(gdf.crs):
         return extent
 
-    # Per-feature bounds rather than every vertex: for a geometry split at the
-    # seam as §3.1.9 prescribes, the halves' own bounds already carry the
-    # extremes, and this is two numbers per feature instead of two per vertex.
-    # It cannot see a single unsplit geometry that itself spans the seam — that
-    # one has coordinates outside [-180, 180], its plain bounds are already the
-    # narrow truth, and nothing about them misleads.
+    # Per-PART bounds rather than every vertex: for a geometry split at the seam
+    # as §3.1.9 prescribes, the halves' own bounds carry the extremes, and this
+    # is two numbers per part instead of two per vertex. Per part and not per
+    # feature: one MultiPolygon split at 180 -- the form MapSmith's own
+    # antimeridian refusal tells a caller to produce -- has feature bounds of
+    # -180..180, which read as a layer spread over the whole world, and the UTM
+    # zone estimated from that was the one centred on 3W (found by the 0.6.0
+    # pre-release review). It cannot see a single unsplit geometry that itself
+    # spans the seam -- that one has coordinates outside [-180, 180], its plain
+    # bounds are already the narrow truth, and nothing about them misleads.
     import numpy as np
+    import shapely
 
-    per_feature = gdf.bounds
-    xs = per_feature[["minx", "maxx"]].to_numpy().ravel()
+    parts = shapely.get_parts(np.asarray(gdf.geometry.array, dtype=object))
+    per_part = shapely.bounds(parts)
+    xs = per_part[:, [0, 2]].ravel()
     # A null geometry has NaN bounds, and NaN poisons min/max silently.
     xs = xs[np.isfinite(xs)]
     if not len(xs):

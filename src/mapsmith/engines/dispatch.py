@@ -168,6 +168,16 @@ def spatial_join_routed(
                     "engine='auto' for the aligning GeoPandas path."
                 )
             chosen = "geopandas"
+    if chosen in ("sedonadb", "duckdb"):
+        # The GeoPandas path refuses a ring drawn across 180; the fast engines
+        # are planar too and read it the same wrong way, so the refusal has to
+        # happen here, before the engine is chosen. Found by the 0.6.0
+        # pre-release review: GeoParquet inputs in one CRS went to DuckDB and
+        # came back `verified: True` with the feature on the far side of the
+        # world. Only layers in degrees can carry the defect, so projected
+        # inputs keep the fast path without reading a geometry.
+        _refuse_naive_antimeridian_at(left_path, left_crs)
+        _refuse_naive_antimeridian_at(right_path, right_crs)
     if chosen == "sedonadb":
         from . import sedona_engine
 
@@ -179,3 +189,17 @@ def spatial_join_routed(
     result = fn(left_path, right_path, output_path, predicate)
     result["engine_used"] = chosen
     return result
+
+
+def _refuse_naive_antimeridian_at(path: str, crs_label: str) -> None:
+    from pyproj import CRS
+
+    from .. import antimeridian
+    from . import vector
+
+    try:
+        in_degrees = antimeridian._is_in_degrees(CRS.from_user_input(crs_label))
+    except Exception:  # noqa: BLE001 - an unreadable label is not a CRS in degrees
+        in_degrees = False
+    if in_degrees:
+        vector._refuse_naive_antimeridian(vector._read(path), path)

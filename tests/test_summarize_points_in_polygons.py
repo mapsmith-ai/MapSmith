@@ -490,12 +490,69 @@ def test_the_detector_ignores_projected_layers_and_ordinary_zones():
     assert antimeridian.naive_crossings(ordinary) == []
 
 
+def test_an_edge_along_the_seam_is_not_a_crossing():
+    """The first detector refused all four of these, found by the 0.6.0
+    pre-release review before it shipped -- including Antarctica in Natural
+    Earth, which would have refused "points per country". Their jumps run from
+    -180 to 180 along the edge of the plane, where the planar reading is meant."""
+    from shapely.geometry import Polygon
+
+    from mapsmith import antimeridian
+
+    antarctica_like = Polygon(
+        [(-180, -90), (-180, -84.7), (-60, -63), (60, -66), (180, -84.7), (180, -90)]
+    )
+    legitimate = gpd.GeoDataFrame(
+        {"what": ["world", "tropics", "arctic", "antarctica"]},
+        geometry=[
+            box(-180, -90, 180, 90),
+            box(-180, -23.4, 180, 23.4),
+            box(-180, 66.5, 180, 90),
+            antarctica_like,
+        ],
+        crs="EPSG:4326",
+    )
+    assert antimeridian.naive_crossings(legitimate) == []
+    # One end on the seam and the other inside is still the artefact.
+    touching = gpd.GeoDataFrame(
+        geometry=[Polygon([(180, -5), (-170, -5), (-170, 5), (180, 5)])], crs="EPSG:4326"
+    )
+    assert antimeridian.naive_crossings(touching) == [0]
+    # And a layer with no polygon in it is answered without looking at a ring.
+    points = gpd.GeoDataFrame(geometry=[Point(175, 0), Point(-175, 0)], crs="EPSG:4326")
+    assert antimeridian.naive_crossings(points) == []
+
+
+def test_natural_earth_countries_are_not_refused():
+    """The real file the review measured: Antarctica is feature 159."""
+    from pathlib import Path
+
+    import pyogrio
+
+    from mapsmith import antimeridian
+
+    shp = (
+        Path(pyogrio.__file__).parent
+        / "tests" / "fixtures" / "naturalearth_lowres" / "naturalearth_lowres.shp"
+    )
+    if not shp.exists():
+        pytest.skip("this pyogrio build does not ship its Natural Earth fixture")
+    countries = gpd.read_file(shp)
+    assert len(countries) > 150
+    assert antimeridian.naive_crossings(countries) == []
+
+
+@pytest.mark.parametrize("side", ["first", "second"])
 @pytest.mark.parametrize("operation", ["clip", "overlay", "spatial_join", "nearest_join"])
-def test_the_other_region_operations_refuse_a_ring_drawn_across_180(tmp_path, operation):
+def test_the_other_region_operations_refuse_a_ring_drawn_across_180(tmp_path, operation, side):
     """Measured on 2026-09-24 before the refusal: clip, spatial_join and overlay
     each returned the feature on the FAR side of the world instead of the one
     inside the zone, and nearest_join returned nothing. Not measure_area, whose
-    geodesic area follows the edge the short way and is right."""
+    geodesic area follows the edge the short way and is right.
+
+    On either input, which the CHANGELOG says and the first version of this
+    test did not check: the review deleted the refusal of the first input and
+    the suite stayed green."""
     from shapely.geometry import Polygon
 
     zone = _pacific_zone(tmp_path, Polygon([(170, -5), (-170, -5), (-170, 5), (170, 5)]))
@@ -504,15 +561,54 @@ def test_the_other_region_operations_refuse_a_ring_drawn_across_180(tmp_path, op
         {"id": ["inside", "far"]}, geometry=[box(172, -2, 178, 2), box(0, -2, 6, 2)],
         crs="EPSG:4326",
     ).to_file(other)
+    a, b = (str(other), str(zone)) if side == "second" else (str(zone), str(other))
     out = str(tmp_path / "o.gpkg")
     calls = {
-        "clip": lambda: vector.clip(str(other), str(zone), out),
-        "overlay": lambda: vector.overlay(str(other), str(zone), out, how="intersection"),
-        "spatial_join": lambda: vector.spatial_join(str(other), str(zone), out),
-        "nearest_join": lambda: vector.nearest_join(str(other), str(zone), out),
+        "clip": lambda: vector.clip(a, b, out),
+        "overlay": lambda: vector.overlay(a, b, out, how="intersection"),
+        "spatial_join": lambda: vector.spatial_join(a, b, out),
+        "nearest_join": lambda: vector.nearest_join(a, b, out),
     }
     with pytest.raises(ValueError, match="cross the 180th meridian"):
         calls[operation]()
+
+
+@pytest.mark.parametrize("side", ["first", "second"])
+def test_the_routed_spatial_join_refuses_it_on_the_fast_engines_too(tmp_path, side):
+    """GeoParquet inputs in one CRS are routed to DuckDB, which is planar too.
+    Measured by the 0.6.0 pre-release review before the refusal moved into the
+    router: `engine_used: duckdb`, `verified: True`, and only the feature on the
+    far side of the world in the output."""
+    from shapely.geometry import Polygon
+
+    from mapsmith.engines import dispatch
+
+    zone = tmp_path / "zone.parquet"
+    gpd.GeoDataFrame(
+        {"z": ["pacific"]},
+        geometry=[Polygon([(170, -5), (-170, -5), (-170, 5), (170, 5)])],
+        crs="EPSG:4326",
+    ).to_parquet(zone)
+    other = tmp_path / "other.parquet"
+    gpd.GeoDataFrame(
+        {"id": ["inside", "far"]}, geometry=[box(172, -2, 178, 2), box(0, -2, 6, 2)],
+        crs="EPSG:4326",
+    ).to_parquet(other)
+    a, b = (str(other), str(zone)) if side == "second" else (str(zone), str(other))
+    with pytest.raises(ValueError, match="cross the 180th meridian"):
+        dispatch.spatial_join_routed(a, b, str(tmp_path / "j.parquet"))
+
+
+def test_the_routed_spatial_join_keeps_the_fast_path_on_ordinary_data(tmp_path):
+    """The refusal must not push ordinary GeoParquet off the fast engine."""
+    from mapsmith.engines import dispatch
+
+    left = tmp_path / "l.parquet"
+    gpd.GeoDataFrame({"a": [1]}, geometry=[box(0, 0, 1, 1)], crs="EPSG:4326").to_parquet(left)
+    right = tmp_path / "r.parquet"
+    gpd.GeoDataFrame({"b": [2]}, geometry=[box(0.5, 0.5, 2, 2)], crs="EPSG:4326").to_parquet(right)
+    result = dispatch.spatial_join_routed(str(left), str(right), str(tmp_path / "j.parquet"))
+    assert result["engine_used"] in ("duckdb", "sedonadb")
 
 
 def test_the_utm_estimate_centres_on_the_antimeridian_when_the_data_does(tmp_path):
@@ -527,6 +623,26 @@ def test_the_utm_estimate_centres_on_the_antimeridian_when_the_data_does(tmp_pat
     # Data that does not cross goes straight to GeoPandas, unchanged.
     rome = gpd.GeoDataFrame(geometry=[Point(12.5, 41.9)], crs="EPSG:4326")
     assert antimeridian.estimate_utm_crs(rome) == rome.estimate_utm_crs()
+
+
+def test_one_feature_split_at_180_is_read_as_crossing():
+    """The form the refusal tells a caller to produce, as ONE feature. Its
+    feature bounds are -180..180, and read per feature the layer spanned the
+    world: the UTM estimate came back EPSG:32730, centred on 3W (found by the
+    0.6.0 pre-release review). The same shape as two features was right."""
+    from shapely.geometry import MultiPolygon
+
+    from mapsmith import antimeridian
+
+    split = gpd.GeoDataFrame(
+        geometry=[MultiPolygon([box(178, -1, 180, 1), box(-180, -1, -178, 1)])],
+        crs="EPSG:4326",
+    )
+    extent = antimeridian.describe_extent(split)
+    assert extent.get("crosses_antimeridian") is True
+    assert extent["true_extent"]["width_degrees"] == pytest.approx(4.0)
+    zone = antimeridian.estimate_utm_crs(split).to_epsg()
+    assert zone in (32601, 32660, 32701, 32760), f"split zone given UTM EPSG:{zone}"
 
 
 def test_nearest_join_measures_true_distances_across_the_antimeridian(tmp_path):
