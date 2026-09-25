@@ -224,9 +224,11 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 This page describes **0.6.1**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
 have to find out by calling a tool that is not there. **`main` is ahead of 0.6.1 today** by
-one capability: `zonal_statistics` computes weighted statistics with a weights raster, such as
-mean heat per district weighted by population. No tool or manifest key moved;
-[`[Unreleased]` in the changelog](CHANGELOG.md#unreleased) has it.
+one capability and one fix: `zonal_statistics` computes weighted statistics with a weights
+raster, such as mean heat per district weighted by population, and `elevation_profile` measures
+its spacing in metres along the line even when the DEM is in degrees, where it returned a single
+point. No tool or manifest key moved; [`[Unreleased]` in the changelog](CHANGELOG.md#unreleased)
+has both.
 
 **If you read manifests, 0.6.1 moves no key**: records declare `spec_version`
 `1.0.0-draft.8`, two drafts past 0.6.0's `draft.6`, and both drafts only narrowed where a

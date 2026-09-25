@@ -38,6 +38,18 @@ All notable changes to MapSmith are documented here, in the format of
   that read one raster are unchanged. Reached through the same tool; the tool
   count is unchanged.
 
+### Fixed
+
+- **`elevation_profile` measured the spacing in the DEM's units, and on a DEM
+  in degrees a 1000 m line came back as one point.** The line was reprojected
+  to the raster's CRS before its positions were computed, so `spacing=100`
+  meant 100 degrees, and the only trace was a GeoPandas warning on the console.
+  Positions are now measured along the line in its own projected CRS -- a
+  geographic line was already refused -- and only the sample points go to the
+  raster's CRS to be read; the output stays in the line's CRS and the record
+  says the line's points were what moved. When line and DEM share a CRS
+  nothing changes. Found while building a gradient on top of it.
+
 ## [0.6.1] - 2026-09-25
 
 A small release on the day of 0.6.0. It moves no manifest key and changes no

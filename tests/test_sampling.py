@@ -239,6 +239,35 @@ def test_a_profile_along_a_ramp_is_the_ramp(ramp, tmp_path):
     assert named["x-mapsmith:each_profile_starts_at_zero_and_steps_by_the_spacing"] is True
 
 
+def test_the_spacing_is_metres_along_the_line_even_on_a_dem_in_degrees(tmp_path):
+    """Until 2026-09-25 the line was reprojected to the raster's CRS and the
+    spacing measured after: on a DEM in degrees `spacing=100` meant 100
+    degrees, and a 1000 m line came back as one point with nothing in the
+    result to say so. Distances belong to the line's projected CRS; only the
+    sample points go to the raster's to be read."""
+    dem = tmp_path / "dem4326.tif"
+    with rasterio.open(
+        dem, "w", driver="GTiff", height=200, width=200, count=1, dtype="float32",
+        crs="EPSG:4326", transform=from_origin(11.0, 44.0, 0.001, 0.001),
+    ) as dst:
+        dst.write(np.full((200, 200), 7.0, dtype="float32"), 1)
+    line = gpd.GeoDataFrame(
+        geometry=[LineString([(670000, 4860000), (671000, 4860000)])], crs="EPSG:32632"
+    )
+    line.to_file(tmp_path / "line.gpkg")
+    out = tmp_path / "p.parquet"
+    result = sampling.elevation_profile(str(dem), str(tmp_path / "line.gpkg"), str(out), spacing=100)
+    got = gpd.read_parquet(out)
+    assert list(got["distance"]) == pytest.approx([100.0 * i for i in range(11)])
+    assert list(got["value"]) == pytest.approx([7.0] * 11)  # every point landed on the DEM
+    assert got.crs.to_epsg() == 32632
+    record = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+    assert record["crs_decisions"]["analysis_crs"] == "EPSG:32632"
+    assert record["crs_decisions"]["x-mapsmith:inputs_reprojected"] == [
+        {"argument": "line_path", "from": "EPSG:32632"}
+    ]
+
+
 def test_a_profile_includes_both_ends_even_when_the_step_does_not_divide(ramp, tmp_path):
     """15 m at 4 m is three whole steps and a remainder. The far end still
     appears, clamped to the line's length, because a profile that silently stops

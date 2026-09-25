@@ -377,21 +377,34 @@ def elevation_profile(
         )
         working = lines
         aligned = not verify.same_crs(lines.crs, raster_crs)
+        # Positions along the line are measured in the LINE's CRS, which is
+        # projected (a geographic one is refused above), and only the points
+        # are brought to the raster's CRS to be read. Until 2026-09-25 the
+        # whole line was reprojected first and the spacing measured after:
+        # with a DEM in degrees, `spacing=100` meant 100 degrees, and a 1000 m
+        # line came back as ONE point, with nothing in the result to say so.
         record.crs_decisions = alignment_decisions(
-            raster_crs,
-            "lines brought to the raster's CRS before sampling, so the spacing is "
-            "measured in the unit the values are read in"
+            lines.crs,
+            "distances along the line are measured in the line's own projected CRS; "
+            "the sample points are brought to the raster's CRS only to read the values"
             if aligned
             else "line and raster share the same CRS",
+            # The sample points of the line are what moves, to the raster's CRS;
+            # the transformation recorded is that pair, the one PROJ was asked.
             [("line_path", lines.crs)] if aligned else [],
+            moved_to=raster_crs,
         )
-        if aligned:
-            working = lines.to_crs(raster_crs)
 
         rows = _profile_positions(working, spacing)
-        values = _read_at(
-            dataset, band, [r["x"] for r in rows], [r["y"] for r in rows], method
-        )
+        read_x, read_y = [r["x"] for r in rows], [r["y"] for r in rows]
+        if aligned and rows:
+            from shapely.geometry import Point as _Point
+
+            moved = gpd.GeoSeries(
+                [_Point(x, y) for x, y in zip(read_x, read_y)], crs=lines.crs
+            ).to_crs(raster_crs)
+            read_x, read_y = list(moved.x), list(moved.y)
+        values = _read_at(dataset, band, read_x, read_y, method)
 
     from shapely.geometry import Point
 
