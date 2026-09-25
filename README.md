@@ -55,9 +55,11 @@ generated from the source rather than maintained by hand.
 
 Evidence before promises. A correctness suite in its own organisation,
 [**Argleton**](https://argleton.org), grades MapSmith on thirty-one traps whose answers are
-computed on paper before any system runs: **0.00 silent errors, nothing skipped**, against
-0.9355 for the obvious way of writing the same code. Getting there cost six defects it sent
-back here, and they are listed. Alongside it: an [A/B on GABench](docs/benchmarks.md) whose
+computed on paper before any system runs: **0.03 silent errors — one in thirty-one, nothing
+skipped** — against 0.9032 for the obvious way of writing the same code. That one was published
+as a pass: the trap's own truth was wrong in MapSmith's favour for 26 days, the error is ours
+twice over, and the [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) says so; the fix is on `main`. Getting here cost
+seven defects the suite sent back, and they are listed. Alongside it: an [A/B on GABench](docs/benchmarks.md) whose
 headline is a null result — with the analysis that took our own positive number apart —
 [notebooks](examples/) on a real USGS DEM of Mount St. Helens, an
 [in-chat map panel](#see-results-inside-the-chat) that shows the verification status of
@@ -223,15 +225,14 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 
 This page describes **0.6.1**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **`main` is ahead of 0.6.1 today** by
-two capabilities and two fixes, all four in
-[`[Unreleased]` in the changelog](CHANGELOG.md#unreleased): weighted `zonal_statistics`, such
-as mean heat per district weighted by population; the gradient along a line in
-`elevation_profile`, such as the steepest 100 m of a rail alignment; its spacing measured in
-metres along the line even on a DEM in degrees, where it returned a single point; and its far
-end reached when the step does not divide the line. No tool moved. When line and DEM are in
-different CRSs the profile is now written in the line's, and `crs_decisions` names the DEM's
-as the `target_crs` its sample points were read in.
+have to find out by calling a tool that is not there. **`main` is ahead of 0.6.1 today**, and
+one difference changes answers 0.6.1 gives: every position read from a point-registered
+raster (`AREA_OR_POINT=Point`, the USGS and Copernicus DEMs) was half a cell off, and is not
+on `main`, where terrain operations also stop refusing those DEMs. The rest is in
+[`[Unreleased]` in the changelog](CHANGELOG.md#unreleased): weighted `zonal_statistics`; the
+gradient along a line in `elevation_profile`, whose spacing is now metres along the line
+even on a DEM in degrees and which now reaches the far end of the line; and a Copernicus
+notebook. No tool moved.
 
 **If you read manifests, 0.6.1 moves no key**: records declare `spec_version`
 `1.0.0-draft.8`, two drafts past 0.6.0's `draft.6`, and both drafts only narrowed where a
@@ -1092,9 +1093,14 @@ under Apache-2.0 rather than in this repository, because an evaluation that live
 inside the thing it evaluates is easy to dismiss in one line. Closed-form truth, no
 model in the evaluator, fixtures rebuilt rather than vendored.
 
-**The score.** On the current run — all twenty-nine families — MapSmith answers every
-trap correctly: **0.00 silent errors over 31 traps, nothing skipped**, against 0.9355
-for a careless composition of the same libraries. One of the thirty-one is not an answer
+**The score.** On the current run — all twenty-nine families — MapSmith answers thirty
+of the thirty-one traps correctly: **0.03 silent errors over 31 traps, nothing skipped**,
+against 0.9032 for a careless composition of the same libraries. That run was published as
+0.00. The trap it failed, a point-registered DEM, had a truth derived from a premise about
+GDAL that GDAL documents the other way, and MapSmith had been built to that premise: both
+corrected half a cell that was already corrected. Found on 2026-09-25 by a Copernicus DEM
+whose samples fall on whole arc-seconds by its own documentation; the
+[erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) rescores every run it touched, and the fix is on `main`. One of the thirty-one is not an answer
 at all but a refusal: a raster and the sidecar beside it declare different georeferencing,
 both readings are GDAL behaving as documented, and the right move is to stop and say so
 rather than pick one. That family arrived on 2026-08-31, the morning after the list of
@@ -1123,7 +1129,7 @@ the newest and the least flattering: MapSmith **failed** that trap on 2026-08-26
 out, with a manifest recording a successful reprojection — and the pass is the fix, not
 the original behaviour. The run where it failed is still published.
 
-**Six defects have come back from it**, which is the return we wanted from putting the
+**Seven defects have come back from it**, which is the return we wanted from putting the
 suite outside:
 
 - the `datum-ballpark` failure above — 74 m out with a manifest recording a successful
@@ -1138,21 +1144,28 @@ suite outside:
   line was added to 2 km of pipe in silence and every individual row stayed right;
 - two probes answered `unsupported` because nothing could say where a raster's lowest cell
   was;
-- and three probes that came back `unsupported` because MapSmith had no area operation at
+- three probes that came back `unsupported` because MapSmith had no area operation at
   all — `measure_area` exists because a trap said so, and it carries the first check here
-  that asks whether the *number* is right rather than whether the operation ran.
-
-Grid registration was the one MapSmith could not attempt at all when it was published: a
-DEM that declares its values sit at grid nodes rather than filling cells, where every
-position moves half a cell if you ignore the tag. Nothing here read the tag, and no
-operation reported *where* a cell is. Fixed in one module rather than at the point of
-failure, because the defect was in every place that turned an index into a coordinate.
+  that asks whether the *number* is right rather than whether the operation ran;
+- and the seventh, which the suite sent back by being wrong itself. Grid registration was
+  the family MapSmith could not attempt when it was published, and the fix for it was built
+  to the trap's premise: that GDAL leaves a point-registered file's geotransform alone, so
+  the reader must move every position half a cell. GDAL documents the opposite (RFC 33) —
+  it has already moved it — and MapSmith put every sample of such a file half a cell
+  north-west, the Copernicus DEM included, while the trap scored that as a pass. A
+  Copernicus DEM, whose samples fall on whole arc-seconds by its own documentation, found
+  both on 2026-09-25 ([erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024)). Positions now come from GDAL's geotransform
+  whatever the tag says, and the terrain engine, which really does misread the tag, gets
+  an area copy instead of a refusal.
 
 ## Notebook gallery
 
-Three executable walkthroughs in [`examples/`](examples/): verified buffer+clip with
+Four executable walkthroughs in [`examples/`](examples/): verified buffer+clip with
 provenance manifests, terrain and hydrology on a real 520×520 USGS DEM of **Mount St.
-Helens**, and a deliberately wrong plan rejected before execution and then repaired. The
+Helens**, a deliberately wrong plan rejected before execution and then repaired, and
+**Copernicus** data on Monte Baldo — a DEM in degrees refused for slope and then reprojected,
+and a Sentinel-2 NDVI whose reflectance offset the catalogue declares and the pixels already
+contain. The
 terrain notebook also shows what happens when reality bites: that DEM is stored with the
 standard TIFF predictor, which Whitebox Workflows 2.x does not undo when reading
 ([upstream report](https://github.com/jblindsay/whitebox_next_gen/issues/32)), so MapSmith
@@ -1225,7 +1238,7 @@ Next, in the order we intend to do it. The linked items carry a written spec —
 - [x] **A suite for the failure every existing benchmark misses** — a result that is wrong and
   reported as successful. It exists, it is not here, and it is not ours to grade:
   [**Argleton**](https://argleton.org) lives in [its own organisation](https://github.com/argleton/argleton)
-  under Apache-2.0. What it measures in MapSmith, including the six defects it has sent back,
+  under Apache-2.0. What it measures in MapSmith, including the seven defects it has sent back,
   has [a section of its own](#what-the-suite-found-in-mapsmith). #25 is closed against Argleton
   rather than left open here.
 - [ ] [Agent-loop repair](https://github.com/mapsmith-ai/MapSmith/issues/26): hand verification failures back to the agent as structured, actionable errors, with a bounded retry budget recorded in the manifest. Our [own measurements](docs/benchmarks.md) say the runtime error message is the information channel that works

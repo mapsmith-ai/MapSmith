@@ -1,56 +1,53 @@
 """Where a raster's values actually are — the one place that decides.
 
 A grid of numbers is not a map until something says where each number sits, and
-GeoTIFF says it in two different ways that differ by half a pixel:
+GeoTIFF says it in two ways that differ by half a pixel:
 
 * **`RasterPixelIsArea`** — a value describes the cell it fills. The tie point in
-  the header is that cell's upper-left corner, and the value's position is the
-  cell's centre. The default, and what most data ships as.
-* **`RasterPixelIsPoint`** — a value is a sample *at a grid node*. The tie point
-  IS the position of the first value, and there is no half cell to add.
+  the header is that cell's upper-left corner. The default.
+* **`RasterPixelIsPoint`** — a value is a sample at a grid node. The tie point in
+  the header is the position of the first sample itself.
 
-The choice is recorded in the file, GDAL reads it faithfully and reports it as
-the `AREA_OR_POINT` metadata item, and its documentation is explicit that the
-geotransform is **not** adjusted for it. So `dataset.tags()` tells you the
-convention and `dataset.xy()` ignores it, from the same open dataset — which is
-how a fifteen-metre systematic shift on a 30 m DEM gets into an analysis without
-a single warning. The USGS elevation products are point-registered, so this is
-not a corner case: it is most of the free elevation data in North America.
+**GDAL folds that difference into the geotransform, so a reader going through it
+has nothing to add.** Since RFC 33 (`GTIFF_POINT_GEO_IGNORE`, FALSE by default)
+the GTiff driver shifts a PixelIsPoint tie point by half a pixel on read and on
+write, so the geotransform is always area-oriented: the Raster Data Model says
+AREA_OR_POINT "is not intended to influence interpretation of georeferencing
+which remains area oriented". The sample of cell `(row, col)` is at
+`transform * (col + 0.5, row + 0.5)` under either tag — which is what
+`dataset.xy()` returns.
 
-This module exists because MapSmith had that defect everywhere at once. Every
-place that turned a cell index into a coordinate did what rasterio does, and
-none of them had asked the question — which is the same shape as #28, where
-"open a vector file" existed as six copies of one decision and four of them were
-missing a branch. So the decision lives here, once, and a test fails if a second
-copy appears.
+**This module said the opposite until 2026-09-25**, and so did Argleton trap 024,
+whose builder claimed GDAL "leaves the geotransform alone, which is documented".
+It is documented the other way. MapSmith added no half cell for a Point file on
+top of GDAL's, which put every sample of a point-registered raster half a cell
+north-west of where it is: on the Copernicus DEM, whose samples fall on whole
+arc-seconds by its own documentation, 10.79986 where the sample is at 10.8. The
+premise was never measured; one read with `GTIFF_POINT_GEO_IGNORE=TRUE`, which
+shows the raw tie point, would have caught it (D-096).
 
-## The one idea
+## What the tag is still for
 
-For cell `(row, col)`, the value's position in *array space* is
-
-    (col + OFFSET, row + OFFSET)
-
-where `OFFSET` is 0.5 for area registration and 0.0 for point registration.
-Everything else in this module is that sentence applied: forward to get a
-coordinate, backward to get an index, and fractionally to interpolate between
-samples.
+What a value MEANS: an average over a cell or a sample at a point, which is data
+and is recorded in the manifest. And the engines that read the raw tie point
+without GDAL's shift: the terrain engine does, and gets a Point file half a cell
+wrong in the other direction, so it is handed an area-tagged copy with GDAL's
+own geotransform (`whitebox_engine._needs_plain_copy`).
 
 ## What it does not fix
 
-Nothing here changes what an operation MEANS. Reprojecting or resampling a
-point-registered grid still has to decide what the output represents, and
-`preserve` carries the declaration onto the output rather than answering that
-question — an output that quietly became area-registered is the same silent
-error one step downstream.
+Nothing here changes what an operation MEANS. `preserve` carries the declaration
+onto an output rather than answering what a resampled point grid represents.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-#: How far the value sits from the cell's upper-left corner, in cells, for each
-#: registration. The whole module is this table plus arithmetic.
-OFFSET = {"area": 0.5, "point": 0.0}
+#: Where a value sits from the cell's upper-left corner, in cells, as GDAL's
+#: geotransform describes the cell. The same for both registrations: GDAL has
+#: already applied the difference (see the module docstring).
+SAMPLE_OFFSET = 0.5
 
 #: The metadata item GDAL reports the GeoTIFF raster type as. Written once so
 #: that a search for it finds every use.
@@ -86,7 +83,7 @@ def registration(dataset: Any) -> str:
     """
     if isinstance(dataset, str):
         kind = dataset.strip().lower()
-        if kind not in OFFSET:
+        if kind not in ("area", "point"):
             # The same policy as the closed-dataset guard below, and for the
             # same reason. A path is the natural mistake — every other entry
             # point in this module takes one — and so is passing "Point", the
@@ -114,8 +111,13 @@ def registration(dataset: Any) -> str:
 
 
 def offset(dataset: Any) -> float:
-    """The half cell, or not, for this dataset."""
-    return OFFSET[registration(dataset)]
+    """Where the sample sits in its GDAL cell: always the centre.
+
+    Takes the dataset so that a registration it cannot report still raises
+    here, as before; the answer no longer depends on it.
+    """
+    registration(dataset)
+    return SAMPLE_OFFSET
 
 
 def describe(dataset: Any) -> dict[str, Any]:
@@ -143,9 +145,9 @@ def describe(dataset: Any) -> dict[str, Any]:
         # registration. An existing test caught it; two different reasons under
         # one key is a defect wherever it happens.
         "raster_registration_reason": (
-            "the file declares AREA_OR_POINT=Point, so each value is a sample at a "
-            "grid node and the tie point is the position of the first value — no "
-            "half cell is added"
+            "the file declares AREA_OR_POINT=Point, so each value is a sample at "
+            "a grid node; GDAL has already shifted the geotransform by half a cell "
+            "for it, so the sample is at the centre of the cell GDAL describes"
             if kind == "point"
             else "the file does not declare point registration, so each value "
             "describes the cell it fills and its position is the cell's centre"
@@ -184,8 +186,9 @@ def manifest_decisions(dataset: Any) -> dict[str, Any]:
 def sample_xy(dataset: Any, row: int, column: int) -> tuple[float, float]:
     """Where the value of this cell IS, as a coordinate.
 
-    The replacement for `dataset.xy(row, col)`, which always answers as if the
-    file were area-registered.
+    The same answer as `dataset.xy(row, col)`, under either registration, and
+    kept as the one place that says so: it was the replacement for `xy` while
+    this module believed a Point file needed a different answer (D-096).
     """
     shift = offset(dataset)
     return dataset.transform * (column + shift, row + shift)
@@ -194,9 +197,9 @@ def sample_xy(dataset: Any, row: int, column: int) -> tuple[float, float]:
 def sample_index(dataset: Any, x: float, y: float) -> tuple[int, int]:
     """Which cell's value is the one at this position.
 
-    Area: the cell the position falls inside. Point: the node it is nearest to.
-    They are the same question asked of two different grids, and rounding rather
-    than flooring is the whole difference.
+    The cell the position falls inside, under either registration: GDAL's
+    cell around a point sample is centred on it, so the nearest sample and the
+    containing cell are the same cell.
 
     Returns **(row, column)**, in that order, because that is the order every
     array index is written in. Unpacking it the other way round is the axis-order
@@ -209,19 +212,18 @@ def sample_index(dataset: Any, x: float, y: float) -> tuple[int, int]:
     """
     import math
 
+    registration(dataset)
     column, row = ~dataset.transform * (x, y)
-    if registration(dataset) == "point":
-        return math.floor(row + 0.5), math.floor(column + 0.5)
     return math.floor(row), math.floor(column)
 
 
 def sample_space(dataset: Any, x: float, y: float) -> tuple[float, float]:
     """The position in *sample space*: (column, row) where integers are samples.
 
-    What bilinear interpolation needs. Under area registration a coordinate at
-    array position 3.5 is exactly on the sample of cell 3, so sample space is
-    array space minus a half; under point registration array position 3.0 is the
-    sample, so the two spaces coincide.
+    What bilinear interpolation needs. A coordinate at array position 3.5 is
+    exactly on the sample of cell 3, so sample space is array space minus a
+    half -- under either registration, because GDAL's geotransform already
+    centres its cell on a point sample.
     """
     column, row = ~dataset.transform * (x, y)
     shift = offset(dataset)
@@ -231,10 +233,8 @@ def sample_space(dataset: Any, x: float, y: float) -> tuple[float, float]:
 def bounds_of_samples(dataset: Any) -> tuple[float, float, float, float]:
     """The envelope of the sample POSITIONS, which is not the dataset's extent.
 
-    Under point registration the outermost samples sit on the file's declared
-    boundary rather than half a cell inside it, so a caller asking "is this
-    position within the data" gets a different answer. Returned as
-    (left, bottom, right, top).
+    The outermost samples sit half a cell inside the extent GDAL reports, under
+    either registration. Returned as (left, bottom, right, top).
     """
     shift = offset(dataset)
     left, top = dataset.transform * (shift, shift)
@@ -243,27 +243,6 @@ def bounds_of_samples(dataset: Any) -> tuple[float, float, float, float]:
         dataset.height - 1 + shift,
     )
     return min(left, right), min(top, bottom), max(left, right), max(top, bottom)
-
-
-def shift_for_area_tools(dataset: Any) -> tuple[float, float]:
-    """How far to move a GEOMETRY so an area-registered tool gets it right.
-
-    Some engines take the cell footprint from the transform and cannot be told
-    otherwise — exact coverage fractions, rasterisation. Against a
-    point-registered file they compute the footprint half a cell south-east of
-    where the samples are.
-
-    Moving the raster is expensive and moving the question is free: coverage of
-    a polygon against a grid shifted by d equals coverage of the same polygon
-    shifted by -d against the unshifted grid. This returns that -d, in map
-    units, and it is (0, 0) for an ordinary file.
-
-    The result of such a call must be attached to the ORIGINAL geometry. The
-    shifted copy exists only to ask the question.
-    """
-    if registration(dataset) == "area":
-        return 0.0, 0.0
-    return abs(dataset.transform.a) / 2.0, -abs(dataset.transform.e) / 2.0
 
 
 def preserve(source: Any, destination: Any) -> str | None:

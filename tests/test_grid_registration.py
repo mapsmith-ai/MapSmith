@@ -1,15 +1,22 @@
 """Where a raster's values are, on the fixture that proved we did not know.
 
-Argleton trap 024 plants a DEM that declares `AREA_OR_POINT=Point` — every value
-a sample at a grid node rather than an average over a cell — and asks where the
-lowest one is. MapSmith reported `unsupported` twice: it had no operation that
-answers *where*, and no line of code anywhere that read the tag.
+Argleton trap 024 plants a DEM that declares `AREA_OR_POINT=Point` and asks where
+its lowest value is. The fixtures here are the trap's, rebuilt: the same 8x8
+surface at 30 m spacing with a strict minimum at row 2, column 3, written once as
+`Point` and once as `Area`.
 
-The fixtures here are the trap's, rebuilt: the same 8×8 surface at 30 m spacing
-with a strict minimum at row 2, column 3, written once as `Point` and once as
-`Area`. The two correct answers are 412090 and 412105, and each is the other's
-failure. Every test below asserts one of them, so a system that hard-codes
-either convention fails half of this file.
+**The answer is the same on both, and this file said otherwise until
+2026-09-25 (D-096).** The trap's builder claimed GDAL "leaves the geotransform
+alone" for a PixelIsPoint file. It does not: since RFC 33 GDAL shifts the stored
+tie point half a cell on write and back on read, so its geotransform is always
+area-oriented and the sample of cell (r, c) is at the centre of GDAL's cell. The
+file written below with `from_origin(412000, ...)` and the Point tag stores its
+first sample at 412015 -- and the lowest one at 412105, the answer this file
+used to call the failure.
+
+The oracle is the file's own statement, not GDAL and not MapSmith: the raw tie
+point, read with `GTIFF_POINT_GEO_IGNORE=TRUE`, which under PixelIsPoint is the
+position of the first sample (GeoTIFF 1.0, section 2.5.2.2).
 """
 
 from __future__ import annotations
@@ -30,9 +37,11 @@ from mapsmith.engines import raster, sampling
 EAST0, NORTH0, SPACING, SIZE = 412000.0, 5108000.0, 30.0, 8
 LOW_ROW, LOW_COLUMN = 2, 3
 
-#: The node, and the cell centre. Half a cell apart, in each axis.
-NODE = (EAST0 + LOW_COLUMN * SPACING, NORTH0 - LOW_ROW * SPACING)
-CENTRE = (NODE[0] + SPACING / 2, NODE[1] - SPACING / 2)
+#: Where the lowest sample is: the centre of GDAL's cell (2, 3), on both files.
+SAMPLE = (EAST0 + (LOW_COLUMN + 0.5) * SPACING, NORTH0 - (LOW_ROW + 0.5) * SPACING)
+#: Where MapSmith and the trap put it until 2026-09-25: GDAL's correction made
+#: a second time, half a cell north-west of the sample.
+TWICE_CORRECTED = (EAST0 + LOW_COLUMN * SPACING, NORTH0 - LOW_ROW * SPACING)
 
 
 def hollow(tmp_path: Path, tag: str) -> str:
@@ -50,15 +59,33 @@ def hollow(tmp_path: Path, tag: str) -> str:
     return str(path)
 
 
+def first_sample_as_the_file_states_it(path: str) -> tuple[float, float]:
+    """The raw tie point of a PixelIsPoint GeoTIFF: where its first sample IS."""
+    with rasterio.Env(GTIFF_POINT_GEO_IGNORE="TRUE"), rasterio.open(path) as raw:
+        return raw.transform.c, raw.transform.f
+
+
 # --- the module that decides ------------------------------------------------
 
 
-def test_the_tag_decides_and_anything_else_is_area(tmp_path):
-    """Area is the default and the safe reading: treating an unreadable tag as
-    point would move every position on files that are perfectly fine."""
+def test_gdal_has_already_centred_the_cell_on_a_point_sample(tmp_path):
+    """The premise, measured instead of asserted. The file stores its first
+    sample half a cell inside GDAL's corner, and `sample_xy` must land there."""
+    path = hollow(tmp_path, "Point")
+    stored = first_sample_as_the_file_states_it(path)
+    assert stored == pytest.approx((EAST0 + SPACING / 2, NORTH0 - SPACING / 2))
+    with rasterio.open(path) as src:
+        assert (src.transform.c, src.transform.f) == pytest.approx((EAST0, NORTH0))
+        assert grid.sample_xy(src, 0, 0) == pytest.approx(stored)
+        assert grid.sample_xy(src, 0, 0) == pytest.approx(src.xy(0, 0))
+
+
+def test_the_tag_is_read_and_does_not_move_anything(tmp_path):
+    """Area is the default and the safe reading of an unreadable tag. The tag
+    says what a value represents; the offset is the centre either way."""
     with rasterio.open(hollow(tmp_path, "Point")) as src:
         assert grid.registration(src) == "point"
-        assert grid.offset(src) == 0.0
+        assert grid.offset(src) == 0.5
     with rasterio.open(hollow(tmp_path, "Area")) as src:
         assert grid.registration(src) == "area"
         assert grid.offset(src) == 0.5
@@ -73,27 +100,19 @@ def test_the_tag_decides_and_anything_else_is_area(tmp_path):
         assert grid.registration(src) == "area"
 
 
-def test_the_position_of_a_cell_is_the_node_or_the_centre(tmp_path):
-    with rasterio.open(hollow(tmp_path, "Point")) as src:
-        assert grid.sample_xy(src, LOW_ROW, LOW_COLUMN) == pytest.approx(NODE)
-        # And rasterio's own helper does not agree, which is the whole point.
-        assert src.xy(LOW_ROW, LOW_COLUMN) == pytest.approx(CENTRE)
-    with rasterio.open(hollow(tmp_path, "Area")) as src:
-        assert grid.sample_xy(src, LOW_ROW, LOW_COLUMN) == pytest.approx(CENTRE)
+@pytest.mark.parametrize("tag", ["Point", "Area"])
+def test_the_position_of_a_cell_is_where_its_sample_is(tmp_path, tag):
+    with rasterio.open(hollow(tmp_path, tag)) as src:
+        assert grid.sample_xy(src, LOW_ROW, LOW_COLUMN) == pytest.approx(SAMPLE)
 
 
-def test_which_cell_a_position_belongs_to_flips_with_the_registration(tmp_path):
-    """Under point registration a coordinate belongs to the nearest NODE, so a
-    position 2 m east of a node is that node's, where under area registration
-    the same offset from a centre can be a different cell entirely."""
-    with rasterio.open(hollow(tmp_path, "Point")) as src:
-        assert grid.sample_index(src, NODE[0] + 2, NODE[1] - 2) == (LOW_ROW, LOW_COLUMN)
-        # Row first, column second. Unpacking it the other way is the axis-order
-        # defect, and it happened here once: the sampling tests caught it.
-        row, column = grid.sample_index(src, NODE[0], NODE[1])
-        assert (row, column) == (LOW_ROW, LOW_COLUMN)
-    with rasterio.open(hollow(tmp_path, "Area")) as src:
-        assert grid.sample_index(src, CENTRE[0], CENTRE[1]) == (LOW_ROW, LOW_COLUMN)
+@pytest.mark.parametrize("tag", ["Point", "Area"])
+def test_a_position_belongs_to_the_cell_whose_sample_is_nearest(tmp_path, tag):
+    """Row first, column second. Unpacking it the other way is the axis-order
+    defect, and it happened here once: the sampling tests caught it."""
+    with rasterio.open(hollow(tmp_path, tag)) as src:
+        assert grid.sample_index(src, *SAMPLE) == (LOW_ROW, LOW_COLUMN)
+        assert grid.sample_index(src, SAMPLE[0] + 2, SAMPLE[1] - 2) == (LOW_ROW, LOW_COLUMN)
 
 
 def test_the_registration_is_recorded_under_its_own_key(tmp_path):
@@ -106,12 +125,9 @@ def test_the_registration_is_recorded_under_its_own_key(tmp_path):
     """
     with rasterio.open(hollow(tmp_path, "Point")) as src:
         described = grid.describe(src)
-        # And the manifest's copy of the same two facts, which differs only in
-        # the prefix. Asserted against `describe` rather than spelled out, so
-        # that a change to the sentence cannot make the two drift apart in
-        # silence. Inside the `with`, because `registration` refuses a closed
-        # dataset on purpose and a test that opens a second one without closing
-        # it argues against that discipline while relying on it.
+        # Inside the `with`, because `registration` refuses a closed dataset on
+        # purpose and a test that opens a second one without closing it argues
+        # against that discipline while relying on it.
         for_manifest = grid.manifest_decisions(src)
     assert "reason" not in described
     assert described["raster_registration"] == "point"
@@ -124,30 +140,18 @@ def test_the_registration_is_recorded_under_its_own_key(tmp_path):
 # --- the operation that answers where ---------------------------------------
 
 
-def test_the_lowest_cell_is_at_the_node_on_a_point_registered_dem(tmp_path):
-    """Argleton trap 024, answered from this side.
-
-    412090, not 412105. The engine that says 412105 is reading the file as if
-    the tag were not there, and the engine that says 412120 is whitebox.
-    """
-    answer = raster.locate_extreme_cell(hollow(tmp_path, "Point"), "min")
-    assert answer["x"] == pytest.approx(NODE[0])
-    assert answer["y"] == pytest.approx(NODE[1])
+@pytest.mark.parametrize("tag", ["Point", "Area"])
+def test_the_lowest_cell_is_where_its_sample_is(tmp_path, tag):
+    """Argleton trap 024, answered from this side: 412105 on both files. The
+    engine that says 412120 is whitebox, reading the raw tie point as a corner;
+    the one that says 412090 corrects a second time what GDAL already did --
+    which is what this operation shipped until 2026-09-25."""
+    answer = raster.locate_extreme_cell(hollow(tmp_path, tag), "min")
+    assert (answer["x"], answer["y"]) == pytest.approx(SAMPLE)
+    assert (answer["x"], answer["y"]) != pytest.approx(TWICE_CORRECTED)
     assert answer["value"] == pytest.approx(300.0)
     assert (answer["row"], answer["column"]) == (LOW_ROW, LOW_COLUMN)
-    assert answer["raster_registration"] == "point"
-
-
-def test_the_same_surface_area_registered_answers_half_a_cell_away(tmp_path):
-    """The clean twin. Its correct answer is the trap's wrong one.
-
-    A fix that subtracts half a cell unconditionally passes the test above and
-    fails this one, which is precisely why Argleton ships the pair.
-    """
-    answer = raster.locate_extreme_cell(hollow(tmp_path, "Area"), "min")
-    assert answer["x"] == pytest.approx(CENTRE[0])
-    assert answer["y"] == pytest.approx(CENTRE[1])
-    assert answer["raster_registration"] == "area"
+    assert answer["raster_registration"] == tag.lower()
 
 
 def test_nodata_does_not_win_the_search_for_a_minimum(tmp_path):
@@ -201,56 +205,69 @@ def test_a_raster_without_a_crs_is_refused(tmp_path):
 # --- everything that samples ------------------------------------------------
 
 
-def test_sampling_reads_the_value_at_the_node_not_half_a_cell_away(tmp_path):
+def _points_at(tmp_path, xy, name):
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    points = tmp_path / f"{name}.parquet"
+    gpd.GeoDataFrame({"n": [1]}, geometry=[Point(*xy)], crs="EPSG:32632").to_parquet(points)
+    return str(points)
+
+
+@pytest.mark.parametrize("tag", ["Point", "Area"])
+@pytest.mark.parametrize("method", ["nearest", "bilinear"])
+def test_sampling_at_the_sample_reads_its_value_exactly(tmp_path, tag, method):
     """`sample_raster_at_points`, `elevation_profile` and `line_of_sight` all
-    go through the same reader, so this covers the three of them.
-
-    A point exactly on a node must read that node's value exactly, under either
-    interpolation. Under the area reading the same coordinate falls on a cell
-    boundary and bilinear returns the average of two neighbours instead.
-    """
+    go through the same reader, so this covers the three of them."""
     import geopandas as gpd
-    from shapely.geometry import Point
 
-    points = tmp_path / "at_the_node.parquet"
-    gpd.GeoDataFrame(
-        {"n": [1]}, geometry=[Point(*NODE)], crs="EPSG:32632"
-    ).to_parquet(points)
-
-    for method in ("nearest", "bilinear"):
-        out = tmp_path / f"sampled_{method}.parquet"
-        sampling.sample_raster_at_points(
-            hollow(tmp_path, "Point"), str(points), str(out), method
-        )
-        got = gpd.read_parquet(out)["value"].iloc[0]
-        assert got == pytest.approx(300.0), (
-            f"{method} read {got} at the node whose value is 300.0 — the sample "
-            "positions are half a cell from where the file says they are"
-        )
-
-
-def test_the_same_point_on_the_area_twin_reads_the_boundary_average(tmp_path):
-    """The other half of the pair, and the reason the fix cannot be a constant.
-
-    On the area-registered file the node coordinate sits exactly between two
-    cell centres, so bilinear correctly returns their average — 300.5, not 300.
-    A reader that always subtracted half a cell would answer 300 here and be
-    wrong.
-    """
-    import geopandas as gpd
-    from shapely.geometry import Point
-
-    points = tmp_path / "at_the_node.parquet"
-    gpd.GeoDataFrame(
-        {"n": [1]}, geometry=[Point(*NODE)], crs="EPSG:32632"
-    ).to_parquet(points)
-    out = tmp_path / "area_sampled.parquet"
+    out = tmp_path / f"sampled_{tag}_{method}.parquet"
     sampling.sample_raster_at_points(
-        hollow(tmp_path, "Area"), str(points), str(out), "bilinear"
+        hollow(tmp_path, tag), _points_at(tmp_path, SAMPLE, "at_sample"), str(out), method
     )
-    # Between the centres of columns 2 and 3 at row 2: values 300.5 and 300.0,
-    # and between rows 1 and 2 as well, so the four-corner average is 300.5.
+    assert gpd.read_parquet(out)["value"].iloc[0] == pytest.approx(300.0)
+
+
+@pytest.mark.parametrize("tag", ["Point", "Area"])
+def test_the_twice_corrected_position_is_between_samples(tmp_path, tag):
+    """The position MapSmith used to call the sample of a Point file sits
+    between four samples, and bilinear there averages them: 300.5, not 300."""
+    import geopandas as gpd
+
+    out = tmp_path / f"twice_{tag}.parquet"
+    sampling.sample_raster_at_points(
+        hollow(tmp_path, tag), _points_at(tmp_path, TWICE_CORRECTED, "twice"), str(out),
+        "bilinear",
+    )
     assert gpd.read_parquet(out)["value"].iloc[0] == pytest.approx(300.5)
+
+
+def test_zonal_statistics_weights_cells_around_their_own_samples(tmp_path):
+    """A zone one cell wide, centred on the sample, covers exactly that cell.
+    Until 2026-09-25 the zones were moved half a cell for a Point raster on
+    the premise that exactextract read the raw tie point; it reads GDAL's
+    geotransform, and the move put the zone across four cells."""
+    import geopandas as gpd
+    from shapely.geometry import box
+
+    zones = tmp_path / "zone.parquet"
+    half = SPACING / 2
+    gpd.GeoDataFrame(
+        {"id": [1]},
+        geometry=[box(SAMPLE[0] - half, SAMPLE[1] - half, SAMPLE[0] + half, SAMPLE[1] + half)],
+        crs="EPSG:32632",
+    ).to_parquet(zones)
+
+    out = tmp_path / "zonal.parquet"
+    result = raster.zonal_statistics(
+        hollow(tmp_path, "Point"), str(zones), str(out), stats=["mean"]
+    )
+    assert gpd.read_parquet(out)["mean"].iloc[0] == pytest.approx(300.0, abs=1e-4)
+    manifest = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+    # Prefixed here and bare in the tool answer above, and the difference is
+    # the point: this object's other keys belong to the manifest specification,
+    # that one's are ours all the way down.
+    assert manifest["crs_decisions"][grid.REGISTRATION_KEY] == "point"
 
 
 # --- what gets written out --------------------------------------------------
@@ -267,6 +284,27 @@ def _mask_for(tmp_path):
         crs="EPSG:32632",
     ).to_parquet(mask)
     return str(mask)
+
+
+def _points_file(tmp_path, xy, name):
+    return _points_at(tmp_path, xy, name)
+
+
+def _streams(source, out, tmp_path):
+    from mapsmith.engines import whitebox_engine
+
+    accumulation = str(tmp_path / "acc_for_streams.tif")
+    whitebox_engine.flow_accumulation(source, accumulation)
+    return whitebox_engine.extract_streams(accumulation, out, threshold=2.0)
+
+
+def _terrain(name, **kwargs):
+    def call(source, out, tmp_path):
+        from mapsmith.engines import whitebox_engine
+
+        return getattr(whitebox_engine, name)(source, out, **kwargs)
+
+    return call
 
 
 #: Every operation that writes a raster, and one call each. Parametrised rather
@@ -287,6 +325,28 @@ RASTER_WRITERS = {
     ),
     "band_math": lambda source, out, tmp_path: raster.band_math(source, out, "b1*2"),
     "extract_band": lambda source, out, tmp_path: raster.extract_band(source, out, 1),
+}
+
+#: The terrain operations, which refused every point-registered DEM until
+#: 2026-09-25 -- the Copernicus DEM included -- because the engine reads the raw
+#: tie point as a corner. They now get an area copy on GDAL's geotransform and
+#: give the output the input's registration back (D-096).
+TERRAIN_WRITERS = {
+    "slope": _terrain("slope"),
+    "aspect": _terrain("aspect"),
+    "curvature": _terrain("curvature", kind="profile"),
+    "hillshade": _terrain("hillshade"),
+    "flow_direction": _terrain("flow_direction"),
+    "flow_accumulation": _terrain("flow_accumulation"),
+    "focal_statistics": _terrain("focal_statistics", statistic="mean", window=3),
+    "euclidean_distance": _terrain("euclidean_distance"),
+    "watershed": lambda source, out, tmp_path: __import__(
+        "mapsmith.engines.whitebox_engine", fromlist=["watershed"]
+    ).watershed(source, _points_file(tmp_path, SAMPLE, "pour"), out),
+    "viewshed": lambda source, out, tmp_path: __import__(
+        "mapsmith.engines.whitebox_engine", fromlist=["viewshed"]
+    ).viewshed(source, _points_file(tmp_path, SAMPLE, "station"), out, station_height=2.0),
+    "extract_streams": _streams,
 }
 
 
@@ -310,18 +370,69 @@ def test_the_registration_survives_every_operation_that_writes_a_raster(
 
     with rasterio.open(out) as dst:
         assert grid.registration(dst) == "point", (
-            f"{operation} lost the point registration, so every position derived "
-            "from its output is half a cell wrong and the file no longer says so"
+            f"{operation} lost the point registration, so the output no longer "
+            "says its values are samples"
         )
+
+
+@pytest.mark.parametrize("operation", sorted(TERRAIN_WRITERS))
+def test_a_terrain_operation_runs_on_a_point_dem_and_answers_as_on_its_twin(
+    operation, tmp_path
+):
+    """The same values on the same geotransform, one tagged Point and one Area:
+    the samples are in the same places, so the outputs must be the same grid
+    with the same numbers -- and the Point one must still say Point."""
+    pytest.importorskip("whitebox_workflows")
+    outputs = {}
+    for tag in ("Point", "Area"):
+        folder = tmp_path / tag
+        folder.mkdir()
+        out = folder / f"{operation}.tif"
+        TERRAIN_WRITERS[operation](hollow(folder, tag), str(out), folder)
+        with rasterio.open(out) as dst:
+            outputs[tag] = (grid.registration(dst), dst.transform, dst.read(1, masked=True))
+    (point_tag, point_transform, point_values) = outputs["Point"]
+    (area_tag, area_transform, area_values) = outputs["Area"]
+    assert (point_tag, area_tag) == ("point", "area")
+    assert point_transform == area_transform
+    assert np.ma.allequal(point_values, area_values)
+
+
+def test_contours_on_a_point_dem_are_where_the_heights_are(tmp_path):
+    """`contour_lines` used to pick -0.5 for a Point DEM, a branch nobody could
+    reach because the reader refused the DEM first. The check that reads the
+    DEM back at the vertices is the arbiter, and it must pass on both twins
+    with the same lines."""
+    pytest.importorskip("whitebox_workflows")
+    import geopandas as gpd
+
+    from mapsmith.engines import whitebox_engine
+
+    lines = {}
+    for tag in ("Point", "Area"):
+        out = tmp_path / f"contours_{tag}.parquet"
+        result = whitebox_engine.contour_lines(hollow(tmp_path, tag), str(out), interval=2.0)
+        record = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+        failing = [(c["name"], c["detail"]) for c in record["verification"] if not c["passed"]]
+        assert not failing, (tag, failing)
+        # By height, as one geometry per height: several lines share a height
+        # and their order in the file is the engine's, not a property of them.
+        written = gpd.read_parquet(out)
+        lines[tag] = {
+            height: group.geometry.union_all() for height, group in written.groupby("elevation")
+        }
+    assert lines["Point"].keys() == lines["Area"].keys()
+    for height, geometry in lines["Point"].items():
+        assert geometry.hausdorff_distance(lines["Area"][height]) < 1e-6, height
 
 
 def test_every_raster_writer_is_covered_by_the_registration_test():
     """A writer added later must not be able to be quiet in the same way.
 
-    The parametrised test above is only worth its name if the list it runs over
-    is the real one. This compares it against the operations the catalogue says
-    write a raster, so adding one and forgetting the fixture fails here rather
-    than passing everywhere.
+    The parametrised tests above are only worth their names if the lists they
+    run over are the real ones. This compares them against the operations the
+    catalogue says write a raster, so adding one and forgetting the fixture
+    fails here rather than passing everywhere.
     """
     from mapsmith import catalog
 
@@ -336,12 +447,12 @@ def test_every_raster_writer_is_covered_by_the_registration_test():
         "field was renamed and this guard is now checking an empty set, which is "
         "how it would pass forever"
     )
-    covered = {RASTER_WRITER_OPERATIONS[name] for name in RASTER_WRITERS}
-    missing = sorted(writes_a_raster - covered - _REFUSES_POINT - _NO_INPUT_RASTER)
+    covered = {RASTER_WRITER_OPERATIONS[name] for name in RASTER_WRITERS} | set(TERRAIN_WRITERS)
+    missing = sorted(writes_a_raster - covered - _NO_INPUT_RASTER)
     assert not missing, (
         f"these operations write a raster and nothing checks their registration: "
-        f"{missing}. Add a call to RASTER_WRITERS, or account for it below with "
-        "the reason — measured, not assumed."
+        f"{missing}. Add a call to RASTER_WRITERS or TERRAIN_WRITERS, or account "
+        "for it below with the reason — measured, not assumed."
     )
 
 
@@ -356,66 +467,9 @@ RASTER_WRITER_OPERATIONS = {
     "extract_band": "extract_band",
 }
 
-#: These refuse a point-registered input outright rather than writing an output,
-#: so there is no output to ask the question of. They all reach the DEM through
-#: `whitebox_engine._read_dem`, which compares the grid the terrain engine reads
-#: against the grid the file declares and stops when they differ by the half
-#: cell — measured on `slope` and `aspect`, which come back with the refusal
-#: naming both readings, and the other nine share the reader.
-_REFUSES_POINT = {
-    "slope",
-    "aspect",
-    "curvature",
-    "hillshade",
-    "flow_direction",
-    "flow_accumulation",
-    "watershed",
-    "extract_streams",
-    "viewshed",
-    "euclidean_distance",
-    "focal_statistics",
-}
-
 #: Takes a vector layer, so there is no input raster whose registration could be
 #: carried: the grid it writes is one it invented.
 _NO_INPUT_RASTER = {"idw_interpolation"}
-
-
-def test_zonal_statistics_weights_cells_around_their_own_samples(tmp_path):
-    """exactextract takes the footprint from the transform and cannot be told
-    otherwise, so the zones are offset for the coverage computation instead.
-
-    The zone here is one cell wide, centred on the node. Under the correct
-    reading it covers exactly that one sample and the mean is its value; read as
-    area-registered it would straddle two cells and average them.
-    """
-    import geopandas as gpd
-    from shapely.geometry import box
-
-    zones = tmp_path / "zone.parquet"
-    half = SPACING / 2
-    gpd.GeoDataFrame(
-        {"id": [1]},
-        geometry=[box(NODE[0] - half, NODE[1] - half, NODE[0] + half, NODE[1] + half)],
-        crs="EPSG:32632",
-    ).to_parquet(zones)
-
-    out = tmp_path / "zonal.parquet"
-    result = raster.zonal_statistics(
-        hollow(tmp_path, "Point"), str(zones), str(out), stats=["mean"]
-    )
-    assert gpd.read_parquet(out)["mean"].iloc[0] == pytest.approx(300.0, abs=1e-4)
-
-    manifest = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
-    # Prefixed here and bare in the tool answer above, and the difference is
-    # the point: this object's other keys belong to the manifest specification,
-    # that one's are ours all the way down.
-    assert manifest["crs_decisions"][grid.REGISTRATION_KEY] == "point"
-    assert any("offset by" in note for note in manifest["notes"])
-    # The geometry handed back is the caller's, not the shifted copy.
-    assert gpd.read_parquet(out).geometry.iloc[0].bounds == pytest.approx(
-        (NODE[0] - half, NODE[1] - half, NODE[0] + half, NODE[1] + half)
-    )
 
 
 def test_only_one_module_decides_where_a_cell_is(tmp_path):
@@ -423,9 +477,9 @@ def test_only_one_module_decides_where_a_cell_is(tmp_path):
 
     #28 happened because "open a vector file" was six copies of one decision.
     This was the same shape: every place that turned a cell index into a
-    coordinate did what rasterio does, and none had asked the question. A
-    seventh copy is the only way to reintroduce it, so the seventh copy is what
-    fails here.
+    coordinate decided for itself. The decision lives in `grid`, and since
+    D-096 it agrees with `dataset.xy` -- but a second copy of it is still the
+    only way to reintroduce a second answer, so the second copy is what fails.
     """
     import re
 
@@ -444,6 +498,6 @@ def test_only_one_module_decides_where_a_cell_is(tmp_path):
             if pattern.search(line) and "grid." not in line:
                 offenders.append(f"{module.name}:{number}: {line.strip()}")
     assert not offenders, (
-        "these lines turn a cell index into a coordinate without asking `grid` "
-        f"which registration the file declares: {offenders}"
+        "these lines turn a cell index into a coordinate without going through "
+        f"`grid`: {offenders}"
     )

@@ -92,13 +92,18 @@ def _needs_plain_copy(path: str) -> str | None:
         import rasterio
     except ImportError:  # rasterio ships with the whitebox extra; be defensive
         return None
+    from .. import grid
+
     try:
         with rasterio.open(path) as ds:
             predictor = ds.tags(ns="IMAGE_STRUCTURE").get("PREDICTOR")
+            south_up = ds.transform.e > 0
+            point = grid.registration(ds) == "point"
     except Exception:  # noqa: BLE001 — unreadable here means whitebox will complain
         return None
+    reasons = []
     if predictor in ("2", "3"):
-        return f"stored with TIFF predictor {predictor}"
+        reasons.append(f"stored with TIFF predictor {predictor}")
 
     # Second reason, measured on 2026-08-30 by Argleton trap 026. A GeoTIFF may
     # store its rows south to north — a POSITIVE fifth element of the
@@ -114,13 +119,25 @@ def _needs_plain_copy(path: str) -> str | None:
     # The elevations, the shape and the CRS all survive. Only the size of a cell
     # is gone, and a slope is a rise over a run: on the trap's plane, 45 degrees
     # where the truth is 5.71, with every postcondition green.
-    try:
-        with rasterio.open(path) as ds:
-            if ds.transform.e > 0:
-                return "stored south-up (a positive north-south pixel size)"
-    except Exception:  # noqa: BLE001 — unreadable here means whitebox will complain
-        return None
-    return None
+    if south_up:
+        reasons.append("stored south-up (a positive north-south pixel size)")
+
+    # Third reason, measured on 2026-09-25 on the Copernicus DEM. A
+    # point-registered GeoTIFF stores its tie point AT the first sample, and
+    # GDAL shifts it half a cell to keep its geotransform area-oriented (RFC 33).
+    # whitebox reads the raw tie point as the corner of the first cell, so it
+    # places every cell half a cell south-east of the sample:
+    #
+    #     Copernicus clip:  GDAL corner 10.799861  whitebox corner 10.8
+    #
+    # `_same_grid_as_gdal` caught it and refused, which kept the numbers right
+    # and every point-registered DEM out of every terrain operation -- the
+    # Copernicus DEM, the most used global one, included. The copy declares
+    # area on GDAL's own geotransform, which puts each cell's centre on the
+    # sample, and the output gets the input's registration back (D-096).
+    if point:
+        reasons.append("point-registered (AREA_OR_POINT=Point)")
+    return " and ".join(reasons) or None
 
 
 def _plain_copy(path: str, into: Path) -> str:
@@ -132,14 +149,11 @@ def _plain_copy(path: str, into: Path) -> str:
     import rasterio
     from affine import Affine
 
-    from .. import grid
-
     with rasterio.open(path) as src:
         profile = src.profile
         data = src.read(1)
         transform = src.transform
         height = src.height
-        registration = grid.registration(src)
 
     profile.pop("predictor", None)
     if transform.e > 0:
@@ -161,20 +175,44 @@ def _plain_copy(path: str, into: Path) -> str:
     plain = into / f"{Path(path).stem}.no-predictor.tif"
     with rasterio.open(plain, "w", **profile, predictor=1) as dst:
         dst.write(data, 1)
-        # `profile` does not carry tags, so the registration would be dropped
-        # here and every position derived from the copy would move half a cell.
-        if registration == "point":
-            dst.update_tags(**{grid.TAG: "Point"})
+        # Declared area on purpose, and on GDAL's geotransform, whatever the
+        # original declares. GDAL already centres its cell on a point sample,
+        # so an area copy with the same transform puts every cell centre on
+        # the sample -- in the raw tie point too, which is what whitebox reads.
+        # Copying the Point tag, as this did until 2026-09-25, handed whitebox
+        # a tie point it reads half a cell off.
     return str(plain)
 
 
 def _plain_copy_note(reason: str) -> str:
     return (
         f"input GeoTIFF is {reason}; the engine was given a copy with identical "
-        "values and no predictor, because whitebox_workflows 2.x does not undo "
-        "the TIFF predictor when decompressing (see _needs_plain_copy for the "
-        "measurements)"
+        "values, north-up, without a TIFF predictor and declared area-registered "
+        "on GDAL's own geotransform, because whitebox_workflows 2.x mishandles "
+        "each of those (see _needs_plain_copy for the measurements)"
     )
+
+
+def _write(wbe: Any, raster: Any, output_path: str, source: str) -> None:
+    """Write an engine output and give it back the input's registration.
+
+    The engine was handed an area copy of a point-registered input, so it
+    writes area. On the same geotransform the positions are the same either
+    way (D-096), but the tag says what a value represents, and an output that
+    quietly stopped saying "sample at a point" is the silent change `preserve`
+    exists to prevent. Retagging in place keeps the geotransform: measured,
+    GDAL shifts the stored tie point and reads back the same transform.
+    """
+    import rasterio
+
+    from .. import grid
+
+    wbe.write_raster(raster, str(output_path))
+    with rasterio.open(source) as src:
+        point = grid.registration(src) == "point"
+    if point:
+        with rasterio.open(output_path, "r+") as dst:
+            grid.preserve("point", dst)
 
 
 def _same_grid_as_gdal(dem: Any, source: str, declared_as: str) -> None:
@@ -362,7 +400,7 @@ def hillshade(
         # that raised after this write left the raster on disk and no manifest, and so
         # did ten other writers in this module. The same net is on each of them.
         with verify.audit_on_failure(record, output_path, []):
-            wbe.write_raster(result, str(output_path))
+            _write(wbe, result, output_path, dem_path)
 
             meta = dem.metadata()
             checks = _raster_checks(
@@ -488,7 +526,7 @@ def _derivative(
         }
         result = call(wbe, dem)
         with verify.audit_on_failure(record, output_path, []):
-            wbe.write_raster(result, str(output_path))
+            _write(wbe, result, output_path, dem_path)
 
             meta = dem.metadata()
             checks = _raster_checks(
@@ -560,7 +598,7 @@ def flow_accumulation(
             input=pointer, out_type=out_type, log_transform=log_transform, input_is_pointer=True
         )
         with verify.audit_on_failure(record, output_path, []):
-            wbe.write_raster(accum, str(output_path))
+            _write(wbe, accum, output_path, dem_path)
 
             meta = dem.metadata()
             cells = meta.rows * meta.columns
@@ -644,7 +682,7 @@ def watershed(
                 points.to_file(shp)
                 vec = wbe.read_vector(str(shp))
                 basins = wbe.hydrology.watersheds_basins.watershed(d8_pointer=pointer, pour_pts=vec)
-                wbe.write_raster(basins, str(output_path))
+                _write(wbe, basins, output_path, dem_path)
 
             meta = dem.metadata()
             checks = _raster_checks(
@@ -742,7 +780,7 @@ def focal_statistics(
         method = getattr(wbe.remote_sensing, FOCAL_STATISTICS[statistic])
         result = method(input=raster, filter_size_x=window, filter_size_y=window)
         with verify.audit_on_failure(record, output_path, []):
-            wbe.write_raster(result, str(output_path))
+            _write(wbe, result, output_path, input_path)
 
             meta = raster.metadata()
             checks = _raster_checks(
@@ -819,7 +857,7 @@ def extract_streams(
             zero_background=zero_background,
         )
         with verify.audit_on_failure(record, output_path, []):
-            wbe.write_raster(result, str(output_path))
+            _write(wbe, result, output_path, flow_accumulation_path)
 
             meta = accumulation.metadata()
             checks = _raster_checks(
@@ -1096,7 +1134,7 @@ def euclidean_distance(input_path: str, output_path: str) -> dict[str, Any]:
         meta = source.metadata()
         result = wbe.raster.distance_cost.euclidean_distance(input=source)
         with verify.audit_on_failure(record, output_path, []):
-            wbe.write_raster(result, str(output_path))
+            _write(wbe, result, output_path, input_path)
             checks = _raster_checks(
                 wbe,
                 output_path,
@@ -1226,7 +1264,7 @@ def viewshed(
                 seen = wbe.terrain.visibility.viewshed(
                     input=dem, stations=vec, height=station_height
                 )
-                wbe.write_raster(seen, str(output_path))
+                _write(wbe, seen, output_path, dem_path)
 
             meta = dem.metadata()
             checks = _raster_checks(
@@ -1489,19 +1527,21 @@ def contour_lines(
             "outside its range."
         )
 
-    # Measured on both registrations, because the engine reacts to the tag and
-    # reacts wrongly. On an area-registered DEM it returns the west/north EDGE
-    # of the cell, so the centre is half a cell south-east: +0.5. On a
-    # point-registered one it returns half a cell PAST the node, so the node is
-    # half a cell north-west: -0.5. Same magnitude, opposite sign, and an
-    # unconditional +0.5 puts a USGS DEM's contours a whole cell out — which is
-    # what shipped this morning until Argleton trap 024 was built.
+    # The engine returns the west/north EDGE of the cell it reads, so the
+    # centre -- where the value is -- is half a cell south-east: +0.5. Always,
+    # since 2026-09-25: a point-registered DEM reaches the engine as an area
+    # copy on GDAL's geotransform (`_needs_plain_copy`), whose cell centres are
+    # the samples. Until then this chose -0.5 for a Point DEM, on the premise
+    # that GDAL leaves a PixelIsPoint geotransform alone; it does not (RFC 33),
+    # and the branch was unreachable anyway, because `_read_dem` refused every
+    # Point DEM before it (D-096). The check below reads the DEM back at the
+    # vertices, so a wrong sign cannot pass in silence.
     import rasterio
 
     with rasterio.open(dem_path) as probe:
         placement = grid.registration(probe)
         registration_note = grid.describe(probe)
-    direction = 1.0 if placement == "area" else -1.0
+    direction = 1.0
     shift_x = direction * CONTOUR_REGISTRATION_SHIFT * float(meta.resolution_x)
     shift_y = -direction * CONTOUR_REGISTRATION_SHIFT * float(meta.resolution_y)
     height_column = "HEIGHT" if "HEIGHT" in lines.columns else lines.columns[1]
@@ -1521,8 +1561,8 @@ def contour_lines(
             "z_unit": "the DEM's own Z unit, not necessarily metres",
             "registration_correction": (
                 f"{shift_x:+g}, {shift_y:+g} — the engine places contour vertices "
-                "half a cell from where the value it names actually sits, and which "
-                f"way depends on the registration ({placement})"
+                "on the west/north edge of a cell, half a cell from the centre where "
+                f"the value it names sits (input registration: {placement})"
             ),
             **registration_note,
         },

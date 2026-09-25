@@ -876,9 +876,10 @@ def least_cost_path(
                     f"the {name} point ({point.x:.6g}, {point.y:.6g}) is outside the "
                     f"cost surface, which covers {tuple(round(v, 6) for v in bounds)}."
                 )
-            # Through `grid`, not `src.index`: on a point-registered surface the
-            # cell a position belongs to is the nearest NODE, and the route
-            # would otherwise start and end half a cell from where it was asked.
+            # Through `grid`, the one place that says which cell a position is
+            # in. The same answer as `src.index` under either registration
+            # (D-096); it used to round to a node on a Point surface and start
+            # the route half a cell from where it was asked.
             row, column = grid.sample_index(src, point.x, point.y)
             return int(min(max(row, 0), src.height - 1)), int(
                 min(max(column, 0), src.width - 1)
@@ -960,9 +961,8 @@ def least_cost_path(
         path_cells.append(came_from[path_cells[-1]])
     path_cells.reverse()
     with rasterio.open(cost_path) as src:
-        # Where each cell's value actually is. `transform.xy` answers as if
-        # every file were area-registered, which puts the whole route half a
-        # cell south-east on a DEM that says otherwise.
+        # Where each cell's value is: the centre of GDAL's cell, under either
+        # registration (D-096).
         coordinates = [grid.sample_xy(src, row, column) for row, column in path_cells]
         # `manifest_decisions` and not `describe`: this one goes into
         # `crs_decisions`, where the neighbouring keys are the specification's.

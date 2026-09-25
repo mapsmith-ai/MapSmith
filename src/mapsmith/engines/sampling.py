@@ -92,10 +92,11 @@ def _read_at(dataset: Any, band: int, xs, ys, method: str) -> list[float | None]
     # returns a full boolean array.
     mask = np.ma.getmaskarray(array)
     inverse = ~dataset.transform
-    # Where the values sit inside their cells. 0.5 on an ordinary file, 0.0 on
-    # one that declares its values are samples at grid nodes — and asking here
-    # rather than assuming is the difference between a profile along a USGS DEM
-    # and the same profile fifteen metres to the north-west.
+    # Where the values sit inside their cells: the centre, under either
+    # registration, because GDAL has already shifted a point-registered file's
+    # geotransform so its cells are centred on the samples. This said 0.0 for a
+    # Point file until 2026-09-25, which put every profile along a Copernicus
+    # or USGS DEM half a cell north-west of the samples (D-096).
     shift = grid.offset(dataset)
     height, width = array.shape
     out: list[float | None] = []
@@ -103,8 +104,7 @@ def _read_at(dataset: Any, band: int, xs, ys, method: str) -> list[float | None]
     for x, y in zip(xs, ys, strict=True):
         column, row = inverse * (x, y)
         if method == "nearest":
-            # Which sample is nearest, which is `floor` when samples are cell
-            # centres and `round` when they are nodes.
+            # The cell the position falls in: its sample is the nearest one.
             r, c = grid.sample_index(dataset, x, y)
             if not (0 <= r < height and 0 <= c < width) or mask[r, c]:
                 out.append(None)
@@ -112,11 +112,10 @@ def _read_at(dataset: Any, band: int, xs, ys, method: str) -> list[float | None]
             out.append(float(array[r, c]))
             continue
 
-        # Bilinear over the four surrounding SAMPLES. On an ordinary file
-        # those are the cell centres, at (column - 0.5, row - 0.5) in array
-        # space; on a point-registered one they are the nodes, at (column, row).
-        # The offset is the part that is easy to drop, and dropping it shifts
-        # every value by half a pixel — which is what `grid` is for.
+        # Bilinear over the four surrounding SAMPLES: the centres of GDAL's
+        # cells, at (column - 0.5, row - 0.5) in array space, for either
+        # registration. The offset is the part that is easy to drop, and
+        # dropping it shifts every value by half a pixel.
         #
         # Two different "outside" here, and conflating them was a bug. A
         # position outside the raster's EXTENT has no value and returns None.

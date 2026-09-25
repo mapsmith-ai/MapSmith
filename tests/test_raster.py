@@ -250,7 +250,6 @@ def test_a_cell_with_neither_value_nor_weight_is_not_a_lost_cell(zone, tmp_path)
     ("same_shape_other_origin", "its grid is"),
     ("finer_degrees", "its grid is"),
     ("no_crs", "declares no CRS"),
-    ("point_registered", "point-registered"),
 ])
 def test_the_grid_comparison_catches_what_shape_alone_does_not(dem, zone, tmp_path, case, match):
     """The first grid test changed the shape too, so the transform comparison
@@ -274,16 +273,30 @@ def test_the_grid_comparison_catches_what_shape_alone_does_not(dem, zone, tmp_pa
             tmp_path, _column_weights(), crs="EPSG:4326",
             transform=from_origin(12.0, 42.0, 1.8e-5, 1.8e-5),
         )
-    elif case == "no_crs":
-        weights = _weights(tmp_path, _column_weights(), crs=None)
     else:
-        weights = _weights(tmp_path, _column_weights())
-        with rasterio.open(weights, "r+") as dst:
-            dst.update_tags(AREA_OR_POINT="Point")
+        weights = _weights(tmp_path, _column_weights(), crs=None)
     with pytest.raises(ValueError, match=match):
         raster.zonal_statistics(
             dem, zone, str(tmp_path / "g.parquet"), ["weighted_mean"], weights_path=weights
         )
+
+
+def test_point_registered_weights_on_the_same_grid_are_the_same_weights(dem, zone, tmp_path):
+    """Refused until 2026-09-25 as "one is point-registered and the other
+    area-registered". On the same geotransform the two have their samples in
+    the same places -- GDAL has already folded the tag into the transform
+    (D-096) -- so refusing them refused two grids that line up."""
+    area = _weights(tmp_path, _column_weights())
+    point = tmp_path / "point_weights.tif"
+    point.write_bytes(Path(area).read_bytes())
+    with rasterio.open(point, "r+") as dst:
+        dst.update_tags(AREA_OR_POINT="Point")
+    means = []
+    for weights in (area, str(point)):
+        out = tmp_path / f"{Path(weights).stem}.parquet"
+        raster.zonal_statistics(dem, zone, str(out), ["weighted_mean"], weights_path=weights)
+        means.append(gpd.read_parquet(out)["weighted_mean"].iloc[0])
+    assert means[0] == pytest.approx(means[1])
 
 
 @pytest.mark.parametrize("sidecars", ["weights_only", "both"])

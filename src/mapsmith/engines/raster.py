@@ -166,7 +166,7 @@ def zonal_statistics(
     if weighted and not weights_path:
         raise ValueError(
             f"{weighted} need weights_path: a single-band raster of weights on the "
-            "same grid as the values (same CRS, cells and registration)."
+            "same grid as the values (same CRS and cells)."
         )
     if weights_path and not weighted:
         raise ValueError(
@@ -222,26 +222,14 @@ def zonal_statistics(
         )
         if aligned:
             zones = zones.to_crs(raster_crs)
-        # exactextract takes the cell footprint from the transform and cannot
-        # be told otherwise, so on a point-registered raster it would weight
-        # every cell half a cell south-east of where its value actually sits.
-        # Moving the raster means rewriting it; moving the question is free —
-        # coverage of a polygon against a grid shifted by d is coverage of the
-        # polygon shifted by -d against the unshifted grid. The shifted copy is
-        # asked the question and thrown away; the output carries the caller's
-        # own geometry.
-        dx, dy = grid.shift_for_area_tools(ds)
-        asked = zones.translate(xoff=dx, yoff=dy) if (dx or dy) else zones.geometry
+        # exactextract takes the cell footprint from GDAL's geotransform, which
+        # already centres each cell on its sample for a point-registered file
+        # (RFC 33). Until 2026-09-25 the zones were moved half a cell here for a
+        # Point raster, on the premise that the footprint came from the raw tie
+        # point: it put every zone half a cell off (D-096). The registration is
+        # recorded, because it says what a value represents.
         record.crs_decisions.update(grid.manifest_decisions(ds))
-        if dx or dy:
-            record.notes.append(
-                f"the raster declares AREA_OR_POINT=Point, so each value is a sample "
-                f"at a node rather than a cell average. The zones were offset by "
-                f"({dx:+g}, {dy:+g}) for the coverage computation so that each "
-                f"cell's footprint is centred on its own sample; the output geometry "
-                f"is the caller's, unmoved."
-            )
-        asked_zones = zones.set_geometry(asked)
+        asked_zones = zones
         if weights_ds is not None:
             _refuse_negative_weights(exactextract, weights_ds, asked_zones, weights_path)
         if weights_ds is None:
@@ -337,8 +325,10 @@ def _refuse_unaligned_weights(ds: Any, weights: Any, raster_path: str, weights_p
             f"its grid is {weights.height}x{weights.width} at {tuple(weights.transform)[:6]}, "
             f"the values' {ds.height}x{ds.width} at {tuple(ds.transform)[:6]}"
         )
-    elif grid.shift_for_area_tools(weights) != grid.shift_for_area_tools(ds):
-        problems.append("one is point-registered and the other area-registered")
+    # Not the registration: on the same geotransform a Point and an Area raster
+    # have their samples in the same places, because GDAL has already folded
+    # the difference into the transform (D-096). Refusing that pair refused two
+    # grids that line up.
     if problems:
         raise ValueError(
             f"Refusing weights {weights_path} for {raster_path}: " + "; ".join(problems) + ". "
@@ -1625,12 +1615,12 @@ def locate_extreme_cell(
     family, where the whole point is whether a system knows where its own cells
     are.
 
-    **The position comes from `grid`, not from `dataset.xy`.** On a raster
-    declaring `AREA_OR_POINT=Point` — every USGS elevation product — a value is
-    a sample at a grid node and its position is the tie point plus whole cells,
-    with no half added. `xy` answers as if every file were area-registered, and
-    the difference is half a cell: 15 m on a 30 m DEM, systematic, and inside
-    the error of the handheld GPS somebody would use to check it.
+    **The position comes from `grid`**, which gives the same answer as
+    `dataset.xy` under either registration: GDAL has already shifted the
+    geotransform of a point-registered file so its cells are centred on the
+    samples. Until 2026-09-25 this docstring said the opposite and the answer on
+    every `AREA_OR_POINT=Point` raster was half a cell north-west of the sample
+    -- 15 m on a 30 m DEM, the error it claimed to prevent (D-096).
 
     Nodata is excluded rather than competing: a nodata of -9999 wins every
     search for a minimum, and the answer would be the position of a hole.

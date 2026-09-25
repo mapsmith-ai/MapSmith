@@ -468,8 +468,12 @@ What it says about MapSmith (all twenty-nine families, engine tier, `spec_commit
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
-| MapSmith | **0.00** | 1.00 | 31 | 0 |
-| naive composition (read file, take statistic) | 0.9355 | 1.00 | 31 | 0 |
+| MapSmith | **0.0323** (published 0.00) | 1.00 | 31 | 0 |
+| naive composition (read file, take statistic) | 0.9032 (published one trap higher) | 1.00 | 31 | 0 |
+
+Rescored on 2026-09-25: the run was scored against a wrong truth on one trap, in MapSmith's
+favour, and the [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) recounts every run it touched. The section below the next
+one says what the trap was and why the fix made it worse.
 
 **The family list closed on 2026-08-30**, at twenty-seven of twenty-seven, and reopened the next
 morning with a twenty-eighth — one raster carrying two georeferencings, which is why a manifest
@@ -489,11 +493,19 @@ operation here answered that — nor did any line of this codebase read `AREA_OR
 that says whether a value sits at a cell's centre or at a grid node. Two `unsupported` verdicts
 went into the published table, because they are a smaller claim than a 0.00 and a true one.
 
-Both are fixed now, and not at the point of failure. Every place that turned a cell index into a
-coordinate had the defect — sampling, routing, contouring, zonal weighting, and every raster
-written, which was losing the tag on the way out — so the decision moved into one module that a
-test protects from being copied. MapSmith answers both halves of the pair: 412090 on the trap and
-412105 on its clean twin, fifteen metres apart, from files differing in one metadata tag.
+Both were then "fixed", and not at the point of failure: the decision moved into one module
+that a test protects from being copied, and MapSmith answered 412090 on the trap and 412105 on its
+clean twin. **That fix was the defect.** It was built to the trap's own premise — that GDAL
+reports a point-registered file's tag and leaves its geotransform alone, so the reader must move
+every position half a cell — and GDAL documents the opposite: since RFC 33 it moves the stored
+tie point half a cell on write and on read, so its geotransform already centres each cell on its
+sample. The trap's file stores its first sample at 412015 and its lowest at 412105, the same as
+its twin; 412090 was the correction made twice, and the trap scored it as a pass for 26 days.
+Found on 2026-09-25 by a Copernicus DEM, whose samples fall on whole arc-seconds by its own
+documentation and came back from MapSmith half a cell north-west ([erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024)).
+Positions now come from GDAL's geotransform whatever the tag says. What was worth keeping is the
+one module and its guard: the second answer could only have come from a second copy of the
+decision, and there is still one.
 
 The family was found here, writing `contour_lines`: the engine placed every contour half a cell
 from where the elevation it named actually occurred. What caught it was the check that samples the

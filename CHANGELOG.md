@@ -8,6 +8,15 @@ All notable changes to MapSmith are documented here, in the format of
 
 ### Added
 
+- **A Copernicus notebook.** `examples/04_copernicus_terrain_vegetation.ipynb`,
+  on Monte Baldo: a Copernicus DEM in degrees refused for slope and reprojected,
+  a Sentinel-2 NDVI, and the treeline read off both. Two clips ship in
+  `examples/fixtures/` under their own licences, with the script that rebuilds
+  them. It found both fixes above, and one fact about the data: for the item it
+  uses, the Sentinel-2 catalogue declares a reflectance offset of -0.1 that the
+  pixels already contain — deep water would read -7% — so the clip declares the
+  scale alone, and the script re-checks it every time it runs.
+
 - **Weighted zonal statistics.** `zonal_statistics` takes `weights_path`, a
   raster of weights, and `weighted_mean`, `weighted_sum`, `weighted_stdev`,
   `weighted_variance` and `weighted_frac`: the mean heat of a district weighted
@@ -62,6 +71,34 @@ All notable changes to MapSmith are documented here, in the format of
   under BM25 at 76 entries from 50% to 55%.
 
 ### Fixed
+
+- **Every position read from a point-registered raster was half a cell off,
+  since 0.4.0.** On a file declaring `AREA_OR_POINT=Point` MapSmith moved each
+  sample half a cell north-west of where GDAL puts it: sampling,
+  `elevation_profile`, `line_of_sight`, `locate_extreme_cell`, `least_cost_path`,
+  and the zones of `zonal_statistics`, which were shifted for the coverage
+  computation. The premise was that GDAL reports the tag and leaves the
+  geotransform alone. It does the opposite — since RFC 33 the GTiff driver moves
+  a PixelIsPoint tie point half a cell on write and on read, so its geotransform
+  already centres each cell on its sample — and the correction was made twice.
+  Found by a Copernicus DEM, whose samples fall on whole arc-seconds by its own
+  documentation: 10.8 by GDAL, 10.79986 by MapSmith. Positions now come from
+  GDAL's geotransform whatever the tag says; the tag is still recorded, because
+  it says what a value represents. The same premise was in Argleton trap 024,
+  which scored MapSmith's wrong answer as correct for 26 days; the suite has
+  published an [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024).
+  A weights raster is no longer refused for a registration different from the
+  values': on the same geotransform the samples are in the same places.
+
+- **The terrain operations refused every point-registered DEM, the Copernicus
+  DEM included.** The engine reads the stored tie point as a cell corner, and
+  the guard that compares its grid with GDAL's caught the half cell and refused,
+  so the numbers were never wrong and twelve operations were unusable on the
+  most used global DEM (the eleven that write a raster, and `contour_lines`). The engine now gets a copy declared area-registered on
+  GDAL's own geotransform — the same pattern as the TIFF predictor, disclosed in
+  the manifest — and the output gets the input's registration back.
+  `contour_lines` loses a branch for point-registered DEMs that corrected half a
+  cell the wrong way and could not be reached.
 
 - **`elevation_profile` measured the spacing in the DEM's units, and on a DEM
   in degrees a 1000 m line came back as one point.** The line was reprojected
