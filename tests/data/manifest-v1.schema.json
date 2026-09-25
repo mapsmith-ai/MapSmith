@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mapsmith.dev/spec/manifest-v1.schema.json",
-  "x-spec-version": "1.0.0-draft.7",
+  "x-spec-version": "1.0.0-draft.8",
   "title": "Provenance manifest for a geospatial dataset",
   "description": "One record, written next to one output dataset, complete enough that someone who was not there can re-run the operation and disagree with it. A manifest records what was done; it does not certify that it was right \u2014 those are different claims, and this format only makes the first.",
   "type": "object",
@@ -156,7 +156,8 @@
                 ]
               },
               {
-                "pattern": "^x-[a-z0-9][a-z0-9_-]*:[a-z0-9][a-z0-9_]*$"
+                "pattern": "^x-[a-z0-9][a-z0-9_-]*:[a-z0-9][a-z0-9_]*$",
+                "not": {"pattern": "\n"}
               }
             ]
           },
@@ -203,7 +204,7 @@
       "propertyNames": {
         "anyOf": [
           {"enum": ["analysis_crs", "reason", "source_crs", "target_crs", "transformation", "round_trip"]},
-          {"pattern": "^x-[a-z0-9][a-z0-9_-]*:[a-z0-9][a-z0-9_]*$"}
+          {"pattern": "^x-[a-z0-9][a-z0-9_-]*:[a-z0-9][a-z0-9_]*$", "not": {"pattern": "\n"}}
         ]
       },
       "properties": {
@@ -232,6 +233,12 @@
         "transformation": {
           "type": "object",
           "additionalProperties": true,
+          "propertyNames": {
+            "anyOf": [
+              {"enum": ["pipeline", "accuracy_m", "is_ballpark", "better_available_m"]},
+              {"pattern": "^x-[a-z0-9][a-z0-9_-]*:[a-z0-9][a-z0-9_]*$", "not": {"pattern": "\n"}}
+            ]
+          },
           "properties": {
             "pipeline": {
               "type": [
@@ -268,6 +275,12 @@
             "return_transformation"
           ],
           "additionalProperties": true,
+          "propertyNames": {
+            "anyOf": [
+              {"enum": ["transformation", "return_transformation"]},
+              {"pattern": "^x-[a-z0-9][a-z0-9_-]*:[a-z0-9][a-z0-9_]*$", "not": {"pattern": "\n"}}
+            ]
+          },
           "properties": {
             "transformation": {
               "$ref": "#/properties/crs_decisions/properties/transformation",
@@ -301,6 +314,12 @@
           "action"
         ],
         "additionalProperties": true,
+        "propertyNames": {
+          "anyOf": [
+            {"enum": ["action", "check", "error", "resolved"]},
+            {"pattern": "^x-[a-z0-9][a-z0-9_-]*:[a-z0-9][a-z0-9_]*$", "not": {"pattern": "\n"}}
+          ]
+        },
         "properties": {
           "check": {
             "type": [
@@ -353,7 +372,7 @@
       "additionalProperties": {
         "type": "string"
       },
-      "description": "RECOMMENDED. The configuration that influenced the result and lives neither in the data nor in the call: PROJ_NETWORK, GDAL_* variables, a project-level ellipsoid, AREA_OR_POINT, the presence of a datum grid. The correct answer is not a number, it is this number with this configuration. Section 3.8."
+      "description": "RECOMMENDED. The configuration that influenced the result and lives neither in the data nor in the call: PROJ_NETWORK, GDAL_* variables, a project-level ellipsoid, the presence of a datum grid. Not AREA_OR_POINT: that is a tag inside the file, so it is data; a producer's reading of it goes in crs_decisions. The correct answer is not a number, it is this number with this configuration. Section 3.8."
     }
   }
 }

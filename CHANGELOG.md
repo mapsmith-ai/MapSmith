@@ -8,13 +8,16 @@ All notable changes to MapSmith are documented here, in the format of
 
 ### Changed
 
-- **Records declare `spec_version` `1.0.0-draft.7`.** The specification now
-  requires every key of `crs_decisions` it does not define to be named
+- **Records declare `spec_version` `1.0.0-draft.8`.** Two drafts in one day,
+  both narrowings of where a producer may add a key: draft.7 requires every
+  key of `crs_decisions` the specification does not define to be named
   `x-<producer>:<name>`, which it had left to one reading of an ambiguous
-  sentence. MapSmith already named them that way, so no key moves: a reader
-  keying on the label sees draft.7, a reader keying on fields sees nothing
-  change. The vendored schema and validator are draft.7's, and the
-  conformance sweep validates every writer's record against them.
+  sentence, and draft.8 carries the rule inside `transformation`,
+  `round_trip` and `repairs[]`. MapSmith already named every one of them that
+  way, so no key moves: a reader keying on the label sees draft.8, a reader
+  keying on fields sees nothing change. The vendored schema and validator are
+  draft.8's, and the conformance sweep validates every writer's record
+  against them.
 
 ### Fixed
 

@@ -41,6 +41,29 @@ EXTENSION_CHECK_NAME = re.compile(r"^x-[a-z0-9][a-z0-9_-]*:[a-z0-9][a-z0-9_]*$")
 CRS_DECISION_KEYS = frozenset(
     {"analysis_crs", "reason", "source_crs", "target_crs", "transformation", "round_trip"}
 )
+#: And inside the objects section 3.7 and 3.4 define (since 1.0.0-draft.8): a
+#: transformation, the round trip that holds two of them, and a repair entry.
+TRANSFORMATION_KEYS = frozenset({"pipeline", "accuracy_m", "is_ballpark", "better_available_m"})
+ROUND_TRIP_KEYS = frozenset({"transformation", "return_transformation"})
+REPAIR_KEYS = frozenset({"action", "check", "error", "resolved"})
+
+
+def _check_extension_keys(
+    out: list[str], obj: dict, defined: frozenset, where: str, section: str
+) -> None:
+    """Every key the specification does not define carries the producer's prefix.
+
+    `fullmatch`, not `match`: Python's `$` also matches before a final newline,
+    so `x-vendor:name\\n` passed here and in Python's jsonschema while an
+    ECMA-262 validator -- the semantics JSON Schema prescribes -- rejected it.
+    """
+    for key in obj:
+        if key not in defined and not EXTENSION_CHECK_NAME.fullmatch(key):
+            out.append(
+                f"`{where}.{key}` is neither a key section {section} defines nor "
+                "an extension named `x-<producer>:<name>`; every other key carries "
+                "the producer's prefix"
+            )
 
 
 SPEC_VERSION = re.compile(r"^1\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$")
@@ -78,6 +101,7 @@ def _check_transformation(out: list[str], shift: dict, where: str) -> None:
     three copies three chances to disagree with the schema, and the one time
     this file has disagreed with it already is recorded just below.
     """
+    _check_extension_keys(out, shift, TRANSFORMATION_KEYS, where, "3.7")
     # `pipeline` is NULLABLE, like `source_crs` and `accuracy_m`: PROJ does not
     # always give a pipeline string for a transformation it performed. This used
     # to be `_optional(..., str)`, the only nullable field in this file written
@@ -177,7 +201,7 @@ def problems(record: object) -> list[str]:
                 name = check["name"]
                 if not name:
                     out.append(f"`{label}.name` must not be empty")
-                elif name not in CORE_CHECK_NAMES and not EXTENSION_CHECK_NAME.match(name):
+                elif name not in CORE_CHECK_NAMES and not EXTENSION_CHECK_NAME.fullmatch(name):
                     out.append(
                         f"`{label}.name` is {name!r}, which is neither a core check "
                         "name (section 3.6) nor an extension named "
@@ -238,6 +262,7 @@ def problems(record: object) -> list[str]:
         # written the non-nullable way (see `_check_transformation`).
         if _optional(out, decisions, "round_trip", dict, "crs_decisions"):
             trip = decisions["round_trip"]
+            _check_extension_keys(out, trip, ROUND_TRIP_KEYS, "crs_decisions.round_trip", "3.7")
             for leg in ("transformation", "return_transformation"):
                 if leg not in trip:
                     out.append(
@@ -258,19 +283,14 @@ def problems(record: object) -> list[str]:
         # two implementations disagreed on two spellings -- found by the
         # `conformita-manifest` review before draft.6 was tagged. Section 3 says
         # the schema wins, so this follows it.
+        # New in 1.0.0-draft.7: the keys this section does not define carry the
+        # producer's prefix, in the grammar of an extension check name. Until
+        # then section 3.7 permitted them "under the extension rule above",
+        # which could be read as either 3.5 (a SHOULD with no syntax) or 3.6 (a
+        # MUST with one), and a third-party emitter reading only the prose would
+        # not have produced the prefix.
+        _check_extension_keys(out, decisions, CRS_DECISION_KEYS, "crs_decisions", "3.7")
         for key in decisions:
-            # New in 1.0.0-draft.7: the keys this section does not define carry
-            # the producer's prefix, in the grammar of an extension check name.
-            # Until then section 3.7 permitted them "under the extension rule
-            # above", which could be read as either 3.5 (a SHOULD with no
-            # syntax) or 3.6 (a MUST with one), and a third-party emitter
-            # reading only the prose would not have produced the prefix.
-            if key not in CRS_DECISION_KEYS and not EXTENSION_CHECK_NAME.match(key):
-                out.append(
-                    f"`crs_decisions.{key}` is neither a key section 3.7 defines nor "
-                    "an extension named `x-<producer>:<name>`; since 1.0.0-draft.7 "
-                    "every other key carries the producer's prefix"
-                )
             if re.fullmatch(r"x-[^:]+:round_trip", key):
                 out.append(
                     f"`crs_decisions.{key}` records a CRS round trip under an "
@@ -294,6 +314,7 @@ def problems(record: object) -> list[str]:
             if not isinstance(repair, dict):
                 out.append(f"`repairs[{n}]` must be an object")
                 continue
+            _check_extension_keys(out, repair, REPAIR_KEYS, f"repairs[{n}]", "3.4")
             # The shape of an entry, new in 1.0.0-draft.5. Until then this
             # branch checked that a repair was an object and stopped, so two
             # producers disclosing the same repair could share no key and both
