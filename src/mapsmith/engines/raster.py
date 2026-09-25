@@ -13,6 +13,7 @@ raster CRS.
 from __future__ import annotations
 
 import ast
+import contextlib
 import re
 from typing import Any
 
@@ -34,6 +35,19 @@ VALID_STATS = {
     "majority",
     "minority",
     "variety",
+}
+
+#: Statistics that need `weights_path`. Measured on exactextract 0.3.0 before
+#: this was written: weighted_mean over a closed-form grid is exactly
+#: sum(x*w)/sum(w), and ONE nodata weight inside a zone turns every weighted
+#: statistic of that zone into NaN -- so MapSmith passes `default_weight=0`
+#: (a cell with no weight does not count) and says which zones lost cells.
+WEIGHTED_STATS = {
+    "weighted_mean",
+    "weighted_sum",
+    "weighted_stdev",
+    "weighted_variance",
+    "weighted_frac",
 }
 
 
@@ -120,19 +134,42 @@ def zonal_statistics(
     zones_path: str,
     output_path: str,
     stats: list[str] | None = None,
+    weights_path: str | None = None,
 ) -> dict[str, Any]:
-    """Statistics of a single-band raster within each vector zone."""
+    """Statistics of a single-band raster within each vector zone.
+
+    With `weights_path`, the weighted statistics too: the mean heat of a zone
+    weighted by the population living in each cell, which is a different
+    number from the plain mean whenever people are not spread evenly -- and
+    used to take three operations and a division.
+    """
     exactextract, rasterio = _require()
     # Two georeferencings and nobody chose: refuse rather than compute
     # from a file the caller did not name (D-059). Returns the manifest
     # entry when there is nothing to refuse.
     grid.refuse_ambiguous_georeferencing(raster_path, "zonal_statistics")
-    ops = stats or ["count", "mean", "min", "max"]
-    unknown = [s for s in ops if s not in VALID_STATS]
+    if weights_path:
+        grid.refuse_ambiguous_georeferencing(weights_path, "zonal_statistics")
+    ops = stats or (
+        ["count", "mean", "weighted_mean"] if weights_path else ["count", "mean", "min", "max"]
+    )
+    unknown = [s for s in ops if s not in VALID_STATS | WEIGHTED_STATS]
     if unknown:
         raise ValueError(
-            f"Unknown statistics {unknown}. Valid: {sorted(VALID_STATS)} "
-            "(note: 'stdev', not 'std')"
+            f"Unknown statistics {unknown}. Valid: {sorted(VALID_STATS)}, and with "
+            f"weights_path {sorted(WEIGHTED_STATS)} (note: 'stdev', not 'std')"
+        )
+    weighted = [s for s in ops if s in WEIGHTED_STATS]
+    if weighted and not weights_path:
+        raise ValueError(
+            f"{weighted} need weights_path: a single-band raster of weights on the "
+            "same grid as the values (same CRS, cells and registration)."
+        )
+    if weights_path and not weighted:
+        raise ValueError(
+            "weights_path was given and no weighted statistic was asked for, so the "
+            f"weights would change nothing. Add one of {sorted(WEIGHTED_STATS)} to "
+            "stats, or leave weights_path out."
         )
 
     zones = readers.read_vector(zones_path)
@@ -141,14 +178,28 @@ def zonal_statistics(
             zones, f"{zones_path} has no CRS — cannot align zones to the raster."
         ))
 
-    with rasterio.open(raster_path) as ds:
+    with contextlib.ExitStack() as stack:
+        ds = stack.enter_context(rasterio.open(raster_path))
+        weights_ds = (
+            stack.enter_context(rasterio.open(weights_path)) if weights_path else None
+        )
+        if weights_ds is not None:
+            _refuse_unaligned_weights(ds, weights_ds, raster_path, weights_path)
         raster_crs = ds.crs
+        parameters: dict[str, Any] = {"stats": ops, "bands": ds.count}
+        if weights_ds is not None:
+            parameters["weight_of_a_cell_with_no_weight"] = 0.0
         record = ProvenanceRecord(
             operation="zonal_statistics",
-            parameters={"stats": ops, "bands": ds.count},
+            parameters=parameters,
             inputs=[
                 InputRecord.from_path(raster_path, crs=verify.crs_label(raster_crs)),
                 InputRecord.from_path(zones_path, crs=verify.crs_label(zones.crs)),
+                *(
+                    [InputRecord.from_path(weights_path, crs=verify.crs_label(weights_ds.crs))]
+                    if weights_ds is not None
+                    else []
+                ),
             ],
             engine=_engine_info(),
         )
@@ -184,9 +235,30 @@ def zonal_statistics(
                 f"cell's footprint is centred on its own sample; the output geometry "
                 f"is the caller's, unmoved."
             )
-        stats_df = exactextract.exact_extract(
-            ds, zones.set_geometry(asked), ops, output="pandas"
-        )
+        asked_zones = zones.set_geometry(asked)
+        if weights_ds is None:
+            stats_df = exactextract.exact_extract(ds, asked_zones, ops, output="pandas")
+            weight_checks: list[verify.Check] = []
+        else:
+            # `op(default_weight=0)`: a cell with a value and no weight is left
+            # out of the weighted statistics instead of turning the whole zone
+            # into NaN. No alias: the column is already named `weighted_mean`
+            # (measured), and an alias gave every band of a multi-band raster
+            # the same name -- "Operation name is not unique", found by the
+            # conformance sweep, whose grid has two bands.
+            asked_ops = [f"{s}(default_weight=0)" if s in WEIGHTED_STATS else s for s in ops]
+            stats_df = exactextract.exact_extract(
+                ds, asked_zones, asked_ops, weights=weights_ds, output="pandas"
+            )
+            record.notes.append(
+                "a cell with a value and no weight counts with weight 0: it is left out "
+                "of the weighted statistics and kept in the unweighted ones"
+            )
+            weight_checks = [
+                _every_valued_cell_has_a_weight(
+                    exactextract, rasterio, ds, weights_ds, asked_zones
+                )
+            ]
 
     out = gpd.GeoDataFrame(
         pd.concat(
@@ -209,11 +281,14 @@ def zonal_statistics(
         output_path,
         operation="zonal_statistics",
         preconditions=pre,
-        checks_fn=lambda: verify.verify_vector_output(
-            output_path,
-            expect_crs=zones.crs,
-            expect_count=len(zones),
-        ),
+        checks_fn=lambda: [
+            *verify.verify_vector_output(
+                output_path,
+                expect_crs=zones.crs,
+                expect_count=len(zones),
+            ),
+            *weight_checks,
+        ],
     )
     return {
         "output": str(output_path),
@@ -223,6 +298,105 @@ def zonal_statistics(
         "verified": True,
         **extras,
     }
+
+
+def _refuse_unaligned_weights(ds: Any, weights: Any, raster_path: str, weights_path: str) -> None:
+    """Weights on exactly the value raster's grid, or a refusal saying how to get there.
+
+    exactextract accepts a weights grid of another resolution and repeats each
+    coarse cell whole in every fine cell it covers -- right for a density, and
+    a weighted_sum inflated k-by-k times for a count -- and it never compares
+    the two coordinate systems. Each of those is a plausible wrong number, so
+    the grids must be the same one, and aligning them is the caller's step.
+    """
+    problems = []
+    if weights.count != 1:
+        problems.append(f"it has {weights.count} bands and a weights raster needs one")
+    if weights.crs is None:
+        problems.append("it declares no CRS")
+    elif not verify.same_crs(weights.crs, ds.crs):
+        problems.append(
+            f"it is in {verify.crs_label(weights.crs)} and the values in "
+            f"{verify.crs_label(ds.crs)}"
+        )
+    if (weights.height, weights.width) != (ds.height, ds.width) or not weights.transform.almost_equals(
+        ds.transform
+    ):
+        problems.append(
+            f"its grid is {weights.height}x{weights.width} at {tuple(weights.transform)[:6]}, "
+            f"the values' {ds.height}x{ds.width} at {tuple(ds.transform)[:6]}"
+        )
+    elif grid.shift_for_area_tools(weights) != grid.shift_for_area_tools(ds):
+        problems.append("one is point-registered and the other area-registered")
+    if problems:
+        raise ValueError(
+            f"Refusing weights {weights_path} for {raster_path}: " + "; ".join(problems) + ". "
+            "Weights must sit on the same grid as the values. Bring them there first -- "
+            "reproject_raster or resample_raster onto the value raster's grid, choosing "
+            "the resampling for what the weights are (a density averages, a count sums)."
+        )
+    band = weights.read(1, masked=True)
+    if band.count() and float(band.min()) < 0:
+        raise ValueError(
+            f"Refusing weights {weights_path}: its smallest weight is {float(band.min())}, "
+            "and a negative weight makes a weighted mean meaningless. Clip or rescale "
+            "the weights first."
+        )
+
+
+def _every_valued_cell_has_a_weight(
+    exactextract: Any, rasterio: Any, ds: Any, weights: Any, zones: Any
+) -> Any:
+    """Name the zones where a cell had a value and no weight.
+
+    Those cells count with weight 0, which is the only choice that leaves a
+    number: exactextract's own default turns the zone's weighted statistics
+    into NaN. So the answer is still defensible -- and the record says where
+    it rests on fewer cells than the unweighted one.
+    """
+    import numpy as np
+    from rasterio.io import MemoryFile
+
+    # Band 1 of the values decides "has a value", and the detail says so: on a
+    # multi-band raster the other bands can have gaps in other places.
+    values = ds.read(1, masked=True)
+    weight_band = weights.read(1, masked=True)
+    of_band = " (band 1 of the values)" if ds.count > 1 else ""
+    dropped = (~np.ma.getmaskarray(values) & np.ma.getmaskarray(weight_band)).astype("float32")
+    if not dropped.any():
+        return verify.Check(
+            "x-mapsmith:every_valued_cell_has_a_weight",
+            True,
+            f"every cell with a value{of_band} also has a weight",
+            critical=False,
+        )
+    profile = {
+        "driver": "GTiff", "height": ds.height, "width": ds.width, "count": 1,
+        "dtype": "float32", "crs": ds.crs, "transform": ds.transform,
+    }
+    # Written, then reopened for reading: exactextract takes a rasterio
+    # DatasetReader and refuses the writer ("Unhandled raster datatype").
+    with MemoryFile() as memory:
+        with memory.open(**profile) as writer:
+            writer.write(dropped, 1)
+        with memory.open() as mask:
+            lost = exactextract.exact_extract(mask, zones, ["sum"], output="pandas")["sum"]
+    affected = [int(i) for i in np.flatnonzero(np.asarray(lost) > 0)]
+    return verify.Check(
+        "x-mapsmith:every_valued_cell_has_a_weight",
+        not affected,
+        f"{len(affected)} of {len(zones)} zones have cells with a value{of_band} and no weight, "
+        f"left out of the weighted statistics: zones {affected[:10]}"
+        + (" and more" if len(affected) > 10 else "")
+        if affected
+        else f"every cell with a value{of_band} inside a zone also has a weight",
+        critical=False,
+        hint=None
+        if not affected
+        else "The weighted statistics of those zones rest on fewer cells than the "
+        "unweighted ones. If a missing weight means zero (nobody lives there), the "
+        "number is right; if it means unknown, fill the weights before trusting it.",
+    )
 
 
 # Resampling methods that AVERAGE their neighbours. On a categorical raster

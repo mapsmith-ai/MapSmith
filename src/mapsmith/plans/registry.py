@@ -736,7 +736,7 @@ BINDINGS: dict[str, Binding] = {
     ),
     "zonal_statistics": Binding(
         _zonal_statistics,
-        ("raster_path", "zones_path"),
+        ("raster_path", "zones_path", "weights_path"),
         "output_path",
         "exactextract",
         ("same_as", "zones_path"),

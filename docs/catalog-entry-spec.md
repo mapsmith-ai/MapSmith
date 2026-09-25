@@ -21,10 +21,10 @@ catalogue is written: *"the coastline is 400 000 nodes and the browser dies"*, n
 
 | what the caller declares | candidates left | ranked, found@3 | **in what comes back** |
 |---|---|---|---|
-| nothing — words alone | 76 | 29% | 29% |
+| nothing — words alone | 76 | 30% | 30% |
 | the input kind | 50 | 31% | 32% |
-| + what it should produce | 31 | 45% | 53% |
-| **+ how many datasets** | **16** | **55%** | **98%** |
+| + what it should produce | 31 | 44% | 53% |
+| **+ how many datasets** | **17** | **53%** | **98%** |
 
 **Ranking is not the mechanism; narrowing is** — and the last column is why. Once
 the two facts a caller genuinely knows have cut the catalogue to something readable,
@@ -115,7 +115,7 @@ when a catalogue of your own outgrows its facets:
 
 `dataset:vector`, `dataset:raster`, `answer`, `description`, `plan_result`.
 
-Worth 26 points of found@3 on top of the input kind (27% to 53%, table above), and it is a facet the caller
+Worth 21 points of *in what comes back* on top of the input kind (32% to 53%, table above), and it is a facet the caller
 always knows: they know whether they want a file, a number, or an account of
 something they already have. Check it against what the code actually writes — a
 declaration that disagrees makes the operation unreachable for the caller who

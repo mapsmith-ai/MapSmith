@@ -23,7 +23,7 @@ whether this system verified anything at all.
 | `x-mapsmith:operation_completed` | The engine finished. Recorded as a failed check when it did not, so a crash leaves a conforming manifest saying what went wrong instead of a dataset with no record beside it. |
 | `x-mapsmith:verification_present` | Nothing looked at the output. It exists because the specification requires a record for every dataset written and requires at least one check in it; the absence of verification is itself recorded as a failed check rather than papered over. No shipped operation emits it, and a test fails if one starts to. |
 
-## Extension check names (53)
+## Extension check names (54)
 
 Each is a proposition about the dataset that was written. A failed one is
 recorded, never suppressed — the audit trail has to survive the error it
@@ -48,6 +48,7 @@ documents.
 | `x-mapsmith:every_point_lies_on_its_line` | `linework` |
 | `x-mapsmith:every_point_placed` | `vector` |
 | `x-mapsmith:every_position_had_a_value` | `sampling` |
+| `x-mapsmith:every_valued_cell_has_a_weight` | `raster` |
 | `x-mapsmith:fill_is_distinguishable` | `raster` |
 | `x-mapsmith:flat_length_on_3d_geometry` | `vector` |
 | `x-mapsmith:full_shrinkage_reconstructs_the_total` | `spatial_stats` |

@@ -1267,10 +1267,16 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "raster",
         "category": "raster",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2},
+        # Variable arity since 2026-09-25: two datasets, or three with the
+        # optional weights raster. `None` keeps it for every declared count,
+        # the rule `run_sql` and `merge_layers` follow; declaring 2 would hide
+        # the weighted form from a caller who correctly says they hold three.
+        "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False, 'dataset_inputs': None},
         "summary": "Statistics of a raster within vector zones via exactextract "
-        "(exact fractional pixel coverage); requires the [raster] extra",
-        "phrasings": "average value of a grid inside each polygon; summarise a raster per area; mean elevation per zone",
+        "(exact fractional pixel coverage), optionally weighted by a second raster; "
+        "requires the [raster] extra",
+        "phrasings": "average value of a grid inside each polygon; summarise a raster per area; mean elevation per zone; "
+        "population-weighted average per district; exposure weighted by where people live",
         "distinguishes": "Summarises a raster inside each polygon — mean elevation per basin, rainfall per "
         "catchment. Not count_in_polygons, which counts vector features; not "
         "band_statistics, which summarises a whole grid with no zones at all.",
@@ -1279,7 +1285,13 @@ OPERATIONS: list[dict[str, Any]] = [
             "layer, with exact fractional pixel coverage (no all-in/all-out pixel "
             "approximation). Zones are aligned to the raster CRS automatically and the "
             "decision is recorded in provenance. Output is the zones layer plus one "
-            "column per statistic. Requires: pip install mapsmith[raster]."
+            "column per statistic. With weights_path, the weighted statistics too -- "
+            "mean heat per district weighted by population is a different number from "
+            "the plain mean wherever people are not spread evenly. The weights must be on "
+            "the value raster's own grid (same CRS, cells, registration) or the call is "
+            "refused with how to align them; a cell with a value and no weight counts "
+            "with weight 0 and the record names the zones where that happened. "
+            "Requires: pip install mapsmith[raster]."
         ),
         "parameters": [
             {
@@ -1305,8 +1317,18 @@ OPERATIONS: list[dict[str, Any]] = [
                 "type": "list[str]",
                 "required": False,
                 "description": "Subset of count/sum/mean/median/min/max/stdev/variance/"
-                "majority/minority/variety (default: count, mean, min, max). "
+                "majority/minority/variety (default: count, mean, min, max), and with "
+                "weights_path weighted_mean/weighted_sum/weighted_stdev/weighted_variance/"
+                "weighted_frac (default then: count, mean, weighted_mean). "
                 "Note: 'stdev', not 'std'",
+            },
+            {
+                "name": "weights_path",
+                "type": "str",
+                "required": False,
+                "description": "Single-band raster of weights on the SAME grid as "
+                "raster_path (same CRS, cells and registration), e.g. population. "
+                "Required by the weighted statistics, refused without one",
             },
         ],
         "examples": [
@@ -1331,6 +1353,19 @@ OPERATIONS: list[dict[str, Any]] = [
                         "zones_path": "municipalities.gpkg",
                         "output_path": "pop_by_muni.parquet",
                         "stats": ["sum"],
+                    },
+                },
+            },
+            {
+                "goal": "Average summer temperature per district, weighted by population",
+                "call": {
+                    "tool": "zonal_statistics",
+                    "arguments": {
+                        "raster_path": "temperature.tif",
+                        "zones_path": "districts.gpkg",
+                        "output_path": "heat_exposure.parquet",
+                        "weights_path": "population.tif",
+                        "stats": ["mean", "weighted_mean"],
                     },
                 },
             },

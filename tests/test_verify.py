@@ -1370,6 +1370,13 @@ def _spec_fixtures(tmp_path):
     ) as ds:
         ds.write(np.arange(16, dtype="int16").reshape(4, 4), 1)
         ds.write(np.arange(16, 32, dtype="int16").reshape(4, 4), 2)
+    # Weights on exactly that grid, for the weighted zonal statistics.
+    grid_weights = tmp_path / "grid_weights.tif"
+    with rasterio.open(
+        grid_weights, "w", driver="GTiff", height=4, width=4, count=1, dtype="float32",
+        crs=crs, transform=from_origin(0, 100, 25, 25), nodata=-1.0,
+    ) as ds:
+        ds.write(np.arange(1, 17, dtype="float32").reshape(4, 4), 1)
 
     # The raster twin of the Rome-meridian layer above, and it exercises the
     # OTHER branch: `reproject_raster` hands the pair to rasterio, which reaches
@@ -1412,8 +1419,11 @@ def _spec_fixtures(tmp_path):
             str(grid), out("rc.tif"), ["0:8:1", "8:40:2"]
         ),
         "band_math": lambda: raster.band_math(str(grid), out("bm.tif"), "b2 - b1"),
+        # The WEIGHTED form: it adds an input and a check to the record, so it
+        # is the one worth sweeping; the unweighted path shares everything else.
         "zonal_statistics": lambda: raster.zonal_statistics(
-            str(grid), str(layer), out("zs.parquet"), stats=["mean"]
+            str(grid), str(layer), out("zs.parquet"), stats=["mean", "weighted_mean"],
+            weights_path=str(grid_weights),
         ),
         "reproject_raster": lambda: raster.reproject_raster(
             str(rome_grid), out("repr.tif"), "EPSG:4326", "nearest"

@@ -1,6 +1,7 @@
 """Zonal statistics: exact deterministic values, CRS discipline, provenance."""
 
 import json
+from pathlib import Path
 
 import geopandas as gpd
 import pytest
@@ -84,6 +85,110 @@ def test_zonal_crs_realignment_recorded(dem, zone, tmp_path):
 def test_zonal_rejects_unknown_stat(dem, zone, tmp_path):
     with pytest.raises(ValueError, match="stdev"):
         raster.zonal_statistics(dem, zone, str(tmp_path / "x.parquet"), ["std"])
+
+
+def _weights(tmp_path, data, *, name="w.tif", crs="EPSG:32631", transform=None, nodata=-1.0):
+    data = np.asarray(data, dtype=np.float32)
+    bands = data if data.ndim == 3 else data[None]
+    path = tmp_path / name
+    with rasterio.open(
+        path, "w", driver="GTiff", height=bands.shape[1], width=bands.shape[2],
+        count=bands.shape[0], dtype="float32", crs=crs,
+        transform=transform or from_origin(0.0, 10.0, 1.0, 1.0), nodata=nodata,
+    ) as dst:
+        dst.write(bands)
+    return str(path)
+
+
+def _column_weights():
+    """weight = column + 1, so the right of the zone counts more than the left."""
+    return np.tile(np.arange(1, 11, dtype=np.float32), (10, 1))
+
+
+def test_weighted_mean_and_sum_in_closed_form(dem, zone, tmp_path):
+    """Values r*10+c, weights c+1, the 5x5 block: sum(w) = 5*15 = 75 and
+    sum(x*w) = sum_r(10r*15) + 5*sum_c(c(c+1)) = 1500 + 200 = 1700."""
+    weights = _weights(tmp_path, _column_weights())
+    out = tmp_path / "w.parquet"
+    result = raster.zonal_statistics(
+        dem, zone, str(out), ["mean", "weighted_mean", "weighted_sum"], weights_path=weights
+    )
+    row = gpd.read_parquet(out).iloc[0]
+    assert row["mean"] == pytest.approx(22.0)
+    assert row["weighted_mean"] == pytest.approx(1700 / 75)
+    assert row["weighted_sum"] == pytest.approx(1700.0)
+    manifest = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+    assert [i["path"].rsplit("/", 1)[-1] for i in manifest["inputs"]] == [
+        "dem.tif", "zones.gpkg", "w.tif"
+    ]
+    assert manifest["parameters"]["weight_of_a_cell_with_no_weight"] == 0.0
+    check = next(
+        c for c in manifest["verification"]
+        if c["name"] == "x-mapsmith:every_valued_cell_has_a_weight"
+    )
+    assert check["passed"] is True
+
+
+def test_a_cell_with_no_weight_counts_zero_and_the_zone_is_named(dem, zone, tmp_path):
+    """exactextract's own default turns the whole zone's weighted statistics
+    into NaN for ONE nodata weight (measured). The cell (0,0) has value 0 and
+    weight 1: without it sum(w) = 74 and sum(x*w) is still 1700."""
+    data = _column_weights()
+    data[0, 0] = -1.0
+    weights = _weights(tmp_path, data)
+    out = tmp_path / "hole.parquet"
+    result = raster.zonal_statistics(
+        dem, zone, str(out), ["weighted_mean"], weights_path=weights
+    )
+    assert gpd.read_parquet(out).iloc[0]["weighted_mean"] == pytest.approx(1700 / 74)
+    manifest = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+    check = next(
+        c for c in manifest["verification"]
+        if c["name"] == "x-mapsmith:every_valued_cell_has_a_weight"
+    )
+    assert check["passed"] is False and check["critical"] is False
+    assert "zones [0]" in check["detail"]
+
+
+@pytest.mark.parametrize(
+    "case, match",
+    [
+        ("other_grid", "its grid is"),
+        ("other_crs", "is in EPSG:32632"),
+        ("two_bands", "2 bands"),
+        ("negative", "negative weight"),
+    ],
+)
+def test_weights_off_the_value_grid_are_refused(dem, zone, tmp_path, case, match):
+    """exactextract accepts a coarser weights grid and repeats each coarse cell
+    in every fine one -- a weighted_sum inflated k*k times for a count -- and
+    never compares the two CRSs. Refused, with how to align them."""
+    if case == "other_grid":
+        weights = _weights(
+            tmp_path, np.ones((5, 5)), transform=from_origin(0.0, 10.0, 2.0, 2.0)
+        )
+    elif case == "other_crs":
+        weights = _weights(tmp_path, _column_weights(), crs="EPSG:32632")
+    elif case == "two_bands":
+        weights = _weights(tmp_path, np.stack([_column_weights(), _column_weights()]))
+    else:
+        data = _column_weights()
+        data[3, 3] = -5.0
+        weights = _weights(tmp_path, data, nodata=-9999.0)
+    with pytest.raises(ValueError, match=match):
+        raster.zonal_statistics(
+            dem, zone, str(tmp_path / "x.parquet"), ["weighted_mean"], weights_path=weights
+        )
+
+
+def test_a_weighted_statistic_needs_weights_and_weights_need_one(dem, zone, tmp_path):
+    with pytest.raises(ValueError, match="need weights_path"):
+        raster.zonal_statistics(dem, zone, str(tmp_path / "a.parquet"), ["weighted_mean"])
+    weights = _weights(tmp_path, _column_weights())
+    with pytest.raises(ValueError, match="would change nothing"):
+        raster.zonal_statistics(
+            dem, zone, str(tmp_path / "b.parquet"), ["mean"], weights_path=weights
+        )
 
 
 def test_zonal_rejects_zones_without_crs(dem, tmp_path):

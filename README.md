@@ -223,8 +223,10 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 
 This page describes **0.6.1**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. `main` is at 0.6.1 today, with nothing
-unreleased beyond it.
+have to find out by calling a tool that is not there. **`main` is ahead of 0.6.1 today** by
+one capability: `zonal_statistics` computes weighted statistics with a weights raster, such as
+mean heat per district weighted by population. No tool or manifest key moved;
+[`[Unreleased]` in the changelog](CHANGELOG.md#unreleased) has it.
 
 **If you read manifests, 0.6.1 moves no key**: records declare `spec_version`
 `1.0.0-draft.8`, two drafts past 0.6.0's `draft.6`, and both drafts only narrowed where a
@@ -409,10 +411,10 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 76 | 29% | 17% | 29% |
-| what data I have | 50 | 31% | 22% | 32% |
-| + what I want back | 31 | 45% | 40% | 53% |
-| **+ how many datasets I have** | **16** | **55%** | **53%** | **98%** |
+| nothing — words alone | 76 | 30% | 18% | 30% |
+| what data I have | 50 | 31% | 21% | 32% |
+| + what I want back | 31 | 44% | 40% | 53% |
+| **+ how many datasets I have** | **17** | **53%** | **50%** | **98%** |
 
 **Two ranking columns, and that is a correction.** This table used to carry one,
 computed with the default engine — which is the embedding one where its model
@@ -425,18 +427,22 @@ published under a sentence promising it could be checked.
 The two also differ in a way worth seeing, and this page had it backwards
 until 2026-08-30. It said the embedding engine overtakes BM25 once the facets
 have narrowed. It does not overtake it anywhere: BM25 leads at every row of the
-table above, by seven to twelve points, and the gap is widest at the fullest
-declaration. An exact term either matches or does not, and the entries that
-survive a full declaration are told apart by the words that distinguish them —
-which is what `distinguishes` is for. The embedding engine earns its place on
-the phrasings it has never seen, not on the ranking once the set is small.
+table above, by twelve points on words alone and by three at the fullest
+declaration, where the entries that survive are told apart by the words that
+distinguish them — which is what `distinguishes` is for, and what an exact term
+either matches or does not. The embedding engine earns its place on the
+phrasings it has never seen, not on the ranking once the set is small. *(This
+paragraph said until 2026-09-25 that the gap was seven to twelve points and
+widest at the fullest declaration. It was the other way round with the figures
+then published — narrowest there, at two — and nothing checked the sentence,
+only the table beside it.)*
 
 The last column is not an accuracy figure — it is a property, and the 98% rather than 100% is
 worth a sentence. The narrowing never drops the right operation: that is asserted per entry and
 holds for all 76. What the column measures is whether the surviving set was small enough to hand
 over WHOLE, and for a handful of requests it still is not, so those fall back to a ranked
 shortlist and the answer can be outside the top three. Ranking decides the order; it does not
-decide membership; and the 3% is the gap between "cannot lose the answer" and "can show you all
+decide membership; and the 2% is the gap between "cannot lose the answer" and "can show you all
 of it".
 
 **The third row is the scaling wall, and we hit it in one afternoon.** On 2026-08-29 the
@@ -467,10 +473,12 @@ of comparison this page exists to refuse.)
 
 **And at 76 the cost showed where the new operation lives.** `summarize_points_in_polygons` takes two vector layers and returns one, which is the busiest corner of the facet space — `count_in_polygons`, `spatial_join` and `clip_layer` are its neighbours — so the bottom row's found@3 fell from 58% to 55% under BM25 while the average surviving set stayed at 16 and *delivered* held at 98%. The operation was added because «average pH by field block» took two calls to answer and so, to somebody searching, did not exist; three points of ranking at the fullest declaration is what that cost, and the guarantee that matters did not move.
 
+**And when an existing operation gained an optional input, with no operation added.** `zonal_statistics` took a weights raster on 2026-09-25, so it reads two datasets or three, and an arity that varies is declared as none at all — the rule `run_sql` and `merge_layers` follow, because declaring 2 would hide the weighted form from a caller who correctly says they hold three. The price is that it now survives every arity: the average surviving set went from 16 to 17 and the bottom row's found@3 from 55% to 53%, with *delivered* still at 98%. A facet that stops discriminating for one entry costs every search a candidate.
+
 That is the shape of the trade, and it says when the next facet is due. The figure to watch is
 not found@3 — a ranker will always get worse as the catalogue grows, and it is a hint. It is the
 **average** surviving set at the fullest declaration, the fourth column of that table:
-9 at 51 operations, 14 at 61, 16 at 72, 16 at 74, 16 at 75, 16 at 76. When that crosses 30, delivery stops being a
+9 at 51 operations, 14 at 61, 16 at 72, 16 at 74, 16 at 75, 17 at 76. When that crosses 30, delivery stops being a
 property and starts being a ranking again, and the answer is another fact the caller already
 knows, not a bigger threshold. (It said *median* until 2026-08-29, and published the mean:
 the median at 76 is 15. The distribution is skewed — most requests leave a small set and a few
@@ -500,7 +508,7 @@ Three measurements say this is the right shape, and the third is the one that se
 
 | | |
 |---|---|
-| our ranking puts the answer in the top three | **55%** |
+| our ranking puts the answer in the top three | **53%** |
 | a model handed the same candidates and asked to *choose* gets its first pick right | **69%** |
 | the two labellers who wrote the ground truth agree **with each other** | **70%** |
 

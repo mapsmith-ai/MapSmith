@@ -485,27 +485,40 @@ def zonal_statistics(
     zones_path: str,
     output_path: str,
     stats: list[str] | None = None,
+    weights_path: str | None = None,
 ) -> dict[str, Any]:
     """Statistics of a raster within each vector zone (exact fractional pixel coverage).
 
     stats: subset of count/sum/mean/median/min/max/stdev/variance/majority/minority/
     variety (default: count, mean, min, max). Zones are aligned to the raster CRS
     automatically; the decision is recorded in the provenance manifest.
+    weights_path: a single-band raster of weights on the SAME grid as the values
+    (same CRS, cells and registration; otherwise refused with how to align it),
+    for weighted_mean/weighted_sum/weighted_stdev/weighted_variance/weighted_frac --
+    e.g. mean heat per zone weighted by population (default stats then: count,
+    mean, weighted_mean). A cell with a value and no weight counts with weight 0,
+    and the record names the zones where that happened.
     Zones without a CRS are refused; `warnings` and `repairs` keys in the result
     flag a suspicious outcome or geometry MapSmith had to repair.
     Requires the [raster] extra.
     """
     _guard(raster_path=raster_path, zones_path=zones_path, output_path=output_path)
+    if weights_path:
+        _guard(weights_path=weights_path)
     from .engines import raster
 
     return _run(
         "zonal_statistics",
-        {"raster": raster_path, "zones": zones_path, "output": output_path, "stats": stats},
+        {
+            "raster": raster_path, "zones": zones_path, "output": output_path,
+            "stats": stats, "weights": weights_path,
+        },
         raster.zonal_statistics,
         raster_path,
         zones_path,
         output_path,
         stats,
+        weights_path,
     )
 
 
