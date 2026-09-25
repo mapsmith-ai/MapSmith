@@ -6,6 +6,16 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.6.0] - 2026-09-25
+
+The reason to upgrade is in **Fixed**: five operations stop reading a zone drawn
+across the 180th meridian as the rest of the planet, `nearest_join` stops
+measuring distances there 5-6% too long, and 28 writers stop leaving a dataset
+with no manifest when they fail. The reason to read before upgrading is in
+**Changed**: one manifest key is renamed.
+
 ### Added
 
 - **Two cases on [mapsmith.dev](https://mapsmith.dev/#step-through) that a reader
