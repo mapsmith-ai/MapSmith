@@ -36,6 +36,11 @@ CORE_CHECK_NAMES = frozenset({
     "geometry_types",
 })
 EXTENSION_CHECK_NAME = re.compile(r"^x-[a-z0-9][a-z0-9_-]*:[a-z0-9][a-z0-9_]*$")
+#: The keys of `crs_decisions` that section 3.7 defines. Any other key is an
+#: extension and uses the grammar above (since 1.0.0-draft.7).
+CRS_DECISION_KEYS = frozenset(
+    {"analysis_crs", "reason", "source_crs", "target_crs", "transformation", "round_trip"}
+)
 
 
 SPEC_VERSION = re.compile(r"^1\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$")
@@ -254,6 +259,18 @@ def problems(record: object) -> list[str]:
         # `conformita-manifest` review before draft.6 was tagged. Section 3 says
         # the schema wins, so this follows it.
         for key in decisions:
+            # New in 1.0.0-draft.7: the keys this section does not define carry
+            # the producer's prefix, in the grammar of an extension check name.
+            # Until then section 3.7 permitted them "under the extension rule
+            # above", which could be read as either 3.5 (a SHOULD with no
+            # syntax) or 3.6 (a MUST with one), and a third-party emitter
+            # reading only the prose would not have produced the prefix.
+            if key not in CRS_DECISION_KEYS and not EXTENSION_CHECK_NAME.match(key):
+                out.append(
+                    f"`crs_decisions.{key}` is neither a key section 3.7 defines nor "
+                    "an extension named `x-<producer>:<name>`; since 1.0.0-draft.7 "
+                    "every other key carries the producer's prefix"
+                )
             if re.fullmatch(r"x-[^:]+:round_trip", key):
                 out.append(
                     f"`crs_decisions.{key}` records a CRS round trip under an "

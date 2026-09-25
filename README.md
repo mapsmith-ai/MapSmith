@@ -45,7 +45,7 @@ MapSmith's private output: JSON Schema, a toolchain-free validator, a conformanc
 hundred-line emitter that never imports MapSmith. Records carry `spec_version`, and CI validates
 real MapSmith output against the spec's own validator. The specification is archived and citable
 as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213), a concept DOI that
-resolves to the latest *archived* draft. These records declare `1.0.0-draft.6`; if the DOI shows
+resolves to the latest *archived* draft. These records declare `1.0.0-draft.7`; if the DOI shows
 an earlier one, the archive has not caught up, and the
 [repository](https://github.com/mapsmith-ai/manifest-spec) holds the text they are written against. The names MapSmith puts
 in a record beyond the ones the specification defines — every extension check name, and every
@@ -224,10 +224,10 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 This page describes **0.6.0**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
 have to find out by calling a tool that is not there. **`main` is ahead of 0.6.0 today** by
-two corrections to the antimeridian refusal: a layer written in 0..360 longitudes is no longer
-refused for closing along 0 and 360, and two error messages now give the right way out. No
-tool, operation or manifest key moved; [`[Unreleased]` in the changelog](CHANGELOG.md#unreleased)
-has both.
+two corrections to the antimeridian refusal — a layer written in 0..360 longitudes is no longer
+refused for closing along 0 and 360, and two error messages now give the right way out — and
+by records that declare `1.0.0-draft.7` instead of `draft.6`. No tool, operation or manifest
+key moved; [`[Unreleased]` in the changelog](CHANGELOG.md#unreleased) has all three.
 
 **If you read manifests, 0.6.0 moves one key**: `x-mapsmith:round_trip` is now `round_trip`,
 because the specification made it a core key in `1.0.0-draft.6` and forbids recording that
@@ -260,7 +260,7 @@ for it:
 
 ```json
 {
-  "spec_version": "1.0.0-draft.6",
+  "spec_version": "1.0.0-draft.7",
   "producer": {"name": "mapsmith", "version": "0.6.0"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},

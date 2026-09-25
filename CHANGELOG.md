@@ -6,6 +6,16 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+### Changed
+
+- **Records declare `spec_version` `1.0.0-draft.7`.** The specification now
+  requires every key of `crs_decisions` it does not define to be named
+  `x-<producer>:<name>`, which it had left to one reading of an ambiguous
+  sentence. MapSmith already named them that way, so no key moves: a reader
+  keying on the label sees draft.7, a reader keying on fields sees nothing
+  change. The vendored schema and validator are draft.7's, and the
+  conformance sweep validates every writer's record against them.
+
 ### Fixed
 
 - **A layer written in 0..360 longitudes had its seam in the wrong place.**

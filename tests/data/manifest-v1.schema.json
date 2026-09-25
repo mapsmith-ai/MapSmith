@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mapsmith.dev/spec/manifest-v1.schema.json",
-  "x-spec-version": "1.0.0-draft.6",
+  "x-spec-version": "1.0.0-draft.7",
   "title": "Provenance manifest for a geospatial dataset",
   "description": "One record, written next to one output dataset, complete enough that someone who was not there can re-run the operation and disagree with it. A manifest records what was done; it does not certify that it was right \u2014 those are different claims, and this format only makes the first.",
   "type": "object",
@@ -199,7 +199,13 @@
     },
     "crs_decisions": {
       "type": "object",
-      "description": "RECOMMENDED. Coordinate-system decisions and the reason for each. `analysis_crs` and `reason` are strings; `transformation` and `round_trip` are objects of the shapes defined here; other values may be of any type, because the question a consumer most needs answered here (was the transformation a ballpark one?) has to be answerable in a form a program can branch on. Section 3.7 fixes the keys. `round_trip` is the only name for a completed CRS round trip; a prefixed name for the same fact does not conform.",
+      "description": "RECOMMENDED. Coordinate-system decisions and the reason for each. `analysis_crs` and `reason` are strings; `source_crs` and `target_crs` are strings or null; `transformation` and `round_trip` are objects of the shapes defined here; a key this section does not define may hold a value of any type, because the question a consumer most needs answered here (was the transformation a ballpark one?) has to be answerable in a form a program can branch on. Section 3.7 fixes the keys, and since 1.0.0-draft.7 any other key MUST be named `x-<producer>:<name>`, the grammar of an extension check name. `round_trip` is the only name for a completed CRS round trip; a prefixed name for the same fact does not conform.",
+      "propertyNames": {
+        "anyOf": [
+          {"enum": ["analysis_crs", "reason", "source_crs", "target_crs", "transformation", "round_trip"]},
+          {"pattern": "^x-[a-z0-9][a-z0-9_-]*:[a-z0-9][a-z0-9_]*$"}
+        ]
+      },
       "properties": {
         "analysis_crs": {
           "type": "string",
