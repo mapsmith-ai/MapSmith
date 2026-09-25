@@ -201,10 +201,10 @@ def test_the_esri_stack_produces_the_same_geometry_and_a_different_schema(
     record = json.loads(pathlib.Path(result["provenance"]).read_text(encoding="utf-8"))
 
     assert record["engine"]["name"] == "ArcGIS Pro"
-    prodotto = gpd.read_parquet(out)
+    written_layer = gpd.read_parquet(out)
     # Two squares of 100 m buffered by 10: 10000 + 4x1000 + pi x 100 each.
-    assert prodotto.area.sum() == pytest.approx(28628.3, rel=0.001)
-    assert "a_field_name_that_is_long" in prodotto.columns, (
+    assert written_layer.area.sum() == pytest.approx(28628.3, rel=0.001)
+    assert "a_field_name_that_is_long" in written_layer.columns, (
         "the bridge truncated or dropped a field name"
     )
 
