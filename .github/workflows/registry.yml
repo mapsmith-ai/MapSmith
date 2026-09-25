@@ -11,8 +11,17 @@ name: MCP Registry
 #
 # The registry grants `io.github.<repository_owner>/*` to any workflow of that
 # owner holding `id-token: write`, with no binding to a repository, file or ref.
-# The protection is therefore on this side: only this workflow asks for the
-# permission, and only a maintainer can dispatch it.
+# So the protection has to be on this side, and it has three parts:
+#   - no job that runs this repository's code or installs dependencies holds
+#     that permission. Two jobs do: this one, and the Pages `deploy` job, which
+#     runs one SHA-pinned action. Until 2026-09-25 the Pages *workflow* held it,
+#     so its `build` job -- `pip install` plus our own scripts -- could have
+#     minted a registry token, and this comment claimed the opposite;
+#   - what gets published is a tag, resolved as a tag (a branch with the same
+#     name does not win), whose commit is on `main` and whose own CI run passed;
+#   - dispatching needs Actions write on this repository.
+# What it does not stop: someone who can already push to `main` and tag it.
+# That is a branch-protection question, not one this file can answer.
 on:
   workflow_dispatch:
     inputs:
@@ -32,6 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read
       id-token: write
     env:
       TAG: ${{ inputs.tag }}
@@ -47,7 +57,31 @@ jobs:
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a release tag: $TAG"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag }}
+          # `refs/tags/` explicitly: a bare name is tried as a branch first.
+          ref: refs/tags/${{ inputs.tag }}
+          fetch-depth: 0
+          # A downloaded binary runs later in this job; it gets no token.
+          persist-credentials: false
+      - name: The tag must be on main, and its own CI run must have passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha="$(git rev-parse HEAD)"
+          git merge-base --is-ancestor "$sha" origin/main \
+            || { echo "$TAG ($sha) is not on main"; exit 1; }
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -o ci.json \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${sha}&per_page=20"
+          python3 - "$TAG" <<'EOF'
+          import json, sys
+          tag = sys.argv[1]
+          runs = json.load(open("ci.json", encoding="utf-8"))["workflow_runs"]
+          on_tag = [r for r in runs if r["event"] == "push" and r["head_branch"] == tag]
+          passed = [r for r in on_tag if r["conclusion"] == "success"]
+          if not passed:
+              seen = [(r["status"], r["conclusion"]) for r in on_tag] or "no run on the tag"
+              sys.exit(f"CI has not passed on {tag}: {seen}")
+          print(f"CI passed on {tag}: run {passed[0]['id']}")
+          EOF
       - name: server.json must declare the tag's version
         run: |
           expected="${TAG#v}"

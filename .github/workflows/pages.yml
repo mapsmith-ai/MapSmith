@@ -23,10 +23,13 @@ on:
       - "docs/argleton-run.json"
   workflow_dispatch:
 
+# Per job, not per workflow. `id-token: write` lets a job mint an OIDC token,
+# and the MCP Registry grants `io.github.mapsmith-ai/*` to any token from any
+# workflow of this owner. `build` installs unpinned transitive dependencies and
+# runs the repository's own code, so it must not hold that permission: only
+# `deploy`, which runs one SHA-pinned action and nothing of ours, does.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # One deployment at a time, and let a run in progress finish: cancelling
 # mid-deploy is how a site ends up half-published.
@@ -37,6 +40,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38  # v5.4.0
@@ -79,6 +84,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
