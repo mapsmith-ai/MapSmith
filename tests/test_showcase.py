@@ -1017,6 +1017,40 @@ def test_the_readme_says_which_release_it_describes():
         )
 
 
+def test_the_site_names_what_main_has_that_the_release_does_not():
+    """The site's paragraph makes the README's promise and nothing kept it.
+
+    Between the 0.6.0 fixes and the tag, mapsmith.dev said "this page describes
+    0.5.1" beside an operation 0.5.1 does not have. The build now renders the
+    lead of every `[Unreleased]` entry, and nothing when there are none.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("site_build", ROOT / "site" / "build.py")
+    build = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(build)
+
+    assert "{{AHEAD}}" in SITE_TEMPLATE.read_text(encoding="utf-8"), (
+        "the site template no longer renders the ahead-of-release sentence"
+    )
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    unreleased = changelog.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+    leads = re.findall(r"^- \*\*(.+?)\*\*", unreleased, flags=re.MULTILINE | re.DOTALL)
+    rendered = build.unreleased_html(changelog, "9.9.9")
+    if leads:
+        assert "is ahead of 9.9.9" in rendered
+        assert rendered.count("<li>") == len(leads)
+    else:
+        assert rendered == ""
+
+    quiet = "# Changelog\n\n## [Unreleased]\n\nNothing yet.\n\n## [1.0.0] - 2026-01-01\n\n- **Old.**\n"
+    assert build.unreleased_html(quiet, "1.0.0") == ""
+    busy = quiet.replace("Nothing yet.", "### Fixed\n\n- **A `thing` was\n  wrong.** Details.")
+    assert "<li>A <code>thing</code> was wrong.</li>" in build.unreleased_html(busy, "1.0.0")
+    with pytest.raises(RuntimeError):
+        build.unreleased_html("# Changelog\n", "1.0.0")
+
+
 def test_the_readme_does_not_say_the_product_is_unchanged_while_it_is_not():
     """The pointer to `[Unreleased]` is checked above; what the paragraph SAYS
     about the difference was not, and on 2026-09-25 it was false.

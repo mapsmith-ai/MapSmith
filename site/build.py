@@ -398,6 +398,49 @@ def highlight(value, indent: int = 0) -> str:
     return f'"<span class="{cls}">{text}</span>"'
 
 
+CHANGELOG_UNRELEASED = "https://github.com/mapsmith-ai/MapSmith/blob/main/CHANGELOG.md#unreleased"
+
+
+def unreleased_html(changelog: str, version: str) -> str:
+    """The sentence the page promises when `main` runs ahead of the release.
+
+    The template has said since 0.3.0 that "when main runs ahead of the
+    published artifact this paragraph says so and names the difference", and
+    nothing rendered it: on 2026-09-25, between the fixes and the tag, the page
+    said "this page describes 0.5.1" beside 76 operations, one of which 0.5.1
+    does not have, and a manifest in a format 0.5.1 does not write.
+
+    Read from `[Unreleased]` rather than from the commits since the tag: the
+    Pages checkout is shallow and has no tags, and a commit that touches only
+    documentation changes nothing for somebody installing. The difference is
+    named by the lead sentence of each entry, which is what the changelog's
+    own format puts in bold.
+    """
+    import html
+    import re
+
+    if "## [Unreleased]" not in changelog:
+        raise RuntimeError("CHANGELOG.md has no [Unreleased] section to read")
+    section = changelog.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+    leads = re.findall(r"^- \*\*(.+?)\*\*", section, flags=re.MULTILINE | re.DOTALL)
+    if not leads:
+        return ""
+
+    def inline(text: str) -> str:
+        text = html.escape(" ".join(text.split()))
+        return re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+
+    items = "".join(f"<li>{inline(lead)}</li>" for lead in leads)
+    return (
+        '<p style="font-size:0.94rem;color:var(--ink-soft)">'
+        f"<strong><code>main</code> is ahead of {html.escape(version)} today</strong>, "
+        "and this page is built from it. What the installable release does not "
+        f"have yet:</p><ul style=\"font-size:0.94rem;color:var(--ink-soft)\">{items}</ul>"
+        f'<p style="font-size:0.94rem;color:var(--ink-soft)">Each with what was '
+        f'measured: <a href="{CHANGELOG_UNRELEASED}">[Unreleased] in the changelog</a>.</p>'
+    )
+
+
 def _git(*args: str) -> str:
     import subprocess
 
@@ -477,6 +520,10 @@ def main(destination: Path) -> int:
     page = (Path(__file__).parent / "index.template.html").read_text(encoding="utf-8")
     for placeholder, value in {
         "{{MANIFEST}}": highlight(manifest),
+        # Before {{VERSION}}: the sentence it renders names the version too.
+        "{{AHEAD}}": unreleased_html(
+            (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"), __version__
+        ),
         "{{VERSION}}": __version__,
         "{{TOOL_COUNT}}": str(tool_count),
         "{{CATALOG_COUNT}}": str(catalog_count),
