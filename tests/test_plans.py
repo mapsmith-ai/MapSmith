@@ -227,13 +227,33 @@ def test_output_dir_missing_and_extension_warning(wells, tmp_path):
                 "arguments": {
                     "input_path": wells,
                     "distance_meters": 10,
-                    "output_path": str(tmp_path / "no_such_dir" / "o.xyz"),
+                    "output_path": str(tmp_path / "no_such_dir" / "o.geojson"),
                 },
             }
         )
     )
     assert "OUTPUT_DIR_MISSING" in codes(report)
+    # Writable but not canonical: a warning steering towards GeoParquet.
     assert any(w.code == "SUSPICIOUS_OUTPUT_EXTENSION" for w in report.warnings)
+
+
+def test_an_extension_no_writer_can_honour_is_an_error_not_a_warning(wells, tmp_path):
+    """`.xyz` used to be a warning; a vector writer given it falls back to the
+    Shapefile driver and turns the path into a directory (issue #31)."""
+    report = validate(
+        make_plan(
+            {
+                "id": "s1",
+                "operation": "buffer_layer",
+                "arguments": {
+                    "input_path": wells,
+                    "distance_meters": 10,
+                    "output_path": str(tmp_path / "o.xyz"),
+                },
+            }
+        )
+    )
+    assert "OUTPUT_EXTENSION_REFUSED" in codes(report)
 
 
 def test_invalid_reprojection_crs(wells, tmp_path):

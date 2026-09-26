@@ -30,6 +30,32 @@ UNKNOWN_CRS = verify.UNKNOWN_CRS
 EXTRA_FOR_FLAG = {"exactextract": "raster", "whitebox": "whitebox"}
 VECTOR_EXTENSIONS = {".parquet", ".gpkg"}
 RASTER_EXTENSIONS = {".tif", ".tiff"}
+
+#: Every extension a writer can honour for its kind. Anything else is REFUSED,
+#: not warned about: a vector writer handed `out.tif` goes through
+#: `GeoDataFrame.to_file`, which falls back to the Shapefile driver and turns
+#: the path into a directory of `.shp` files -- and if that path was an input,
+#: the input is gone and the call dies before a manifest exists (issue #31).
+#: The canonical two above are still what a warning steers towards.
+WRITABLE_EXTENSIONS = {
+    "vector": VECTOR_EXTENSIONS | {".geojson", ".json", ".fgb", ".shp"},
+    "raster": RASTER_EXTENSIONS,
+}
+
+
+def output_extension_refusal(kind: str | None, path: str) -> str | None:
+    """Why `path` cannot be the output of an operation writing `kind`, or None."""
+    if kind not in WRITABLE_EXTENSIONS:
+        return None
+    suffix = Path(path).suffix.lower()
+    if suffix in WRITABLE_EXTENSIONS[kind]:
+        return None
+    return (
+        f"'{path}' has extension '{suffix or '(none)'}' and the operation writes a "
+        f"{kind} ({'/'.join(sorted(WRITABLE_EXTENSIONS[kind]))}). Refused before "
+        "anything is written: a vector writer given another extension falls back to "
+        "the Shapefile driver and turns the path into a directory."
+    )
 # operations whose paired inputs get auto-aligned at runtime (worth a note, not an error)
 ALIGNED_PAIRS = {
     "clip_layer": ("input_path", "mask_path"),
@@ -627,7 +653,10 @@ def _check_output(
         )
     suffix = Path(value).suffix.lower()
     expected = RASTER_EXTENSIONS if binding.output_kind == "raster" else VECTOR_EXTENSIONS
-    if binding.output_kind and suffix not in expected:
+    refusal = output_extension_refusal(binding.output_kind, value)
+    if refusal:
+        errors.append(Issue(code="OUTPUT_EXTENSION_REFUSED", step_id=step.id, message=refusal))
+    elif binding.output_kind and suffix not in expected:
         warnings.append(
             Issue(
                 code="SUSPICIOUS_OUTPUT_EXTENSION",

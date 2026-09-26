@@ -85,9 +85,36 @@ _SQL = ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=F
 
 def _guard(**paths: str) -> None:
     """Path containment at the MCP boundary: tool arguments come from an LLM
-    agent, so every path is untrusted (see workspace.py for the rules)."""
+    agent, so every path is untrusted (see workspace.py for the rules).
+
+    And, when the call names an `output_path`, the two checks `run_operation`
+    already made through the plan validator and the dedicated tools did not
+    (issue #31): the output must not be one of the inputs, and its extension
+    must be one the operation's writer can honour. Otherwise `zonal_statistics`
+    with `output_path` equal to its weights raster replaced the raster with a
+    directory of shapefiles and died before writing a manifest. The operation
+    is the calling tool's name, which is its catalogue name.
+    """
+    import sys
+
+    from .plans.registry import BINDINGS
+    from .plans.validator import _canon, output_extension_refusal
+
     for arg, value in paths.items():
         workspace.guard(value, arg)
+    output = paths.get("output_path")
+    if not output:
+        return
+    for arg, value in paths.items():
+        if arg != "output_path" and value and _canon(value) == _canon(output):
+            raise ValueError(
+                f"output_path '{output}' is the same file as {arg}: writing it would "
+                "destroy an input before the result exists. Choose another output."
+            )
+    binding = BINDINGS.get(sys._getframe(1).f_code.co_name)
+    refusal = output_extension_refusal(binding.output_kind if binding else None, output)
+    if refusal:
+        raise ValueError(refusal)
 
 
 def _run(
@@ -502,9 +529,10 @@ def zonal_statistics(
     flag a suspicious outcome or geometry MapSmith had to repair.
     Requires the [raster] extra.
     """
-    _guard(raster_path=raster_path, zones_path=zones_path, output_path=output_path)
-    if weights_path:
-        _guard(weights_path=weights_path)
+    _guard(
+        raster_path=raster_path, zones_path=zones_path, output_path=output_path,
+        **({"weights_path": weights_path} if weights_path else {}),
+    )
     from .engines import raster
 
     return _run(

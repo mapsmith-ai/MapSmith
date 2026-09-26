@@ -6,7 +6,18 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **An output that is one of the inputs, or has an extension its writer cannot
+  honour, is refused before anything is written**
+  ([#31](https://github.com/mapsmith-ai/MapSmith/issues/31)). `zonal_statistics`
+  with `output_path` equal to its weights raster replaced the raster with a
+  directory of shapefiles — a vector writer given `.tif` falls back to the
+  Shapefile driver — and failed before writing a manifest. The dedicated tools
+  now refuse both at the boundary, as `run_operation` already refused the
+  collision; and the plan validator turns an extension no writer can honour from
+  a warning into an error (`OUTPUT_EXTENSION_REFUSED`), keeping the warning for
+  writable but non-canonical ones such as `.geojson`.
 
 ## [0.7.0] - 2026-09-26
 
