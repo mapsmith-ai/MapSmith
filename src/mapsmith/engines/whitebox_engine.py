@@ -156,6 +156,10 @@ def _plain_copy(path: str, into: Path) -> str:
         height = src.height
 
     profile.pop("predictor", None)
+    # GTiff whatever the input was: the copy is named `.tif` and the engine reads
+    # it as one. An input in another format would otherwise be recreated with
+    # its own driver under a GeoTIFF name.
+    profile["driver"] = "GTiff"
     if transform.e > 0:
         # Flip the rows and rewrite the transform to match, so the copy is the
         # same ground read the ordinary way round. Row r of the flipped array is
@@ -193,8 +197,8 @@ def _plain_copy_note(reason: str) -> str:
     )
 
 
-def _write(wbe: Any, raster: Any, output_path: str, source: str) -> None:
-    """Write an engine output and give it back the input's registration.
+def _write(wbe: Any, raster: Any, output_path: str, source: str, record: Any) -> None:
+    """Write an engine output, give it back the input's registration, and say so.
 
     The engine was handed an area copy of a point-registered input, so it
     writes area. On the same geotransform the positions are the same either
@@ -202,6 +206,11 @@ def _write(wbe: Any, raster: Any, output_path: str, source: str) -> None:
     quietly stopped saying "sample at a point" is the silent change `preserve`
     exists to prevent. Retagging in place keeps the geotransform: measured,
     GDAL shifts the stored tie point and reads back the same transform.
+
+    The record gets the registration in `crs_decisions`, as the raster writers
+    in `raster.py` already did, and a note when the output's bytes were changed
+    after the engine wrote them. Until the 2026-09-25 review neither was there:
+    MapSmith modified an output the manifest attributed to the engine alone.
     """
     import rasterio
 
@@ -209,10 +218,19 @@ def _write(wbe: Any, raster: Any, output_path: str, source: str) -> None:
 
     wbe.write_raster(raster, str(output_path))
     with rasterio.open(source) as src:
+        record.crs_decisions.update(grid.manifest_decisions(src))
         point = grid.registration(src) == "point"
     if point:
         with rasterio.open(output_path, "r+") as dst:
             grid.preserve("point", dst)
+        record.notes.append(
+            "the input declares AREA_OR_POINT=Point, so after the engine wrote this "
+            "output MapSmith tagged it Point in place; the geotransform is unchanged. "
+            "Read through GDAL, positions are exact. The terrain engine itself reads a "
+            "Point file's stored tie point as a cell corner, so opening this output "
+            "with it directly puts every cell half a cell south-east -- MapSmith hands "
+            "it an area copy instead."
+        )
 
 
 def _same_grid_as_gdal(dem: Any, source: str, declared_as: str) -> None:
@@ -400,7 +418,7 @@ def hillshade(
         # that raised after this write left the raster on disk and no manifest, and so
         # did ten other writers in this module. The same net is on each of them.
         with verify.audit_on_failure(record, output_path, []):
-            _write(wbe, result, output_path, dem_path)
+            _write(wbe, result, output_path, dem_path, record)
 
             meta = dem.metadata()
             checks = _raster_checks(
@@ -526,7 +544,7 @@ def _derivative(
         }
         result = call(wbe, dem)
         with verify.audit_on_failure(record, output_path, []):
-            _write(wbe, result, output_path, dem_path)
+            _write(wbe, result, output_path, dem_path, record)
 
             meta = dem.metadata()
             checks = _raster_checks(
@@ -598,7 +616,7 @@ def flow_accumulation(
             input=pointer, out_type=out_type, log_transform=log_transform, input_is_pointer=True
         )
         with verify.audit_on_failure(record, output_path, []):
-            _write(wbe, accum, output_path, dem_path)
+            _write(wbe, accum, output_path, dem_path, record)
 
             meta = dem.metadata()
             cells = meta.rows * meta.columns
@@ -682,7 +700,7 @@ def watershed(
                 points.to_file(shp)
                 vec = wbe.read_vector(str(shp))
                 basins = wbe.hydrology.watersheds_basins.watershed(d8_pointer=pointer, pour_pts=vec)
-                _write(wbe, basins, output_path, dem_path)
+                _write(wbe, basins, output_path, dem_path, record)
 
             meta = dem.metadata()
             checks = _raster_checks(
@@ -780,7 +798,7 @@ def focal_statistics(
         method = getattr(wbe.remote_sensing, FOCAL_STATISTICS[statistic])
         result = method(input=raster, filter_size_x=window, filter_size_y=window)
         with verify.audit_on_failure(record, output_path, []):
-            _write(wbe, result, output_path, input_path)
+            _write(wbe, result, output_path, input_path, record)
 
             meta = raster.metadata()
             checks = _raster_checks(
@@ -857,7 +875,7 @@ def extract_streams(
             zero_background=zero_background,
         )
         with verify.audit_on_failure(record, output_path, []):
-            _write(wbe, result, output_path, flow_accumulation_path)
+            _write(wbe, result, output_path, flow_accumulation_path, record)
 
             meta = accumulation.metadata()
             checks = _raster_checks(
@@ -1134,7 +1152,7 @@ def euclidean_distance(input_path: str, output_path: str) -> dict[str, Any]:
         meta = source.metadata()
         result = wbe.raster.distance_cost.euclidean_distance(input=source)
         with verify.audit_on_failure(record, output_path, []):
-            _write(wbe, result, output_path, input_path)
+            _write(wbe, result, output_path, input_path, record)
             checks = _raster_checks(
                 wbe,
                 output_path,
@@ -1264,7 +1282,7 @@ def viewshed(
                 seen = wbe.terrain.visibility.viewshed(
                     input=dem, stations=vec, height=station_height
                 )
-                _write(wbe, seen, output_path, dem_path)
+                _write(wbe, seen, output_path, dem_path, record)
 
             meta = dem.metadata()
             checks = _raster_checks(
@@ -1541,9 +1559,8 @@ def contour_lines(
     with rasterio.open(dem_path) as probe:
         placement = grid.registration(probe)
         registration_note = grid.describe(probe)
-    direction = 1.0
-    shift_x = direction * CONTOUR_REGISTRATION_SHIFT * float(meta.resolution_x)
-    shift_y = -direction * CONTOUR_REGISTRATION_SHIFT * float(meta.resolution_y)
+    shift_x = CONTOUR_REGISTRATION_SHIFT * float(meta.resolution_x)
+    shift_y = -CONTOUR_REGISTRATION_SHIFT * float(meta.resolution_y)
     height_column = "HEIGHT" if "HEIGHT" in lines.columns else lines.columns[1]
     lines = lines.rename(columns={height_column: "elevation"})
     lines["geometry"] = lines.geometry.translate(xoff=shift_x, yoff=shift_y)

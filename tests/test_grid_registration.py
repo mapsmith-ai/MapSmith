@@ -154,6 +154,27 @@ def test_the_lowest_cell_is_where_its_sample_is(tmp_path, tag):
     assert answer["raster_registration"] == tag.lower()
 
 
+def test_an_environment_that_reverts_gdal_to_its_old_reading_changes_nothing(tmp_path):
+    """`GTIFF_POINT_GEO_IGNORE=TRUE` makes GDAL read a PixelIsPoint tie point as a
+    corner, and the answer above moved half a cell south-east with nothing in it
+    to say why (measured 2026-09-25). MapSmith pins the setting on import, so a
+    process started with it set still answers where the sample is. A child
+    process, because the pin is applied when `mapsmith` is imported."""
+    import os
+    import subprocess
+    import sys
+
+    path = hollow(tmp_path, "Point")
+    code = (
+        "from mapsmith.engines import raster; "
+        f"print(raster.locate_extreme_cell({path!r}, 'min')['x'])"
+    )
+    env = {**os.environ, "GTIFF_POINT_GEO_IGNORE": "TRUE"}
+    run = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env)
+    assert run.returncode == 0, run.stderr[-500:]
+    assert float(run.stdout.strip().splitlines()[-1]) == pytest.approx(SAMPLE[0])
+
+
 def test_nodata_does_not_win_the_search_for_a_minimum(tmp_path):
     """A nodata of -9999 beats every real elevation, and the answer would be the
     position of a hole reported as the bottom of a valley."""
@@ -391,6 +412,12 @@ def test_a_terrain_operation_runs_on_a_point_dem_and_answers_as_on_its_twin(
         TERRAIN_WRITERS[operation](hollow(folder, tag), str(out), folder)
         with rasterio.open(out) as dst:
             outputs[tag] = (grid.registration(dst), dst.transform, dst.read(1, masked=True))
+        manifest = json.loads(Path(f"{out}.provenance.json").read_text(encoding="utf-8"))
+        # The record says what the output is, and -- on the Point twin -- that
+        # MapSmith changed its bytes after the engine wrote them.
+        assert manifest["crs_decisions"][grid.REGISTRATION_KEY] == tag.lower()
+        retagged = any("tagged it Point in place" in note for note in manifest["notes"])
+        assert retagged is (tag == "Point")
     (point_tag, point_transform, point_values) = outputs["Point"]
     (area_tag, area_transform, area_values) = outputs["Area"]
     assert (point_tag, area_tag) == ("point", "area")

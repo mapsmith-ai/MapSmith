@@ -206,9 +206,9 @@ def sample_index(dataset: Any, x: float, y: float) -> tuple[int, int]:
     defect this project has a whole Argleton family for, and it happened here
     once already — the existing sampling tests caught it in the same minute.
 
-    Ties go up in each axis rather than to even: `floor(v + 0.5)` instead of
-    `round`, because Python rounds 2.5 to 2 and 3.5 to 4, and a lookup whose
-    tie-breaking alternates is worse than one whose rule can be stated.
+    A position exactly on a cell edge belongs to the cell east and south of
+    it: `floor`, whose rule can be stated, rather than a rounding whose
+    tie-breaking alternates.
     """
     import math
 

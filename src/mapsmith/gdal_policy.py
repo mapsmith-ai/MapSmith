@@ -74,6 +74,20 @@ _INDIRECTION = ("VRT", "OGR_VRT", "GDALG", "GTI", "MRF")
 
 APPLIED_ENV = ("GDAL_SKIP", "OGR_SKIP")
 
+#: Settings MapSmith's answers depend on, pinned whatever the environment says.
+#:
+#: `GTIFF_POINT_GEO_IGNORE` decides how GDAL reads a PixelIsPoint GeoTIFF. At
+#: its default, FALSE, the stored tie point is shifted half a cell so the
+#: geotransform stays area-oriented (RFC 33), and every position MapSmith
+#: computes rests on that (D-096). Set to TRUE -- "the behaviour of ancient GDAL
+#: versions" -- it is not shifted, and `locate_extreme_cell` on a point
+#: -registered DEM came back half a cell south-east with nothing in the answer to
+#: say why (measured on 2026-09-25). Pinned rather than recorded: a record that
+#: said "positions are half a cell off because of your environment" describes a
+#: wrong answer instead of preventing it. GDAL reads config options from the
+#: environment at every open, so setting it here reaches every later open.
+PINNED_ENV = {"GTIFF_POINT_GEO_IGNORE": "FALSE"}
+
 
 def _merge(existing: str, names: tuple[str, ...]) -> str:
     """Add our names to whatever the operator already set, without duplicates.
@@ -113,6 +127,9 @@ def apply(force: bool = False) -> dict[str, str]:
     # before the geospatial stack exists
     from . import workspace
 
+    # Before either branch: these are about what an answer is, not about what
+    # may be reached, so allowing remote paths does not lift them.
+    os.environ.update(PINNED_ENV)
     if not force and workspace.remote_allowed():
         if os.environ.pop(SENTINEL, None):
             for name, ours in (("GDAL_SKIP", _RASTER_SKIP), ("OGR_SKIP", _VECTOR_SKIP)):

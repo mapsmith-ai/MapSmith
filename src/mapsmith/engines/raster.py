@@ -229,11 +229,10 @@ def zonal_statistics(
         # point: it put every zone half a cell off (D-096). The registration is
         # recorded, because it says what a value represents.
         record.crs_decisions.update(grid.manifest_decisions(ds))
-        asked_zones = zones
         if weights_ds is not None:
-            _refuse_negative_weights(exactextract, weights_ds, asked_zones, weights_path)
+            _refuse_negative_weights(exactextract, weights_ds, zones, weights_path)
         if weights_ds is None:
-            stats_df = exactextract.exact_extract(ds, asked_zones, ops, output="pandas")
+            stats_df = exactextract.exact_extract(ds, zones, ops, output="pandas")
             weight_checks: list[verify.Check] = []
         else:
             # `op(default_weight=0)`: a cell with a value and no weight is left
@@ -244,14 +243,14 @@ def zonal_statistics(
             # conformance sweep, whose grid has two bands.
             asked_ops = [f"{s}(default_weight=0)" if s in WEIGHTED_STATS else s for s in ops]
             stats_df = exactextract.exact_extract(
-                ds, asked_zones, asked_ops, weights=weights_ds, output="pandas"
+                ds, zones, asked_ops, weights=weights_ds, output="pandas"
             )
             record.notes.append(
                 "a cell with a value and no weight counts with weight 0: it is left out "
                 "of the weighted statistics and kept in the unweighted ones"
             )
             weight_checks = [
-                _every_valued_cell_has_a_weight(exactextract, ds, weights_ds, asked_zones)
+                _every_valued_cell_has_a_weight(exactextract, ds, weights_ds, zones)
             ]
 
     out = gpd.GeoDataFrame(

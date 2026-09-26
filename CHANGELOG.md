@@ -88,7 +88,11 @@ All notable changes to MapSmith are documented here, in the format of
   which scored MapSmith's wrong answer as correct for 26 days; the suite has
   published an [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024).
   A weights raster is no longer refused for a registration different from the
-  values': on the same geotransform the samples are in the same places.
+  values': on the same geotransform the samples are in the same places. And the
+  fix no longer depends on the environment: `GTIFF_POINT_GEO_IGNORE=TRUE`, which
+  reverts GDAL to its pre-2010 reading, moved every answer half a cell back with
+  nothing in the record to say why, so MapSmith now pins it to `FALSE` on import,
+  whether or not remote paths are allowed.
 
 - **The terrain operations refused every point-registered DEM, the Copernicus
   DEM included.** The engine reads the stored tie point as a cell corner, and
@@ -96,7 +100,10 @@ All notable changes to MapSmith are documented here, in the format of
   so the numbers were never wrong and twelve operations were unusable on the
   most used global DEM (the eleven that write a raster, and `contour_lines`). The engine now gets a copy declared area-registered on
   GDAL's own geotransform — the same pattern as the TIFF predictor, disclosed in
-  the manifest — and the output gets the input's registration back.
+  the manifest — and the output gets the input's registration back. Their
+  manifests record the registration in `crs_decisions`, as the raster writers
+  already did, and say when MapSmith retagged an output after the engine wrote
+  it, since those bytes are no longer the engine's alone.
   `contour_lines` loses a branch for point-registered DEMs that corrected half a
   cell the wrong way and could not be reached.
 
