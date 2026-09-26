@@ -268,7 +268,14 @@ def test_work_since_the_last_tag_is_announced_under_unreleased():
     from mapsmith import __version__ as in_tree
 
     dated = re.search(rf"^## \[{re.escape(in_tree)}\]", changelog, re.MULTILINE)
-    if dated:
+    # Only on the eve of the tag. Once `v{in_tree}` exists, its block is the
+    # released one, and counting its entries made this check unable to fail on
+    # any commit after a release -- the state it exists to catch (2026-09-26).
+    tagged = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", f"refs/tags/v{in_tree}"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    ).returncode == 0
+    if dated and not tagged:
         released = changelog[dated.end():].split("\n## ", 1)[0]
         entries += [ln for ln in released.splitlines() if ln.startswith("- ")]
     assert entries, (

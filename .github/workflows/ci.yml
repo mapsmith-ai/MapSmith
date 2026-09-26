@@ -32,6 +32,12 @@ jobs:
         python-version: ["3.12", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The whole history, tags included. Two showcase guards ask how many
+          # commits `main` is past the last tag, and on the default shallow
+          # clone `git describe` finds no tag and they skip: green in CI on
+          # every commit, whatever the README said (found 2026-09-26).
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
