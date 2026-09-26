@@ -219,6 +219,13 @@ def test_the_glama_manifest_parses_and_names_the_owner():
     )
 
 
+#: The paths whose changes reach someone who installs the release. The two
+#: guards below compare the README and the changelog with the difference
+#: between the tag and HEAD in THESE paths, because that is the difference the
+#: README promises to name: "a tool that is not there", not a test that moved.
+SHIPPED = ("src", "pyproject.toml", "server.json")
+
+
 def test_work_since_the_last_tag_is_announced_under_unreleased():
     """`main` ahead of the last tag with nothing under `[Unreleased]` is a
     changelog that says the project has stopped.
@@ -240,7 +247,10 @@ def test_work_since_the_last_tag_is_announced_under_unreleased():
     if tag.returncode != 0:
         pytest.skip("no version tag reachable from HEAD (shallow clone?)")
     ahead = subprocess.run(
-        ["git", "rev-list", "--count", f"{tag.stdout.strip()}..HEAD"],
+        # What an installer gets, not every commit (2026-09-26): a commit to the
+        # site build or a test changes nothing in the package, and counting it
+        # made the page announce a difference the release does not have.
+        ["git", "rev-list", "--count", f"{tag.stdout.strip()}..HEAD", "--", *SHIPPED],
         cwd=ROOT, capture_output=True, text=True, check=False,
     )
     if ahead.returncode != 0:
@@ -999,7 +1009,10 @@ def test_the_readme_says_which_release_it_describes():
     if tag.returncode != 0:
         pytest.skip("no version tag reachable from HEAD (shallow clone?)")
     counted = subprocess.run(
-        ["git", "rev-list", "--count", f"{tag.stdout.strip()}..HEAD"],
+        # What an installer gets, not every commit (2026-09-26): a commit to the
+        # site build or a test changes nothing in the package, and counting it
+        # made the page announce a difference the release does not have.
+        ["git", "rev-list", "--count", f"{tag.stdout.strip()}..HEAD", "--", *SHIPPED],
         cwd=ROOT, capture_output=True, text=True, check=False,
     )
     if counted.returncode != 0:
