@@ -417,6 +417,48 @@ def test_the_registry_ownership_proof_is_in_every_place_it_is_read_from():
     )
 
 
+def test_the_pypi_page_has_no_relative_link():
+    """PyPI renders the README with nothing to resolve a relative link against,
+    so every `](docs/...)` and every screenshot was a 404 on pypi.org until
+    2026-09-26. The build rewrites them to GitHub URLs pinned to the release tag
+    (pyproject.toml, hatch-fancy-pypi-readme). This applies the configured
+    substitutions the way the hook does -- Python `re`, in order, the version
+    interpolated afterwards -- and fails on any target still relative, or
+    rewritten to a file the tag would not have."""
+    import tomllib
+
+    from mapsmith import __version__
+
+    metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert "readme" in metadata["project"].get("dynamic", []), (
+        "the readme is static again, so the build ships the relative links as they are"
+    )
+    hook = metadata["tool"]["hatch"]["metadata"]["hooks"]["fancy-pypi-readme"]
+    assert [f.get("path") for f in hook["fragments"]] == ["README.md"], (
+        "the PyPI description is no longer exactly the README; this test reads the wrong text"
+    )
+    text = README.read_text(encoding="utf-8")
+    for rule in hook["substitutions"]:
+        text = re.sub(rule["pattern"], rule["replacement"], text)
+    text = text.replace("$HFPR_VERSION", __version__)
+
+    targets = re.findall(r"\]\(([^)\s]+)\)", text)
+    relative = [t for t in targets if not re.match(r"https?://|mailto:|#", t)]
+    assert not relative, f"these links are still relative on pypi.org: {relative}"
+
+    pinned = re.compile(
+        r"https://(?:raw\.githubusercontent\.com/mapsmith-ai/MapSmith/"
+        r"|github\.com/mapsmith-ai/MapSmith/(?:blob|tree)/)v"
+        + re.escape(__version__)
+        + r"/([^#)]*)"
+    )
+    rewritten = [m.group(1) for t in targets if (m := pinned.match(t))]
+    assert rewritten, "no link was rewritten to the tag, so the substitutions matched nothing"
+    missing = sorted({p for p in rewritten if not (ROOT / p).exists()})
+    assert not missing, f"rewritten to paths the repository does not have: {missing}"
+    assert "<!-- mcp-name: " in text, "the rewrite dropped the Registry ownership marker"
+
+
 def test_the_funding_manifest_is_valid_and_findable_by_a_human():
     """funding.json is a content category of its own, and the failure mode is
     the familiar one: a crawler finds it at the root, a visitor never does. It

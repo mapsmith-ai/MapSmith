@@ -20,6 +20,10 @@ All notable changes to MapSmith are documented here, in the format of
 - **The package metadata names the Copernicus NOTICE** beside the AGPL licence,
   since the source distribution ships the two Copernicus clips the notebook
   reads.
+- **The links on the PyPI page resolve.** PyPI renders the README with nothing
+  to resolve a relative link against, so every link to a document of the repo
+  and the map-panel screenshot answered 404 there. The build now rewrites them
+  to GitHub URLs pinned to the release tag; on GitHub the README is unchanged.
 
 ## [0.7.1] - 2026-09-26
 
