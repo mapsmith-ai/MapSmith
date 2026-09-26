@@ -15,14 +15,13 @@ from __future__ import annotations
 import ast
 import contextlib
 import re
-from pathlib import Path
 from typing import Any
 
 import geopandas as gpd
 import pandas as pd
 
 from .. import datum, grid, readers, verify
-from ..provenance import InputRecord, ProvenanceRecord, alignment_decisions
+from ..provenance import InputRecord, ProvenanceRecord, alignment_decisions, posix_path
 
 VALID_STATS = {
     "count",
@@ -193,7 +192,7 @@ def zonal_statistics(
         if weights_ds is not None:
             # By name as well as by position in `inputs`: an auditor should not
             # have to know that the third input is the one that weighs.
-            parameters["weights_path"] = Path(weights_path).as_posix()
+            parameters["weights_path"] = posix_path(weights_path)
             parameters["weight_of_a_cell_with_no_weight"] = 0.0
         record = ProvenanceRecord(
             operation="zonal_statistics",

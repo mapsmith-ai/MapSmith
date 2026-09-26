@@ -6,7 +6,20 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **A URI in a manifest path keeps its `//`, so its credentials are masked.**
+  The path normaliser collapsed `https://user:pw@host/x` to `https:/user:pw@…`,
+  and the redaction of URI credentials looks for `://`: the password would have
+  stayed in the record. Not reachable while remote paths are refused, which is
+  the default; found in the 0.7.0 audit. The weights raster of
+  `zonal_statistics` is recorded through the same normaliser now.
+- **A redaction in the environment of a secondary input is declared.** Masked
+  values there did not raise `parameters_redacted`, so the record changed a
+  value without saying so.
+- **The package metadata names the Copernicus NOTICE** beside the AGPL licence,
+  since the source distribution ships the two Copernicus clips the notebook
+  reads.
 
 ## [0.7.1] - 2026-09-26
 

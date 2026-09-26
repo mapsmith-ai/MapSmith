@@ -9,6 +9,9 @@ description = "Professional-grade GIS geoprocessing over MCP, with verifiable pr
 readme = "README.md"
 requires-python = ">=3.12"
 license = "AGPL-3.0-or-later"
+# The NOTICE covers the two Copernicus clips the sdist ships in examples/fixtures/,
+# which are not under the AGPL; without it the metadata said AGPL for everything.
+license-files = ["LICENSE", "examples/fixtures/COPERNICUS-NOTICE.md"]
 authors = [{ name = "MapSmith", email = "mapsmith@proton.me" }]
 keywords = ["mcp", "gis", "geoprocessing", "geospatial", "provenance", "reproducibility"]
 classifiers = [

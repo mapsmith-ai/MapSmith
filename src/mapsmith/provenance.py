@@ -552,8 +552,17 @@ def posix_path(path: str | Path) -> str:
 
     The path is otherwise recorded as it was given. Rewriting an absolute path
     to a relative one, or the reverse, would misstate what actually ran.
+
+    A URI is left exactly as given. `PurePath` collapses `//`, so
+    `https://user:pw@host/x` came out as `https:/user:pw@host/x` -- and the
+    redaction of credentials in a URI looks for `://`, so the password would
+    have stayed in the record (found in the 0.7.0 audit; not reachable while
+    remote paths are refused, which is why it was only ever latent).
     """
-    return PurePath(str(path)).as_posix()
+    text = str(path)
+    if "://" in text:
+        return text
+    return PurePath(text).as_posix()
 
 
 @dataclass
@@ -715,7 +724,12 @@ class ProvenanceRecord:
                 for key, value in found.items():
                     self.environment.setdefault(key, value)
             else:
-                self._input_environment[index] = redact_secrets(found)
+                safe = redact_secrets(found)
+                # Said on the record, as every other redaction is: a manifest
+                # that masked a value without saying so reads as the value.
+                if safe != found:
+                    self.parameters_redacted = True
+                self._input_environment[index] = safe
 
     def add_verification(self, checks: list[Any]) -> ProvenanceRecord:
         """Attach deterministic check results (objects with .as_dict())."""

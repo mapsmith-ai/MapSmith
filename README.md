@@ -228,7 +228,9 @@ the published artifact this paragraph says so and names the difference — a rea
 have to find out by calling a tool that is not there. **If you run 0.4.0 to 0.6.1, 0.7.x
 changes answers you have**: every position read from a point-registered raster
 (`AREA_OR_POINT=Point`, the USGS and Copernicus DEMs) was half a cell off, and the
-[changelog](CHANGELOG.md) says which operations and why.
+[changelog](CHANGELOG.md) says which operations and why. **`main` is ahead of 0.7.1** by three
+small fixes from the 0.7.0 audit, none reachable in the default configuration
+([`[Unreleased]`](CHANGELOG.md#unreleased)).
 
 **If you read manifests, 0.7.x renames no key**: records declare `spec_version`
 `1.0.0-draft.8`, two drafts past 0.6.0's `draft.6`, and both drafts only narrowed where a

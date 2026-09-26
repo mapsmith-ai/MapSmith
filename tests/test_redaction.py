@@ -427,3 +427,41 @@ def test_ordinary_names_that_merely_contain_a_credential_word_are_left_alone():
         assert redact_secrets({name: "value"})[name] == "value", (
             f"{name!r} is an ordinary column name and came back redacted"
         )
+
+
+def test_a_uri_keeps_its_scheme_so_its_password_is_masked():
+    """`PurePath` collapses `//`: `https://user:pw@host/x` became
+    `https:/user:pw@host/x`, and the URI redaction looks for `://`, so the
+    password stayed in the record (0.7.0 audit, latent while remote paths are
+    refused)."""
+    from mapsmith.provenance import posix_path
+
+    uri = "https://user:hunter2@host/weights.tif"
+    assert posix_path(uri) == uri
+    assert "hunter2" not in redact_secrets(posix_path(uri))
+    assert posix_path("/vsicurl/" + uri) == "/vsicurl/" + uri
+
+
+def test_a_secret_in_a_secondary_inputs_environment_is_masked_and_declared(tmp_path, monkeypatch):
+    """The per-input environment was redacted without raising
+    `parameters_redacted`, so the record masked a value and did not say so."""
+    from mapsmith import grid
+    from mapsmith.provenance import InputRecord
+
+    def fake_environment(path):
+        if path.endswith("weights.tif"):
+            return {"x-mapsmith:georeferencing_sidecar_present": "s3://k:hunter2@b/w.tif.aux.xml"}
+        return {}
+
+    monkeypatch.setattr(grid, "manifest_environment", fake_environment)
+    target = tmp_path / "out.parquet"
+    target.write_bytes(b"x")
+    record = ProvenanceRecord(
+        operation="zonal_statistics",
+        parameters={},
+        inputs=[InputRecord(path="values.tif", sha256="0" * 64),
+                InputRecord(path="weights.tif", sha256="1" * 64)],
+    )
+    text = record.finish().write_for(target).read_text(encoding="utf-8")
+    assert "hunter2" not in text
+    assert json.loads(text)["parameters_redacted"] is True
