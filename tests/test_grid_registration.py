@@ -170,7 +170,7 @@ def test_an_environment_that_reverts_gdal_to_its_old_reading_changes_nothing(tmp
         f"print(raster.locate_extreme_cell({path!r}, 'min')['x'])"
     )
     env = {**os.environ, "GTIFF_POINT_GEO_IGNORE": "TRUE"}
-    run = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env)
+    run = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, check=False)
     assert run.returncode == 0, run.stderr[-500:]
     assert float(run.stdout.strip().splitlines()[-1]) == pytest.approx(SAMPLE[0])
 
