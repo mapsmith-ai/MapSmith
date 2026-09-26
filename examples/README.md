@@ -11,7 +11,7 @@ can verify**, with provenance manifests and deterministic checks on disk.
 | [01 — Verified geoprocessing](01_verified_geoprocessing.ipynb) | Buffer + clip with automatic UTM handling, provenance manifests, verification checks | `mapsmith` |
 | [02 — Terrain and hydrology](02_terrain_hydrology.ipynb) | Hillshade, D8 flow accumulation, six delineated catchments and zonal statistics on a real DEM of **Mount St. Helens** | `mapsmith[raster,whitebox]` |
 | [03 — Validated plans](03_validated_plans.ipynb) | A deliberately wrong multi-step plan rejected with machine-actionable errors, then fixed, validated and executed with a plan-level manifest | `mapsmith` |
-| [04 — Copernicus: terrain and vegetation](04_copernicus_terrain_vegetation.ipynb) | A **Copernicus DEM** in degrees refused for slope, then reprojected; **Sentinel-2** NDVI with a reflectance offset the catalogue declares and the pixels already contain; the treeline on **Monte Baldo**, read off both | `mapsmith[raster,whitebox]`, from `main` until the release after 0.6.1 (terrain on point-registered DEMs) |
+| [04 — Copernicus: terrain and vegetation](04_copernicus_terrain_vegetation.ipynb) | A **Copernicus DEM** in degrees refused for slope, then reprojected; **Sentinel-2** NDVI with a reflectance offset the catalogue declares and the pixels already contain; the treeline on **Monte Baldo**, read off both | `mapsmith[raster,whitebox]` 0.7.0 or later (terrain on point-registered DEMs) |
 
 These notebooks call the Python engines directly so you can run them anywhere;
 in an MCP client (Claude, ChatGPT, VS Code, …) the same operations are exposed

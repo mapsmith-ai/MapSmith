@@ -223,18 +223,14 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.6.1**, which is what that command installs. When `main` runs ahead of
+This page describes **0.7.0**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **`main` is ahead of 0.6.1 today**, and
-one difference changes answers 0.6.1 gives: every position read from a point-registered
-raster (`AREA_OR_POINT=Point`, the USGS and Copernicus DEMs) was half a cell off, and is not
-on `main`, where terrain operations also stop refusing those DEMs. The rest is in
-[`[Unreleased]` in the changelog](CHANGELOG.md#unreleased): weighted `zonal_statistics`; the
-gradient along a line in `elevation_profile`, whose spacing is now metres along the line
-even on a DEM in degrees and which now reaches the far end of the line; and a Copernicus
-notebook. No tool moved.
+have to find out by calling a tool that is not there. **If you run 0.4.0 to 0.6.1, 0.7.0
+changes answers you have**: every position read from a point-registered raster
+(`AREA_OR_POINT=Point`, the USGS and Copernicus DEMs) was half a cell off, and the
+[changelog](CHANGELOG.md) says which operations and why.
 
-**If you read manifests, 0.6.1 moves no key**: records declare `spec_version`
+**If you read manifests, 0.7.0 renames no key**: records declare `spec_version`
 `1.0.0-draft.8`, two drafts past 0.6.0's `draft.6`, and both drafts only narrowed where a
 producer may add a key of its own — which MapSmith already did the narrower way. From 0.5.x,
 0.6.0 renamed `x-mapsmith:round_trip` to `round_trip`; from 0.4.0, 0.5.0 had renamed eight
@@ -267,7 +263,7 @@ for it:
 ```json
 {
   "spec_version": "1.0.0-draft.8",
-  "producer": {"name": "mapsmith", "version": "0.6.1"},
+  "producer": {"name": "mapsmith", "version": "0.7.0"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{

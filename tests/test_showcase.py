@@ -999,7 +999,23 @@ def test_the_readme_says_which_release_it_describes():
         pytest.skip("cannot count commits since the tag")
     commits = int(counted.stdout.strip())
 
-    if commits:
+    # The eve of a tag, the same exception the [Unreleased] guard makes: the
+    # page already describes the version in the tree, whose changelog block is
+    # dated, and whose tag does not exist yet. Without it the release commit
+    # cannot be green before the tag, and the release procedure tags only on
+    # green -- a check nobody can satisfy is a check that gets bypassed. Found
+    # on the 0.7.0 release commit.
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    tagged = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", f"refs/tags/v{__version__}"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    ).returncode == 0
+    eve_of_tag = (
+        stated == __version__
+        and not tagged
+        and re.search(rf"^## \[{re.escape(__version__)}\] - \d{{4}}-\d\d-\d\d", changelog, re.MULTILINE)
+    )
+    if commits and not eve_of_tag:
         assert says_ahead, (
             f"{commits} commits since {tag.stdout.strip()} and the paragraph "
             f"does not say main is ahead and link {UNRELEASED}. It promises to, "

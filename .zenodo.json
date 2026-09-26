@@ -1,7 +1,7 @@
 {
   "upload_type": "software",
   "title": "MapSmith: geospatial processing over MCP, with verifiable provenance",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "creators": [
     {"name": "The MapSmith project"}
   ],

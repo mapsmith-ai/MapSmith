@@ -363,8 +363,10 @@ def elevation_profile(
     from .. import grid
 
     grid.refuse_ambiguous_georeferencing(raster_path, "elevation_profile")
-    if spacing <= 0:
-        raise ValueError(f"spacing must be positive, got {spacing}")
+    # `not (x > 0)` rather than `x <= 0`: NaN fails every comparison, so the
+    # second form let it through, and infinity is refused beside it.
+    if not (spacing > 0) or math.isinf(spacing):
+        raise ValueError(f"spacing must be a positive finite length, got {spacing}")
     window = _grade_window(spacing, grade_base_length, grade_threshold_percent)
     if method not in SAMPLING_METHODS:
         raise ValueError(f"method must be one of {list(SAMPLING_METHODS)}, got {method!r}")
@@ -594,8 +596,13 @@ def _grade_window(spacing: float, base: float | None, threshold: float | None) -
                 "over a length, and that length is the caller's to choose."
             )
         return 0
-    if base <= 0:
-        raise ValueError(f"grade_base_length must be positive, got {base}")
+    if not (base > 0) or math.isinf(base):
+        raise ValueError(f"grade_base_length must be a positive finite length, got {base}")
+    if threshold is not None and not math.isfinite(threshold):
+        # Measured in the 0.7.0 audit: `abs(g) <= nan` is always false, so a NaN
+        # threshold marked the whole line as one stretch above it -- and wrote
+        # `NaN` into the manifest, which is not JSON a strict parser accepts.
+        raise ValueError(f"grade_threshold_percent must be a finite number, got {threshold}")
     if threshold is not None and threshold < 0:
         raise ValueError(
             f"grade_threshold_percent must not be negative, got {threshold}: it is compared "

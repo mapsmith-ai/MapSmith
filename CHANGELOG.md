@@ -6,6 +6,26 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.7.0] - 2026-09-26
+
+**This release changes answers earlier releases gave, and that comes first.**
+From 0.4.0 to 0.6.1 every position MapSmith read from a point-registered raster
+(`AREA_OR_POINT=Point` — the USGS elevation products and the Copernicus DEM)
+was half a cell north-west of the sample: GDAL already corrects for the tag, and
+MapSmith corrected a second time. The same premise sat in the correctness suite
+MapSmith is graded by, which scored the wrong answer as a pass; it has published
+an [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024).
+Terrain operations now accept point-registered DEMs, which they refused
+outright. Two capabilities arrive on existing tools — weighted zonal statistics
+and the gradient along a line — with a Copernicus notebook. No tool was added.
+Two records change shape, both below: `elevation_profile` across two CRSs uses
+the specification's `source_crs`/`target_crs`, and terrain operations record
+the raster registration in `crs_decisions`.
+
+Records declare `spec_version` `1.0.0-draft.8`, as in 0.6.1.
+
 ### Added
 
 - **A Copernicus notebook.** `examples/04_copernicus_terrain_vegetation.ipynb`,
@@ -92,7 +112,8 @@ All notable changes to MapSmith are documented here, in the format of
   fix no longer depends on the environment: `GTIFF_POINT_GEO_IGNORE=TRUE`, which
   reverts GDAL to its pre-2010 reading, moved every answer half a cell back with
   nothing in the record to say why, so MapSmith now pins it to `FALSE` on import,
-  whether or not remote paths are allowed.
+  whether or not remote paths are allowed — which also overrides an operator's
+  setting in a process that imports `mapsmith` as a library, deliberately.
 
 - **The terrain operations refused every point-registered DEM, the Copernicus
   DEM included.** The engine reads the stored tie point as a cell corner, and

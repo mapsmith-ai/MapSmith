@@ -478,10 +478,13 @@ def test_a_line_in_feet_needs_the_height_unit_said(incline_feet, tmp_path):
 
 @pytest.mark.parametrize("kwargs, match", [
     ({"grade_base_length": 105.0}, "not a whole number of spacing steps"),
-    ({"grade_base_length": -1.0}, "must be positive"),
+    ({"grade_base_length": -1.0}, "positive finite"),
     ({"grade_threshold_percent": 2.5}, "needs grade_base_length"),
     ({"grade_base_length": 100.0, "grade_threshold_percent": -1.0}, "must not be negative"),
     ({"grade_base_length": 100.0, "grade_height_unit": "yard"}, "must be one of"),
+    ({"grade_base_length": 100.0, "grade_threshold_percent": float("nan")}, "finite"),
+    ({"grade_base_length": float("nan")}, "positive finite"),
+    ({"grade_base_length": float("inf")}, "positive finite"),
 ])
 def test_the_gradient_window_is_the_caller_s_and_must_fit_the_steps(incline, tmp_path, kwargs, match):
     lines = tmp_path / "t.gpkg"
@@ -490,6 +493,15 @@ def test_the_gradient_window_is_the_caller_s_and_must_fit_the_steps(incline, tmp
         sampling.elevation_profile(
             str(incline), str(lines), str(tmp_path / "x.parquet"), spacing=10.0, **kwargs
         )
+
+
+@pytest.mark.parametrize("spacing", [float("nan"), float("inf"), 0.0, -1.0])
+def test_a_spacing_that_is_not_a_positive_finite_length_is_refused(ramp, tmp_path, spacing):
+    """NaN fails every comparison, so `spacing <= 0` let it through."""
+    line = tmp_path / "l.gpkg"
+    gpd.GeoDataFrame(geometry=[LineString([(2, 10), (10, 10)])], crs="EPSG:32632").to_file(line)
+    with pytest.raises(ValueError, match="positive finite"):
+        sampling.elevation_profile(str(ramp), str(line), str(tmp_path / "x.parquet"), spacing=spacing)
 
 
 def test_a_profile_includes_both_ends_even_when_the_step_does_not_divide(ramp, tmp_path):
