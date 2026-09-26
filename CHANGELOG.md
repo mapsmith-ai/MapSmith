@@ -19,6 +19,15 @@ All notable changes to MapSmith are documented here, in the format of
   a warning into an error (`OUTPUT_EXTENSION_REFUSED`), keeping the warning for
   writable but non-canonical ones such as `.geojson`.
 
+- **A spacing could ask for any number of points.** `elevation_profile` and
+  `points_along_lines` materialised every point before looking at how many
+  there were: a spacing of `1e-6` on a 90 m line is ninety million. Both now
+  count the points from the line lengths and refuse above
+  `MAPSMITH_MAX_SAMPLES` (default 1 000 000), an environment variable of the
+  server that no tool argument can move; `SECURITY.md` says what is and is not
+  limited. `points_along_lines` also refuses a NaN or infinite spacing, which
+  `spacing <= 0` let through.
+
 ## [0.7.0] - 2026-09-26
 
 **This release changes answers earlier releases gave, and that comes first.**

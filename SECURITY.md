@@ -233,6 +233,24 @@ outside, and both are recorded here rather than quietly corrected, because a
 security document whose history is invisible is asking to be believed rather
 than checked.
 
+## How much work one call may ask for
+
+An agent chooses the arguments, and some of them decide how much memory and
+time a call takes before anything is computed. `elevation_profile` and
+`points_along_lines` place a point every `spacing` along each line, so a spacing
+of `1e-6` on a 90 m line is ninety million points — over HTTP, a denial of
+service within reach of anyone who can call a tool. Both count the points from
+the line lengths first and refuse above **`MAPSMITH_MAX_SAMPLES`** (default
+1 000 000, about two minutes of sampling), before allocating any. It is an
+environment variable of the server, like `MAPSMITH_ALLOW_EXTENSIONS`, so no
+tool argument can move it.
+
+That is the one limit there is, and it is not a general resource policy: other
+operations are bounded only by their inputs, and a server exposed over HTTP
+should also run under the memory and CPU limits of its container or pod
+(`deploy/` has a Kubernetes example). Found in the pre-release audit of 0.7.0;
+it was there in every earlier release.
+
 ## What MapSmith records, when you ask it to
 
 MapSmith writes nothing about your usage by default and sends nothing anywhere,

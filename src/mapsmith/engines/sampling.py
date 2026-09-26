@@ -390,6 +390,12 @@ def elevation_profile(
             "different distance at every longitude. Reproject to a projected CRS "
             "first, or the distance axis of the profile is meaningless."
         )
+    from .. import limits
+
+    limits.refuse_too_many_samples(
+        (g.length for g in lines.geometry if g is not None and not g.is_empty),
+        spacing, "elevation_profile",
+    )
     scale, unit, heights_assumed = (
         _height_scale(lines.crs, grade_height_unit) if window else (1.0, "", False)
     )

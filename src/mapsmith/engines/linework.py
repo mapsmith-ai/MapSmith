@@ -316,12 +316,24 @@ def points_along_lines(
     is a profile of the wrong thing, and the flag is recorded so a reader knows
     whether the last interval is short.
     """
-    if spacing <= 0:
-        raise ValueError(f"spacing must be positive, got {spacing}")
+    # `not (x > 0)`: NaN fails every comparison, so `spacing <= 0` let it through.
+    if not (spacing > 0) or math.isinf(spacing):
+        raise ValueError(f"spacing must be a positive finite length, got {spacing}")
 
     gdf = readers.read_vector(input_path)
     _projected(gdf, input_path, "points_along_lines")
     _lines_of(gdf, input_path, "points_along_lines")
+    from .. import limits
+
+    # Per part, which is how the loop below counts.
+    limits.refuse_too_many_samples(
+        (
+            part.length
+            for g in gdf.geometry if g is not None and not g.is_empty
+            for part in ([g] if g.geom_type == "LineString" else list(g.geoms))
+        ),
+        spacing, "points_along_lines",
+    )
 
     rows: list[dict[str, Any]] = []
     short_lines = 0
