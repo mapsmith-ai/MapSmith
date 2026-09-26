@@ -223,17 +223,14 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.7.0**, which is what that command installs. When `main` runs ahead of
+This page describes **0.7.1**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **If you run 0.4.0 to 0.6.1, 0.7.0
+have to find out by calling a tool that is not there. **If you run 0.4.0 to 0.6.1, 0.7.x
 changes answers you have**: every position read from a point-registered raster
 (`AREA_OR_POINT=Point`, the USGS and Copernicus DEMs) was half a cell off, and the
-[changelog](CHANGELOG.md) says which operations and why. **`main` is ahead of 0.7.0** by two
-fixes ([`[Unreleased]`](CHANGELOG.md#unreleased)): an output that is one of the inputs, or has
-an extension its writer cannot honour, is refused before anything is written; and a spacing
-can no longer ask for more points than `MAPSMITH_MAX_SAMPLES`.
+[changelog](CHANGELOG.md) says which operations and why.
 
-**If you read manifests, 0.7.0 renames no key**: records declare `spec_version`
+**If you read manifests, 0.7.x renames no key**: records declare `spec_version`
 `1.0.0-draft.8`, two drafts past 0.6.0's `draft.6`, and both drafts only narrowed where a
 producer may add a key of its own — which MapSmith already did the narrower way. From 0.5.x,
 0.6.0 renamed `x-mapsmith:round_trip` to `round_trip`; from 0.4.0, 0.5.0 had renamed eight
@@ -266,7 +263,7 @@ for it:
 ```json
 {
   "spec_version": "1.0.0-draft.8",
-  "producer": {"name": "mapsmith", "version": "0.7.0"},
+  "producer": {"name": "mapsmith", "version": "0.7.1"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{

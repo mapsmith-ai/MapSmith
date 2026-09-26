@@ -6,6 +6,16 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.7.1] - 2026-09-26
+
+Two fixes from the pre-release audit of 0.7.0, both present in earlier releases,
+and the Argleton run scored against trap 024's corrected truth, which arrived
+after the 0.7.0 tag: that release's PyPI page still quotes the recount of the
+old run. No answer 0.7.0 got right changes, and no manifest key moves: records
+declare `spec_version` `1.0.0-draft.8`, as in 0.7.0.
+
 ### Fixed
 
 - **An output that is one of the inputs, or has an extension its writer cannot
