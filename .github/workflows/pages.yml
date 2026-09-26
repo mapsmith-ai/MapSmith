@@ -49,6 +49,15 @@ jobs:
           python-version: "3.12"
       - run: pip install -e .[raster,whitebox]
       - run: python site/build.py dist
+      # Checked on the artefact that is about to go live, not on the builder's
+      # intentions: the manifest shown on the page carried the build's
+      # temporary directory in `output.path` until 2026-09-26, because only the
+      # input paths were being stripped.
+      - name: the published page and manifest name no build directory
+        run: |
+          if grep -rEn "mapsmith-site-|/tmp/|AppData" dist/index.html dist/manifest.json; then
+            echo "::error::a build path reached the published page"; exit 1
+          fi
       # The schema's $id promises https://mapsmith.dev/spec/manifest-v1.schema.json
       # resolves. Fetched from its source of truth at deploy time rather than
       # vendored: a copy would drift, and a drifted schema at the canonical URL

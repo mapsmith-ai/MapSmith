@@ -1040,6 +1040,28 @@ def test_the_readme_says_which_release_it_describes():
         )
 
 
+def test_the_published_manifest_carries_no_build_directory(tmp_path):
+    """Only the input paths used to be stripped, and `output.path` went live as
+    `/tmp/mapsmith-site-xxxx/basins.tif` -- on a workstation, with the user's
+    home directory in it. Stripped on the serialised text, so any field goes."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("site_build", ROOT / "site" / "build.py")
+    build = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(build)
+
+    workdir = tmp_path / "mapsmith-site-abc123"
+    workdir.mkdir()
+    manifest = {
+        "inputs": [{"path": f"{workdir.as_posix()}/dem.tif"}],
+        "output": {"path": f"{workdir.as_posix()}/basins.tif"},
+        "notes": [f"read {workdir}\\dem.tif"],
+    }
+    stripped = json.dumps(build.strip_workdir(manifest, workdir))
+    assert "mapsmith-site-abc123" not in stripped, stripped
+    assert build.strip_workdir(manifest, workdir)["output"]["path"] == "basins.tif"
+
+
 def test_the_site_names_what_main_has_that_the_release_does_not():
     """The site's paragraph makes the README's promise and nothing kept it.
 

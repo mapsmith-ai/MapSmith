@@ -457,6 +457,19 @@ def _git(*args: str) -> str:
     ).stdout.strip()
 
 
+def strip_workdir(manifest: dict, workdir: Path) -> dict:
+    """The manifest with every mention of the build's temporary directory removed.
+
+    Done on the serialised text, so a path in any field -- inputs, output, a
+    note -- goes, including one added by a later version of the format.
+    """
+    text = json.dumps(manifest)
+    for prefix in {workdir.as_posix(), str(workdir), str(workdir.resolve()), workdir.resolve().as_posix()}:
+        for spelled in (prefix, json.dumps(prefix)[1:-1]):
+            text = text.replace(spelled + "/", "").replace(spelled + "\\\\", "")
+    return json.loads(text)
+
+
 def main(destination: Path) -> int:
     destination.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="mapsmith-site-") as tmp:
@@ -467,11 +480,13 @@ def main(destination: Path) -> int:
             Path(str(outputs["basins"]) + ".provenance.json").read_text(encoding="utf-8")
         )
 
-    # Published as it was written, with only the temporary directory stripped
-    # from the input paths. The reader is meant to check this file, not admire
-    # it, so nothing else about it is touched.
-    for entry in manifest.get("inputs", []):
-        entry["path"] = Path(entry["path"]).name
+    # Published as it was written, with only the temporary directory stripped.
+    # The reader is meant to check this file, not admire it, so nothing else
+    # about it is touched. Stripped EVERYWHERE, not field by field: until
+    # 2026-09-26 only the input paths were, and `output.path` went live as
+    # `/tmp/mapsmith-site-xxxx/basins.tif` -- and, built on a workstation, as a
+    # path carrying the user's home directory.
+    manifest = strip_workdir(manifest, workdir)
     (destination / "manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
     )
