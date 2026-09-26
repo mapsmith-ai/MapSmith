@@ -81,6 +81,28 @@ jobs:
           if schema.get("x-spec-version") != sys.argv[1]:
               sys.exit(f"schema declares {schema.get('x-spec-version')!r}, the writers emit {sys.argv[1]!r}")
           print("schema ok:", schema["$id"], schema["x-spec-version"])
+          # /spec/ answered 404 while the schema's $id lives under it (found by
+          # the vetrina on 2026-09-26): someone who opens the folder the $id
+          # names should find what is there and where the specification is.
+          version = sys.argv[1]
+          pathlib.Path("dist/spec/index.html").write_text(f"""<!doctype html>
+          <html lang="en"><head><meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Manifest schema</title>
+          <style>body{{font:16px/1.5 system-ui,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1rem;color:#1a1a1a;background:#fff}}
+          @media (prefers-color-scheme: dark){{body{{color:#e6e6e6;background:#141414}} a{{color:#8ab4f8}}}}
+          code{{font-size:.95em}}</style></head><body>
+          <h1>Geospatial provenance manifest</h1>
+          <p>This folder serves the JSON Schema that MapSmith's manifests declare as their
+          <code>$schema</code>: <a href="manifest-v1.schema.json"><code>manifest-v1.schema.json</code></a>,
+          version <code>{version}</code>, copied at deploy time from the specification's own tag.</p>
+          <p>The specification, the toolchain-free validator and the conformance suite live in
+          <a href="https://github.com/mapsmith-ai/manifest-spec">mapsmith-ai/manifest-spec</a>;
+          cite it as <a href="https://doi.org/10.5281/zenodo.22205213">10.5281/zenodo.22205213</a>.
+          MapSmith is one implementation of it, not its definition.</p>
+          <p><a href="https://mapsmith.dev">mapsmith.dev</a></p>
+          </body></html>
+          """.replace("\n          ", "\n"), encoding="utf-8")
           PY
       - name: the page must carry no unreplaced placeholder
         run: |
