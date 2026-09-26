@@ -55,11 +55,11 @@ generated from the source rather than maintained by hand.
 
 Evidence before promises. A correctness suite in its own organisation,
 [**Argleton**](https://argleton.org), grades MapSmith on thirty-one traps whose answers are
-computed on paper before any system runs: **0.03 silent errors — one in thirty-one, nothing
-skipped** — against 0.9032 for the obvious way of writing the same code. That one was published
-as a pass: the trap's own truth was wrong in MapSmith's favour for 26 days, the error is ours
-twice over, and the [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) says so; the fix is on `main`. Getting here cost
-seven defects the suite sent back, and they are listed. Alongside it: an [A/B on GABench](docs/benchmarks.md) whose
+computed on paper before any system runs: **0.00 silent errors, nothing skipped**, against
+0.9032 for the obvious way of writing the same code. The earlier runs said 0.00 too, and on one
+trap they were wrong: its truth was wrong in MapSmith's favour for 26 days, the error was ours
+twice over, and the [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) says so. The current run is the first scored against the
+corrected truth. Getting here cost seven defects the suite sent back, and they are listed. Alongside it: an [A/B on GABench](docs/benchmarks.md) whose
 headline is a null result — with the analysis that took our own positive number apart —
 [notebooks](examples/) on a real USGS DEM of Mount St. Helens, an
 [in-chat map panel](#see-results-inside-the-chat) that shows the verification status of
@@ -1089,14 +1089,14 @@ under Apache-2.0 rather than in this repository, because an evaluation that live
 inside the thing it evaluates is easy to dismiss in one line. Closed-form truth, no
 model in the evaluator, fixtures rebuilt rather than vendored.
 
-**The score.** On the current run — all twenty-nine families — MapSmith answers thirty
-of the thirty-one traps correctly: **0.03 silent errors over 31 traps, nothing skipped**,
-against 0.9032 for a careless composition of the same libraries. That run was published as
-0.00. The trap it failed, a point-registered DEM, had a truth derived from a premise about
-GDAL that GDAL documents the other way, and MapSmith had been built to that premise: both
-corrected half a cell that was already corrected. Found on 2026-09-25 by a Copernicus DEM
-whose samples fall on whole arc-seconds by its own documentation; the
-[erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) rescores every run it touched, and the fix is on `main`. One of the thirty-one is not an answer
+**The score.** On the current run — all twenty-nine families — MapSmith answers every
+trap correctly: **0.00 silent errors over 31 traps, nothing skipped**, against 0.9032
+for a careless composition of the same libraries. The runs from 2026-08-30 to 2026-09-15 said
+0.00 as well and were wrong on one trap, a point-registered DEM: its truth was derived from a
+premise about GDAL that GDAL documents the other way, MapSmith had been built to that premise,
+and both corrected half a cell that was already corrected. Found on 2026-09-25 by a Copernicus
+DEM whose samples fall on whole arc-seconds by its own documentation; the
+[erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) rescores every run it touched, and 0.7.0 is the fix the current run measures. One of the thirty-one is not an answer
 at all but a refusal: a raster and the sidecar beside it declare different georeferencing,
 both readings are GDAL behaving as documented, and the right move is to stop and say so
 rather than pick one. That family arrived on 2026-08-31, the morning after the list of

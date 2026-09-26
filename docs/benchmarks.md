@@ -464,16 +464,16 @@ evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
 What it says about MapSmith (all twenty-nine families, engine tier, `spec_commit`
-[`beab4ba`](https://github.com/argleton/argleton/tree/main/results/2026-09-15-qgis-three-ways)):
+[`56423ed`](https://github.com/argleton/argleton/tree/main/results/2026-09-26-trap-024-corrected)):
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
-| MapSmith | **0.0323** (published 0.00) | 1.00 | 31 | 0 |
-| naive composition (read file, take statistic) | 0.9032 (published one trap higher) | 1.00 | 31 | 0 |
+| MapSmith | **0.00** | 1.00 | 31 | 0 |
+| naive composition (read file, take statistic) | 0.9032 | 1.00 | 31 | 0 |
 
-Rescored on 2026-09-25: the run was scored against a wrong truth on one trap, in MapSmith's
-favour, and the [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) recounts every run it touched. The section below the next
-one says what the trap was and why the fix made it worse.
+The first run scored against trap 024's corrected truth. The runs before it, from 2026-08-30,
+scored that trap against a wrong truth in MapSmith's favour: the [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) recounts them,
+and the section below the next one says what the trap was and why the fix made it worse.
 
 **The family list closed on 2026-08-30**, at twenty-seven of twenty-seven, and reopened the next
 morning with a twenty-eighth — one raster carrying two georeferencings, which is why a manifest
