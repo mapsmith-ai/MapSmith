@@ -64,8 +64,20 @@ def test_a_record_from_071_still_matches_its_unchanged_shapefile(tmp_path):
           record("roads.shp", sha_file(shp), [], "1.0.0-draft.8"))
     result = lineage(shp, scan_root=tmp_path)
     assert result["root"]["manifest_beside"] == "matched"
-    assert [step["claim"] for step in result["steps"]] == ["reverified"]
-    assert result["verified"] is True
+    # The .shp is confirmed; the attributes and the CRS were never in that
+    # record's digest, so the walk does not vouch for them.
+    assert [step["claim"] for step in result["steps"]] == ["reverified_shp_only"]
+    assert result["verified"] is False
+
+
+def test_a_record_from_071_does_not_vouch_for_attributes_edited_after_it(tmp_path):
+    shp = shapefile(tmp_path, "roads", b"r")
+    write(Path(f"{shp}.provenance.json"),
+          record("roads.shp", sha_file(shp), [], "1.0.0-draft.8"))
+    (tmp_path / "roads.dbf").write_bytes(b"attributes rewritten after the run")
+    result = lineage(shp, scan_root=tmp_path)
+    assert [step["claim"] for step in result["steps"]] == ["reverified_shp_only"]
+    assert result["verified"] is False
 
 
 def test_a_chain_crosses_the_rule_boundary(tmp_path):
@@ -84,8 +96,9 @@ def test_a_chain_crosses_the_rule_boundary(tmp_path):
         [{"path": "roads.shp", "sha256": dataset_sha256(shp)}], SPEC_VERSION))
     result = lineage(final, scan_root=tmp_path)
     assert len(result["steps"]) == 2, result["stopped_at"]
-    assert all(step["claim"] == "reverified" for step in result["steps"])
+    assert [step["claim"] for step in result["steps"]] == ["reverified", "reverified_shp_only"]
     assert result["complete"] is True
+    assert result["verified"] is False  # the upstream record vouches for the .shp alone
     assert [stop["sha256"] for stop in result["stopped_at"]] == [sha_file(source)]
 
 

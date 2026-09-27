@@ -399,11 +399,17 @@ def _recheck(
         if dataset_size(output) > RECHECK_SIZE_LIMIT:
             return "unverified_too_large"
         if output.suffix.lower() == ".shp":
-            # Either rule: a record from before draft.9 states the `.shp`
-            # digest, and comparing it to the listing would accuse unchanged
-            # data of an edit; and the index may have reached this record
-            # through the other rule's digest (`_shapefile_alias`).
-            matched = digest in shapefile_digests(output)
+            # Under the rule the record was written with. A record from before
+            # draft.9 states the `.shp` digest alone: when that matches, the
+            # geometry is confirmed and the attributes and the CRS cannot be --
+            # an edit to the `.dbf` or `.prj` after it was written is invisible
+            # to it -- so it is not reported as `reverified`, which would vouch
+            # for what nobody checked.
+            shp_only, listing = shapefile_digests(output)
+            recorded = ((record or {}).get("output") or {}).get("sha256") or digest
+            if declares_listing_rule(record or {}):
+                return "reverified" if listing == recorded else "unverified_digest_mismatch"
+            return "reverified_shp_only" if shp_only == recorded else "unverified_digest_mismatch"
         else:
             matched = dataset_sha256(output) == digest
         return "reverified" if matched else "unverified_digest_mismatch"

@@ -25,7 +25,9 @@ implements. No key moves.
   unchanged shapefile is not reported as edited, and a chain that crosses
   from a record written by 0.7.1 to one written now still resolves. A record
   written before this release can only vouch for the `.shp`: an edit to the
-  attributes or the CRS made after it was written stays invisible to it.
+  attributes or the CRS made after it was written stays invisible to it, so
+  such a hop is reported as `reverified_shp_only`, not `reverified`, and a
+  history that contains one is not `verified`.
 - **`extract_layer` works on a file geodatabase.** The catalog listed `.gdb`
   among its containers, and the input digest opened the path as a file: a
   geodatabase is a directory, so the operation died before writing anything.
