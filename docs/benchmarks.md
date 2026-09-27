@@ -471,7 +471,8 @@ What it says about MapSmith (all twenty-nine families, engine tier, `spec_commit
 | MapSmith | **0.00** | 1.00 | 31 | 0 |
 | naive composition (read file, take statistic) | 0.9032 | 1.00 | 31 | 0 |
 
-The first run scored against trap 024's corrected truth. The runs before it, from 2026-08-30,
+The second run scored against trap 024's corrected truth (the first was 2026-09-26; this one
+moves only the three QGIS rows, which do not appear here). The runs from 2026-08-30 to 2026-09-15
 scored that trap against a wrong truth in MapSmith's favour: the [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) recounts them,
 and the section below the next one says what the trap was and why the fix made it worse.
 

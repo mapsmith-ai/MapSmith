@@ -56,10 +56,10 @@ generated from the source rather than maintained by hand.
 Evidence before promises. A correctness suite in its own organisation,
 [**Argleton**](https://argleton.org), grades MapSmith on thirty-one traps whose answers are
 computed on paper before any system runs: **0.00 silent errors, nothing skipped**, against
-0.9032 for the obvious way of writing the same code. The earlier runs said 0.00 too, and on one
-trap they were wrong: its truth was wrong in MapSmith's favour for 26 days, the error was ours
-twice over, and the [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) says so. The current run is the first scored against the
-corrected truth. Getting here cost seven defects the suite sent back, and they are listed. Alongside it: an [A/B on GABench](docs/benchmarks.md) whose
+0.9032 for the obvious way of writing the same code. The runs from 2026-08-30 to 2026-09-15 said
+0.00 too, and on one trap they were wrong: its truth was wrong in MapSmith's favour for 26 days, the error was ours
+twice over, and the [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) says so. Every run since 2026-09-26, the current one
+included, is scored against the corrected truth. Getting here cost seven defects the suite sent back, and they are listed. Alongside it: an [A/B on GABench](docs/benchmarks.md) whose
 headline is a null result — with the analysis that took our own positive number apart —
 [notebooks](examples/) on a real USGS DEM of Mount St. Helens, an
 [in-chat map panel](#see-results-inside-the-chat) that shows the verification status of
@@ -228,10 +228,12 @@ the published artifact this paragraph says so and names the difference — a rea
 have to find out by calling a tool that is not there. **If you run 0.4.0 to 0.6.1, 0.7.x
 changes answers you have**: every position read from a point-registered raster
 (`AREA_OR_POINT=Point`, the USGS and Copernicus DEMs) was half a cell off, and the
-[changelog](CHANGELOG.md) says which operations and why. **`main` is ahead of 0.7.1** by three
-small fixes from the 0.7.0 audit, none reachable in the default configuration, by a PyPI
-page whose links resolve, and by a shapefile digest that covers the attributes and the CRS,
-with records declaring `1.0.0-draft.9` ([`[Unreleased]`](CHANGELOG.md#unreleased)).
+[changelog](CHANGELOG.md) says which operations and why. **`main` is ahead of 0.7.1**
+([`[Unreleased]`](CHANGELOG.md#unreleased)) by `get_lineage` taking a `layer` (the history of one layer of a file geodatabase), by a shapefile
+digest that covers the attributes and the CRS, by two file-geodatabase fixes (`extract_layer`
+on a `.gdb`, and a lineage hop into a container resolving to the layer it names), by three
+small fixes from the 0.7.0 audit, none reachable in the default configuration, and by a PyPI
+page whose links resolve; its records declare `1.0.0-draft.9`, 0.7.1's `1.0.0-draft.8`.
 
 **If you read manifests, 0.7.x renames no key**: records declare `spec_version`
 `1.0.0-draft.8`, two drafts past 0.6.0's `draft.6`, and both drafts only narrowed where a
