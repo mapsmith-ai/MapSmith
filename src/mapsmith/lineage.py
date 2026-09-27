@@ -726,7 +726,17 @@ def _sentence(walk: _Walk, root_state: str) -> str:
     )
 
 
-def _root_manifest(target: Path, digest: str) -> tuple[str, dict[str, Any] | None]:
+def _beside(target: Path, layer: str | None) -> Path:
+    """Where the record of `target` sits: beside the file, or for a layer of a
+    directory container beside the container, `<container>.<layer>` (spec 3.1)."""
+    if layer:
+        return target.with_name(f"{target.name}.{layer.replace('/', '.')}{MANIFEST_SUFFIX}")
+    return Path(f"{target}{MANIFEST_SUFFIX}")
+
+
+def _root_manifest(
+    target: Path, digest: str, layer: str | None = None
+) -> tuple[str, dict[str, Any] | None]:
     """The record sitting beside the file, and what it says about these bytes.
 
     Four answers and not two. The first version collapsed "no digest recorded"
@@ -735,7 +745,7 @@ def _root_manifest(target: Path, digest: str) -> tuple[str, dict[str, Any] | Non
     `output` RECOMMENDED, not required -- printed as the first line a person
     reads.
     """
-    beside = Path(f"{target}{MANIFEST_SUFFIX}")
+    beside = _beside(target, layer)
     if not beside.exists():
         return "no_manifest_beside", None
     try:
@@ -747,6 +757,9 @@ def _root_manifest(target: Path, digest: str) -> tuple[str, dict[str, Any] | Non
     claimed = (record.get("output") or {}).get("sha256")
     if not claimed:
         return "unclaimed", record
+    if layer and (record.get("output") or {}).get("layer") != layer:
+        # The file at the layer's name describes another layer: not this one's record.
+        return "mismatched", record
     if claimed != digest and not declares_listing_rule(record):
         # Written before draft.9, when a shapefile was digested as its `.shp`
         # alone: compare under that rule, or unchanged data reads as edited.
@@ -757,7 +770,9 @@ def _root_manifest(target: Path, digest: str) -> tuple[str, dict[str, Any] | Non
     return ("matched", record) if claimed == digest else ("mismatched", record)
 
 
-def lineage(output_path: str | Path, scan_root: str | Path | None = None) -> dict[str, Any]:
+def lineage(
+    output_path: str | Path, scan_root: str | Path | None = None, layer: str | None = None
+) -> dict[str, Any]:
     """The whole analysis behind one file, recovered from its bytes.
 
     `scan_root` is where manifests are looked for; it defaults to the workspace
@@ -768,6 +783,12 @@ def lineage(output_path: str | Path, scan_root: str | Path | None = None) -> dic
     This costs more than `get_provenance`, and deliberately: it reads the whole
     file to hash it -- that is what makes the answer survive a rename -- and it
     reads every manifest under the scan root, up to the cap.
+
+    `layer` names the dataset inside a directory container (a file geodatabase):
+    its record sits beside the container (spec section 3.1), and a container's
+    digest identifies the container, not the layer, so the walk matches the
+    layer at every hop into it (section 6). Refused for a path that is not a
+    container, where it could only be ignored.
     """
     from . import workspace
 
@@ -787,10 +808,20 @@ def lineage(output_path: str | Path, scan_root: str | Path | None = None) -> dic
     contained = workspace.root()
     root = contained or (Path(scan_root).resolve() if scan_root else target.resolve().parent)
 
+    is_container = target.suffix.lower() == ".gdb" and target.is_dir()
+    if layer and not is_container:
+        raise ValueError(
+            f"layer={layer!r} was given for {output_path}, which is not a directory "
+            "container: a layer names a dataset inside a file geodatabase (.gdb)"
+        )
     digest = dataset_sha256(target)
     index = _index_by_output(root)
-    root_state, beside = _root_manifest(target, digest)
-    if root_state == "matched" and beside is not None:
+    root_state, beside = _root_manifest(target, digest, layer)
+    if root_state == "matched" and beside is not None and layer:
+        index.by_layer[(digest, layer)] = beside
+        index.layered.add(digest)
+        index.layer_source[(digest, layer)] = _beside(target, layer)
+    if root_state == "matched" and beside is not None and not layer:
         # The record written next to the file wins for the root digest. Without
         # this, a second manifest claiming the same bytes -- deposited by
         # anyone who can write in the workspace, or left by an ordinary
@@ -799,7 +830,7 @@ def lineage(output_path: str | Path, scan_root: str | Path | None = None) -> dic
         index.prefer(digest, beside, Path(f"{target}{MANIFEST_SUFFIX}"))
 
     walk = _Walk(index)
-    walk.descend(digest, 0, frozenset(), path_hint=str(target))
+    walk.descend(digest, 0, frozenset(), path_hint=str(target), layer=layer)
 
     unsound = any(
         step["verification"]["critical_failed"]

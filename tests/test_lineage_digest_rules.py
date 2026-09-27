@@ -15,6 +15,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent / "data"))
 
 import manifest_spec_validator as validator
@@ -197,3 +199,29 @@ def test_later_means_semver_precedence():
                "1.0.0-draft.09"]
     assert all(declares_listing_rule({"spec_version": v}) for v in later)
     assert not any(declares_listing_rule({"spec_version": v}) for v in earlier)
+
+
+def test_the_history_of_one_layer_starts_from_the_geodatabase(tmp_path):
+    source = tmp_path / "source.gpkg"
+    source.write_bytes(b"source")
+    gdb = tmp_path / "out.gdb"
+    gdb.mkdir()
+    (gdb / "a00000001.gdbtable").write_bytes(b"two layers")
+    container = dataset_sha256(gdb)
+    for layer, op in (("wells", "buffer_wells"), ("roads", "buffer_roads")):
+        rec = record("out.gdb", container,
+                     [{"path": "source.gpkg", "sha256": sha_file(source)}], SPEC_VERSION, layer=layer)
+        rec["operation"] = op
+        write(tmp_path / f"out.gdb.{layer}.provenance.json", rec)
+
+    result = lineage(gdb, scan_root=tmp_path, layer="roads")
+    assert result["root"]["manifest_beside"] == "matched"
+    assert [s["operation"] for s in result["steps"]] == ["buffer_roads"]
+    assert result["complete"] is True
+
+
+def test_a_layer_for_a_plain_file_is_refused(tmp_path):
+    f = tmp_path / "a.parquet"
+    f.write_bytes(b"x")
+    with pytest.raises(ValueError, match="not a directory container"):
+        lineage(f, scan_root=tmp_path, layer="roads")

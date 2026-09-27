@@ -1450,6 +1450,16 @@ OPERATIONS: list[dict[str, Any]] = [
                     "provenance manifest works, not only one MapSmith wrote"
                 ),
             },
+            {
+                "name": "layer",
+                "type": "str",
+                "required": False,
+                "description": (
+                    "The dataset inside a file geodatabase, when output_path is a .gdb: "
+                    "its record sits beside the geodatabase, and the walk matches this "
+                    "layer at every hop into a container"
+                ),
+            },
         ],
         "examples": [
             {

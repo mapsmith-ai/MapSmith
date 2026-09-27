@@ -10,6 +10,14 @@ Records declare `spec_version` `1.0.0-draft.9`: the draft that defines the
 digest of a dataset made of several files, which is what the first fix below
 implements. No key moves.
 
+### Added
+
+- **`get_lineage` takes a `layer`.** The history of one layer of a file
+  geodatabase now starts from the geodatabase itself: its record sits beside
+  the container (spec section 3.1), and the walk matches the layer at every hop
+  into a container. A layer given for a path that is not a container is
+  refused rather than ignored.
+
 ### Fixed
 
 - **A shapefile's digest covers its attributes and its CRS.** An input or
