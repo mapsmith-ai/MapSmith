@@ -63,7 +63,13 @@ from itertools import islice
 from pathlib import Path
 from typing import Any
 
-from .provenance import sha256_of
+from .provenance import (
+    dataset_sha256,
+    dataset_size,
+    declares_listing_rule,
+    record_digest,
+    shapefile_digests,
+)
 
 #: How many manifest files one walk will look at. A workspace is a working
 #: directory, not an archive. The cap is applied to the ENUMERATION and not
@@ -139,6 +145,15 @@ class _Index:
         #: Which file each record came from, so a hop can be re-checked against
         #: the output it claims to describe rather than merely believed.
         self.source: dict[str, Path] = {}
+        #: Records naming the layer of a container they describe, by (digest,
+        #: layer). A container's digest identifies the container, not the layer
+        #: (spec section 6, draft.9), so a hop into a container matches on both.
+        self.by_layer: dict[tuple[str, str], dict[str, Any]] = {}
+        self.layer_source: dict[tuple[str, str], Path] = {}
+        #: Per layer and not per digest: two records for two layers of one
+        #: container are not competing claims about either layer.
+        self.layer_claims: dict[tuple[str, str], int] = {}
+        self.layered: set[str] = set()
 
     def prefer(self, digest: str, record: dict[str, Any], came_from: Path) -> None:
         """Make `record` the answer for `digest`, without losing the claim count."""
@@ -195,7 +210,63 @@ def _index_by_output(directory: Path) -> _Index:
         index.claims[digest] = index.claims.get(digest, 0) + 1
         index.by_digest.setdefault(digest, record)
         index.source.setdefault(digest, manifest)
+        layer = (record.get("output") or {}).get("layer")
+        if isinstance(layer, str):
+            index.by_layer.setdefault((digest, layer), record)
+            index.layer_source.setdefault((digest, layer), manifest)
+            index.layer_claims[(digest, layer)] = index.layer_claims.get((digest, layer), 0) + 1
+            index.layered.add(digest)
+        alias = _shapefile_alias(manifest, record, digest)
+        if alias is not None:
+            index.by_digest.setdefault(alias, record)
+            index.source.setdefault(alias, manifest)
+            index.claims[alias] = index.claims.get(alias, 0) + 1
     return index
+
+
+def _shapefile_alias(manifest: Path, record: dict[str, Any], digest: str) -> str | None:
+    """The same shapefile's digest under the other rule, when the file proves it.
+
+    Until draft.9 a shapefile was digested as its `.shp` alone; since, as the
+    listing of its data files (spec section 3.3). A chain crossing the boundary
+    -- a record written by 0.7.1 upstream of one written now -- names one bytes
+    under two digests. When the output still sits beside its manifest and
+    hashes to the recorded digest under the record's own rule, it is indexed
+    under the other rule's digest too, so the walk crosses the boundary instead
+    of stopping at a false "original". Only then: an alias is never inferred
+    for a file that is not there to confirm it.
+    """
+    output = Path(str(manifest)[: -len(MANIFEST_SUFFIX)])
+    if output.suffix.lower() != ".shp" or not output.is_file():
+        return None
+    try:
+        # Indexing used to read JSON only; this reads data, so it obeys the
+        # same cap as the re-check and reads each member once.
+        if dataset_size(output) > RECHECK_SIZE_LIMIT:
+            return None
+        legacy, listing = shapefile_digests(output)
+    except (OSError, ValueError):
+        return None
+    if declares_listing_rule(record):
+        return legacy if listing == digest else None
+    return listing if legacy == digest else None
+
+
+def _output_beside(manifest_path: Path, record: dict[str, Any]) -> Path:
+    """The dataset a manifest sits beside, by the naming rules of section 3.1.
+
+    A layer of a directory container has its record beside the container, as
+    `<container>.<layer>.provenance.json` with `/` in the layer written `.`
+    (draft.9): stripping the suffix alone names a file that does not exist, and
+    every such record would read as a claim about a missing output.
+    """
+    stem = manifest_path.name[: -len(MANIFEST_SUFFIX)]
+    layer = (record.get("output") or {}).get("layer")
+    if isinstance(layer, str) and layer:
+        tail = "." + layer.replace("/", ".")
+        if stem.endswith(tail) and stem[: -len(tail)].lower().endswith(".gdb"):
+            return manifest_path.with_name(stem[: -len(tail)])
+    return manifest_path.with_name(stem)
 
 
 def _verification_summary(record: dict[str, Any]) -> dict[str, Any]:
@@ -295,7 +366,9 @@ def _tame(value: Any, _depth: int = 0) -> Any:
     return value
 
 
-def _recheck(manifest_path: Path | None, digest: str) -> str:
+def _recheck(
+    manifest_path: Path | None, digest: str, record: dict[str, Any] | None = None
+) -> str:
     """Whether the record's own output is on disk and really hashes to what it claims.
 
     **This is the difference between reading a record and believing one.** A
@@ -318,14 +391,23 @@ def _recheck(manifest_path: Path | None, digest: str) -> str:
     """
     if manifest_path is None:
         return "unverified_no_file"
-    output = Path(str(manifest_path)[: -len(MANIFEST_SUFFIX)])
+    output = _output_beside(manifest_path, record or {})
     try:
-        if not output.is_file():
+        container = output.suffix.lower() == ".gdb" and output.is_dir()
+        if not (output.is_file() or container):
             return "unverified_output_missing"
-        if output.stat().st_size > RECHECK_SIZE_LIMIT:
+        if dataset_size(output) > RECHECK_SIZE_LIMIT:
             return "unverified_too_large"
-        return "reverified" if sha256_of(output) == digest else "unverified_digest_mismatch"
-    except OSError:
+        if output.suffix.lower() == ".shp":
+            # Either rule: a record from before draft.9 states the `.shp`
+            # digest, and comparing it to the listing would accuse unchanged
+            # data of an edit; and the index may have reached this record
+            # through the other rule's digest (`_shapefile_alias`).
+            matched = digest in shapefile_digests(output)
+        else:
+            matched = dataset_sha256(output) == digest
+        return "reverified" if matched else "unverified_digest_mismatch"
+    except (OSError, ValueError):
         return "unverified_unreadable"
 
 
@@ -369,6 +451,10 @@ def _step(
             if isinstance(item, dict)
         ],
     }
+    if isinstance(output.get("layer"), str):
+        # Which layer of the container this step is: the digest alone names
+        # the container, and two steps would read as one (section 6, draft.9).
+        step["output"]["layer"] = _tame(output["layer"])
     if claims > 1:
         # Deterministic producers make this ordinary: one operation run twice on
         # one input writes identical bytes, and both runs leave a record
@@ -386,7 +472,7 @@ class _Walk:
         self.index = index
         self.steps: list[dict[str, Any]] = []
         self.stops: list[dict[str, Any]] = []
-        self.expanded: dict[str, int] = {}
+        self.expanded: dict[str | tuple[str, str], int] = {}
 
     def _stop(self, depth: int, digest: str, path: str | None, reason: str, detail: str) -> None:
         self.stops.append(
@@ -399,6 +485,7 @@ class _Walk:
         depth: int,
         ancestors: frozenset[str],
         path_hint: str | None = None,
+        layer: str | None = None,
     ) -> None:
         if len(self.steps) >= NODE_BUDGET:
             self._stop(
@@ -433,6 +520,30 @@ class _Walk:
             )
             return
         record = self.index.by_digest.get(digest)
+        source = self.index.source.get(digest)
+        claims = self.index.claims.get(digest, 1)
+        seen_as: str | tuple[str, str] = digest
+        if digest in self.index.layered:
+            # These bytes are a container, and records name the layer they are
+            # for. Section 6 (draft.9): match the layer too, and never present a
+            # record for another layer of the same container as this one's
+            # producer.
+            record = self.index.by_layer.get((digest, layer)) if layer else None
+            if record is not None and layer:
+                seen_as = (digest, layer)
+                source = self.index.layer_source.get(seen_as)
+                claims = self.index.layer_claims.get(seen_as, 1)
+            if record is None:
+                self._stop(
+                    depth,
+                    digest,
+                    path_hint,
+                    "other_layer",
+                    "records claim this container's digest, but for other layers"
+                    + (f" than {layer!r}" if layer else ", and this hop names no layer")
+                    + "; a container's digest identifies the container, not the layer",
+                )
+                return
         if record is None:
             truncated = self.index.truncated
             self._stop(
@@ -448,14 +559,10 @@ class _Walk:
             )
             return
 
-        step = _step(
-            record,
-            depth,
-            digest,
-            self.index.claims.get(digest, 1),
-            _recheck(self.index.source.get(digest), digest),
-        )
-        already = self.expanded.get(digest)
+        step = _step(record, depth, digest, claims, _recheck(source, digest, record))
+        # Keyed by layer as well for a container: two layers of one container
+        # reached on two branches are two histories, not one seen twice.
+        already = self.expanded.get(seen_as)
         if already is not None:
             # Seen on another branch, not on this one. The branch is reported --
             # dropping it is what section 6 forbids -- but its subtree is not
@@ -464,13 +571,17 @@ class _Walk:
             step["subtree_shown_at"] = already
             self.steps.append(step)
             return
-        self.expanded[digest] = len(self.steps)
+        self.expanded[seen_as] = len(self.steps)
         self.steps.append(step)
         for upstream in step["inputs"]:
             if not upstream.get("sha256"):
                 continue
             self.descend(
-                upstream["sha256"], depth + 1, ancestors | {digest}, upstream.get("path")
+                upstream["sha256"],
+                depth + 1,
+                ancestors | {digest},
+                upstream.get("path"),
+                upstream.get("layer") if isinstance(upstream.get("layer"), str) else None,
             )
 
 
@@ -542,9 +653,15 @@ def _sentence(walk: _Walk, root_state: str) -> str:
             "chain cannot start from that record."
         )
     if not steps:
+        if any(stop["reason"] == "other_layer" for stop in stops):
+            return (
+                "Records claim these bytes, each for one layer of this container, and "
+                "this call names no layer: a container's digest identifies the "
+                "container, not the layer, so none of them is this file's history."
+            )
         return "No manifest claims these bytes, so there is no recorded history for this file."
 
-    operations = len({step["output"]["sha256"] for step in steps})
+    operations = len({(step["output"]["sha256"], step["output"].get("layer")) for step in steps})
     origins = len({stop["sha256"] for stop in stops if stop["reason"] == "original"})
 
     def with_any(field: str) -> list[dict[str, Any]]:
@@ -624,6 +741,13 @@ def _root_manifest(target: Path, digest: str) -> tuple[str, dict[str, Any] | Non
     claimed = (record.get("output") or {}).get("sha256")
     if not claimed:
         return "unclaimed", record
+    if claimed != digest and not declares_listing_rule(record):
+        # Written before draft.9, when a shapefile was digested as its `.shp`
+        # alone: compare under that rule, or unchanged data reads as edited.
+        try:
+            digest = record_digest(target, record)
+        except (OSError, ValueError):
+            return "mismatched", record
     return ("matched", record) if claimed == digest else ("mismatched", record)
 
 
@@ -657,7 +781,7 @@ def lineage(output_path: str | Path, scan_root: str | Path | None = None) -> dic
     contained = workspace.root()
     root = contained or (Path(scan_root).resolve() if scan_root else target.resolve().parent)
 
-    digest = sha256_of(target)
+    digest = dataset_sha256(target)
     index = _index_by_output(root)
     root_state, beside = _root_manifest(target, digest)
     if root_state == "matched" and beside is not None:

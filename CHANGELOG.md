@@ -6,8 +6,37 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+Records declare `spec_version` `1.0.0-draft.9`: the draft that defines the
+digest of a dataset made of several files, which is what the first fix below
+implements. No key moves.
+
 ### Fixed
 
+- **A shapefile's digest covers its attributes and its CRS.** An input or
+  output shapefile was digested as its `.shp` alone, so a record kept matching
+  a dataset whose `.dbf` (attributes) or `.prj` (CRS) had been rewritten, while
+  it said `sha256` is of the bytes. The digest is now the listing of the
+  `.shp`, `.shx`, `.dbf`, `.prj` and `.cpg` files, as section 3.3 of the
+  specification defines it since draft.9; a file geodatabase input is digested
+  the same way, lock files excluded. `get_lineage` recomputes digests with the
+  same function, so a chain written by this release still resolves. A record
+  written by an earlier release for a shapefile carries the old digest:
+  `get_lineage` compares it under the rule it was written with, so an
+  unchanged shapefile is not reported as edited, and a chain that crosses
+  from a record written by 0.7.1 to one written now still resolves. A record
+  written before this release can only vouch for the `.shp`: an edit to the
+  attributes or the CRS made after it was written stays invisible to it.
+- **`extract_layer` works on a file geodatabase.** The catalog listed `.gdb`
+  among its containers, and the input digest opened the path as a file: a
+  geodatabase is a directory, so the operation died before writing anything.
+- **`get_lineage` matches the layer when a digest belongs to a container.**
+  Two records for two layers of one geodatabase share the container's digest
+  (spec section 6, draft.9); a hop into a container now resolves to the record
+  for the layer it names, and stops with `other_layer` rather than attribute
+  one layer to the operation that wrote another. It re-checks a layer's record
+  against the container it sits beside (`<container>.<layer>.provenance.json`,
+  spec section 3.1), and two layers of one container reached on two branches
+  are two histories.
 - **A URI in a manifest path keeps its `//`, so its credentials are masked.**
   The path normaliser collapsed `https://user:pw@host/x` to `https:/user:pw@…`,
   and the redaction of URI credentials looks for `://`: the password would have

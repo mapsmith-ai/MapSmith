@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
@@ -22,7 +23,7 @@ from . import __version__
 # implementation of that format, not its definition: the spec, its schema, a
 # toolchain-free validator and the conformance suite live in their own
 # repository, and a CI test validates real MapSmith output against them.
-SPEC_VERSION = "1.0.0-draft.8"
+SPEC_VERSION = "1.0.0-draft.9"
 
 #: One `crs_decisions` key for "a secondary input was brought into the analysis
 #: CRS", and a structured value rather than a sentence.
@@ -307,6 +308,160 @@ def sha256_of(path: str | Path, chunk_size: int = 1 << 20) -> str:
     return h.hexdigest()
 
 
+# The data-defining files of a shapefile (spec §3.3, draft.9), each listed
+# under its lowercased extension so a renamed shapefile keeps its digest.
+# Spatial indexes and `.shp.xml` metadata are not members: a digest that moved
+# when an index was rebuilt would report an edit that never touched the data.
+SHAPEFILE_MEMBERS = (".shp", ".shx", ".dbf", ".prj", ".cpg")
+# What an operating system drops into a folder it displays (spec §3.3).
+_NOT_CONTAINER_MEMBERS = ("thumbs.db", "desktop.ini")
+
+
+def _listing_sha256(members: dict[str, str]) -> str:
+    ordered = sorted(members.items(), key=lambda item: item[0].encode("utf-8"))
+    return hashlib.sha256(
+        "".join(f"{name}\0{sha}\n" for name, sha in ordered).encode("utf-8")
+    ).hexdigest()
+
+
+def _shapefile_members(shp: Path) -> dict[str, str]:
+    stem = shp.name[: -len(".shp")].lower()
+    found: dict[str, Path] = {}
+    for candidate in shp.parent.iterdir():
+        if not candidate.is_file() or candidate.is_symlink():
+            continue
+        for ext in SHAPEFILE_MEMBERS:
+            if candidate.name.lower() == stem + ext:
+                if ext in found:
+                    raise ValueError(
+                        f"two files match the {ext} member of {shp.name}: {found[ext].name} "
+                        f"and {candidate.name}; the specification forbids choosing one"
+                    )
+                found[ext] = candidate
+    if ".shp" not in found:
+        raise FileNotFoundError(shp)
+    return {ext: sha256_of(path) for ext, path in found.items()}
+
+
+def _container_members(root: Path) -> dict[str, str]:
+    members: dict[str, str] = {}
+    for dirpath, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if not (Path(dirpath) / d).is_symlink()]
+        for name in files:
+            lowered = name.lower()
+            if (
+                lowered.endswith(".lock")  # never opened: they carry a host name
+                or name.startswith(".")
+                or lowered in _NOT_CONTAINER_MEMBERS
+            ):
+                continue
+            member = Path(dirpath) / name
+            if member.is_symlink():
+                continue
+            members[member.relative_to(root).as_posix()] = sha256_of(member)
+    return members
+
+
+def dataset_sha256(path: str | Path) -> str:
+    """The digest the manifest records for a dataset, by the rule of spec §3.3.
+
+    One file: the SHA-256 of its bytes. A shapefile: the listing of its data
+    files, so an edit to the attributes (`.dbf`) or to the CRS (`.prj`) moves
+    the digest -- until 0.7.1 only the `.shp` was hashed, and a record kept
+    matching a dataset whose attributes had been rewritten -- while a rename
+    does not. A directory container (`.gdb`): every regular file under it
+    except lock files, hidden files and OS litter. Writers and `get_lineage`
+    both call this, so the digest a record states and the digest a walk
+    recomputes cannot drift apart.
+    """
+    p = Path(path)
+    suffix = p.suffix.lower()
+    if suffix == ".gdb" and p.is_dir():
+        return _listing_sha256(_container_members(p))
+    if suffix == ".shp":
+        return _listing_sha256(_shapefile_members(p))
+    return sha256_of(p)
+
+
+def shapefile_digests(shp: str | Path) -> tuple[str, str]:
+    """A shapefile's digest under both rules, reading each member once.
+
+    `(sha256 of the .shp alone, the listing digest of section 3.3)`: the first
+    is what records before draft.9 state, the second what records since do.
+    """
+    members = _shapefile_members(Path(shp))
+    return members[".shp"], _listing_sha256(members)
+
+
+def dataset_size(path: str | Path) -> int:
+    """How many bytes `dataset_sha256(path)` reads, so a caller can cap it."""
+    p = Path(path)
+    suffix = p.suffix.lower()
+    if suffix == ".gdb" and p.is_dir():
+        return sum(
+            (Path(dirpath) / name).stat().st_size
+            for dirpath, _dirs, files in os.walk(p)
+            for name in files
+            if not name.lower().endswith(".lock")
+        )
+    if suffix == ".shp":
+        stem = p.name[: -len(".shp")].lower()
+        return sum(
+            candidate.stat().st_size
+            for candidate in p.parent.iterdir()
+            if candidate.is_file()
+            and any(candidate.name.lower() == stem + ext for ext in SHAPEFILE_MEMBERS)
+        )
+    return p.stat().st_size
+
+
+def declares_listing_rule(record: dict[str, Any]) -> bool:
+    """Whether a record's digests follow §3.3's listing rule (draft.9 and later).
+
+    Records from earlier drafts -- every record MapSmith wrote up to 0.7.1 --
+    digested a shapefile as its `.shp` alone. Comparing them against the
+    listing would accuse unchanged data of having been edited.
+
+    "Later" is SemVer precedence, as section 3.3 says: `draft.10` follows
+    `draft.9`, every release follows every draft, and so does a pre-release of
+    a later version (`1.1.0-draft.1`). A version that is not SemVer, or no
+    version at all, is read under the old rule: nothing written under the new
+    one lacks it.
+    """
+    match = _SEMVER.fullmatch(str(record.get("spec_version") or ""))
+    if not match:
+        return False
+    core = tuple(int(part) for part in match.group(1, 2, 3))
+    if core != (1, 0, 0):
+        return core > (1, 0, 0)
+    if match.group(4) is None:
+        return True
+    ids = match.group(4).split(".")
+    if any(part.isdigit() and len(part) > 1 and part[0] == "0" for part in ids):
+        return False  # SemVer forbids leading zeros in a numeric identifier
+    return _prerelease_key(ids) >= _prerelease_key(["draft", "9"])
+
+
+_SEMVER = re.compile(
+    r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z.-]+)?"
+)
+
+
+def _prerelease_key(ids: list[str]) -> list[tuple[int, int, str]]:
+    # SemVer 11.4: numeric identifiers compare numerically and rank below
+    # alphanumeric ones; a shorter list ranks below a longer one it prefixes,
+    # which is how Python already compares lists.
+    return [(0, int(part), "") if part.isdigit() else (1, 0, part) for part in ids]
+
+
+def record_digest(path: str | Path, record: dict[str, Any]) -> str:
+    """The digest of `path` under the rule the record was written with."""
+    if Path(path).suffix.lower() == ".shp" and not declares_listing_rule(record):
+        return sha256_of(path)
+    return dataset_sha256(path)
+
+
 REDACTED = "<redacted>"
 _QUOTED_REDACTED = f"'{REDACTED}'"
 
@@ -530,7 +685,7 @@ class InputRecord:
         cls, path: str | Path, crs: str | None = None, layer: str | None = None
     ) -> InputRecord:
         return cls(
-            path=posix_path(path), sha256=sha256_of(path), crs=crs, layer=layer
+            path=posix_path(path), sha256=dataset_sha256(path), crs=crs, layer=layer
         )
 
 
@@ -831,7 +986,17 @@ class ProvenanceRecord:
             from .verify import UNKNOWN_CRS, probe_crs
 
             found = probe_crs(str(output_path))
-            fields = {"path": posix_path(output_path), "sha256": sha256_of(output_path)}
+            try:
+                digest = dataset_sha256(output_path)
+            except ValueError as exc:
+                # Two files match one shapefile member (`out.dbf` beside
+                # `out.DBF`): section 3.3 forbids recording a digest, and
+                # raising here would leave the dataset without its manifest.
+                record.setdefault("notes", []).append(
+                    redact_secrets(f"output digest not recorded: {exc}")
+                )
+                digest = None
+            fields = {"path": posix_path(output_path), "sha256": digest}
             if found != UNKNOWN_CRS:
                 # OMITTED and not null when unknown, deliberately. The schema
                 # allows null, and null would be the stronger statement -- "we
@@ -844,11 +1009,12 @@ class ProvenanceRecord:
                 # exists to remove.
                 fields["crs"] = found
             entry = redact_secrets(fields)
-            record = {}
-            for key, value in asdict(self).items():
-                record[key] = value
-                if key == "inputs":
-                    record["output"] = entry
+            if digest is not None:
+                record = {}
+                for key, value in asdict(self).items():
+                    record[key] = value
+                    if key == "inputs":
+                        record["output"] = entry
         # Added only where there is something to say, so that a record with a
         # single raster -- every one written before 2026-09-25 -- is unchanged.
         for index, found in getattr(self, "_input_environment", {}).items():

@@ -235,6 +235,10 @@ def problems(record: object) -> list[str]:
             crs = out_field.get("crs")
             if crs is not None and not isinstance(crs, str):
                 out.append("`output.crs` must be a string or null")
+            # New in 1.0.0-draft.9: the layer a container record describes.
+            layer = out_field.get("layer")
+            if layer is not None and not isinstance(layer, str):
+                out.append("`output.layer` must be a string or null")
 
     # The RECOMMENDED fields of section 3.4. Optional to emit, typed once
     # emitted: a consumer that finds `notes` holding a bare string instead of a
