@@ -418,7 +418,7 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 |---|---|---|---|---|
 | nothing — words alone | 76 | 29% | 18% | 29% |
 | what data I have | 50 | 32% | 21% | 33% |
-| + what I want back | 31 | 45% | 40% | 53% |
+| + what I want back | 31 | 44% | 40% | 53% |
 | **+ how many datasets I have** | **17** | **53%** | **49%** | **98%** |
 
 **Two ranking columns, and that is a correction.** This table used to carry one,
