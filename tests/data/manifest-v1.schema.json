@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mapsmith.dev/spec/manifest-v1.schema.json",
-  "x-spec-version": "1.0.0-draft.9",
+  "x-spec-version": "1.0.0-draft.10",
   "title": "Provenance manifest for a geospatial dataset",
   "description": "One record, written next to one output dataset, complete enough that someone who was not there can re-run the operation and disagree with it. A manifest records what was done; it does not certify that it was right \u2014 those are different claims, and this format only makes the first.",
   "type": "object",
@@ -66,6 +66,15 @@
               "null"
             ],
             "description": "The layer read, for container formats holding more than one. Without it, an auditor holding a five-layer container and this record cannot tell which layer produced the numbers."
+          },
+          "argument": {
+            "type": ["string", "null"],
+            "description": "Since 1.0.0-draft.10: which argument or parameter of the operation read this input (for example `values` and `weights`). The order of `inputs` is not significant, so without this field a record of an operation that reads two datasets in two roles cannot say which played which: swapping them changes the numbers and leaves two records that differ only in file names."
+          },
+          "environment": {
+            "type": "object",
+            "additionalProperties": {"type": "string"},
+            "description": "Since 1.0.0-draft.10: the configuration that changed how THIS input was read (a sidecar, a georeferencing source), with the meaning of the record-level `environment` narrowed to one file. The record-level field keeps what applies to the whole run."
           }
         }
       }

@@ -23,7 +23,7 @@ from . import __version__
 # implementation of that format, not its definition: the spec, its schema, a
 # toolchain-free validator and the conformance suite live in their own
 # repository, and a CI test validates real MapSmith output against them.
-SPEC_VERSION = "1.0.0-draft.9"
+SPEC_VERSION = "1.0.0-draft.10"
 
 #: One `crs_decisions` key for "a secondary input was brought into the analysis
 #: CRS", and a structured value rather than a sentence.
@@ -162,15 +162,6 @@ CONTAINER_EXTENSIONS: dict[str, dict[str, str]] = {
             "which says what was done: the same action can be applied twice, and "
             "without the round two entries reporting the same fix are "
             "indistinguishable from one entry written twice."
-        ),
-    },
-    "inputs[]": {
-        "x-mapsmith:environment": (
-            "The `environment` facts of THIS input, when it is not the first. Not "
-            "the top-level `environment`, which describes `inputs[0]`: the spec "
-            "makes it one flat object for the whole record, and with two rasters "
-            "(weighted zonal statistics) merging both files' facts into it read "
-            "one file's sidecar as the other's."
         ),
     },
 }
@@ -679,13 +670,29 @@ class InputRecord:
     # with no chosen layer — so leaving the field empty was recording ignorance
     # it no longer had.
     layer: str | None = None
+    # Which argument of the operation read this input (spec draft.10,
+    # `inputs[].argument`). The order of `inputs` is not significant, so for an
+    # operation that reads two datasets in two roles this is the only place the
+    # role survives: swapping values and weights changes every number and left
+    # two records differing only in file names. Set where an operation reads
+    # more than one dataset, with the name `verification[].argument` uses for
+    # the same input; omitted from the record when unset.
+    argument: str | None = None
 
     @classmethod
     def from_path(
-        cls, path: str | Path, crs: str | None = None, layer: str | None = None
+        cls,
+        path: str | Path,
+        crs: str | None = None,
+        layer: str | None = None,
+        argument: str | None = None,
     ) -> InputRecord:
         return cls(
-            path=posix_path(path), sha256=dataset_sha256(path), crs=crs, layer=layer
+            path=posix_path(path),
+            sha256=dataset_sha256(path),
+            crs=crs,
+            layer=layer,
+            argument=argument,
         )
 
 
@@ -855,15 +862,14 @@ class ProvenanceRecord:
         """
         from . import grid
 
-        # The facts in `environment` describe `inputs[0]`, the operation's
-        # primary dataset; any OTHER input's go on its own entry, under
-        # `x-mapsmith:environment`. Until 2026-09-25 every input's facts were
-        # merged into one flat object, which was harmless while no operation
-        # read two rasters and wrong the day weighted zonal statistics did: a
-        # weights raster with a sidecar beside values without one produced
-        # `georeferencing_source: internal` next to the weights' sidecar name,
-        # two statements about two files read as one (found by the
-        # `conformita-manifest` review).
+        # With one input its facts go on the record's `environment`, as they
+        # always have. With several, each file's facts go on its own entry,
+        # `inputs[].environment` (spec draft.10), and only process settings stay
+        # on the record. Until 2026-09-25 every input's facts were merged into
+        # one flat object: a weights raster with a sidecar beside values without
+        # one produced `georeferencing_source: internal` next to the weights'
+        # sidecar name, two statements about two files read as one (found by
+        # the `conformita-manifest` review).
         self._input_environment: dict[int, dict[str, str]] = {}
         for index, entry in enumerate(self.inputs):
             try:
@@ -875,10 +881,24 @@ class ProvenanceRecord:
                 continue
             if not found:
                 continue
-            if index == 0:
+            if len(self.inputs) == 1:
+                # One input: its facts are the run's, and the record is the
+                # one every single-input manifest has always carried.
                 for key, value in found.items():
                     self.environment.setdefault(key, value)
-            else:
+                continue
+            # Several inputs (spec draft.10, section 3.8): a process setting --
+            # unprefixed, the GDAL variables -- is a fact of the run and goes on
+            # the record once; a fact MapSmith read off THIS file (`x-mapsmith:`)
+            # goes on this input, the first one included. Until 2026-09-28 the
+            # first input's file facts sat on the record, which the format reads
+            # as true of every input, since the order of `inputs` means nothing
+            # (found by the `conformita-manifest` review of draft.10).
+            for key, value in found.items():
+                if not key.startswith("x-mapsmith:"):
+                    self.environment.setdefault(key, value)
+            found = {k: v for k, v in found.items() if k.startswith("x-mapsmith:")}
+            if found:
                 safe = redact_secrets(found)
                 # Said on the record, as every other redaction is: a manifest
                 # that masked a value without saying so reads as the value.
@@ -1018,7 +1038,14 @@ class ProvenanceRecord:
         # Added only where there is something to say, so that a record with a
         # single raster -- every one written before 2026-09-25 -- is unchanged.
         for index, found in getattr(self, "_input_environment", {}).items():
-            record["inputs"][index]["x-mapsmith:environment"] = found
+            # `environment` on the input since spec draft.10; until then this was
+            # `x-mapsmith:environment`, a key only a reader of MapSmith knew.
+            record["inputs"][index]["environment"] = found
+        # Unset roles are omitted, not written as null: a single-input record is
+        # unchanged, and null would claim the operation named no argument.
+        for entry in record["inputs"]:
+            if entry.get("argument") is None:
+                entry.pop("argument", None)
         manifest_path = Path(f"{output_path}.provenance.json")
         manifest_path.write_text(
             json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8"

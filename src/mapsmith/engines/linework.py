@@ -215,8 +215,8 @@ def snap_layer(
             "tolerance; ties go to the first in reference order",
         },
         inputs=[
-            InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs)),
-            InputRecord.from_path(reference_path, crs=reference_crs),
+            InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs), argument="input_path"),
+            InputRecord.from_path(reference_path, crs=reference_crs, argument="reference_path"),
         ],
         engine=_engine_info(),
     )
@@ -524,11 +524,17 @@ def line_intersections(
     }
     inputs = [InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))]
     if other_path is not None:
+        # Two layers in two roles: name both (spec draft.10, `inputs[].argument`).
+        inputs[0].argument = "input_path"
         other = readers.read_vector(other_path)
         if other.crs is None:
             raise ValueError(readers.no_crs_message(other, f"{other_path} has no CRS."))
         _lines_of(other, other_path, "line_intersections")
-        inputs.append(InputRecord.from_path(other_path, crs=verify.crs_label(other.crs)))
+        inputs.append(
+            InputRecord.from_path(
+                other_path, crs=verify.crs_label(other.crs), argument="other_path"
+            )
+        )
         if not verify.same_crs(gdf.crs, other.crs):
             crs_decisions[INPUTS_REPROJECTED] = [
                 {"argument": "other_path", "from": verify.crs_label(other.crs)}
@@ -837,8 +843,10 @@ def transform_by_control_points(
             "method": "least squares (normal equations)",
         },
         inputs=[
-            InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs)),
-            InputRecord.from_path(control_path, crs=verify.crs_label(control.crs)),
+            InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs), argument="input_path"),
+            InputRecord.from_path(
+                control_path, crs=verify.crs_label(control.crs), argument="control_path"
+            ),
         ],
         engine=_engine_info(),
     )

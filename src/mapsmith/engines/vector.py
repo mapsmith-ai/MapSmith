@@ -253,8 +253,8 @@ def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
         operation="clip_layer",
         parameters={},
         inputs=[
-            InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs)),
-            InputRecord.from_path(mask_path, crs=verify.crs_label(mask.crs)),
+            InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs), argument="input_path"),
+            InputRecord.from_path(mask_path, crs=verify.crs_label(mask.crs), argument="mask_path"),
         ],
         engine=_engine_info(),
     )
@@ -458,8 +458,12 @@ def overlay(
         operation="overlay_layers",
         parameters={"how": how, "keep_geom_type": True},
         inputs=[
-            InputRecord.from_path(input_path, crs=verify.crs_label(left.crs)),
-            InputRecord.from_path(overlay_path, crs=verify.crs_label(right.crs)),
+            InputRecord.from_path(
+                input_path, crs=verify.crs_label(left.crs), argument="input_path"
+            ),
+            InputRecord.from_path(
+                overlay_path, crs=verify.crs_label(right.crs), argument="overlay_path"
+            ),
         ],
         engine=_engine_info(),
     )
@@ -606,8 +610,10 @@ def nearest_join(
             "distance_column": distance_column,
         },
         inputs=[
-            InputRecord.from_path(left_path, crs=verify.crs_label(left.crs)),
-            InputRecord.from_path(right_path, crs=verify.crs_label(right.crs)),
+            InputRecord.from_path(left_path, crs=verify.crs_label(left.crs), argument="left_path"),
+            InputRecord.from_path(
+                right_path, crs=verify.crs_label(right.crs), argument="right_path"
+            ),
         ],
         engine=_engine_info(),
     )
@@ -750,9 +756,11 @@ def merge(input_paths: list[str], output_path: str) -> dict[str, Any]:
     record = ProvenanceRecord(
         operation="merge_layers",
         parameters={"layer_count": len(frames)},
+        # `input_1`, `input_2`...: the names the input checks below use, so a
+        # consumer can join `verification[].argument` to `inputs[].argument`.
         inputs=[
-            InputRecord.from_path(path, crs=verify.crs_label(frame.crs))
-            for path, frame in zip(input_paths, frames)
+            InputRecord.from_path(path, crs=verify.crs_label(frame.crs), argument=f"input_{i}")
+            for i, (path, frame) in enumerate(zip(input_paths, frames, strict=True), start=1)
         ],
         engine=_engine_info(),
     )
@@ -1349,8 +1357,10 @@ def spatial_join(
         operation="spatial_join",
         parameters={"predicate": predicate},
         inputs=[
-            InputRecord.from_path(left_path, crs=verify.crs_label(left.crs)),
-            InputRecord.from_path(right_path, crs=verify.crs_label(right.crs)),
+            InputRecord.from_path(left_path, crs=verify.crs_label(left.crs), argument="left_path"),
+            InputRecord.from_path(
+                right_path, crs=verify.crs_label(right.crs), argument="right_path"
+            ),
         ],
         engine=_engine_info(),
     )
@@ -1443,8 +1453,8 @@ def join_table(
         operation="join_table",
         parameters={"on": on, "how": how, "key_dtype": "str"},
         inputs=[
-            InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs)),
-            InputRecord.from_path(table_path),
+            InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs), argument="input_path"),
+            InputRecord.from_path(table_path, argument="table_path"),
         ],
         engine={"name": "pandas", "version": pd.__version__},
     )
@@ -2489,8 +2499,12 @@ def count_in_polygons(
         operation="count_in_polygons",
         parameters={"predicate": predicate, "count_column": count_column},
         inputs=[
-            InputRecord.from_path(points_path, crs=verify.crs_label(points.crs)),
-            InputRecord.from_path(polygons_path, crs=verify.crs_label(polygons.crs)),
+            InputRecord.from_path(
+                points_path, crs=verify.crs_label(points.crs), argument="points_path"
+            ),
+            InputRecord.from_path(
+                polygons_path, crs=verify.crs_label(polygons.crs), argument="polygons_path"
+            ),
         ],
         engine=_engine_info(),
     )
@@ -2706,8 +2720,12 @@ def summarize_points_in_polygons(
         operation="summarize_points_in_polygons",
         parameters={"field": field, "statistics": wanted, "predicate": predicate},
         inputs=[
-            InputRecord.from_path(points_path, crs=verify.crs_label(points.crs)),
-            InputRecord.from_path(polygons_path, crs=verify.crs_label(polygons.crs)),
+            InputRecord.from_path(
+                points_path, crs=verify.crs_label(points.crs), argument="points_path"
+            ),
+            InputRecord.from_path(
+                polygons_path, crs=verify.crs_label(polygons.crs), argument="polygons_path"
+            ),
         ],
         engine=_engine_info(),
     )

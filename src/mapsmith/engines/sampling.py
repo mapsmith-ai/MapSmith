@@ -249,8 +249,12 @@ def sample_raster_at_points(
             operation="sample_raster_at_points",
             parameters={"method": method, "band": band, "column_name": column_name},
             inputs=[
-                InputRecord.from_path(raster_path, crs=verify.crs_label(raster_crs)),
-                InputRecord.from_path(points_path, crs=verify.crs_label(points.crs)),
+                InputRecord.from_path(
+                    raster_path, crs=verify.crs_label(raster_crs), argument="raster_path"
+                ),
+                InputRecord.from_path(
+                    points_path, crs=verify.crs_label(points.crs), argument="points_path"
+                ),
             ],
             engine=_engine_info(),
         )
@@ -420,8 +424,12 @@ def elevation_profile(
             operation="elevation_profile",
             parameters=parameters,
             inputs=[
-                InputRecord.from_path(raster_path, crs=verify.crs_label(raster_crs)),
-                InputRecord.from_path(line_path, crs=verify.crs_label(lines.crs)),
+                InputRecord.from_path(
+                    raster_path, crs=verify.crs_label(raster_crs), argument="raster_path"
+                ),
+                InputRecord.from_path(
+                    line_path, crs=verify.crs_label(lines.crs), argument="line_path"
+                ),
             ],
             engine=_engine_info(),
         )

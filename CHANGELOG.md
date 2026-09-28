@@ -6,17 +6,44 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
-Records declare `spec_version` `1.0.0-draft.9`: the draft that defines the
-digest of a dataset made of several files, which is what the first fix below
-implements. No key moves.
+Records declare `spec_version` `1.0.0-draft.10`. `draft.9` defines the digest
+of a dataset made of several files, which is what the first fix below
+implements; `draft.10` gives each input a role and a configuration of its own.
+**One key moves**: a second input's own georeferencing facts,
+`inputs[].x-mapsmith:environment` on 0.7.x, are now `inputs[].environment`.
 
 ### Added
+
+- **Each input of an operation that reads more than one dataset says which
+  argument read it** (`inputs[].argument`, spec `draft.10`). The order of
+  `inputs` is not significant, so until now a weighted zonal statistic with
+  values and weights swapped produced a record that differed only in file
+  names. Eighteen operations name their inputs (twenty code paths:
+  `spatial_join` has three engines), with the names the input checks
+  already use in `verification[].argument`, so the two can be joined; a
+  single-input record is unchanged.
 
 - **`get_lineage` takes a `layer`.** The history of one layer of a file
   geodatabase now starts from the geodatabase itself: its record sits beside
   the container (spec section 3.1), and the walk matches the layer at every hop
   into a container. A layer given for a path that is not a container is
   refused rather than ignored.
+
+### Changed
+
+- **`inputs[].x-mapsmith:environment` is `inputs[].environment`**, the field
+  spec `draft.10` defines for the configuration that changed how one input was
+  read. Same content; only the name moves, and a reader of 0.7.x records reads
+  the old one.
+- **With more than one input, no file's facts sit on the record's
+  `environment`, the first input's included.** A sidecar beside the first
+  raster was recorded there, which the format reads as true of the whole run,
+  since the order of `inputs` means nothing: in a `clip_raster` it read as true
+  of the mask. It is now on that input's own `environment`, and only process
+  settings stay on the record. Seven operations can meet it (clip_raster,
+  sample_raster_at_points, elevation_profile, least_cost_path, viewshed,
+  watershed, zonal_statistics), and only when a sidecar is present. A
+  single-input record is unchanged.
 
 ### Fixed
 

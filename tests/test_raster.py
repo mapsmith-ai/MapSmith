@@ -314,14 +314,42 @@ def test_each_raster_s_georeferencing_facts_stay_with_that_raster(dem, zone, tmp
         dem, zone, str(tmp_path / "e.parquet"), ["weighted_mean"], weights_path=weights
     )
     record = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
-    on_weights = record["inputs"][2]["x-mapsmith:environment"]
+    # The only shipped path that writes `inputs[].environment`, and the
+    # conformance sweep has no fixture with a sidecar: without this line the
+    # field reaches records without either implementation of the spec seeing it.
+    from conftest import _spec_problems
+
+    assert _spec_problems(record) == []
+    # Spec draft.10: each input says which argument read it, so swapping values
+    # and weights is visible in the record and not only in the file names.
+    assert [i["argument"] for i in record["inputs"]] == [
+        "raster_path", "zones_path", "weights_path"
+    ]
+    on_weights = record["inputs"][2]["environment"]
     assert on_weights["x-mapsmith:georeferencing_sidecar_present"] == "w.tif.aux.xml"
+    # With several inputs no FILE fact sits on the record: the format reads the
+    # record-level `environment` as true of the whole run, and the order of
+    # `inputs` means nothing (draft.10, section 3.8). The DEM's sidecar is on
+    # the DEM's own entry, the first one included.
     environment = record.get("environment", {})
+    assert not [k for k in environment if k.startswith("x-mapsmith:")], environment
     if sidecars == "weights_only":
-        assert not environment, environment
+        assert "environment" not in record["inputs"][0]
     else:
-        assert environment["x-mapsmith:georeferencing_sidecar_present"] == "dem.tif.aux.xml"
-    assert "x-mapsmith:environment" not in record["inputs"][0]
+        on_dem = record["inputs"][0]["environment"]
+        assert on_dem["x-mapsmith:georeferencing_sidecar_present"] == "dem.tif.aux.xml"
+    assert "x-mapsmith:environment" not in record["inputs"][2]
+    # And the history carries both, which it did not: `get_lineage` kept the
+    # record-level `environment` and dropped each input's own.
+    from mapsmith import lineage
+
+    [step] = lineage.lineage(result["output"], scan_root=tmp_path)["steps"]
+    walked = step["inputs"]
+    assert [i["argument"] for i in walked] == ["raster_path", "zones_path", "weights_path"]
+    assert walked[2]["environment"] == on_weights
+    assert "environment" not in walked[1]
+    if sidecars == "both":
+        assert walked[0]["environment"] == record["inputs"][0]["environment"]
 
 
 def test_the_unweighted_form_still_writes_a_conforming_record(dem, zone, tmp_path):

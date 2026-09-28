@@ -311,8 +311,10 @@ def spatial_join(
         operation="spatial_join",
         parameters={"predicate": predicate, "engine": "duckdb"},
         inputs=[
-            InputRecord.from_path(left_path, crs=left_crs),
-            InputRecord.from_path(right_path, crs=verify.probe_crs(right_path)),
+            InputRecord.from_path(left_path, crs=left_crs, argument="left_path"),
+            InputRecord.from_path(
+                right_path, crs=verify.probe_crs(right_path), argument="right_path"
+            ),
         ],
         engine=_engine_info(),
     )

@@ -177,9 +177,19 @@ def problems(record: object) -> list[str]:
                     )
             if need("sha256", str, item, label) and not SHA256.fullmatch(item["sha256"]):
                 out.append(f"`{label}.sha256` must be 64 lowercase hex characters")
-            for field in ("crs", "layer"):
+            # `argument` since 1.0.0-draft.10: the role of this input, by name,
+            # because the order of `inputs` is not significant.
+            for field in ("crs", "layer", "argument"):
                 if item.get(field) is not None and not isinstance(item[field], str):
                     out.append(f"`{label}.{field}` must be a string or null")
+            # Since 1.0.0-draft.10: section 3.8 narrowed to one input.
+            if _optional(out, item, "environment", dict, label):
+                for key, value in item["environment"].items():
+                    if not isinstance(value, str):
+                        out.append(
+                            f"`{label}.environment.{key}` must be a string: section 3.8 "
+                            "records configuration as it was set, not as a parsed value"
+                        )
 
     if need("engine", dict):
         for field in ("name", "version"):

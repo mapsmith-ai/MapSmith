@@ -198,10 +198,16 @@ def zonal_statistics(
             operation="zonal_statistics",
             parameters=parameters,
             inputs=[
-                InputRecord.from_path(raster_path, crs=verify.crs_label(raster_crs)),
-                InputRecord.from_path(zones_path, crs=verify.crs_label(zones.crs)),
+                InputRecord.from_path(
+                    raster_path, crs=verify.crs_label(raster_crs), argument="raster_path"
+                ),
+                InputRecord.from_path(
+                    zones_path, crs=verify.crs_label(zones.crs), argument="zones_path"
+                ),
                 *(
-                    [InputRecord.from_path(weights_path, crs=verify.crs_label(weights_ds.crs))]
+                    [InputRecord.from_path(
+                        weights_path, crs=verify.crs_label(weights_ds.crs), argument="weights_path"
+                    )]
                     if weights_ds is not None
                     else []
                 ),
@@ -726,8 +732,12 @@ def clip_raster(
             operation="clip_raster",
             parameters={"all_touched": all_touched},
             inputs=[
-                InputRecord.from_path(raster_path, crs=verify.crs_label(src.crs)),
-                InputRecord.from_path(mask_path, crs=verify.crs_label(frame.crs)),
+                InputRecord.from_path(
+                    raster_path, crs=verify.crs_label(src.crs), argument="raster_path"
+                ),
+                InputRecord.from_path(
+                    mask_path, crs=verify.crs_label(frame.crs), argument="mask_path"
+                ),
             ],
             engine={"name": "rasterio", "version": rasterio.__version__},
         )

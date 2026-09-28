@@ -45,7 +45,7 @@ MapSmith's private output: JSON Schema, a toolchain-free validator, a conformanc
 hundred-line emitter that never imports MapSmith. Records carry `spec_version`, and CI validates
 real MapSmith output against the spec's own validator. The specification is archived and citable
 as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213), a concept DOI that
-resolves to the latest *archived* draft. Records written by `main` declare `1.0.0-draft.9`, and
+resolves to the latest *archived* draft. Records written by `main` declare `1.0.0-draft.10`, and
 0.7.1's declare `1.0.0-draft.8`; if the DOI shows an earlier one, the archive has not caught up, and the
 [repository](https://github.com/mapsmith-ai/manifest-spec) holds the text they are written against. The names MapSmith puts
 in a record beyond the ones the specification defines — every extension check name, and every
@@ -232,8 +232,12 @@ changes answers you have**: every position read from a point-registered raster
 ([`[Unreleased]`](CHANGELOG.md#unreleased)) by `get_lineage` taking a `layer` (the history of one layer of a file geodatabase), by a shapefile
 digest that covers the attributes and the CRS, by two file-geodatabase fixes (`extract_layer`
 on a `.gdb`, and a lineage hop into a container resolving to the layer it names), by three
-small fixes from the 0.7.0 audit, none reachable in the default configuration, and by a PyPI
-page whose links resolve; its records declare `1.0.0-draft.9`, 0.7.1's `1.0.0-draft.8`.
+small fixes from the 0.7.0 audit, none reachable in the default configuration, by a PyPI
+page whose links resolve, and by `inputs[].argument` on every operation that reads more than
+one dataset (which input was the weights and which the values). Its records declare
+`1.0.0-draft.10`, 0.7.1's `1.0.0-draft.8`, and **one key moves**: a second input's own
+georeferencing facts, `inputs[].x-mapsmith:environment` on 0.7.x, are `inputs[].environment`,
+the name the specification gives them since `draft.10`.
 
 **If you read manifests, 0.7.x renames no key**: records declare `spec_version`
 `1.0.0-draft.8`, two drafts past 0.6.0's `draft.6`, and both drafts only narrowed where a
@@ -267,7 +271,7 @@ for it:
 
 ```json
 {
-  "spec_version": "1.0.0-draft.9",
+  "spec_version": "1.0.0-draft.10",
   "producer": {"name": "mapsmith", "version": "0.7.1"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},

@@ -417,6 +417,28 @@ def _recheck(
         return "unverified_unreadable"
 
 
+def _input_step(item: dict[str, Any]) -> dict[str, Any]:
+    """One input of a hop, with the two fields spec draft.10 gave it when present.
+
+    `argument` says which role the file played, since the order of `inputs` is
+    not significant; `environment` is section 3.8 narrowed to that file. The
+    walk carried the record-level `environment` and dropped these, so a
+    weights raster's sidecar was in the record and missing from its history --
+    the "looks complete and is not" the comment in `_step` warns about.
+    """
+    out: dict[str, Any] = {
+        "path": _tame(item.get("path")),
+        "sha256": item.get("sha256"),
+        "crs": _tame(item.get("crs")),
+        "layer": _tame(item.get("layer")),
+    }
+    if isinstance(item.get("argument"), str):
+        out["argument"] = _tame(item["argument"])
+    if isinstance(item.get("environment"), dict) and item["environment"]:
+        out["environment"] = _tame(item["environment"])
+    return out
+
+
 def _step(
     record: dict[str, Any], depth: int, digest: str, claims: int, claim: str
 ) -> dict[str, Any]:
@@ -447,14 +469,7 @@ def _step(
         "repairs": _repairs_summary(record),
         "notes": [_tame(str(note)) for note in _as_list(record.get("notes"))[:200]],
         "inputs": [
-            {
-                "path": _tame(item.get("path")),
-                "sha256": item.get("sha256"),
-                "crs": _tame(item.get("crs")),
-                "layer": _tame(item.get("layer")),
-            }
-            for item in _as_list(record.get("inputs"))
-            if isinstance(item, dict)
+            _input_step(item) for item in _as_list(record.get("inputs")) if isinstance(item, dict)
         ],
     }
     if isinstance(output.get("layer"), str):

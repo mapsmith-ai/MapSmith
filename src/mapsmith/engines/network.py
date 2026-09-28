@@ -1008,9 +1008,11 @@ def least_cost_path(
             "cells_settled": visited,
         },
         inputs=[
-            InputRecord.from_path(cost_path, crs=crs_label),
-            InputRecord.from_path(start_path, crs=verify.crs_label(starts.crs)),
-            InputRecord.from_path(end_path, crs=verify.crs_label(ends.crs)),
+            InputRecord.from_path(cost_path, crs=crs_label, argument="cost_path"),
+            InputRecord.from_path(
+                start_path, crs=verify.crs_label(starts.crs), argument="start_path"
+            ),
+            InputRecord.from_path(end_path, crs=verify.crs_label(ends.crs), argument="end_path"),
         ],
         engine=_engine_info(),
     )

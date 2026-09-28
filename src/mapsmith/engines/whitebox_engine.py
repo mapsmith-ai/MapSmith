@@ -668,8 +668,10 @@ def watershed(
             operation="watershed",
             parameters={"method": "d8", "preprocessing": "fill_depressions", "n_pour_points": len(points)},
             inputs=[
-                InputRecord.from_path(dem_path, crs=crs),
-                InputRecord.from_path(pour_points_path, crs=verify.crs_label(points.crs)),
+                InputRecord.from_path(dem_path, crs=crs, argument="dem_path"),
+                InputRecord.from_path(
+                    pour_points_path, crs=verify.crs_label(points.crs), argument="pour_points_path"
+                ),
             ],
             engine=_engine_info(),
         )
@@ -1254,9 +1256,9 @@ def viewshed(
                 "output_meaning": "number of stations that can see the cell",
             },
             inputs=[
-                InputRecord.from_path(dem_path, crs=crs),
+                InputRecord.from_path(dem_path, crs=crs, argument="dem_path"),
                 InputRecord.from_path(
-                    stations_path, crs=verify.crs_label(stations.crs)
+                    stations_path, crs=verify.crs_label(stations.crs), argument="stations_path"
                 ),
             ],
             engine=_engine_info(),
