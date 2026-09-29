@@ -25,6 +25,7 @@ from typing import Any
 
 import geopandas as gpd
 import numpy as np
+import shapely
 from shapely.geometry import MultiPoint, Point
 from shapely.ops import transform as shapely_transform
 
@@ -82,6 +83,11 @@ def _projected(gdf: gpd.GeoDataFrame, path: str, operation: str) -> None:
 
 
 def _lines_of(gdf: gpd.GeoDataFrame, path: str, operation: str) -> None:
+    readers.refuse_missing_geometry(
+        gdf, path,
+        f"{operation} works on the lines themselves, and a feature with no line gives "
+        "it nothing to work on; skipping it would change the result without saying so.",
+    )
     kinds = set(gdf.geometry.geom_type)
     if not kinds <= {"LineString", "MultiLineString"}:
         raise ValueError(
@@ -165,18 +171,17 @@ def snap_layer(
         )
         reference = reference.to_crs(gdf.crs)
 
-    targets = []
-    for geometry in reference.geometry:
-        if geometry is None or geometry.is_empty:
-            continue
-        targets.extend(geometry.coords if hasattr(geometry, "coords")
-                       else [c for part in geometry.geoms for c in part.coords])
-    if not targets:
+    # Every vertex of every geometry type, in reference order, nulls and empties
+    # skipped. This was `geometry.coords if hasattr(geometry, "coords")`, and on
+    # shapely 2 `Polygon.coords` and `MultiLineString.coords` raise
+    # NotImplementedError, which `hasattr` does not catch: a polygon or
+    # multipart reference crashed instead of snapping (found 2026-09-29).
+    target_points = shapely.get_coordinates(reference.geometry.to_numpy())
+    if not len(target_points):
         raise ValueError(
             f"{reference_path} has no vertices to snap to. An empty reference would "
             "return the input unchanged and call it snapped."
         )
-    target_points = np.array([[x, y] for x, y, *_ in targets])
     index = gpd.GeoSeries([Point(x, y) for x, y in target_points], crs=gdf.crs).sindex
 
     moves: list[float] = []

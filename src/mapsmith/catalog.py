@@ -4779,7 +4779,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'raster',
         'category': 'network',
         "produces": "dataset:vector",
-        'applicability': {'inputs': ['raster'], 'requires_projected_crs': True, 'dataset_inputs': 3},
+        'applicability': {'inputs': ['raster', 'vector'], 'requires_projected_crs': True, 'dataset_inputs': 3, 'geometry': ['point']},
         'summary': 'The cheapest route across a cost surface between two points, when '
                    'there is no network to follow',
         "phrasings": "cheapest way to lay the cable avoiding steep slopes; best corridor "

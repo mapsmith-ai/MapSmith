@@ -706,6 +706,11 @@ def thin_points(
     if not (math.isfinite(min_distance) and min_distance > 0):
         raise ValueError(f"min_distance must be a positive number, got {min_distance}")
     gdf = _prepare(input_path, "thin_points", priority_field)
+    readers.refuse_missing_geometry(
+        gdf, input_path,
+        "A point with no position cannot be near anything, so there is no answer for "
+        "whether it is kept.",
+    )
     kinds = set(gdf.geom_type.dropna().unique())
     if not kinds <= {"Point", "MultiPoint"}:
         raise ValueError(

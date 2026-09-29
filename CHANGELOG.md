@@ -30,7 +30,7 @@ implements; `draft.10` gives each input a role and a configuration of its own.
   got a shortlist back for the most common request there is; with the geometry
   declared, the right operation is in the answer for 116 of the 118 benchmark
   requests again. An entry declares the families it accepts only where its code
-  refuses the others (fourteen do), an entry without a declaration is kept for
+  refuses the others (fifteen do), an entry without a declaration is kept for
   every family, and a test calls each declared entry with every family it
   leaves out and requires the refusal.
 - **`benchmarks/choice_at_scale.py`**, with every choice it scores in
@@ -78,6 +78,18 @@ implements; `draft.10` gives each input a role and a configuration of its own.
   statistic. `count_in_polygons` and `summarize_points_in_polygons` refuse a
   polygon layer holding anything else the same way. Found by the test that
   holds the new geometry declarations to the code.
+- **`least_cost_path` is found by a caller holding points.** It reads a cost
+  raster and two point layers but declared its input as raster only, so a
+  caller who said, correctly, that it held a vector layer never saw it. A start
+  or end layer holding a line or a polygon beside its point is now refused; it
+  used to pass with the extra feature ignored.
+- **`snap_layer` snaps to a polygon or multipart reference.** Both crashed with
+  a raw `NotImplementedError` from shapely; every vertex of every part, holes
+  included, is now a target.
+- **A feature with no geometry is refused, with a count, by `thin_points`,
+  `sample_raster_at_points`, `points_along_lines` and `line_intersections`.**
+  They crashed on it with an `AttributeError`, "cannot convert float NaN to
+  integer" and a failed sort.
 - **A shapefile's digest covers its attributes and its CRS.** An input or
   output shapefile was digested as its `.shp` alone, so a record kept matching
   a dataset whose `.dbf` (attributes) or `.prj` (CRS) had been rewritten, while

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import geopandas as gpd
 import pytest
-from shapely.geometry import LineString, Point
+from shapely.geometry import LineString, MultiLineString, Point, Polygon
 
 from mapsmith import verify
 from mapsmith.engines import linework
@@ -88,6 +88,40 @@ def test_an_empty_reference_is_refused_rather_than_reported_as_snapped(tmp_path)
     empty.to_parquet(reference)
     with pytest.raises(ValueError, match="no vertices"):
         linework.snap_layer(moving, str(reference), str(tmp_path / "o.parquet"), 1.0)
+
+
+def test_a_polygon_reference_snaps_to_its_outer_ring_and_to_its_holes(tmp_path):
+    """Parcels snapped to a block outline, the case the reference crashed on.
+
+    A 100 m square with a 20 m square hole in the middle. One vertex 4 cm from
+    the outer corner (100, 100), one 4 cm from the hole's corner (40, 40): both
+    move exactly onto them. Until 2026-09-29 a polygon reference raised
+    NotImplementedError from `Polygon.coords`.
+    """
+    block = Polygon(
+        [(0, 0), (100, 0), (100, 100), (0, 100)],
+        holes=[[(40, 40), (60, 40), (60, 60), (40, 60)]],
+    )
+    moving = layer(tmp_path, "moving", [LineString([(40.04, 40.0), (100.0, 100.04)])])
+    reference = layer(tmp_path, "block", [block])
+    out = tmp_path / "snapped.parquet"
+
+    result = linework.snap_layer(moving, reference, str(out), tolerance=0.05)
+    assert result["vertices_moved"] == 2
+    assert list(gpd.read_parquet(out).geometry.iloc[0].coords) == [(40.0, 40.0), (100.0, 100.0)]
+
+
+def test_a_multipart_reference_offers_the_vertices_of_every_part(tmp_path):
+    """Two parts; the vertex near the SECOND part's end moves onto it."""
+    reference = layer(
+        tmp_path, "parts", [MultiLineString([[(0, 0), (10, 0)], [(20, 0), (30, 0)]])]
+    )
+    moving = layer(tmp_path, "moving", [LineString([(0, 5), (30.02, 0)])])
+    out = tmp_path / "snapped.parquet"
+
+    result = linework.snap_layer(moving, reference, str(out), tolerance=0.05)
+    assert result["vertices_moved"] == 1
+    assert list(gpd.read_parquet(out).geometry.iloc[0].coords) == [(0.0, 5.0), (30.0, 0.0)]
 
 
 # --- points_along_lines ----------------------------------------------------

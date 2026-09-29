@@ -220,6 +220,11 @@ def sample_raster_at_points(
                 "on the raster."
             )
         )
+    readers.refuse_missing_geometry(
+        points, points_path,
+        "A point with no position has no cell to read, and a null value for it would "
+        "read like a point that fell outside the raster.",
+    )
     kinds = set(points.geom_type.dropna().unique())
     if not kinds <= {"Point", "MultiPoint"}:
         raise ValueError(

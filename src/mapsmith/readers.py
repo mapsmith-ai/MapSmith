@@ -395,3 +395,24 @@ def no_crs_message(frame: Any, base: str) -> str:
     """
     reason = crs_reason(frame)
     return f"{base} {reason[0].upper() + reason[1:]}" if reason else base
+
+
+def refuse_missing_geometry(frame: Any, path: str, consequence: str) -> None:
+    """Refuse features with no geometry, or an empty one, saying what they would do.
+
+    An operation that has nowhere to put a feature without a position either
+    crashed on it -- `thin_points` with an AttributeError, the sampler turning
+    a NaN coordinate into a cell index, the line operations sorting a set
+    holding None -- or would have to drop it without saying so. Refused, with
+    the count and the consequence, like `cluster_points_by_distance` does
+    (found by review, 2026-09-29).
+    """
+    import shapely
+
+    geoms = frame.geometry.to_numpy()
+    missing = int((shapely.is_missing(geoms) | shapely.is_empty(geoms)).sum())
+    if missing:
+        raise ValueError(
+            f"{path} has {missing} feature(s) with no or an empty geometry. "
+            f"{consequence} Remove those features first."
+        )

@@ -22,8 +22,8 @@ catalogue is written: *"the coastline is 400 000 nodes and the browser dies"*, n
 | what the caller declares | candidates left | ranked, found@3 | **in what comes back** |
 |---|---|---|---|
 | nothing — words alone | 77 | 29% | 29% |
-| the input kind | 51 | 34% | 35% |
-| + what it should produce | 31 | 45% | 54% |
+| the input kind | 51 | 35% | 36% |
+| + what it should produce | 32 | 45% | 54% |
 | + how many datasets | 17 | 54% | 84% |
 | **+ what geometry it holds** | **15** | **61%** | **98%** |
 
@@ -116,7 +116,7 @@ when a catalogue of your own outgrows its facets:
 
 `dataset:vector`, `dataset:raster`, `answer`, `description`, `plan_result`.
 
-Worth 20 points of *in what comes back* on top of the input kind (35% to 54%, table above), and it is a facet the caller
+Worth 20 points of *in what comes back* on top of the input kind (36% to 54%, table above), and it is a facet the caller
 always knows: they know whether they want a file, a number, or an account of
 something they already have. Check it against what the code actually writes — a
 declaration that disagrees makes the operation unreachable for the caller who

@@ -423,8 +423,8 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
 | nothing — words alone | 77 | 29% | 19% | 29% |
-| what data I have | 51 | 34% | 22% | 35% |
-| + what I want back | 31 | 45% | 40% | 54% |
+| what data I have | 51 | 35% | 22% | 36% |
+| + what I want back | 32 | 45% | 40% | 54% |
 | + how many datasets I have | 17 | 54% | 47% | 84% |
 | **+ what geometry it holds** | **15** | **61%** | **58%** | **98%** |
 

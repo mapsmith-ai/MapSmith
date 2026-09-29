@@ -810,13 +810,30 @@ def least_cost_path(
         frame = readers.read_vector(path)
         if frame.crs is None:
             raise ValueError(readers.no_crs_message(frame, f"{path} has no CRS."))
-        points = [g for g in frame.geometry if g is not None and g.geom_type == "Point"]
+        present = [g for g in frame.geometry if g is not None and not g.is_empty]
+        # Every feature is judged, not only the points. A layer holding one
+        # point and one line used to pass with the line ignored, and after a
+        # reprojection the endpoint was re-read as `iloc[0]` -- which could be
+        # the line (found 2026-09-29).
+        others = sorted({g.geom_type for g in present} - {"Point", "MultiPoint"})
+        if others:
+            raise ValueError(
+                f"{what} ({path}) holds {others} geometries; it must be a single point. "
+                "A route starts somewhere, and a line or a polygon is not one place."
+            )
+        points = [part for g in present for part in getattr(g, "geoms", [g])]
         if len(points) != 1:
             raise ValueError(
                 f"{what} ({path}) must hold exactly one point; it holds "
                 f"{len(points)}. Two starts is two questions."
             )
         return frame, points[0]
+
+    def in_crs(point, frame, crs):
+        """The point itself, reprojected -- not whatever feature comes first."""
+        import geopandas as gpd
+
+        return gpd.GeoSeries([point], crs=frame.crs).to_crs(crs).iloc[0]
 
     starts, start_point = one_point(start_path, "the start")
     ends, end_point = one_point(end_path, "the end")
@@ -865,9 +882,9 @@ def least_cost_path(
             if not verify.same_crs(frame.crs, src.crs)
         ]
         if not verify.same_crs(starts.crs, src.crs):
-            start_point = starts.to_crs(src.crs).geometry.iloc[0]
+            start_point = in_crs(start_point, starts, src.crs)
         if not verify.same_crs(ends.crs, src.crs):
-            end_point = ends.to_crs(src.crs).geometry.iloc[0]
+            end_point = in_crs(end_point, ends, src.crs)
 
         def to_cell(point, name: str) -> tuple[int, int]:
             if not (bounds.left <= point.x <= bounds.right

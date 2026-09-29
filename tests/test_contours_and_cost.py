@@ -18,7 +18,7 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pytest
-from shapely.geometry import Point
+from shapely.geometry import LineString, Point
 
 pytest.importorskip("whitebox_workflows")
 rasterio = pytest.importorskip("rasterio")
@@ -285,3 +285,42 @@ def test_two_start_points_are_two_questions(tmp_path):
     end = point_layer(tmp_path, "end", 4.5, 0.5)
     with pytest.raises(ValueError, match="exactly one point"):
         network.least_cost_path(cost, str(start), end, str(tmp_path / "o.parquet"))
+
+
+def test_a_start_holding_a_line_beside_its_point_is_refused(tmp_path):
+    """One point and one line used to pass as "one point", the line ignored."""
+    cost = cost_raster(tmp_path, np.ones((5, 5)))
+    mixed = gpd.GeoDataFrame(
+        {"id": [1, 2]},
+        geometry=[LineString([(0.5, 0.5), (4.5, 4.5)]), Point(0.5, 4.5)],
+        crs="EPSG:32632",
+    )
+    start = tmp_path / "mixed.parquet"
+    mixed.to_parquet(start)
+    end = point_layer(tmp_path, "end", 4.5, 0.5)
+    with pytest.raises(ValueError, match=r"\['LineString'\] geometries"):
+        network.least_cost_path(cost, str(start), end, str(tmp_path / "o.parquet"))
+
+
+def test_a_reprojected_start_is_the_point_itself(tmp_path):
+    """The endpoint in another CRS lands where it is.
+
+    A pin, not a catch: the old code reprojected the whole layer and re-read
+    feature 0, which was right for a one-point layer and wrong only for the
+    mixed layer the test above now refuses. It reprojects the point itself
+    now, and this holds that path. A start given in WGS 84 at the centre of cell (row 0, column 0) of a UTM
+    surface: the route begins in that cell. The 4326 coordinates are the
+    exact inverse of (0.5, 4.5) in EPSG:32632, computed by the same PROJ.
+    """
+    from pyproj import Transformer
+
+    cost = cost_raster(tmp_path, np.ones((5, 5)))
+    lon, lat = Transformer.from_crs(32632, 4326, always_xy=True).transform(0.5, 4.5)
+    wgs = gpd.GeoDataFrame({"id": [1]}, geometry=[Point(lon, lat)], crs="EPSG:4326")
+    start = tmp_path / "start_wgs.parquet"
+    wgs.to_parquet(start)
+    end = point_layer(tmp_path, "end", 4.5, 4.5)
+    result = network.least_cost_path(cost, str(start), end, str(tmp_path / "o.parquet"))
+    assert result["cells"] == 5
+    assert result["total_cost"] == pytest.approx(4.0)
+

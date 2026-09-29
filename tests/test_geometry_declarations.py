@@ -131,6 +131,8 @@ def _rows():
          lambda lyr, L, r, out: vector.summarize_points_in_polygons(lyr, L["polygon"], out, "v")),
         ("summarize_points_in_polygons", "polygons_path", {"polygon"},
          lambda lyr, L, r, out: vector.summarize_points_in_polygons(L["point"], lyr, out, "v")),
+        ("least_cost_path", "start_path", {"point"},
+         lambda lyr, L, r, out: network.least_cost_path(r(), lyr, lyr, out)),
         ("zonal_statistics", "zones_path", {"polygon"},
          lambda lyr, L, r, out: raster_ops.zonal_statistics(r(), lyr, out, ["mean"])),
     ]
@@ -228,3 +230,39 @@ def test_the_spellings_drivers_use_are_understood(spelling, family):
 def test_an_unknown_geometry_says_leaving_it_out_is_safe():
     with pytest.raises(ValueError, match="leave geometry out"):
         catalog.geometry_families("GeometryCollection")
+
+
+@pytest.mark.parametrize(
+    "operation", ["thin_points", "sample_raster_at_points", "points_along_lines", "line_intersections"]
+)
+def test_a_feature_with_no_geometry_is_refused_before_anything_is_written(
+    operation, raster, tmp_path
+):
+    """Four operations crashed on a null geometry with a raw error.
+
+    An AttributeError from `thin_points`, "cannot convert float NaN to integer"
+    from the sampler, a failed sort of a set holding None from the two line
+    operations (review, 2026-09-29). Now a refusal that counts them, and no
+    output on disk.
+    """
+    from mapsmith.engines import linework, sampling, spatial_stats
+
+    points = tmp_path / "with_null_points.gpkg"
+    gpd.GeoDataFrame({"v": [1, 2]}, geometry=[Point(10, 10), None], crs=CRS).to_file(points)
+    lines = tmp_path / "with_null_lines.gpkg"
+    gpd.GeoDataFrame(
+        {"v": [1, 2]}, geometry=[LineString([(0, 0), (100, 100)]), None], crs=CRS
+    ).to_file(lines)
+    out = tmp_path / "out.parquet"
+    calls = {
+        "thin_points": lambda: spatial_stats.thin_points(str(points), str(out), min_distance=1.0),
+        "sample_raster_at_points": lambda: sampling.sample_raster_at_points(
+            raster, str(points), str(out), "nearest"
+        ),
+        "points_along_lines": lambda: linework.points_along_lines(str(lines), str(out), 10.0),
+        "line_intersections": lambda: linework.line_intersections(str(lines), None, str(out)),
+    }
+    with pytest.raises(ValueError, match=r"1 feature\(s\) with no or an empty geometry"):
+        calls[operation]()
+    assert not out.exists()
+
