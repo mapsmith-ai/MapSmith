@@ -829,12 +829,6 @@ def least_cost_path(
             )
         return frame, points[0]
 
-    def in_crs(point, frame, crs):
-        """The point itself, reprojected -- not whatever feature comes first."""
-        import geopandas as gpd
-
-        return gpd.GeoSeries([point], crs=frame.crs).to_crs(crs).iloc[0]
-
     starts, start_point = one_point(start_path, "the start")
     ends, end_point = one_point(end_path, "the end")
 
@@ -882,9 +876,10 @@ def least_cost_path(
             if not verify.same_crs(frame.crs, src.crs)
         ]
         if not verify.same_crs(starts.crs, src.crs):
-            start_point = in_crs(start_point, starts, src.crs)
+            # The point itself, reprojected -- not whatever feature comes first.
+            start_point = gpd.GeoSeries([start_point], crs=starts.crs).to_crs(src.crs).iloc[0]
         if not verify.same_crs(ends.crs, src.crs):
-            end_point = in_crs(end_point, ends, src.crs)
+            end_point = gpd.GeoSeries([end_point], crs=ends.crs).to_crs(src.crs).iloc[0]
 
         def to_cell(point, name: str) -> tuple[int, int]:
             if not (bounds.left <= point.x <= bounds.right
@@ -999,8 +994,6 @@ def least_cost_path(
             "distance between the points matters at this scale."
         )
     line = LineString(coordinates)
-
-    import geopandas as gpd
 
     total_cost = float(best[end_cell])
     straight = float(start_point.distance(end_point))
