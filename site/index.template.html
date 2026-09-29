@@ -350,7 +350,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   </p>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1.5rem;margin:2rem 0 1.5rem">
     <div class="stat"><b>118</b><span>REQUESTS WE DID NOT WRITE</span></div>
-    <div class="stat"><b>53%</b><span>OUR RANKING, FOUND@3</span></div>
+    <div class="stat"><b>61%</b><span>OUR RANKING, FOUND@3</span></div>
     <div class="stat"><b>69%</b><span>A MODEL <em>CHOOSING</em> FROM THE SET</span></div>
     <div class="stat"><b>70%</b><span>WHERE THE TWO MODEL LABELLERS AGREE WITH EACH OTHER<br><em>labels written 2026-08-28, catalogue of 51</em></span></div>
   </div>
@@ -372,8 +372,9 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   </p>
   <p>
     <strong>It narrows first, deterministically, on facts the caller already has.</strong> What data
-    is in hand, and what should come back. Declaring those two takes the candidates from 76 to 31 —
-    and below thirty survivors the search stops choosing for you: it returns
+    is in hand, and what should come back. Declaring those two takes the candidates from 77 to 31;
+    how many datasets, and whether they are points, lines or polygons, take them further —
+    and at thirty survivors or fewer the search stops choosing for you: it returns
     <code>status: "choose"</code> with every candidate, ordered as a hint that says so, each carrying
     the sentence that separates it from its neighbours. On 116 of those 118 requests the right
     operation is in what comes back; the other two leave a set still too large to hand over whole
@@ -384,8 +385,8 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   <p>
     <strong>The family orders instead of filtering, and that is a correction.</strong> It used to be
     a hard filter like the others, and it is not like the others: input kind is a fact about your
-    data, family is a guess about our taxonomy that you cannot see. It removed six candidates out of
-    seventeen — and when the guess was wrong it removed <em>the right operation</em>, silently,
+    data, family is a guess about our taxonomy that you cannot see. It removed five candidates out of
+    fifteen — and when the guess was wrong it removed <em>the right operation</em>, silently,
     leaving a confident answer built from neighbours. Every request here has 4.4 plausible families.
     That is the failure <a href="https://argleton.org">Argleton</a> measures in other people's
     systems, found in our own discovery layer.
@@ -423,13 +424,17 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   <p>
     So the figure to watch is not found@3. A ranker gets worse as a catalogue grows and it is a hint
     either way. It is the <em>average</em> surviving set at the fullest declaration — 9 at fifty-one
-    operations, 14 at sixty-one, 16 at seventy-two, 16 at seventy-four, 16 at seventy-five, 17 at seventy-six.
+    operations, 14 at sixty-one, 16 at seventy-two, 16 at seventy-four, 16 at seventy-five, 17 at seventy-six, 15 at seventy-seven.
     (This page said
-    <em>median</em> until 29 August and published the mean; the median at seventy-six is 15. The
+    <em>median</em> until 29 August and published the mean; the median at seventy-seven is 12. The
     distribution is skewed, so the two say different things, and the mean is the pessimistic one.)
     When that crosses thirty, delivery stops being a
-    property and becomes a ranking again, and the answer will be another fact the caller already
-    knows rather than a bigger threshold.
+    property and becomes a ranking again, and the answer is another fact the caller already
+    knows. On 29 September it nearly did: thirty-one operations take one vector layer to another.
+    A bigger threshold was measured first — each request handed to Claude Opus 5.5 in sets of
+    thirty, forty and fifty — and it cost seven points at forty and five at fifty, so the
+    threshold stayed and the caller now says what geometry it holds. The last point of the series
+    is the first with that declared.
   </p>
   <p>
     <strong>And no model is needed to extract those facets, because the caller is one.</strong> An
@@ -489,9 +494,10 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <tr>
       <td>ablation</td>
       <td>Each facet is worth measuring alone, over the 118 independent requests: nothing declared
-      → 76 candidates, 18% found@3 with embeddings and 29% with BM25; what data I have → 50,
-      21% and 32%; + what I want back → 31, 40% and 44%; + how many datasets I have →
-      <strong>17, 53% ranked and 98% delivered</strong>. Both engines, because this row carried one
+      → 77 candidates, 19% found@3 with embeddings and 29% with BM25; what data I have → 51,
+      22% and 34%; + what I want back → 31, 40% and 45%; + how many datasets I have → 17, 47% and
+      54%; + what geometry it holds →
+      <strong>15, 61% ranked and 98% delivered</strong>. Both engines, because this row carried one
       unnamed column until a CI run met a rate limit from the model host, fell back to BM25 and
       recomputed the first figure as 28% — the published number had been a measurement of what
       the machine could download. The jump in the last column is not the ranker getting better

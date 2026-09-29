@@ -14,7 +14,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import pytest
-from shapely.geometry import Point, box
+from shapely.geometry import LineString, Point, box
 
 from mapsmith.engines import spatial_stats
 
@@ -483,3 +483,167 @@ def test_a_detail_never_states_the_opposite_of_what_passed_says(tmp_path):
             f"{check['name']} passed and its detail reads like a failure: "
             f"{check['detail']!r}"
         )
+
+
+def _row(tmp_path, xs, crs="EPSG:32632", name="row.gpkg"):
+    path = tmp_path / name
+    gpd.GeoDataFrame(
+        {"name": [f"p{i}" for i in range(len(xs))]},
+        geometry=[Point(x, 0) for x in xs],
+        crs=crs,
+    ).to_file(path, layer="p", driver="GPKG")
+    return path
+
+
+def test_clustering_chains_where_thinning_drops(tmp_path):
+    """Points at 0, 400, 800 and 5000, 5300 with a 500 m link, traced by hand.
+
+    0-400 and 400-800 are links, so 0 and 800 share a cluster although they are
+    800 apart; 5000-5300 is a link; 800-5000 is not. Two clusters, of three and
+    two. Thinning the same points at 500 keeps 0, 800 and 5000 -- three -- which
+    is the difference the operation exists for.
+    """
+    path = _row(tmp_path, [0, 400, 800, 5000, 5300])
+    out = tmp_path / "groups.parquet"
+    result = spatial_stats.cluster_points_by_distance(str(path), str(out), max_distance=500.0)
+    written = gpd.read_parquet(out)
+    assert written["cluster_id"].tolist() == [1, 1, 1, 2, 2]
+    assert written["cluster_size"].tolist() == [3, 3, 3, 2, 2]
+    assert (result["clusters"], result["singletons"], result["largest_cluster"]) == (2, 0, 3)
+    assert len(written) == 5, "clustering removes nothing"
+    assert _named(out)["x-mapsmith:clusters_are_the_chains_of_the_written_points"]["passed"]
+    thinned = spatial_stats.thin_points(str(path), str(tmp_path / "t.parquet"), min_distance=500.0)
+    assert thinned["kept"] == 3
+
+
+def test_a_link_exactly_at_the_distance_joins(tmp_path):
+    path = _row(tmp_path, [0, 500, 1001])
+    out = tmp_path / "g.parquet"
+    result = spatial_stats.cluster_points_by_distance(str(path), str(out), max_distance=500.0)
+    assert gpd.read_parquet(out)["cluster_id"].tolist() == [1, 1, 2]
+    assert result["singletons"] == 1
+
+
+def test_cluster_ids_follow_the_order_of_first_features(tmp_path):
+    # The lone far point comes first in the file, so its cluster is number 1.
+    path = _row(tmp_path, [9000, 0, 100])
+    out = tmp_path / "g.parquet"
+    spatial_stats.cluster_points_by_distance(str(path), str(out), max_distance=150.0)
+    assert gpd.read_parquet(out)["cluster_id"].tolist() == [1, 2, 2]
+
+
+def test_clustering_refuses_degrees_and_non_points(tmp_path):
+    geographic = _row(tmp_path, [0, 0.001], crs="EPSG:4326", name="geo.gpkg")
+    with pytest.raises(ValueError, match="DEGREES"):
+        spatial_stats.cluster_points_by_distance(
+            str(geographic), str(tmp_path / "x.parquet"), max_distance=500.0
+        )
+    lines = tmp_path / "lines.gpkg"
+    gpd.GeoDataFrame(
+        geometry=[LineString([(0, 0), (1, 1)])], crs="EPSG:32632"
+    ).to_file(lines, layer="l", driver="GPKG")
+    with pytest.raises(ValueError, match="point layer"):
+        spatial_stats.cluster_points_by_distance(
+            str(lines), str(tmp_path / "y.parquet"), max_distance=500.0
+        )
+
+
+def test_clustering_an_empty_layer_writes_a_record_instead_of_crashing(tmp_path):
+    """`thin_points` treats an empty layer as a result; this used to raise a
+    TypeError from shapely, which cannot infer the dtype of an empty list."""
+    path = _row(tmp_path, [])
+    out = tmp_path / "g.parquet"
+    result = spatial_stats.cluster_points_by_distance(str(path), str(out), max_distance=500.0)
+    assert (result["points"], result["clusters"], result["largest_cluster"]) == (0, 0, 0)
+    assert _named(out)["x-mapsmith:clusters_are_the_chains_of_the_written_points"]["passed"]
+
+
+def test_clustering_refuses_to_overwrite_an_input_column(tmp_path):
+    # The record says `removes_data: false`; replacing a column would falsify it.
+    path = tmp_path / "pre.gpkg"
+    gpd.GeoDataFrame(
+        {"cluster_id": ["A", "B"]}, geometry=[Point(0, 0), Point(10, 0)], crs="EPSG:32632"
+    ).to_file(path, layer="p", driver="GPKG")
+    out = tmp_path / "g.parquet"
+    with pytest.raises(ValueError, match="would overwrite"):
+        spatial_stats.cluster_points_by_distance(str(path), str(out), max_distance=500.0)
+    assert not out.exists()
+
+
+def test_the_cluster_check_fails_on_a_file_whose_ids_are_wrong(tmp_path):
+    """The check re-reads the output: a guard that re-read the pairs the
+    union-find had just merged could not fail. This one can, in both directions."""
+    path = _row(tmp_path, [0, 400, 5000])
+    out = tmp_path / "g.parquet"
+    spatial_stats.cluster_points_by_distance(str(path), str(out), max_distance=500.0)
+    frame = gpd.read_parquet(out)
+    split = frame.copy()
+    split.loc[1, "cluster_id"] = 3  # two linked points in different clusters
+    split.to_parquet(tmp_path / "split.parquet")
+    assert not spatial_stats._clusters_match_the_written_points(
+        str(tmp_path / "split.parquet"), 500.0
+    ).passed
+    merged = frame.copy()
+    merged["cluster_id"] = 1  # the far point joined a cluster no chain reaches
+    merged.to_parquet(tmp_path / "merged.parquet")
+    assert not spatial_stats._clusters_match_the_written_points(
+        str(tmp_path / "merged.parquet"), 500.0
+    ).passed
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), 0.0, -5.0])
+def test_clustering_and_thinning_refuse_a_distance_that_is_not_a_positive_number(tmp_path, bad):
+    # NaN compares false with everything, so `NaN <= 0` let it through and every
+    # point came back a cluster of one (found by the geo review).
+    path = _row(tmp_path, [0, 100])
+    with pytest.raises(ValueError, match="positive number"):
+        spatial_stats.cluster_points_by_distance(str(path), str(tmp_path / "c.parquet"), bad)
+    with pytest.raises(ValueError, match="positive number"):
+        spatial_stats.thin_points(str(path), str(tmp_path / "t.parquet"), min_distance=bad)
+
+
+def test_clustering_refuses_multipart_points_empty_geometries_and_shapefiles(tmp_path):
+    from shapely.geometry import MultiPoint
+
+    multi = tmp_path / "multi.gpkg"
+    gpd.GeoDataFrame(
+        geometry=[MultiPoint([(0, 0), (100000, 0)]), Point(300, 0), Point(100300, 0)],
+        crs="EPSG:32632",
+    ).to_file(multi, layer="p", driver="GPKG")
+    with pytest.raises(ValueError, match="explode_layer"):
+        spatial_stats.cluster_points_by_distance(str(multi), str(tmp_path / "m.parquet"), 500.0)
+
+    empty = tmp_path / "empty_geom.parquet"
+    gpd.GeoDataFrame(geometry=[Point(0, 0), Point()], crs="EPSG:32632").to_parquet(empty)
+    with pytest.raises(ValueError, match="empty"):
+        spatial_stats.cluster_points_by_distance(str(empty), str(tmp_path / "e.parquet"), 500.0)
+
+    with pytest.raises(ValueError, match="shapefile"):
+        spatial_stats.cluster_points_by_distance(
+            str(_row(tmp_path, [0, 1])), str(tmp_path / "out.shp"), 500.0
+        )
+
+
+def test_clustering_says_which_unit_the_distance_was_read_in(tmp_path):
+    # EPSG:2263 is in US survey feet: 500 there is about 152 m, and the record,
+    # the note and the result have to say so, or a caller thinking in metres
+    # never learns that the link was a third of what they meant.
+    path = _row(tmp_path, [0, 400], crs="EPSG:2263", name="feet.gpkg")
+    out = tmp_path / "g.parquet"
+    result = spatial_stats.cluster_points_by_distance(str(path), str(out), max_distance=500.0)
+    assert "foot" in result["distance_unit"].lower()
+    manifest = _manifest(out)
+    assert "foot" in manifest["parameters"]["unit"].lower()
+    assert any("foot" in note.lower() for note in manifest["notes"])
+
+
+def test_the_cluster_check_fails_on_wrong_sizes(tmp_path):
+    path = _row(tmp_path, [0, 400, 5000])
+    out = tmp_path / "g.parquet"
+    spatial_stats.cluster_points_by_distance(str(path), str(out), max_distance=500.0)
+    frame = gpd.read_parquet(out)
+    frame.loc[2, "cluster_size"] = 2
+    frame.to_parquet(tmp_path / "sizes.parquet")
+    assert not spatial_stats._clusters_match_the_written_points(
+        str(tmp_path / "sizes.parquet"), 500.0
+    ).passed

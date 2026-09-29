@@ -1271,7 +1271,7 @@ OPERATIONS: list[dict[str, Any]] = [
         # optional weights raster. `None` keeps it for every declared count,
         # the rule `run_sql` and `merge_layers` follow; declaring 2 would hide
         # the weighted form from a caller who correctly says they hold three.
-        "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False, 'dataset_inputs': None},
+        "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False, 'dataset_inputs': None, 'geometry': ['polygon']},
         "summary": "Statistics of a raster within vector zones via exactextract "
         "(exact fractional pixel coverage), optionally weighted by a second raster; "
         "requires the [raster] extra",
@@ -1751,7 +1751,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "raster",
         "category": "hydrology",
         "produces": "dataset:raster",
-        "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2},
+        "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2, 'geometry': ['point']},
         "summary": "Watershed delineation from a DEM and pour points (Whitebox engine); "
         "requires the [whitebox] extra",
         "phrasings": "what drains to this point; the basin above; contributing area",
@@ -2807,7 +2807,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "heavy_join",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2},
+        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2, 'geometry': ['point', 'polygon']},
         "summary": "Points per polygon with the boundary rule stated, and the points that fell nowhere counted",
         "phrasings": "tally by area; how many fall inside each; count per district; incidents per neighbourhood",
         "distinguishes": "Counts how many features fall inside each polygon, with the boundary rule stated. "
@@ -2879,7 +2879,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "heavy_join",
         "category": "vector",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2},
+        "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2, 'geometry': ['point', 'polygon']},
         "summary": "Average, total, min or max of a point attribute within each polygon, with empty polygons kept",
         "phrasings": "average pH by field block; mean value per zone; total population per district; highest reading in each area; sum of sales per territory",
         "distinguishes": "Summarises a numeric ATTRIBUTE of the points inside each polygon -- a mean, a sum, a maximum -- "
@@ -3472,7 +3472,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'small_vector',
         'category': 'vector',
         "produces": "dataset:vector",
-        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1},
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1, 'geometry': ['point']},
         'summary': 'Thiessen polygons from points, each verified to hold its own point; '
                    'the clipping boundary is declared',
         "phrasings": "every place goes to its closest one; catchment areas; service area per shop; Thiessen",
@@ -3648,7 +3648,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'raster',
         'category': 'raster',
         "produces": "dataset:vector",
-        'applicability': {'inputs': ['raster', 'vector'], 'requires_projected_crs': False, 'dataset_inputs': 2},
+        'applicability': {'inputs': ['raster', 'vector'], 'requires_projected_crs': False, 'dataset_inputs': 2, 'geometry': ['point']},
         'summary': "The raster's value at each point, with the ones it could not read "
                    'counted rather than filled in. Requires the [raster] extra',
         "phrasings": "what is the elevation at each of my survey shots; read the grid "
@@ -3703,7 +3703,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'raster',
         'category': 'terrain',
         "produces": "dataset:vector",
-        'applicability': {'inputs': ['raster', 'vector'], 'requires_projected_crs': True, 'dataset_inputs': 2},
+        'applicability': {'inputs': ['raster', 'vector'], 'requires_projected_crs': True, 'dataset_inputs': 2, 'geometry': ['line']},
         'summary': 'One point every N metres along each line, carrying the surface '
                    'value and the distance travelled, and optionally the gradient along '
                    'the line over a sliding window. Requires the [raster] extra',
@@ -3851,7 +3851,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'raster',
         'category': 'terrain',
         "produces": "dataset:raster",
-        'applicability': {'inputs': ['raster', 'vector'], 'requires_projected_crs': True, 'dataset_inputs': 2},
+        'applicability': {'inputs': ['raster', 'vector'], 'requires_projected_crs': True, 'dataset_inputs': 2, 'geometry': ['point']},
         'summary': 'How many observing stations can see each cell \u2014 a COUNT, not a '
                    'yes/no. Requires the [whitebox] extra',
         "phrasings": "which areas can be seen from these towers; the coverage circles "
@@ -3902,7 +3902,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'small_vector',
         'category': 'network',
         "produces": "dataset:vector",
-        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1},
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1, 'geometry': ['line']},
         'summary': 'Cheapest route between two positions over a line network, with the '
                    'connectivity of that network reported',
         "phrasings": "cheapest path to lay the cable avoiding steep slopes; how do I "
@@ -3969,7 +3969,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'small_vector',
         'category': 'network',
         "produces": "dataset:vector",
-        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1},
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1, 'geometry': ['line']},
         'summary': 'Every stretch of network reachable within a cost budget, with the '
                    'last segment cut where the budget runs out',
         "phrasings": "which blocks are more than a ten minute walk from a clinic; what "
@@ -4187,7 +4187,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'small_vector',
         'category': 'vector',
         "produces": "dataset:vector",
-        'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': 1},
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': 1, 'geometry': ['point']},
         'summary': 'Keep points no closer together than a distance, deterministically '
                    'and in priority order. Removes data, and says so',
         "phrasings": "a million dots and the map freezes; the town names overlap into a "
@@ -4232,6 +4232,61 @@ OPERATIONS: list[dict[str, Any]] = [
                                                            'output_path': 'labels.parquet',
                                                            'min_distance': 30000.0,
                                                            'priority_field': 'population'}}}}]},
+    {   'name': 'cluster_points_by_distance',
+        'status': 'available',
+        'tool': None,
+        'workload': 'small_vector',
+        'category': 'vector',
+        "produces": "dataset:vector",
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': 1, 'geometry': ['point']},
+        'summary': 'Group points chained together within a distance: every point kept, '
+                   'each labelled with its cluster and the cluster size',
+        "phrasings": "group everything within half a kilometre; how many separate colonies "
+                     "are there if nests closer than 200 m count as one; which sites are "
+                     "within walking distance of each other; merge the sightings that are "
+                     "really the same herd",
+        "distinguishes": "Groups points and keeps them all. Not thin_points, which keeps one "
+                         "representative per crowd and drops the rest, so its count is close "
+                         "to the number of groups and not equal to it; not dissolve_layer, "
+                         "which merges by an attribute key, never by distance.",
+        'description': 'Single linkage: two points share a cluster when a chain of points '
+                       'joins them with every link at most max_distance long (the '
+                       'connected components of the within-distance graph, distance '
+                       'inclusive). Chains merge, so two points in one cluster can be far '
+                       'more than max_distance apart, and the manifest says so. Cluster ids '
+                       'are numbered in the order of each cluster\'s first feature, so the '
+                       'same input gives the same ids. Each point gains cluster_id and '
+                       'cluster_size; nothing is removed. The result reports the number of '
+                       'clusters, the singletons and the largest cluster. A check re-reads '
+                       'the written file and re-derives the chains by a second algorithm. '
+                       'The distance is in the layer CRS\'s linear unit, which is feet on a '
+                       'State Plane layer, and the record and the result name the unit. A '
+                       'geographic CRS is refused because the distance would be in degrees; '
+                       'multipart points are refused (explode_layer first), and so are '
+                       'features with no geometry.',
+        'parameters': [{'name': 'input_path', 'type': 'str', 'required': True,
+                        'description': 'Point layer in a projected CRS'},
+                       {'name': 'output_path', 'type': 'str', 'required': True,
+                        'description': 'Output layer (.parquet or .gpkg): the same points with '
+                                       'cluster_id and cluster_size'},
+                       {'name': 'max_distance', 'type': 'float', 'required': True,
+                        'description': "Longest link that joins two points, in the CRS's linear "
+                                       "unit (metres in UTM, US survey feet in most State Plane "
+                                       "zones)"}],
+        'examples': [{'goal': 'How many separate groups are there if points closer than 500 m '
+                              'count as one group',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'cluster_points_by_distance',
+                                             'arguments': {'input_path': 'sightings.gpkg',
+                                                           'output_path': 'groups.parquet',
+                                                           'max_distance': 500.0}}}},
+                     {'goal': 'Which of these sites are within walking distance of each other, '
+                              'chaining through the ones in between',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'cluster_points_by_distance',
+                                             'arguments': {'input_path': 'sites.gpkg',
+                                                           'output_path': 'site_groups.gpkg',
+                                                           'max_distance': 800.0}}}}]},
     {   'name': 'locate_extreme_cell',
         'status': 'available',
         'tool': None,
@@ -4517,7 +4572,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'small_vector',
         'category': 'vector',
         "produces": "dataset:vector",
-        'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': 1},
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': 1, 'geometry': ['line']},
         'summary': 'A point every N along each line, carrying its distance along it '
                    '(chainage, stationing)',
         "phrasings": "a marker every 20 metres along the centreline; stationing for the "
@@ -4565,7 +4620,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'small_vector',
         'category': 'vector',
         "produces": "dataset:vector",
-        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': None},
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': None, 'geometry': ['line']},
         'summary': 'Where lines cross, as points, with the pair of lines that made each '
                    'crossing',
         "phrasings": "where does the pipeline cross the road; find the level crossings; "
@@ -4916,20 +4971,79 @@ def _compact(op: dict[str, Any]) -> dict[str, Any]:
 # Above this many survivors the result is a ranked shortlist; at or below it,
 # the whole set comes back and the caller chooses.
 #
-# 30, and the number is measured rather than chosen. With the facets a caller can
-# actually know — input kind and desired output — the surviving set over 118
-# independent requests has a median of 26 and never exceeded 26. A threshold of 25
-# sat one candidate below that and turned the normal case into the exception: 33%
-# of requests got a shortlist instead of the set, for no reason but the rounding.
-# At 26 candidates the payload is about 2,100 tokens, which is less than one wrong
-# operation costs to run and undo.
+# 30, and since 2026-09-29 measured rather than chosen, by
+# `benchmarks/choice_at_scale.py`: every request of the discovery set shown to a
+# model at 30, 40 and 50 candidates -- the set the fullest declaration delivers,
+# filled with the operations the ranker scores closest to the request, each in
+# full -- and compared with itself. From 30 to 40 Claude Opus 5.5 lost 6.9
+# points on the same requests (nine right only at 30, one only at 40); to 50,
+# 5.1. So handing over more is not free, and the answer to a catalogue that
+# outgrows the threshold is a further declaration, not a larger number.
 #
-# It is a presentation choice, not a quality threshold: nothing is hidden either
-# way, and `limit` still governs the ranked case.
+# (A first run the same day said "no loss up to 40". It had one set between 31
+# and 40, of 34 raster operations, and showed every chooser the whole catalogue
+# whatever the size, so it measured nothing about reading more. Found by the
+# geo review before anything shipped.)
+#
+# A presentation choice, not a quality threshold: nothing is hidden either way,
+# and `limit` still governs the ranked case. A different model moves it, so the
+# harness is there to re-measure, and a test keeps this number at or below the
+# largest size measured without loss.
 CHOOSABLE = 30
 
 
 APPLICABILITY_KINDS = {"vector", "raster", "dataset", "plan"}
+
+
+#: The geometry families a vector input can declare, and what each covers. Point
+#: and MultiPoint are one family: a filter that told them apart would drop half
+#: of the real data, which arrives multipart as often as not.
+GEOMETRY_FAMILIES = {
+    "point": ("Point", "MultiPoint"),
+    "line": ("LineString", "MultiLineString"),
+    "polygon": ("Polygon", "MultiPolygon"),
+}
+_FAMILY_OF = {kind.lower(): family for family, kinds in GEOMETRY_FAMILIES.items() for kind in kinds}
+
+
+def _family_of(item: object) -> str | None:
+    """One name to its family, in the spellings drivers and people use.
+
+    "points", "Point Z", "3D Point", "MultiPolygon25D": the dimension says
+    nothing about the family, and a plural is still the same answer.
+    """
+    key = re.sub(r"\s+", " ", str(item).strip().lower())
+    key = re.sub(r"^3d ", "", key)
+    key = re.sub(r"( ?(z|m|zm)|25d)$", "", key).strip()
+    if key in GEOMETRY_FAMILIES:
+        return key
+    if key.endswith("s") and key[:-1] in GEOMETRY_FAMILIES:
+        return key[:-1]
+    return _FAMILY_OF.get(key)
+
+
+def geometry_families(value: str | list[str] | tuple[str, ...] | None) -> set[str] | None:
+    """The families a caller holds, from a family name or a geometry type.
+
+    Accepts "point", "line", "polygon", the OGC type names ("MultiPolygon"), or a
+    list of either -- a mixed layer declares every family it holds, and only the
+    operations accepting all of them survive.
+    """
+    if value is None:
+        return None
+    items = [value] if isinstance(value, str) else list(value)
+    out = set()
+    for item in items:
+        family = _family_of(item)
+        if family is None:
+            raise ValueError(
+                f"geometry must be one of {sorted(GEOMETRY_FAMILIES)} (or a geometry type "
+                f"such as 'MultiPolygon' or '3D Point'), got {item!r}. If you are not "
+                "sure what the layer holds, leave geometry out: an undeclared geometry "
+                "never hides an operation."
+            )
+        out.add(family)
+    return out or None
 
 
 def applicable(
@@ -4938,6 +5052,7 @@ def applicable(
     produces: str | None = None,
     category: str | None = None,
     dataset_inputs: int | None = None,
+    geometry: str | list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """The subset of the catalog applicable to the data in hand — deterministically.
 
@@ -4993,6 +5108,21 @@ def applicable(
     it means it, and :func:`search` treats the declared family as an ordering
     instead. Six candidates are not worth a silent drop.
 
+    ``geometry`` is the geometry family of the vector layer in hand -- "point",
+    "line", "polygon", or a list of them for a mixed layer -- and, like arity, a
+    fact the caller reads off its data (``describe_dataset`` says it). An entry
+    declares the families its vector inputs accept, as a set -- the union of
+    both where it reads two layers, so a caller declares the families of every
+    layer it will pass (points and polygons for a count in polygons); an entry
+    that declares none accepts any geometry and is kept for every family, which
+    is what the generic entries (``qgis_processing``, ``run_sql``) do. A caller
+    holding several families keeps the entries accepting all of them. Added
+    2026-09-29, when the catalogue reached 30 vector-to-vector operations and a
+    measurement showed that handing a model 40 candidates instead of 30 costs
+    about seven points (``benchmarks/choice_at_scale.py``): a smaller set, not a
+    larger threshold. ``test_declared_geometry_matches_the_behaviour`` holds each
+    declaration to what the operation accepts and refuses.
+
     An entry declaring ``none`` takes no dataset (``describe_crs`` answers about a
     CRS, ``geodetic_distance`` about two coordinates) and is kept for every kind.
     That is not a special case for convenience: ``describe_crs`` is exactly what
@@ -5008,6 +5138,7 @@ def applicable(
         raise ValueError(
             f"produces must be one of {sorted(PRODUCES_KINDS)}, got {produces!r}"
         )
+    held = geometry_families(geometry)
     known_categories = {op["category"] for op in OPERATIONS}
     if category is not None and category not in known_categories:
         raise ValueError(
@@ -5043,6 +5174,12 @@ def applicable(
             and declared_arity != dataset_inputs
         ):
             continue
+        # No declaration means any geometry: kept, for the same reason as a
+        # variable arity. A declaration is a set, and the caller's families must
+        # all be in it.
+        declared_geometry = block.get("geometry")
+        if held is not None and declared_geometry is not None and not held <= set(declared_geometry):
+            continue
         kept.append(op)
     return kept
 
@@ -5071,6 +5208,7 @@ def _nothing_applies(
     projected: bool | None,
     produces: str | None,
     dataset_inputs: int | None,
+    geometry: str | list[str] | None = None,
 ) -> dict[str, Any]:
     """What to say when the facets leave no operation at all.
 
@@ -5094,6 +5232,7 @@ def _nothing_applies(
         "produces": produces,
         "projected": projected,
         "dataset_inputs": dataset_inputs,
+        "geometry": geometry,
     }
     declared = {k: v for k, v in declared.items() if v is not None}
     relax = []
@@ -5105,6 +5244,7 @@ def _nothing_applies(
             without.get("projected"),
             without.get("produces"),
             dataset_inputs=without.get("dataset_inputs"),
+            geometry=without.get("geometry"),
         )
         if survivors:
             relax.append(
@@ -5205,6 +5345,7 @@ def search(
     category: str | None = None,
     dataset_inputs: int | None = None,
     engine: str = "auto",
+    geometry: str | list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Search the catalog. Compact entries by default; detail=True adds parameters/examples.
 
@@ -5254,11 +5395,15 @@ def search(
     # removing them: it is the one facet the caller has to guess about our own
     # taxonomy, and a wrong guess would delete the right answer in silence. See
     # `applicable` for the measurement behind that.
-    candidates = applicable(input_kind, projected, produces, dataset_inputs=dataset_inputs)
+    candidates = applicable(
+        input_kind, projected, produces, dataset_inputs=dataset_inputs, geometry=geometry
+    )
     # Before anything else, because every branch below assumes there is something
     # to rank or to hand over, and with nothing they all lie in their own way.
     if not candidates:
-        return [_nothing_applies(query, input_kind, projected, produces, dataset_inputs)]
+        return [
+            _nothing_applies(query, input_kind, projected, produces, dataset_inputs, geometry)
+        ]
     # `_tokenize` is what decides whether there is a query at all: a string of
     # function words scores nothing against every entry, and returning the
     # catalog says "ask me better" more usefully than returning nothing.

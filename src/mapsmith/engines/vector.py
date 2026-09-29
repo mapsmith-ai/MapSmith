@@ -18,6 +18,7 @@ import pandas as pd
 import shapely
 
 from .. import antimeridian, datum, readers, stacks, verify
+from .. import catalog as _catalog
 from ..provenance import (
     InputRecord,
     ProvenanceRecord,
@@ -2457,6 +2458,35 @@ def _refuse_naive_antimeridian(polygons: gpd.GeoDataFrame, polygons_path: str) -
 COUNT_PREDICATES = {"intersects", "within"}
 
 
+def require_polygons(frame, path: str, role: str) -> None:
+    """Refuse a layer that should hold areas and does not.
+
+    A line layer passed where polygons are expected is not an error anywhere
+    downstream: points "fall in" a line when they lie on it, and a raster zone
+    drawn along a line gets a count equal to its length. A plausible number
+    from the wrong shape, with no warning -- so it is refused here, where the
+    operation still knows what it expected (found by the geometry inventory,
+    2026-09-29). A GeometryCollection whose parts are all polygons is a polygon,
+    as `_uncovered_kinds` argues, and passes. Null and empty geometries are not
+    judged here: this refuses the wrong shape, not the absence of one.
+    """
+    geoms = frame.geometry.to_numpy()
+    present = geoms[~(shapely.is_missing(geoms) | shapely.is_empty(geoms))]
+    kinds = set()
+    for geom in present:
+        if geom.geom_type == "GeometryCollection":
+            kinds |= {part.geom_type for part in shapely.get_parts(geom)}
+        else:
+            kinds.add(geom.geom_type)
+    kinds -= {"Polygon", "MultiPolygon"}
+    if kinds:
+        raise ValueError(
+            f"{path} holds {sorted(kinds)} geometries, and the {role} must be polygons: "
+            "a line or a point encloses no area, so anything measured inside it would "
+            "be a number about the wrong shape. Use a polygon layer."
+        )
+
+
 def count_in_polygons(
     points_path: str,
     polygons_path: str,
@@ -2479,6 +2509,7 @@ def count_in_polygons(
         )
     points = _read(points_path)
     polygons = _read(polygons_path)
+    require_polygons(polygons, polygons_path, "polygons")
     _refuse_naive_antimeridian(polygons, polygons_path)
     # Points only, and for the reason its sibling found first: a MultiPoint
     # straddling two polygons was counted in both, as two points, and a polygon
@@ -2681,6 +2712,7 @@ def summarize_points_in_polygons(
             "of it would be meaningless. Summarise a numeric attribute, or count "
             "points per polygon with count_in_polygons."
         )
+    require_polygons(polygons, polygons_path, "polygons")
     # Points only. A MultiPoint straddling two polygons carried its whole value
     # into both, and the note blamed overlap; a polygon layer passed as the
     # points was summarised without a word. Measured by the `geo-reviewer`.
@@ -2930,9 +2962,7 @@ SELECT_BY = ("geometry_type", "field_equals", "field_in", "field_between")
 #: `_uncovered_kinds` instead, which is the honest answer — we saw it and did
 #: not take it.
 GEOMETRY_FAMILIES = {
-    "point": {"Point", "MultiPoint"},
-    "line": {"LineString", "MultiLineString"},
-    "polygon": {"Polygon", "MultiPolygon"},
+    family: set(kinds) for family, kinds in _catalog.GEOMETRY_FAMILIES.items()
 }
 
 #: Every type any family names. What a layer holds beyond this — a

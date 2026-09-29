@@ -144,7 +144,7 @@ def test_the_prose_around_the_table_is_checked_too():
     import discovery_report
 
     rows = discovery_report.answerable(discovery_report.load())
-    full = discovery_report.LEVELS[3][1]
+    full = discovery_report.LEVELS[discovery_report.FULLEST][1]
     # Through `accepted_of`, like the harness. This was the THIRD file computing
     # this number its own way — `test_published_figures` and the site check were
     # the other two — and all three diverged on 2026-09-01, the moment human
@@ -162,8 +162,11 @@ def test_the_prose_around_the_table_is_checked_too():
     ]
     over = sum(1 for size in sizes if size > catalog.CHOOSABLE)
 
+    # The threshold is read from the catalogue, not written here: on 2026-09-29
+    # it was nearly moved to 40, and a literal would have made this test the
+    # thing to edit instead of the sentence.
     match = re.search(
-        r"its median is (\d+) and it exceeds 30\s*\n?\s*for (\w+) of them", prose
+        rf"has a median of (\d+) and exceeds {catalog.CHOOSABLE}\s+for (\w+) of them", prose
     )
     assert match, (
         "the sentence stating the median surviving set and how often it exceeds "
@@ -221,7 +224,7 @@ def test_the_site_carries_the_same_facet_numbers_as_the_harness():
 
     facets = discovery_report.LEVELS[2][1]  # input kind + produces
     narrowed = [declared_size(r, facets) for r in rows]
-    full = discovery_report.LEVELS[3][1]
+    full = discovery_report.LEVELS[discovery_report.FULLEST][1]
     surviving = [declared_size(r, full) for r in rows]
     delivered = sum(1 for size in surviving if size <= catalog.CHOOSABLE)
 
@@ -677,7 +680,7 @@ def test_the_scaling_curve_and_the_median_are_current_on_every_surface():
     from mapsmith import catalog
 
     rows = discovery_report.answerable(discovery_report.load())
-    full = discovery_report.LEVELS[3][1]
+    full = discovery_report.LEVELS[discovery_report.FULLEST][1]
     sizes = [
         len(
             catalog.applicable(

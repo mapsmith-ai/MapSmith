@@ -206,6 +206,12 @@ def _thin_points() -> Callable[..., dict[str, Any]]:
     return spatial_stats.thin_points
 
 
+def _cluster_points_by_distance() -> Callable[..., dict[str, Any]]:
+    from ..engines import spatial_stats
+
+    return spatial_stats.cluster_points_by_distance
+
+
 def _resample_raster() -> Callable[..., dict[str, Any]]:
     from ..engines import raster
 
@@ -579,6 +585,14 @@ BINDINGS: dict[str, Binding] = {
     ),
     "thin_points": Binding(
         _thin_points,
+        ("input_path",),
+        "output_path",
+        None,
+        ("same_as", "input_path"),
+        "vector",
+    ),
+    "cluster_points_by_distance": Binding(
+        _cluster_points_by_distance,
         ("input_path",),
         "output_path",
         None,

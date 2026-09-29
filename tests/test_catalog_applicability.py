@@ -25,7 +25,15 @@ ALLOWED_INPUTS = {"vector", "raster", "dataset", "plan", "none"}
 def test_every_entry_declares_its_applicability(op):
     block = op.get("applicability")
     assert block, f"{op['name']} has no applicability block"
-    assert set(block) == {"inputs", "requires_projected_crs", "dataset_inputs"}
+    # `geometry` is optional, and its absence is a statement: any geometry.
+    assert set(block) - {"geometry"} == {"inputs", "requires_projected_crs", "dataset_inputs"}
+    if "geometry" in block:
+        families = block["geometry"]
+        assert families and len(set(families)) == len(families), "a non-empty set"
+        assert set(families) <= set(catalog.GEOMETRY_FAMILIES)
+        assert {"vector", "dataset"} & set(block["inputs"]), (
+            "a geometry declaration on an entry that takes no vector input filters nothing"
+        )
     assert block["inputs"], "inputs must not be empty"
     assert set(block["inputs"]) <= ALLOWED_INPUTS
     assert isinstance(block["requires_projected_crs"], bool)
@@ -82,6 +90,8 @@ def test_the_projected_crs_requirement_matches_the_engines_that_refuse():
         "least_cost_path",
         "nearest_neighbour_index",
         "thin_points",
+        # A link length, like thinning's spacing: in degrees it is not a length.
+        "cluster_points_by_distance",
         # Added 2026-08-29, and the reason belongs here rather than in a commit:
         # it declared False and did not refuse, so the executable check in
         # test_whitebox_geographic_refusal saw the two statements agree and

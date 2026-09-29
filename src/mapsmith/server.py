@@ -809,6 +809,7 @@ def list_operations(
     projected: bool | None = None,
     dataset_inputs: int | None = None,
     engine: str = "auto",
+    geometry: str | list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Find the operation you need. **Say what you have and what you want** — it matters more than the words you search with.
 
@@ -847,6 +848,12 @@ def list_operations(
       from a median of 34 to 9, because "clip these parcels with that boundary"
       and "simplify these parcels" are different questions and you already know
       which one you have.
+    - **geometry** — for a vector layer, what it holds: 'point', 'line' or
+      'polygon' (describe_dataset tells you), or a list for a mixed layer.
+      Operations that cannot take that geometry drop out; operations that take
+      any geometry always stay, so declaring it never hides one that fits. With
+      two layers, list the geometry of both (points and polygons to count
+      points in polygons). Unsure? Leave it out.
 
     `query` is then plain words for what you are trying to do, and it breaks the
     tie inside what is left. Describe the PROBLEM rather than the operation:
@@ -857,7 +864,7 @@ def list_operations(
     the normal case and it is asking you to pick.** It carries every operation
     that survived, in relevance order, each with the sentence saying what it is
     NOT for. The order is a hint and nothing else: our ranking puts the right
-    operation in the top three 48% of the time, while a model reading the same
+    operation in the top three 61% of the time, while a model reading the same
     candidates and choosing gets its first pick right 69% — and 70% is where the two
     model labellers who wrote the ground truth agree with EACH OTHER, so there is
     often no single right answer to rank toward. You have context no ranking has: which
@@ -903,6 +910,7 @@ def list_operations(
         projected=projected,
         dataset_inputs=dataset_inputs,
         engine=engine,
+        geometry=geometry,
     )
     # Off unless MAPSMITH_DISCOVERY_LOG names a file. What it records is the
     # pairing between this search and whatever gets run next — the best labels

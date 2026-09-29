@@ -183,10 +183,14 @@ def test_the_delivered_set_is_a_choice_and_says_so():
     is a choice, nothing is truncated, and every candidate carries what separates
     it from its neighbours where the entry has that text.
     """
+    # A coastline is a line, and the caller knows it. Since 2026-09-29 the
+    # vector-to-vector single-input set is over the threshold without the
+    # geometry (31), which is the reason that facet exists; with it, the set is
+    # handed over whole again.
     answer = catalog.search(
         "the coastline has far too many points",
         limit=3, input_kind="vector", produces="dataset:vector", category="vector",
-        dataset_inputs=1,
+        dataset_inputs=1, geometry="line",
     )
     assert len(answer) == 1 and answer[0]["status"] == "choose"
     candidates = answer[0]["candidates"]
@@ -194,7 +198,7 @@ def test_the_delivered_set_is_a_choice_and_says_so():
     # is an ordering there, so every operation that takes a vector layer and
     # returns one is still in the set.
     survivors = catalog.applicable(
-        input_kind="vector", produces="dataset:vector", dataset_inputs=1
+        input_kind="vector", produces="dataset:vector", dataset_inputs=1, geometry="line"
     )
     assert {c["name"] for c in candidates} == {o["name"] for o in survivors}, (
         "the choice was truncated or padded: `limit` governs a ranking, and there "
@@ -217,7 +221,7 @@ def test_a_query_far_from_the_catalog_warns_even_when_it_is_a_choice(vector_engi
     answer = catalog.search(
         "book me a flight to Lisbon on Tuesday",
         input_kind="vector", produces="dataset:vector", category="vector",
-        dataset_inputs=1,
+        dataset_inputs=1, geometry="polygon",
     )
     assert answer[0]["status"] == "choose"
     assert "order_is_weak" in answer[0], (

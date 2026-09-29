@@ -83,6 +83,19 @@
             "null"
           ],
           "minimum": 0
+        },
+        "geometry": {
+          "description": "The geometry families the operation's vector input(s) accept, as a set; absent means any geometry, and such an entry is kept for every family. A caller declaring the families it holds keeps only the entries accepting all of them. Declared only where the operation refuses the other families, because a declaration hides the entry from callers holding them: tests/test_geometry_declarations.py holds each one to the refusal.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "point",
+              "line",
+              "polygon"
+            ]
+          }
         }
       }
     },

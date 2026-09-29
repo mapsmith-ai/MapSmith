@@ -1240,6 +1240,9 @@ def _spec_fixtures(tmp_path):
         "thin_points": lambda: spatial_stats.thin_points(
             str(crowd), out("thin.parquet"), min_distance=15.0
         ),
+        "cluster_points_by_distance": lambda: spatial_stats.cluster_points_by_distance(
+            str(crowd), out("clusters.parquet"), max_distance=15.0
+        ),
         "snap_layer": lambda: linework.snap_layer(
             str(nearly), str(baseline), out("snapped.parquet"), tolerance=0.05
         ),

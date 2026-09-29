@@ -128,7 +128,7 @@ def measured():
 
     rows = discovery_report.answerable(discovery_report.load())
     lexical = discovery_report.ablation(rows, engine="lexical")
-    full = discovery_report.LEVELS[3][1]
+    full = discovery_report.LEVELS[discovery_report.FULLEST][1]
     # Through `accepted_of`, which is what the harness measures against. Reading
     # `label_claude` here was a second implementation of the same number, and on
     # 2026-09-01 the two disagreed: this file computed 115 while
@@ -149,16 +149,23 @@ def measured():
         **counts,
         "answerable": len(rows),
         "all_requests": len(discovery_report.load()),
-        "ranker_top3": lexical[3]["found_at_3"],
-        "delivered_pct": lexical[3]["delivered"],
+        "ranker_top3": lexical[discovery_report.FULLEST]["found_at_3"],
+        "delivered_pct": lexical[discovery_report.FULLEST]["delivered"],
         "delivered_count": sum(1 for s in sizes if s <= catalog.CHOOSABLE),
         "candidates_bare": lexical[0]["candidates"],
         "candidates_two_facets": lexical[2]["candidates"],
-        "candidates_full": lexical[3]["candidates"],
+        "candidates_full": lexical[discovery_report.FULLEST]["candidates"],
         # What `category` would remove if it filtered rather than ordered:
         # the gap between the two last rows. D-054 measured it and refused
         # the filter; the number it refused on has to stay current.
-        "category_removes": lexical[3]["candidates"],
+        "category_removes": lexical[discovery_report.FULLEST]["candidates"],
+        # And how many it would remove. This was the literal "six" inside the
+        # patterns below until 2026-09-29, when the geometry facet made it five
+        # and only the "out of" half of the sentence was being checked.
+        "category_removed": (
+            lexical[discovery_report.FULLEST]["candidates"]
+            - lexical[discovery_report.FULLEST + 1]["candidates"]
+        ),
         # Over the ANSWERABLE rows, not all 155: agreement over everything
         # counts the pairs where both labellers said "no operation fits",
         # which is true and easy, and quoting it beside figures measured on
@@ -208,7 +215,10 @@ FIGURES: dict[str, Figure] = {
         "how often the surviving set is small enough to hand over whole",
         patterns=(
             r"\*\*\d+%\*\* \| \*\*\d+%\*\* \| \*\*{n}%\*\* \|",
-            r"how many datasets \| \*\*\d+\*\* \| \*\*\d+%\*\* \| \*\*{n}%\*\*",
+            # The entry spec's row, which has one ranking column where the
+            # README's has two: anchored at the end of the line, or it reads the
+            # README's embedding column as the delivered one.
+            r"(?m)what geometry it holds\*\* \| \*\*\d+\*\* \| \*\*\d+%\*\* \| \*\*{n}%\*\* \|$",
             r"{n}% ranked and \d+% delivered".replace("{n}%", r"\d+%").replace(
                 r"\d+% delivered", "{n}% delivered"
             ),
@@ -250,17 +260,23 @@ FIGURES: dict[str, Figure] = {
     "category_removes": Figure(
         "candidates the family facet removes when used as a filter",
         patterns=(
-            r"removes six candidates out of\s*{w}",
-            r"removed six candidates out of\s*{w}",
+            r"removes [a-z-]+ candidates out of\s*{w}",
+            r"removed [a-z-]+ candidates out of\s*{w}",
+        ),
+    ),
+    "category_removed": Figure(
+        "how many candidates the family facet would remove as a filter",
+        patterns=(
+            r"removes {w} candidates out of",
+            r"removed {w} candidates out of",
         ),
     ),
     "candidates_full": Figure(
         "candidates left once every facet the caller knows is declared",
         patterns=(
-            r"how many datasets I have\*\* \| \*\*{n}\*\*",
-            r"how many datasets \| \*\*{n}\*\*",
+            r"what geometry it holds\*\* \| \*\*{n}\*\*",
             r"<strong>{n}, \d+% ranked",
-            r"how many datasets I have →\s*\n?\s*<strong>{n},",
+            r"what geometry it holds →\s*\n?\s*<strong>{n},",
         ),
     ),
 }

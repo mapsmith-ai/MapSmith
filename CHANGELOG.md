@@ -14,6 +14,31 @@ implements; `draft.10` gives each input a role and a configuration of its own.
 
 ### Added
 
+- **`cluster_points_by_distance`: group points chained together within a
+  distance.** "Group everything within half a kilometre" is single linkage, not
+  thinning: two points share a cluster when a chain of points joins them with
+  every link at most the distance long, so chains merge, and every point is kept
+  with its `cluster_id` and `cluster_size`. `thin_points` keeps one point per
+  crowd, and its count is close to the number of groups but not equal to it. A
+  check re-reads the written file and re-derives the chains by a second
+  algorithm. A geographic CRS is refused, and so are lines, polygons and
+  multipart points, which a point cluster has no single position for.
+- **`list_operations` takes a `geometry`: what the caller's layer holds**, as
+  `point`, `line` or `polygon`, or a list of them for a mixed layer. The
+  catalogue now has 31 operations taking one vector layer to another, one more
+  than the size it hands over whole, so a caller declaring everything it knew
+  got a shortlist back for the most common request there is; with the geometry
+  declared, the right operation is in the answer for 116 of the 118 benchmark
+  requests again. An entry declares the families it accepts only where its code
+  refuses the others (fourteen do), an entry without a declaration is kept for
+  every family, and a test calls each declared entry with every family it
+  leaves out and requires the refusal.
+- **`benchmarks/choice_at_scale.py`**, with every choice it scores in
+  `benchmarks/choice_at_scale.json`: each of the 118 requests handed to Claude
+  Opus 5.5 in sets of 30, 40 and 50 candidates and compared with itself. From
+  40 it chose right 6.9 points less often than from 30, from 50 5.1 points
+  less, so the size `list_operations` hands over whole stays 30, and a test
+  holds it at or below the largest size measured without loss.
 - **Each input of an operation that reads more than one dataset says which
   argument read it** (`inputs[].argument`, spec `draft.10`). The order of
   `inputs` is not significant, so until now a weighted zonal statistic with
@@ -47,6 +72,12 @@ implements; `draft.10` gives each input a role and a configuration of its own.
 
 ### Fixed
 
+- **`zonal_statistics` refuses zones that are not polygons.** Line zones were
+  accepted and returned the line's length in pixels as the `count`, with a
+  mean over the cells it crossed: a plausible table, and not a zonal
+  statistic. `count_in_polygons` and `summarize_points_in_polygons` refuse a
+  polygon layer holding anything else the same way. Found by the test that
+  holds the new geometry declarations to the code.
 - **A shapefile's digest covers its attributes and its CRS.** An input or
   output shapefile was digested as its `.shp` alone, so a record kept matching
   a dataset whose `.dbf` (attributes) or `.prj` (CRS) had been rewritten, while

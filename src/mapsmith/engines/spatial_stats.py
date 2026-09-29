@@ -703,8 +703,8 @@ def thin_points(
     total computed from the thinned layer is obviously wrong rather than subtly
     so.
     """
-    if min_distance <= 0:
-        raise ValueError(f"min_distance must be positive, got {min_distance}")
+    if not (math.isfinite(min_distance) and min_distance > 0):
+        raise ValueError(f"min_distance must be a positive number, got {min_distance}")
     gdf = _prepare(input_path, "thin_points", priority_field)
     kinds = set(gdf.geom_type.dropna().unique())
     if not kinds <= {"Point", "MultiPoint"}:
@@ -812,6 +812,252 @@ def thin_points(
         "provenance": str(manifest),
         **extras,
     }
+
+
+def cluster_points_by_distance(
+    input_path: str,
+    output_path: str,
+    max_distance: float,
+) -> dict[str, Any]:
+    """Group points that are chained together within a distance, and keep them all.
+
+    Answers *"group everything within half a kilometre"*, which is not what
+    `thin_points` does: thinning keeps one representative per crowd and drops
+    the rest, so its count is close to the number of groups and not equal to it.
+    Here two points belong to the same cluster when a chain of points joins
+    them with every link at most `max_distance` long (single linkage: the
+    connected components of the "within distance" graph). **Chains merge**: A
+    and C are in one cluster when B lies within the distance of both, even if
+    A and C are twice that apart. A biologist asking "how many groups" and a
+    planner asking "which sites are within walking distance of each other" both
+    mean this; the manifest says it in words so that nobody reads a cluster as
+    a circle of radius `max_distance`.
+
+    Deterministic: cluster ids are numbered in the order of each cluster's
+    first feature in the file, so the same input gives the same ids. Nothing is
+    removed; each point gains `cluster_id` and `cluster_size`.
+    """
+    # `not (> 0)` rather than `<= 0`: NaN compares false with everything, so
+    # `NaN <= 0` let it through and every point came back a cluster of one.
+    if not (math.isfinite(max_distance) and max_distance > 0):
+        raise ValueError(f"max_distance must be a positive number, got {max_distance}")
+    if str(output_path).lower().endswith(".shp"):
+        raise ValueError(
+            "refusing to write a shapefile: field names are truncated to 10 characters, "
+            "so `cluster_size` would arrive as `cluster_si` with nothing saying so. "
+            "Write GeoParquet (.parquet) or GeoPackage (.gpkg) instead."
+        )
+    import shapely
+
+    gdf = _prepare(input_path, "cluster_points_by_distance")
+    missing = gdf.geometry.isna() | gdf.geometry.is_empty
+    if missing.any():
+        raise ValueError(
+            f"{input_path} has {int(missing.sum())} feature(s) with no or an empty "
+            "geometry. A point with no position belongs to no cluster, and counting it "
+            "as a cluster of one would change the answer; remove those features first."
+        )
+    kinds = set(gdf.geom_type.unique())
+    if not kinds <= {"Point", "MultiPoint"}:
+        raise ValueError(
+            f"cluster_points_by_distance needs a point layer; {input_path} holds "
+            f"{sorted(kinds)}."
+        )
+    # A MultiPoint's distance to another is between its NEAREST parts, so one
+    # feature with parts 100 km apart would chain two groups that no link joins,
+    # and `cluster_size` would count it as one point (found by the geo review).
+    if (shapely.get_num_geometries(gdf.geometry.to_numpy()) > 1).any():
+        raise ValueError(
+            f"{input_path} has MultiPoint features with more than one part. Each part "
+            "is a point to cluster; run explode_layer first so that each is a feature."
+        )
+    if gdf.crs.is_geographic:
+        raise ValueError(
+            f"{input_path} is in a geographic CRS, so a max_distance of "
+            f"{max_distance} would be in DEGREES — about "
+            f"{max_distance * 111_000:,.0f} m of latitude and a different distance "
+            "at every longitude. Reproject first."
+        )
+    # The record says `removes_data: false`, and replacing an input column of
+    # the same name would make that sentence false without a trace in it.
+    clashing = sorted({"cluster_id", "cluster_size"} & set(gdf.columns))
+    if clashing:
+        raise ValueError(
+            f"{input_path} already has column(s) {clashing}, which this operation "
+            "would overwrite. Rename them first, so the output cannot silently "
+            "replace a value that was in the input."
+        )
+
+    # An object array, not a list: shapely cannot infer the dtype of an empty
+    # list and raised a TypeError on an empty layer, which `thin_points` and
+    # `on_empty="warn"` below treat as a result rather than a crash.
+    geometries = gdf.geometry.to_numpy()
+    unit = _unit_of(gdf)
+    pairs = _pairs_within(geometries, max_distance)
+
+    # Union-find over the "within distance" pairs: the connected components are
+    # the clusters. Roots are kept at the smallest index, which is what makes the
+    # numbering below independent of the order the pairs come back in.
+    parent = list(range(len(geometries)))
+
+    def root(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for a, b in zip(pairs[0].tolist(), pairs[1].tolist(), strict=True):
+        ra, rb = root(a), root(b)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)
+    roots = [root(i) for i in range(len(geometries))]
+    number = {r: n for n, r in enumerate(sorted(set(roots)), start=1)}
+    ids = [number[r] for r in roots]
+    sizes: dict[int, int] = {}
+    for cid in ids:
+        sizes[cid] = sizes.get(cid, 0) + 1
+
+    out = gdf.copy()
+    out["cluster_id"] = ids
+    out["cluster_size"] = [sizes[cid] for cid in ids]
+    clusters = len(sizes)
+    singletons = sum(1 for n in sizes.values() if n == 1)
+    largest = max(sizes.values(), default=0)
+
+    record = ProvenanceRecord(
+        operation="cluster_points_by_distance",
+        parameters={
+            "max_distance": max_distance,
+            "unit": unit,
+            "rule": "single linkage: connected components of the within-distance graph, "
+            "distance inclusive",
+            "cluster_numbering": "in the order of each cluster's first feature",
+            "removes_data": False,
+        },
+        inputs=[InputRecord.from_path(input_path, crs=verify.crs_label(gdf.crs))],
+        engine=_engine_info(),
+    )
+    record.crs_decisions = {
+        "analysis_crs": verify.crs_label(gdf.crs),
+        "reason": "distances are measured in the layer's own CRS, whose unit the "
+        "max_distance is read in",
+    }
+    record.notes.append(
+        f"{len(gdf)} points in {clusters} clusters ({singletons} of one point, largest "
+        f"{largest}), linking points at most {max_distance} {unit} apart. Clusters "
+        "chain: two points in one cluster can be much farther apart than that, because "
+        "each link, not the cluster, is bounded."
+    )
+
+    pre = verify.verify_loaded_inputs("cluster_points_by_distance", input_path=gdf)
+    with verify.audit_on_failure(record, output_path, pre):
+        _write(out, output_path)
+
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="cluster_points_by_distance",
+        preconditions=pre,
+        checks_fn=lambda: [
+            *verify.verify_vector_output(
+                output_path,
+                expect_crs=verify.crs_label(gdf.crs),
+                expect_count=len(gdf),
+                on_empty="warn",
+            ),
+            _clusters_match_the_written_points(output_path, max_distance),
+        ],
+    )
+    return {
+        "output": str(output_path),
+        "points": len(gdf),
+        "clusters": clusters,
+        "singletons": singletons,
+        "largest_cluster": largest,
+        "max_distance": max_distance,
+        "distance_unit": unit,
+        "provenance": str(manifest),
+        **extras,
+    }
+
+
+def _unit_of(gdf: Any) -> str:
+    """The linear unit `max_distance` is read in, as the CRS names it."""
+    try:
+        return gdf.crs.axis_info[0].unit_name
+    except (AttributeError, IndexError):  # pragma: no cover - exotic CRS
+        return "unit"
+
+
+def _pairs_within(geometries: Any, distance: float) -> Any:
+    """Each unordered pair within the distance once: no self-pairs, no mirror.
+
+    The tree answers every ordered pair and every point with itself, which on a
+    dense layer doubled the pairs and added one per point for nothing: 3,000
+    points all within the distance gave nine million (measured by the review).
+    """
+    from shapely import STRtree
+
+    pairs = STRtree(geometries).query(geometries, predicate="dwithin", distance=distance)
+    return pairs[:, pairs[0] < pairs[1]]
+
+
+def _clusters_match_the_written_points(output_path: str, max_distance: float) -> Any:
+    """Re-derive the clusters from the WRITTEN file, by another algorithm.
+
+    A check that re-read the pairs the union-find had just merged could not
+    fail (the guard that cannot fail, D-079). This one reads the output back,
+    recomputes the within-distance pairs from the geometries on disk, and walks
+    them breadth-first -- a different algorithm from the union-find that
+    assigned the ids. It checks what the output promises: no pair within the
+    distance straddles two clusters, no cluster holds points that no chain
+    joins, every `cluster_size` is its cluster's count, and ids are numbered in
+    the order of each cluster's first feature.
+    """
+    from collections import Counter, deque
+
+    import numpy as np
+
+    written = readers.read_vector(output_path)
+    geometries = written.geometry.to_numpy()
+    ids = np.asarray(written["cluster_id"], dtype=np.int64)
+    sizes = np.asarray(written["cluster_size"], dtype=np.int64)
+    pairs = _pairs_within(geometries, max_distance)
+    straddling = int((ids[pairs[0]] != ids[pairs[1]]).sum())
+
+    neighbours: dict[int, list[int]] = {i: [] for i in range(len(geometries))}
+    for a, b in zip(pairs[0].tolist(), pairs[1].tolist(), strict=True):
+        neighbours[a].append(b)
+        neighbours[b].append(a)
+    seen: set[int] = set()
+    components = 0
+    for start in range(len(geometries)):
+        if start in seen:
+            continue
+        components += 1
+        queue = deque([start])
+        seen.add(start)
+        while queue:
+            for nxt in neighbours[queue.popleft()]:
+                if nxt not in seen:
+                    seen.add(nxt)
+                    queue.append(nxt)
+
+    counts = Counter(ids.tolist())
+    wrong_sizes = sum(
+        1 for cid, size in zip(ids.tolist(), sizes.tolist(), strict=True) if counts[cid] != size
+    )
+    first_seen = list(dict.fromkeys(ids.tolist()))
+    in_order = first_seen == list(range(1, len(first_seen) + 1))
+    labelled = len(counts)
+    return verify.Check(
+        "x-mapsmith:clusters_are_the_chains_of_the_written_points",
+        straddling == 0 and components == labelled and wrong_sizes == 0 and in_order,
+        f"re-read {len(geometries)} points: {components} chains within {max_distance}, "
+        f"{labelled} cluster ids, {straddling} within-distance pairs across two ids, "
+        f"{wrong_sizes} wrong cluster_size values, ids "
+        f"{'numbered' if in_order else 'NOT numbered'} in the order of first features",
+    )
 
 
 def _minimum_separation(points: list[Any]) -> float:

@@ -119,13 +119,17 @@ def build_fixtures(workdir: Path) -> dict[str, Path]:
 # ---------------------------------------------------------------- discovery
 
 #: What an agent would type at each step, in the words of the problem, plus the
-#: two facts it can state about its own situation without knowing our taxonomy.
+#: facts it can state about its own situation without knowing our taxonomy --
+#: including what geometry it holds: a river is a line and a parcel is a polygon,
+#: and since 2026-09-29 a caller that says so gets the whole set back where one
+#: that does not gets a shortlist (31 operations take one vector layer to another).
 STEPS: list[dict[str, Any]] = [
     {
         "id": "buffer",
         "ask": "everything within one and a half kilometres of the river",
         "facets": {
-            "input_kind": "vector", "produces": "dataset:vector", "dataset_inputs": 1
+            "input_kind": "vector", "produces": "dataset:vector", "dataset_inputs": 1,
+            "geometry": "line",
         },
         "operation": "buffer_layer",
         "why": (
@@ -137,7 +141,8 @@ STEPS: list[dict[str, Any]] = [
         "id": "near",
         "ask": "keep only the parcels that fall inside that strip",
         "facets": {
-            "input_kind": "vector", "produces": "dataset:vector", "dataset_inputs": 2
+            "input_kind": "vector", "produces": "dataset:vector", "dataset_inputs": 2,
+            "geometry": "polygon",
         },
         "operation": "clip_layer",
         "why": "Two operations could do it and they answer differently at the edges.",
@@ -146,7 +151,8 @@ STEPS: list[dict[str, Any]] = [
         "id": "height",
         "ask": "how high is the ground under each of these parcels",
         "facets": {
-            "input_kind": "raster", "produces": "dataset:vector", "dataset_inputs": 2
+            "input_kind": "raster", "produces": "dataset:vector", "dataset_inputs": 2,
+            "geometry": "polygon",
         },
         "operation": "zonal_statistics",
         "why": (
@@ -158,7 +164,8 @@ STEPS: list[dict[str, Any]] = [
         "id": "area",
         "ask": "how big is each one on the ground",
         "facets": {
-            "input_kind": "vector", "produces": "dataset:vector", "dataset_inputs": 1
+            "input_kind": "vector", "produces": "dataset:vector", "dataset_inputs": 1,
+            "geometry": "polygon",
         },
         "operation": "measure_area",
         "why": (
@@ -170,7 +177,8 @@ STEPS: list[dict[str, Any]] = [
         "id": "filter",
         "ask": "drop the ones where the ground is above 120 metres",
         "facets": {
-            "input_kind": "vector", "produces": "dataset:vector", "dataset_inputs": 1
+            "input_kind": "vector", "produces": "dataset:vector", "dataset_inputs": 1,
+            "geometry": "polygon",
         },
         "operation": "select_features",
         "why": (

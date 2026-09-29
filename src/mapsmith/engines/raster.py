@@ -179,6 +179,12 @@ def zonal_statistics(
         raise ValueError(readers.no_crs_message(
             zones, f"{zones_path} has no CRS — cannot align zones to the raster."
         ))
+    # Lines as zones ran without a word and returned a `count` equal to their
+    # length; points raised a raw error from the engine (geometry inventory,
+    # 2026-09-29). A zone is an area.
+    from .vector import require_polygons
+
+    require_polygons(zones, zones_path, "zones")
 
     with contextlib.ExitStack() as stack:
         ds = stack.enter_context(rasterio.open(raster_path))

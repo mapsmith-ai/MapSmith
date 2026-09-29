@@ -169,6 +169,27 @@ def facets_for(name: str, declare: tuple[str, ...]) -> dict[str, Any]:
         out["category"] = op["category"]
     if "dataset_inputs" in declare:
         out["dataset_inputs"] = op["applicability"]["dataset_inputs"]
+    if "geometry" in declare and out.get("input_kind") == "vector":
+        declared = op["applicability"].get("geometry")
+        if declared:
+            # The operation takes only these families, so a caller for whom it
+            # is the right answer is holding them.
+            out["geometry"] = list(declared)
+        else:
+            # It takes any geometry, and the request does not say which one the
+            # caller holds. So the family that leaves the LARGEST set is the one
+            # counted: the candidates and delivered columns are the worst case
+            # over what the caller could be holding. The found@3 columns are NOT
+            # a worst case: the ranking depends on which family survives, and
+            # over the family that ranks worst per request BM25's top three
+            # holds the answer 56% of the time, not 61% (review, 2026-09-29).
+            # Worst by set size is kept because size is what the threshold and
+            # the delivered figure are about.
+            without = {k: v for k, v in out.items() if k != "geometry"}
+            out["geometry"] = max(
+                catalog.GEOMETRY_FAMILIES,
+                key=lambda family: (len(catalog.applicable(**without, geometry=family)), family),
+            )
     return out
 
 
@@ -181,8 +202,16 @@ LEVELS: list[tuple[str, tuple[str, ...]]] = [
     ("the input kind", ("input_kind",)),
     ("+ what it should produce", ("input_kind", "produces")),
     ("+ how many datasets", ("input_kind", "produces", "dataset_inputs")),
-    ("+ which family", ("input_kind", "produces", "dataset_inputs", "category")),
+    ("+ what geometry it holds", ("input_kind", "produces", "dataset_inputs", "geometry")),
+    ("+ which family", ("input_kind", "produces", "dataset_inputs", "geometry", "category")),
 ]
+
+#: The fullest declaration made only of facts about the caller's situation --
+#: every level but the family, which is a guess about our taxonomy. The published
+#: headline figures are computed here. Named once, because the index was written
+#: as a literal in three test files and every new facet moved it (the geometry
+#: level, 2026-09-29, is the one that made this a name).
+FULLEST = 4
 
 
 def ablation(queries: list[dict[str, Any]], engine: str = "lexical") -> list[dict[str, Any]]:
@@ -271,10 +300,10 @@ def main() -> int:
     print("  'delivered' is not an accuracy figure: below the choose threshold every")
     print("  survivor is handed over, so it says whether narrowing ever drops the answer.")
 
-    print("\nNOT REPRODUCIBLE HERE: the 69% for a model handed the candidates and asked")
-    print("to choose needs that model. It was measured with a small hosted one against")
-    print("the labels of a different family; the script that did it is not in this")
-    print("repository because it needs an API key. Everything above is arithmetic.")
+    print("\nNOT COMPUTED HERE: how well a model chooses among the candidates needs a")
+    print("model. Its choices are in benchmarks/choice_at_scale.json, and")
+    print("`python benchmarks/choice_at_scale.py score` recomputes those figures from")
+    print("them. Everything above is arithmetic.")
     return 0
 
 
