@@ -6,6 +6,8 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-05
+
 Records declare `spec_version` `1.0.0-draft.10`. `draft.9` defines the digest
 of a dataset made of several files, which is what the first fix below
 implements; `draft.10` gives each input a role and a configuration of its own.

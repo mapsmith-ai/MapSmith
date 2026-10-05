@@ -45,8 +45,8 @@ MapSmith's private output: JSON Schema, a toolchain-free validator, a conformanc
 hundred-line emitter that never imports MapSmith. Records carry `spec_version`, and CI validates
 real MapSmith output against the spec's own validator. The specification is archived and citable
 as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213), a concept DOI that
-resolves to the latest *archived* draft. Records written by `main` declare `1.0.0-draft.10`, and
-0.7.1's declare `1.0.0-draft.8`; if the DOI shows an earlier one, the archive has not caught up, and the
+resolves to the latest *archived* draft. Records written by 0.8.0 declare `1.0.0-draft.10`, and
+0.7.x's declare `1.0.0-draft.8`; if the DOI shows an earlier one, the archive has not caught up, and the
 [repository](https://github.com/mapsmith-ai/manifest-spec) holds the text they are written against. The names MapSmith puts
 in a record beyond the ones the specification defines — every extension check name, and every
 extension field in `crs_decisions` with the reason it is not a synonym of a key the specification
@@ -223,21 +223,22 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.7.1**, which is what that command installs. When `main` runs ahead of
+This page describes **0.8.0**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **If you run 0.4.0 to 0.6.1, 0.7.x
-changes answers you have**: every position read from a point-registered raster
+have to find out by calling a tool that is not there. **If you run 0.4.0 to 0.6.1, 0.7.0 and
+later change answers you have**: every position read from a point-registered raster
 (`AREA_OR_POINT=Point`, the USGS and Copernicus DEMs) was half a cell off, and the
-[changelog](CHANGELOG.md) says which operations and why. **`main` is ahead of 0.7.1**
-([`[Unreleased]`](CHANGELOG.md#unreleased)) by `get_lineage` taking a `layer` (the history of one layer of a file geodatabase), by a shapefile
-digest that covers the attributes and the CRS, by two file-geodatabase fixes (`extract_layer`
-on a `.gdb`, and a lineage hop into a container resolving to the layer it names), by three
-small fixes from the 0.7.0 audit, none reachable in the default configuration, by a PyPI
-page whose links resolve, and by `inputs[].argument` on every operation that reads more than
-one dataset (which input was the weights and which the values). Its records declare
-`1.0.0-draft.10`, 0.7.1's `1.0.0-draft.8`, and **one key moves**: a second input's own
-georeferencing facts, `inputs[].x-mapsmith:environment` on 0.7.x, are `inputs[].environment`,
-the name the specification gives them since `draft.10`.
+[changelog](CHANGELOG.md) says which operations and why. **From 0.7.x, 0.8.0** adds
+`cluster_points_by_distance` and a `geometry` facet for the catalogue search, digests a
+shapefile with its attributes and its CRS, reads any single-layer file geodatabase, and fixes
+operations that accepted the wrong geometry and answered anyway (`zonal_statistics` on line
+zones returned their length as a pixel count).
+
+**If you read manifests, 0.8.0 renames one key**: records declare `1.0.0-draft.10`, and a
+second input's own georeferencing facts, `inputs[].x-mapsmith:environment` on 0.7.x, are
+`inputs[].environment`, the name the specification gives them since `draft.10`. Each input of
+an operation that reads more than one dataset also says which argument read it
+(`inputs[].argument`).
 
 **If you read manifests, 0.7.x renames no key**: records declare `spec_version`
 `1.0.0-draft.8`, two drafts past 0.6.0's `draft.6`, and both drafts only narrowed where a
@@ -272,7 +273,7 @@ for it:
 ```json
 {
   "spec_version": "1.0.0-draft.10",
-  "producer": {"name": "mapsmith", "version": "0.7.1"},
+  "producer": {"name": "mapsmith", "version": "0.8.0"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{
