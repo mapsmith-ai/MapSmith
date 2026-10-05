@@ -70,7 +70,7 @@ this page had already published — including the one in the bullet list below.
 ## A whole analysis, start to finish
 
 This is the thing MapSmith is for, and it is not a single tool call. One question — six
-parcels, a river, an elevation grid — becomes a plan of five operations chosen out of 77,
+parcels, a river, an elevation grid — becomes a plan of five operations chosen out of 78,
 validated before anything runs, executed step by step, and recorded: the search that
 narrowed the catalogue, the arguments that mattered, the CRS decision behind each metric
 step, and the checks that ran on every result.
@@ -81,7 +81,7 @@ plan, reads the manifests, and writes what follows; `tests/test_worked_example.p
 page and that script disagree. The position column is BM25's rather than the default engine's,
 because a published figure should not depend on whether a model download succeeded on the machine
 that built the page — the narrowing, which is the point, is identical on both. Two things worth watching: the middle column, where the catalogue
-goes from 77 operations to a handful the caller can read; and the CRS column, where every
+goes from 78 operations to a handful the caller can read; and the CRS column, where every
 metric operation says which coordinate system it moved the data into and why.
 
 <!-- worked-example:start -->
@@ -92,15 +92,15 @@ flowchart TB
   ASK --> PLAN{{"plan validated<br/>before anything runs"}}
   PLAN -. "rejected: FORWARD_REFERENCE" .-> BAD["'mask_path' references '$buffer' which runs later — move step 'buffer' before 'near'"]
   BAD:::bad
-  BUFFER["<b>buffer_layer</b><br/>77 operations &rarr; 27 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
+  BUFFER["<b>buffer_layer</b><br/>78 operations &rarr; 27 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
   PLAN --> BUFFER
-  NEAR["<b>clip_layer</b><br/>77 operations &rarr; 12 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>12/12 checks"]
+  NEAR["<b>clip_layer</b><br/>78 operations &rarr; 13 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>12/12 checks"]
   BUFFER --> NEAR
-  HEIGHT["<b>zonal_statistics</b><br/>77 operations &rarr; 2 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
+  HEIGHT["<b>zonal_statistics</b><br/>78 operations &rarr; 2 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
   NEAR --> HEIGHT
-  AREA["<b>measure_area</b><br/>77 operations &rarr; 24 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>10/10 checks"]
+  AREA["<b>measure_area</b><br/>78 operations &rarr; 24 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>10/10 checks"]
   HEIGHT --> AREA
-  FILTER["<b>select_features</b><br/>77 operations &rarr; 24 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>10/10 checks"]
+  FILTER["<b>select_features</b><br/>78 operations &rarr; 24 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>10/10 checks"]
   AREA --> FILTER
   OUT[["3 parcels, each with elevation and ground area"]]
   FILTER --> OUT
@@ -109,11 +109,11 @@ flowchart TB
 
 | what the agent asks for | it declares | candidates | picked | at position |
 |---|---|---|---|---|
-| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s), line | **27** of 77 | `buffer_layer` | 2 |
-| “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s), polygon | **12** of 77 | `clip_layer` | 1 |
-| “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s), polygon | **2** of 77 | `zonal_statistics` | 2 |
-| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s), polygon | **24** of 77 | `measure_area` | 1 |
-| “drop the ones where the ground is above 120 metres” | vector, dataset:vector, 1 dataset(s), polygon | **24** of 77 | `select_features` | 2 |
+| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s), line | **27** of 78 | `buffer_layer` | 2 |
+| “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s), polygon | **13** of 78 | `clip_layer` | 1 |
+| “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s), polygon | **2** of 78 | `zonal_statistics` | 2 |
+| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s), polygon | **24** of 78 | `measure_area` | 1 |
+| “drop the ones where the ground is above 120 metres” | vector, dataset:vector, 1 dataset(s), polygon | **24** of 78 | `select_features` | 2 |
 
 | step | operation | arguments that mattered | CRS decision, recorded | checks |
 |---|---|---|---|---|
@@ -354,7 +354,7 @@ For the **analysis** rather than the step, `run_operation` with `get_lineage` ta
   without the LLM is in there. No AI slop.
 - **The engines compute, the model orchestrates.** Geometry and numbers only ever come
   from deterministic tool executions — never from model output.
-- **77 operations, reached through 28 goal-level tools.** The catalogue is the breadth and
+- **78 operations, reached through 28 goal-level tools.** The catalogue is the breadth and
   the tool list is the choice; it is searchable rather than dumped, because tool-selection
   accuracy degrades once
   a few dozen tools are exposed at once, and fastest when two of them apply to the same
@@ -403,8 +403,8 @@ For the **analysis** rather than the step, `run_operation` with `get_lineage` ta
 ### Finding the right operation
 
 Those are the tools an agent chooses between. Behind them the **catalog** holds every
-operation MapSmith can perform — 77 today, and 52 of them have no tool of their own — and
-it is built to hold thousands. (Two of the 77 are marked `planned` and say so when asked:
+operation MapSmith can perform — 78 today, and 53 of them have no tool of their own — and
+it is built to hold thousands. (Two of the 78 are marked `planned` and say so when asked:
 the roadmap is in the catalog on purpose, so an agent can answer "not yet" instead of
 inventing a call.)
 
@@ -423,11 +423,11 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 77 | 29% | 19% | 29% |
-| what data I have | 51 | 35% | 22% | 36% |
-| + what I want back | 32 | 45% | 40% | 54% |
-| + how many datasets I have | 17 | 54% | 47% | 84% |
-| **+ what geometry it holds** | **15** | **61%** | **58%** | **98%** |
+| nothing — words alone | 78 | 29% | 17% | 29% |
+| what data I have | 52 | 35% | 22% | 36% |
+| + what I want back | 32 | 45% | 38% | 54% |
+| + how many datasets I have | 17 | 53% | 46% | 84% |
+| **+ what geometry it holds** | **15** | **60%** | **56%** | **98%** |
 
 **The last row is new on 2026-09-29, and the row above it shows why.** Thirty-one operations
 now take one vector layer to another, one more than the threshold below, so a caller who
@@ -450,7 +450,7 @@ published under a sentence promising it could be checked.
 The two also differ in a way worth seeing, and this page had it backwards
 until 2026-08-30. It said the embedding engine overtakes BM25 once the facets
 have narrowed. It does not overtake it anywhere: BM25 leads at every row of the
-table above, by ten points on words alone and by three at the fullest
+table above, by twelve points on words alone and by four at the fullest
 declaration, where the entries that survive are told apart by the words that
 distinguish them — which is what `distinguishes` is for, and what an exact term
 either matches or does not. The embedding engine earns its place on the
@@ -462,7 +462,7 @@ only the table beside it.)*
 
 The last column is not an accuracy figure — it is a property, and the 98% rather than 100% is
 worth a sentence. The narrowing never drops the right operation: that is asserted per entry and
-holds for all 77. What the column measures is whether the surviving set was small enough to hand
+holds for all 78. What the column measures is whether the surviving set was small enough to hand
 over WHOLE, and for a handful of requests it still is not, so those fall back to a ranked
 shortlist and the answer can be outside the top three. Ranking decides the order; it does not
 decide membership; and the 2% is the gap between "cannot lose the answer" and "can show you all
@@ -501,12 +501,12 @@ of comparison this page exists to refuse.)
 That is the shape of the trade, and it says when the next facet is due. The figure to watch is
 not found@3 — a ranker will always get worse as the catalogue grows, and it is a hint. It is the
 **average** surviving set at the fullest declaration, the fourth column of that table:
-9 at 51 operations, 14 at 61, 16 at 72, 16 at 74, 16 at 75, 17 at 76, 15 at 77. (The last point
-is the first with the geometry declared; without it the set would be 17.) When that crosses the threshold, delivery stops being a
+9 at 51 operations, 14 at 61, 16 at 72, 16 at 74, 16 at 75, 17 at 76, 15 at 77, 15 at 78. (The
+point at 77 is the first with the geometry declared; without it the set would be 17.) When that crosses the threshold, delivery stops being a
 property and starts being a ranking again, and the lasting answer is another fact the caller
 already knows. A bigger threshold is an answer only as far as the caller still chooses well
 among more, and that is measured below, not assumed. (It said *median* until 2026-08-29, and published the mean:
-the median at 77 is 12. The distribution is skewed — most requests leave a small set and a few
+the median at 78 is 13. The distribution is skewed — most requests leave a small set and a few
 leave a large one — so the two numbers say different things and the mean is the pessimistic
 one, which is the right one to watch.)
 
@@ -522,7 +522,7 @@ choices are in the repository, so its figures can be recomputed without the mode
 **So it hands over the set instead of picking for you.** At thirty survivors or fewer `list_operations`
 answers with `status: "choose"`: every candidate, ordered as a hint that says it is a hint, each
 carrying the sentence that separates it from its neighbours. Over those 118 requests the surviving
-set has a median of 12 and exceeds 30 for two of them — which is the 98% in the table above,
+set has a median of 13 and exceeds 30 for two of them — which is the 98% in the table above,
 seen from the other side. The payload is about 2,100 tokens, less than one wrong operation costs
 to run and undo.
 
@@ -556,7 +556,7 @@ Three measurements say this is the right shape, and the third is the one that se
 
 | | |
 |---|---|
-| our ranking puts the answer in the top three | **61%** |
+| our ranking puts the answer in the top three | **60%** |
 | a model handed the same candidates and asked to *choose* gets its first pick right | **69%** |
 | the two labellers who wrote the ground truth agree **with each other** | **70%** |
 
@@ -576,7 +576,7 @@ adopted wholesale rather than judged one at a time. Two different strengths of e
 the file says which is which.
 
 **The two model figures are dated: the labels were written on 2026-08-28, against a catalogue of
-51 operations.** It now has 77, so for any request whose right answer is one of the 26 added since,
+51 operations.** It now has 78, so for any request whose right answer is one of the 27 added since,
 neither labeller *could* have been right — the answer was not in the catalogue to name. Measured on
 the first four requests a person has answered by hand, two of the four have both labellers wrong,
 and both of those two name operations that did not exist on the 28th. So "both labellers wrong" and
@@ -587,7 +587,7 @@ against a human answer where there is one.
 
 All three are over the same 118 requests, which matters: agreement measured over all 155 requests
 in the file is 68%, and the difference is the 21 pairs where both labellers agreed a request was
-unanswerable — true, and the easy half. Quoting that 68% beside a 61% computed over the 118 would
+unanswerable — true, and the easy half. Quoting that 68% beside a 60% computed over the 118 would
 be comparing two populations, which this table did for half a day.
 
 **The last row is a ceiling, not a baseline**, and the second row sits at it rather than below it.
@@ -644,9 +644,9 @@ catalog grows:
 
 | catalog size | BM25 found@3 | embeddings found@3 |
 |---|---|---|
-| 10 | 75% | 80% |
-| 30 | 68% | 57% |
-| 77 | 55% | 40% |
+| 10 | 73% | 82% |
+| 30 | 65% | 57% |
+| 78 | 55% | 40% |
 
 **This table used to say the opposite, and the reversal is the finding.** Published at 10/30/51
 it read 78/83, 47/65, 40/55 — embeddings ahead at every size — and the sentence under it said
@@ -697,7 +697,7 @@ number of features as the input. Those are structural properties of the operatio
 checkable against the code rather than declared by hand, and they separate the pairs a bag of
 words cannot: `spatial_join` from `overlay_layers`, `flow_accumulation` from `extract_streams`.
 That work is not done, and until it is, the honest claim is the measured one: the guarantee above
-holds at seventy-seven operations, not at eight hundred.
+holds at seventy-eight operations, not at eight hundred.
 
 **How an entry has to be written is a published specification**, not a convention:
 [`docs/catalog-entry-spec.md`](docs/catalog-entry-spec.md), with a normative
@@ -1254,7 +1254,7 @@ detects it, converts the input first, and discloses the workaround in the manife
   workspace — which is what the container runs with by default. DuckDB's own HTTP and S3
   filesystems stay off in every mode, so `read_parquet('s3://…')` does not work even with
   the opt-in: fetch the data down first, or run unconfined with remote reads on.
-- **You want the full breadth of a desktop GIS.** 77 operations, and a catalogue that tells
+- **You want the full breadth of a desktop GIS.** 78 operations, and a catalogue that tells
   the agent what does *not* exist yet rather than letting it improvise. The ~900 QGIS
   Processing algorithms are on the roadmap, not in the box.
 - **You expect plan validation to make a weak model strong.** Our own A/B says advisory

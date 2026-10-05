@@ -89,11 +89,14 @@ def test_coverage_says_how_much_of_each_target_the_sources_reach(zones, tmp_path
 def test_the_record_states_the_assumption_and_the_total_is_checked(zones, tmp_path):
     result, _ = _run(zones, tmp_path, extensive=["population"], intensive=["rate"])
     manifest = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
-    assert any("uniformly" in note for note in manifest["notes"])
+    notes = " ".join(manifest["notes"])
+    # The two kinds of bound are not the same claim, and the record says which is which.
+    assert "hold without that assumption" in notes and "rest on the same assumption" in notes
     checks = {c["name"]: c["passed"] for c in manifest["verification"]}
     assert checks["x-mapsmith:extensive_total_preserved"] is True
-    assert checks["x-mapsmith:estimate_within_bounds"] is True
     assert checks["x-mapsmith:every_source_value_placed"] is True
+    # An arithmetic identity is not a check (D-079): removed in review.
+    assert "x-mapsmith:estimate_within_bounds" not in checks
     assert [i["argument"] for i in manifest["inputs"]] == ["source_path", "target_path"]
 
 
@@ -163,3 +166,56 @@ def test_points_are_not_zones(tmp_path, zones):
     with pytest.raises(ValueError, match="polygons"):
         vector.apportion_by_area(str(path), zones["target"], str(tmp_path / "o.parquet"),
                                  extensive=["population"])
+
+
+def test_overlapping_targets_are_said_and_do_not_fail_the_total(zones, tmp_path):
+    """Two targets over the same ground each receive the piece: the totals differ by design."""
+    target = gpd.GeoDataFrame(
+        {"zone": ["A", "A2"]}, geometry=[_square(0, 0, 50), _square(0, 0, 50)], crs=CRS
+    )
+    path = tmp_path / "twice.gpkg"
+    target.to_file(path)
+    out = tmp_path / "o.parquet"
+    result = vector.apportion_by_area(zones["source"], str(path), str(out), extensive=["population"])
+    manifest = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+    total = next(c for c in manifest["verification"]
+                 if c["name"] == "x-mapsmith:extensive_total_preserved")
+    assert total["critical"] is False and "overlap" in total["detail"]
+    assert gpd.read_parquet(out)["population"].sum() == pytest.approx(100, rel=1e-6)
+    # And the 50 in the eastern half of West, and East's 40, are in no target.
+    placed = next(c for c in manifest["verification"]
+                  if c["name"] == "x-mapsmith:every_source_value_placed")
+    assert placed["passed"] is False and placed["detail"].startswith("population: 90 of 140")
+
+
+def test_the_total_is_checked_on_the_file_written(zones, tmp_path, monkeypatch):
+    """A count doubled between the computation and the disk stops the operation."""
+    from mapsmith.verify import VerificationError
+
+    real = vector._write
+
+    def doubling(frame, path):
+        frame = frame.copy()
+        frame["population"] = frame["population"] * 2
+        return real(frame, path)
+
+    monkeypatch.setattr(vector, "_write", doubling)
+    out = tmp_path / "o.parquet"
+    with pytest.raises(VerificationError, match="extensive_total_preserved"):
+        vector.apportion_by_area(zones["source"], zones["target"], str(out), extensive=["population"])
+
+
+def test_every_manifest_shape_conforms(zones, tmp_path):
+    """Counts and rates, same CRS and reprojected targets: all valid records."""
+    from conftest import _spec_problems
+
+    target = gpd.read_file(zones["target"]).to_crs("EPSG:4326")
+    reprojected = tmp_path / "t4326.gpkg"
+    target.to_file(reprojected)
+    for n, (tgt, kwargs) in enumerate([
+        (zones["target"], {"intensive": ["rate"]}),
+        (str(reprojected), {"extensive": ["population"], "intensive": ["rate"]}),
+    ]):
+        result = vector.apportion_by_area(zones["source"], tgt, str(tmp_path / f"o{n}.parquet"), **kwargs)
+        manifest = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+        assert _spec_problems(manifest) == [], manifest

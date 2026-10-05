@@ -2969,12 +2969,14 @@ def apportion_by_area(
 
     The estimate assumes each source value is spread **uniformly** over its
     zone, which is false wherever people live in one corner of a municipality;
-    the record says so. Beside every estimate are two bounds that need no such
-    assumption: for a count, ``_min`` is the sum of the source zones lying
-    wholly inside the target and ``_max`` the sum of every source zone touching
-    it -- the true value is between them however the count is distributed; for
-    a rate, the lowest and highest rate among the touching zones. When the
-    bounds are far apart, the estimate rests on the assumption, and finer data
+    the record says so. Beside every count are two bounds that need no such
+    assumption: ``_min`` is the sum of the source zones lying wholly inside the
+    target and ``_max`` the sum of every source zone touching it -- the true
+    value is between them however the count is distributed. A rate gets the
+    lowest and highest rate among the touching zones, and those DO rest on the
+    assumption: a part of a zone can have any rate, and the record says that
+    too. When the bounds are far apart, the estimate rests on the assumption,
+    and finer data
     -- census blocks, a population grid -- answers better than any
     apportionment: aggregate those instead.
 
@@ -3116,29 +3118,64 @@ def apportion_by_area(
         ]
         _write(result, output_path)
 
-        kept = pieces.groupby("_source")["_area"].sum()
-        kept_share = np.array([kept.get(s, 0.0) for s in range(len(source))]) / np.array(source_area)
-        record.notes.append(
-            "each estimate assumes the source value is spread uniformly over its source "
-            "zone's area; the _min and _max columns hold without that assumption"
-        )
-        if shift is not None:
+        # How much of each source zone the targets cover, measured on their
+        # UNION: overlapping targets receive the same piece of a source twice,
+        # and summing the pieces would count it twice -- two identical targets
+        # over half a zone sum to the whole zone, and nothing looks wrong.
+        union = shapely.union_all(tgt.geometry.to_numpy())
+        union_area, _ = _geodesic_areas(gpd.GeoDataFrame(geometry=[union], crs=tgt.crs))
+        covered, _ = _geodesic_areas(gpd.GeoDataFrame(
+            geometry=shapely.intersection(src.geometry.to_numpy(), union), crs=src.crs
+        ))
+        kept_share = np.array(covered) / np.array(source_area)
+        # Overlapping targets make the total over the targets exceed the value
+        # they cover, by construction: a property of the targets, said in the
+        # record, not an error.
+        overlapping = bool(sum(target_area) > union_area[0] * (1 + 1e-9))
+        if extensive:
             record.notes.append(
-                "the geodesic areas were measured after moving the coordinates to WGS 84 "
-                f"({shift.get('pipeline') or 'transformation'}); shares are ratios of two "
-                "areas measured the same way"
+                f"counts ({', '.join(extensive)}): each estimate assumes the count is spread "
+                "uniformly over its source zone's area; _min and _max hold without that "
+                "assumption -- the true count of a target lies between them however it is "
+                "distributed inside the source zones"
+            )
+        if intensive:
+            record.notes.append(
+                f"rates ({', '.join(intensive)}): each estimate is the area-weighted mean of "
+                "the contributing zones, assuming each zone's rate holds uniformly inside it; "
+                "_min and _max are the lowest and highest contributing rate and rest on the "
+                "same assumption -- a part of a zone can have any rate"
             )
         checks = []
+        if shift is not None:
+            # Shares are ratios of two areas measured through the same move, so
+            # its accuracy barely touches them; it is recorded all the same, in a
+            # field and not only in a sentence (0.8.0 conformance review).
+            checks.append(verify.Check(
+                "x-mapsmith:datum_shift_applied",
+                not shift.get("is_ballpark"),
+                f"areas measured after moving the coordinates to WGS 84 with "
+                f"{shift.get('pipeline') or 'a ballpark transformation'}"
+                + (f", stated accuracy {shift['accuracy_m']} m" if shift.get("accuracy_m") else ""),
+                critical=False,
+            ))
+        written = readers.read_vector(output_path)
         for c in extensive:
             v = values[c].to_numpy(dtype=float)
             expected = float((v * np.minimum(kept_share, 1.0)).sum())
-            got = float(result[c].sum())
+            got = float(pd.to_numeric(written[c]).sum())
             tolerance = 1e-9 * max(1.0, abs(expected))
             checks.append(verify.Check(
                 "x-mapsmith:extensive_total_preserved",
-                abs(got - expected) <= tolerance,
-                f"{c}: the targets hold {got:.10g}, the source zones' value inside the "
-                f"targets is {expected:.10g}",
+                abs(got - expected) <= tolerance or overlapping,
+                f"{c}: the written targets hold {got:.10g}, the source zones' value inside "
+                f"the targets is {expected:.10g}"
+                + ("; the targets overlap, so a piece of a source is counted in each target "
+                   "it falls in and the totals do not have to agree" if overlapping else ""),
+                # Read back from the file: a count lost or doubled between the
+                # computation and the disk fails here. Not critical when the
+                # targets overlap, where the totals legitimately differ.
+                critical=not overlapping,
             ))
             lost = float(v.sum()) - expected
             checks.append(verify.Check(
@@ -3152,23 +3189,6 @@ def apportion_by_area(
                     "ground, check their extent and boundaries."
                 ),
             ))
-        def within(c: str) -> bool:
-            # A rate on a target no source touches is NaN -- unknown, not zero --
-            # and NaN compares false with everything, so those rows are left out.
-            rows = result[result[c].notna()]
-            slack = 1e-9 * rows[c].abs().clip(lower=1.0)
-            return bool(
-                (rows[f"{c}_min"] <= rows[c] + slack).all()
-                and (rows[c] <= rows[f"{c}_max"] + slack).all()
-            )
-
-        ordered = all(within(c) for c in columns)
-        checks.append(verify.Check(
-            "x-mapsmith:estimate_within_bounds",
-            ordered,
-            "every estimate lies between its _min and _max" if ordered
-            else "an estimate lies outside its own bounds",
-        ))
     manifest, extras = verify.audited(
         record,
         output_path,

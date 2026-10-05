@@ -16,6 +16,16 @@ implements; `draft.10` gives each input a role and a configuration of its own.
 
 ### Added
 
+- **`apportion_by_area`: move counts and rates from the zones they are reported
+  in to zones that cross them.** Cases by municipality to health districts,
+  census-tract population to school catchments. Each column is declared
+  extensive (a count, split by share of area) or intensive (a rate, averaged by
+  area); a call declaring neither is refused, because splitting a rate or
+  averaging a count gives a plausible wrong number. Each count comes with
+  `_min` and `_max` that hold however it is distributed inside the source
+  zones; rate bounds rest on the same uniformity the estimate assumes, and the
+  record says which is which. Shares are geodesic, targets keep their own CRS,
+  and the counts written are checked against the source value they cover.
 - **`cluster_points_by_distance`: group points chained together within a
   distance.** "Group everything within half a kilometre" is single linkage, not
   thinning: two points share a cluster when a chain of points joins them with
