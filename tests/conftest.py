@@ -41,28 +41,50 @@ def vector_engine():
 def spec_checkout():
     """The published specification files the vendored copies are compared with.
 
-    `MAPSMITH_SPEC_CHECKOUT` names a directory laid out like the manifest-spec
-    repository; CI fills it with the files of the tag this release declares
-    (`v<SPEC_VERSION>`). Without it, a `manifest-spec` checkout beside this one,
-    which is how the development machine works.
+    Published means: at the tag of the version this code declares,
+    `v<SPEC_VERSION>`. `MAPSMITH_SPEC_CHECKOUT` names a directory laid out like
+    the manifest-spec repository, which CI fills from that tag. Without it, the
+    three files are read from a `manifest-spec` checkout beside this one AT THAT
+    TAG (`git show`), not from its working tree: the spec's main moves ahead of
+    the last draft -- a fix to its reference code, say -- and a comparison with
+    main would fail here while CI, reading the tag, passed. Until 2026-10-05 the
+    local test read the working tree.
 
-    Neither present is a skip on a developer's disk and a FAILURE where
+    Neither available is a skip on a developer's disk and a FAILURE where
     `MAPSMITH_REQUIRE_SPEC_CHECKOUT` is set. Until 2026-10-05 the two drift
     tests only skipped, and CI has no sibling checkout, so they had never run
-    there: drift between a vendored copy and the published spec was visible on
-    one machine and nowhere else -- a guard that could not fail where it
-    mattered.
+    there -- a guard that could not fail where it mattered.
     """
     import os
+    import subprocess
+    import tempfile
     from pathlib import Path
 
+    from mapsmith.provenance import SPEC_VERSION
+
     named = os.environ.get("MAPSMITH_SPEC_CHECKOUT")
-    candidate = Path(named) if named else Path(__file__).resolve().parents[2] / "manifest-spec"
-    if candidate.is_dir():
-        return candidate
-    where = f"MAPSMITH_SPEC_CHECKOUT={named}" if named else f"a manifest-spec checkout at {candidate}"
+    if named and Path(named).is_dir():
+        return Path(named)
+    sibling = Path(__file__).resolve().parents[2] / "manifest-spec"
+    where = f"MAPSMITH_SPEC_CHECKOUT={named}" if named else f"a manifest-spec checkout at {sibling}"
+    if not named and (sibling / ".git").exists():
+        tag = f"v{SPEC_VERSION}"
+        dest = Path(tempfile.mkdtemp(prefix="manifest-spec-"))
+        for rel in ("schema/manifest-v1.schema.json", "validator/validate.py",
+                    "examples/multi_file_digest.py"):
+            shown = subprocess.run(
+                ["git", "-C", str(sibling), "show", f"{tag}:{rel}"],
+                capture_output=True, check=False,
+            )
+            if shown.returncode != 0:
+                where = f"tag {tag} in {sibling} ({shown.stderr.decode(errors='replace').strip()})"
+                break
+            (dest / rel).parent.mkdir(parents=True, exist_ok=True)
+            (dest / rel).write_bytes(shown.stdout)
+        else:
+            return dest
     if os.environ.get("MAPSMITH_REQUIRE_SPEC_CHECKOUT"):
-        pytest.fail(f"the published specification is required here and {where} does not exist")
+        pytest.fail(f"the published specification is required here and {where} is not available")
     pytest.skip(f"no published specification to compare with: looked for {where}")
 
 
