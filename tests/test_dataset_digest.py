@@ -112,9 +112,9 @@ def test_the_vendored_reference_is_the_published_one():
     import ast
     from pathlib import Path
 
-    spec_repo = Path(__file__).resolve().parents[2] / "manifest-spec"
-    if not spec_repo.is_dir():
-        pytest.skip(f"no manifest-spec checkout beside this one, looked in {spec_repo.parent}")
+    from conftest import spec_checkout
+
+    spec_repo = spec_checkout()
 
     def body(path: Path) -> list[str]:
         source = path.read_text(encoding="utf-8")

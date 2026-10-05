@@ -2332,16 +2332,13 @@ def test_the_vendored_schema_and_validator_are_the_published_ones():
     """
     from pathlib import Path
 
-    import pytest
+    # The sibling path was written as parents[3] first, which resolved to the
+    # drive root and would have made this test skip in silence for ever; and
+    # even at parents[2] it skipped in CI, which has no sibling checkout, until
+    # 2026-10-05. `spec_checkout` resolves both and fails where CI requires it.
+    from conftest import spec_checkout
 
-    # parents[2] and not [3]: this file is <workspace>/mapsmith/tests/, so the
-    # sibling checkouts are two levels up. Written as [3] first, which resolved
-    # to the drive root and would have made this test skip in silence for ever
-    # -- a guard that cannot fail, in the act of writing one.
-    workspace = Path(__file__).resolve().parents[2]
-    spec_repo = workspace / "manifest-spec"
-    if not spec_repo.is_dir():
-        pytest.skip(f"no manifest-spec checkout beside this one, looked in {workspace}")
+    spec_repo = spec_checkout()
 
     here = Path(__file__).parent / "data"
     def body_after_the_docstring(path: Path) -> list[str]:

@@ -70,6 +70,23 @@ jobs:
           path: resolved-${{ matrix.python-version }}.txt
       - name: Lint
         run: ruff check .
+      # The vendored schema, validator and reference digest are compared with
+      # the files PUBLISHED at the spec version this code declares. Fetched into
+      # the runner's temp, not checked out into the workspace, so neither ruff
+      # nor pytest walks the spec's own files. Without this step the two drift
+      # tests skipped in CI and only ever ran on a developer's disk.
+      - name: Fetch the published specification files
+        run: |
+          version=$(python -c "import re, pathlib; print(re.search(r'SPEC_VERSION = \"([^\"]+)\"', pathlib.Path('src/mapsmith/provenance.py').read_text()).group(1))")
+          base="https://raw.githubusercontent.com/mapsmith-ai/manifest-spec/v${version}"
+          dest="$RUNNER_TEMP/manifest-spec"
+          for file in schema/manifest-v1.schema.json validator/validate.py examples/multi_file_digest.py; do
+            mkdir -p "$dest/$(dirname "$file")"
+            curl --fail --silent --show-error --location -o "$dest/$file" "$base/$file"
+          done
+          echo "MAPSMITH_SPEC_CHECKOUT=$dest" >> "$GITHUB_ENV"
+          echo "MAPSMITH_REQUIRE_SPEC_CHECKOUT=1" >> "$GITHUB_ENV"
+          echo "published specification files of v${version} in $dest"
       - name: Test
         run: pytest -q
 

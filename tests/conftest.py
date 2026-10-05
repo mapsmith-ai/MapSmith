@@ -38,6 +38,34 @@ def vector_engine():
         pytest.skip(f"the embedding model could not be loaded: {failure}")
     return retrieval
 
+def spec_checkout():
+    """The published specification files the vendored copies are compared with.
+
+    `MAPSMITH_SPEC_CHECKOUT` names a directory laid out like the manifest-spec
+    repository; CI fills it with the files of the tag this release declares
+    (`v<SPEC_VERSION>`). Without it, a `manifest-spec` checkout beside this one,
+    which is how the development machine works.
+
+    Neither present is a skip on a developer's disk and a FAILURE where
+    `MAPSMITH_REQUIRE_SPEC_CHECKOUT` is set. Until 2026-10-05 the two drift
+    tests only skipped, and CI has no sibling checkout, so they had never run
+    there: drift between a vendored copy and the published spec was visible on
+    one machine and nowhere else -- a guard that could not fail where it
+    mattered.
+    """
+    import os
+    from pathlib import Path
+
+    named = os.environ.get("MAPSMITH_SPEC_CHECKOUT")
+    candidate = Path(named) if named else Path(__file__).resolve().parents[2] / "manifest-spec"
+    if candidate.is_dir():
+        return candidate
+    where = f"MAPSMITH_SPEC_CHECKOUT={named}" if named else f"a manifest-spec checkout at {candidate}"
+    if os.environ.get("MAPSMITH_REQUIRE_SPEC_CHECKOUT"):
+        pytest.fail(f"the published specification is required here and {where} does not exist")
+    pytest.skip(f"no published specification to compare with: looked for {where}")
+
+
 # --------------------------------------------------------------------------
 # Conformance, shared: moved here on 2026-09-06 when a second test file needed
 # it. It lived in `test_verify.py`, and the rule it encodes -- validate against
