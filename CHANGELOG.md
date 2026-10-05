@@ -83,6 +83,9 @@ implements; `draft.10` gives each input a role and a configuration of its own.
   6,000 points at a distance of 1e9 took two minutes and 2.3 GB. The pairs are
   now found in blocks and the call is refused once they pass
   `MAPSMITH_MAX_SAMPLES`, the operator's limit, before memory is spent.
+  `hot_spots` with `weights="distance_band"` uses the same query: its weights
+  were a double loop over every pair of features in Python, quadratic at any
+  band, and a band that is not a finite positive number is now refused.
 - **`get_lineage` no longer hashes every shapefile in the workspace.** Since
   the draft.9 digest rule it computed, while indexing, the other rule's digest
   of every shapefile record's output, whatever the chain asked about. A

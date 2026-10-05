@@ -245,7 +245,8 @@ the line lengths first and refuse above **`MAPSMITH_MAX_SAMPLES`** (default
 environment variable of the server, like `MAPSMITH_ALLOW_EXTENSIONS`, so no
 tool argument can move it.
 
-The same limit, counted in **pairs**, bounds `cluster_points_by_distance`: the
+The same limit, counted in **pairs**, bounds `cluster_points_by_distance` and
+`hot_spots` with distance-band weights: the
 pairs of points within the distance grow with the square of the points when the
 distance is large, and the distance is the agent's argument. The query runs in
 blocks and is refused once the pairs pass the limit, before the next block is
@@ -253,8 +254,7 @@ allocated (0.8.0 audit: 6,000 points at a distance of 1e9 took two minutes and
 2.3 GB without it).
 
 That is all there is, and it is not a general resource policy: other operations
-are bounded only by their inputs -- hotspot analysis with distance-band weights
-is quadratic in the same way and not yet limited -- and a server exposed over
+are bounded only by their inputs, and a server exposed over
 HTTP should also run under the memory and CPU limits of its container or pod
 (`deploy/` has a Kubernetes example). The sampling limit was found in the
 pre-release audit of 0.7.0; it was there in every earlier release.

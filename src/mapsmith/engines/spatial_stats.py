@@ -103,21 +103,22 @@ def _weights(
             neighbours.append(sorted(int(c) for c in candidates if int(c) != position))
         return neighbours
 
-    if distance_band is None or distance_band <= 0:
+    if distance_band is None or not (math.isfinite(distance_band) and distance_band > 0):
         raise ValueError(
-            "weights='distance_band' needs a positive distance_band: the radius "
+            "weights='distance_band' needs a positive, finite distance_band: the radius "
             "within which two features count as neighbours."
         )
-    points = gdf.geometry.representative_point()
-    neighbours = []
-    for position, point in enumerate(points):
-        row = [
-            other
-            for other, candidate in enumerate(points)
-            if other != position and point.distance(candidate) <= distance_band
-        ]
-        neighbours.append(row)
-    return neighbours
+    # Through the same blocked, capped pair query as the clustering. This was a
+    # double loop in Python: every feature measured against every other, so
+    # quadratic at any band, and with a large band its neighbour lists alone
+    # held n^2 entries (0.8.0 audit). Distance inclusive, as before.
+    points = gdf.geometry.representative_point().to_numpy()
+    neighbours: list[list[int]] = [[] for _ in range(len(points))]
+    pairs = _pairs_within(points, distance_band)
+    for a, b in zip(pairs[0].tolist(), pairs[1].tolist(), strict=True):
+        neighbours[a].append(b)
+        neighbours[b].append(a)
+    return [sorted(row) for row in neighbours]
 
 
 def _prepare(input_path: str, operation: str, *fields: str):

@@ -676,3 +676,35 @@ def test_the_cluster_check_fails_on_wrong_sizes(tmp_path):
     assert not spatial_stats._clusters_match_the_written_points(
         str(tmp_path / "sizes.parquet"), 500.0
     ).passed
+
+
+def test_hot_spots_with_a_band_joining_too_many_pairs_is_refused(tmp_path, monkeypatch):
+    """Distance-band weights go through the same capped pair query as clustering.
+
+    They were a double loop over every pair in Python, quadratic at any band
+    (0.8.0 audit). Ten points within one band are 45 pairs; a limit of 10 refuses.
+    """
+    monkeypatch.setenv("MAPSMITH_MAX_SAMPLES", "10")
+    path = tmp_path / "dense.gpkg"
+    gpd.GeoDataFrame(
+        {"v": [float(i) for i in range(10)]},
+        geometry=[Point(i, 0) for i in range(10)],
+        crs="EPSG:32632",
+    ).to_file(path)
+    with pytest.raises(ValueError, match="MAPSMITH_MAX_SAMPLES"):
+        spatial_stats.hot_spots(
+            str(path), str(tmp_path / "gi.parquet"), value_field="v",
+            weights="distance_band", distance_band=1e9,
+        )
+
+
+@pytest.mark.parametrize("band", [float("nan"), float("inf"), 0.0, -1.0])
+def test_hot_spots_refuses_a_band_that_is_not_a_finite_positive_number(tmp_path, band):
+    path = tmp_path / "p.gpkg"
+    gpd.GeoDataFrame({"v": [1.0, 2.0, 3.0]}, geometry=[Point(0, 0), Point(1, 0), Point(2, 0)],
+                     crs="EPSG:32632").to_file(path)
+    with pytest.raises(ValueError, match="positive, finite distance_band"):
+        spatial_stats.hot_spots(
+            str(path), str(tmp_path / "gi.parquet"), value_field="v",
+            weights="distance_band", distance_band=band,
+        )
