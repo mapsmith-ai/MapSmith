@@ -315,11 +315,13 @@ def _listing_sha256(members: dict[str, str]) -> str:
     ).hexdigest()
 
 
-def _shapefile_members(shp: Path) -> dict[str, str]:
+def _shapefile_member_paths(shp: Path) -> dict[str, Path]:
+    """The member files of a shapefile, by extension: one enumeration for the
+    digest and for `dataset_size`, so the cap reads what the digest reads."""
     stem = shp.name[: -len(".shp")].lower()
     found: dict[str, Path] = {}
     for candidate in shp.parent.iterdir():
-        if not candidate.is_file() or candidate.is_symlink():
+        if not candidate.is_file() or _is_link(candidate):
             continue
         for ext in SHAPEFILE_MEMBERS:
             if candidate.name.lower() == stem + ext:
@@ -331,7 +333,11 @@ def _shapefile_members(shp: Path) -> dict[str, str]:
                 found[ext] = candidate
     if ".shp" not in found:
         raise FileNotFoundError(shp)
-    return {ext: sha256_of(path) for ext, path in found.items()}
+    return found
+
+
+def _shapefile_members(shp: Path) -> dict[str, str]:
+    return {ext: sha256_of(path) for ext, path in _shapefile_member_paths(shp).items()}
 
 
 def _is_link(path: Path) -> bool:
@@ -413,13 +419,7 @@ def dataset_size(path: str | Path) -> int:
     if suffix == ".gdb" and p.is_dir():
         return sum(path.stat().st_size for path in _container_member_paths(p).values())
     if suffix == ".shp":
-        stem = p.name[: -len(".shp")].lower()
-        return sum(
-            candidate.stat().st_size
-            for candidate in p.parent.iterdir()
-            if candidate.is_file()
-            and any(candidate.name.lower() == stem + ext for ext in SHAPEFILE_MEMBERS)
-        )
+        return sum(path.stat().st_size for path in _shapefile_member_paths(p).values())
     return p.stat().st_size
 
 
