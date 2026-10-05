@@ -2945,6 +2945,256 @@ def summarize_points_in_polygons(
     }
 
 
+#: A piece is "the whole source zone" when it holds this share of its area or
+#: more: geodesic areas of a polygon and of its intersection with a zone that
+#: contains it differ in the last digits, not more.
+_WHOLE = 1 - 1e-9
+
+
+def apportion_by_area(
+    source_path: str,
+    target_path: str,
+    output_path: str,
+    extensive: list[str] | None = None,
+    intensive: list[str] | None = None,
+) -> dict[str, Any]:
+    """Move values from one set of zones to another that does not nest in it, by share of area.
+
+    A count (``extensive``: people, cases, tonnes) is split in proportion to the
+    area of each piece a source zone is cut into; a rate or density
+    (``intensive``) is averaged over each target, weighted by area. The two are
+    declared, never guessed: averaging a count or splitting a rate by area gives
+    a plausible number that is wrong, with no error anywhere. The rate of a
+    target is computed afterwards from two apportioned counts, not apportioned.
+
+    The estimate assumes each source value is spread **uniformly** over its
+    zone, which is false wherever people live in one corner of a municipality;
+    the record says so. Beside every estimate are two bounds that need no such
+    assumption: for a count, ``_min`` is the sum of the source zones lying
+    wholly inside the target and ``_max`` the sum of every source zone touching
+    it -- the true value is between them however the count is distributed; for
+    a rate, the lowest and highest rate among the touching zones. When the
+    bounds are far apart, the estimate rests on the assumption, and finer data
+    -- census blocks, a population grid -- answers better than any
+    apportionment: aggregate those instead.
+
+    Areas are geodesic, on the ellipsoid, so no projection's scale distortion
+    enters the shares. Each target also gets ``source_coverage``: the share of
+    its area that any source zone covers.
+    """
+    import numpy as np
+
+    extensive = list(extensive or [])
+    intensive = list(intensive or [])
+    if not extensive and not intensive:
+        raise ValueError(
+            "declare each column to move as extensive (a count or total that splits with "
+            "area: population, cases) or intensive (a rate, density or mean that does "
+            "not: incidence per 1000, persons per km2). Splitting a rate by area, or "
+            "averaging a count, gives a plausible wrong number, so this operation does "
+            "not guess. To get a rate on the target zones, apportion its numerator and "
+            "denominator as extensive and divide afterwards."
+        )
+    both = sorted(set(extensive) & set(intensive))
+    if both:
+        raise ValueError(f"{both} declared both extensive and intensive; a column is one or the other")
+    source = _read(source_path)
+    target = _read(target_path)
+    require_polygons(source, source_path, "source zones")
+    require_polygons(target, target_path, "target zones")
+    for path, frame in ((source_path, source), (target_path, target)):
+        readers.refuse_missing_geometry(
+            frame, path, "A zone with no shape has no area to split or to receive."
+        )
+    columns = extensive + intensive
+    available = [c for c in source.columns if c != source.geometry.name]
+    missing = [c for c in columns if c not in source.columns]
+    if missing:
+        raise ValueError(f"{missing} not in {source_path}. Available: {available}")
+    values = {c: pd.to_numeric(source[c], errors="coerce") for c in columns}
+    for c, series in values.items():
+        if series.isna().any() or not np.isfinite(series.to_numpy(dtype=float)).all():
+            raise ValueError(
+                f"{c!r} must be a finite number in every source zone: a missing value "
+                "would be apportioned as zero"
+            )
+    negative = [c for c in extensive if (values[c] < 0).any()]
+    if negative:
+        raise ValueError(
+            f"{negative} hold negative values, and an extensive column is a count or a "
+            "total: the bounds on each target assume nothing below zero. A signed "
+            "quantity (a balance, a change) is not apportioned by area"
+        )
+    produced = [f"{c}{suffix}" for c in columns for suffix in ("", "_min", "_max")]
+    produced.append("source_coverage")
+    clash = sorted(set(produced) & set(target.columns))
+    if clash:
+        raise ValueError(
+            f"{target_path} already has {clash}; rename them first, or the apportioned "
+            "values would overwrite the target's own"
+        )
+
+    record = ProvenanceRecord(
+        operation="apportion_by_area",
+        parameters={"extensive": extensive, "intensive": intensive},
+        inputs=[
+            InputRecord.from_path(source_path, crs=verify.crs_label(source.crs), argument="source_path"),
+            InputRecord.from_path(target_path, crs=verify.crs_label(target.crs), argument="target_path"),
+        ],
+        engine=_engine_info(),
+    )
+    pre = verify.verify_loaded_inputs(
+        "apportion_by_area", source_path=source, target_path=target
+    )
+    if verify.has_critical_failure(pre):
+        record.add_verification(pre).finish().write_for(output_path)
+        verify.enforce(pre, "apportion_by_area")
+    # The output is the target zones as given, in their own CRS: only the copy
+    # used for the intersection moves.
+    original_target = target
+    original_target_crs = target.crs
+    aligned = not verify.same_crs(original_target_crs, source.crs)
+    if aligned:
+        target = target.to_crs(source.crs)
+    record.crs_decisions = alignment_decisions(
+        source.crs,
+        "the target zones are brought onto the source zones' CRS before they are "
+        "intersected; the shares are then measured as geodesic areas on the ellipsoid"
+        if aligned
+        else "both layers share a CRS; the shares are measured as geodesic areas on the "
+        "ellipsoid, so no projection's scale enters them",
+        [("target_path", original_target_crs)] if aligned else [],
+    )
+    pre += verify.verify_input_pairs(
+        "apportion_by_area", source_path=source, target_path=target
+    )
+
+    with verify.audit_on_failure(record, output_path, pre):
+        src = gpd.GeoDataFrame(
+            {"_source": range(len(source))}, geometry=source.geometry.to_numpy(), crs=source.crs
+        )
+        tgt = gpd.GeoDataFrame(
+            {"_target": range(len(target))}, geometry=target.geometry.to_numpy(), crs=target.crs
+        )
+        pieces = gpd.overlay(src, tgt, how="intersection", keep_geom_type=True)
+        source_area, shift = _geodesic_areas(src)
+        target_area, _ = _geodesic_areas(tgt)
+        piece_area, _ = _geodesic_areas(pieces) if len(pieces) else ([], None)
+        pieces = pieces.assign(_area=piece_area)
+        pieces = pieces[pieces["_area"] > 0]
+        share = pieces["_area"].to_numpy() / np.array(source_area)[pieces["_source"].to_numpy()]
+
+        result = original_target.copy()
+        by_target = {t: group for t, group in pieces.assign(_share=share).groupby("_target")}
+        for c in columns:
+            v = values[c].to_numpy(dtype=float)
+            estimate, low, high = [], [], []
+            for t in range(len(target)):
+                group = by_target.get(t)
+                if group is None:
+                    estimate.append(0.0 if c in extensive else float("nan"))
+                    low.append(0.0 if c in extensive else float("nan"))
+                    high.append(0.0 if c in extensive else float("nan"))
+                    continue
+                sv = v[group["_source"].to_numpy()]
+                if c in extensive:
+                    estimate.append(float((sv * group["_share"].to_numpy()).sum()))
+                    low.append(float(sv[group["_share"].to_numpy() >= _WHOLE].sum()))
+                    high.append(float(sv.sum()))
+                else:
+                    a = group["_area"].to_numpy()
+                    estimate.append(float((sv * a).sum() / a.sum()))
+                    low.append(float(sv.min()))
+                    high.append(float(sv.max()))
+            result[c] = estimate
+            result[f"{c}_min"] = low
+            result[f"{c}_max"] = high
+        covered = pieces.groupby("_target")["_area"].sum()
+        result["source_coverage"] = [
+            float(min(covered.get(t, 0.0) / target_area[t], 1.0)) if target_area[t] else 0.0
+            for t in range(len(target))
+        ]
+        _write(result, output_path)
+
+        kept = pieces.groupby("_source")["_area"].sum()
+        kept_share = np.array([kept.get(s, 0.0) for s in range(len(source))]) / np.array(source_area)
+        record.notes.append(
+            "each estimate assumes the source value is spread uniformly over its source "
+            "zone's area; the _min and _max columns hold without that assumption"
+        )
+        if shift is not None:
+            record.notes.append(
+                "the geodesic areas were measured after moving the coordinates to WGS 84 "
+                f"({shift.get('pipeline') or 'transformation'}); shares are ratios of two "
+                "areas measured the same way"
+            )
+        checks = []
+        for c in extensive:
+            v = values[c].to_numpy(dtype=float)
+            expected = float((v * np.minimum(kept_share, 1.0)).sum())
+            got = float(result[c].sum())
+            tolerance = 1e-9 * max(1.0, abs(expected))
+            checks.append(verify.Check(
+                "x-mapsmith:extensive_total_preserved",
+                abs(got - expected) <= tolerance,
+                f"{c}: the targets hold {got:.10g}, the source zones' value inside the "
+                f"targets is {expected:.10g}",
+            ))
+            lost = float(v.sum()) - expected
+            checks.append(verify.Check(
+                "x-mapsmith:every_source_value_placed",
+                lost <= tolerance,
+                f"{c}: {lost:.6g} of {float(v.sum()):.6g} lies in source area that no target covers",
+                critical=False,
+                hint=None if lost <= tolerance else (
+                    "Part of the source zones lies outside every target, and its share of "
+                    "the value is in no target. If the targets are meant to cover the same "
+                    "ground, check their extent and boundaries."
+                ),
+            ))
+        def within(c: str) -> bool:
+            # A rate on a target no source touches is NaN -- unknown, not zero --
+            # and NaN compares false with everything, so those rows are left out.
+            rows = result[result[c].notna()]
+            slack = 1e-9 * rows[c].abs().clip(lower=1.0)
+            return bool(
+                (rows[f"{c}_min"] <= rows[c] + slack).all()
+                and (rows[c] <= rows[f"{c}_max"] + slack).all()
+            )
+
+        ordered = all(within(c) for c in columns)
+        checks.append(verify.Check(
+            "x-mapsmith:estimate_within_bounds",
+            ordered,
+            "every estimate lies between its _min and _max" if ordered
+            else "an estimate lies outside its own bounds",
+        ))
+    manifest, extras = verify.audited(
+        record,
+        output_path,
+        operation="apportion_by_area",
+        preconditions=pre,
+        checks_fn=lambda: checks
+        + verify.verify_vector_output(
+            output_path, expect_crs=original_target_crs, expect_count=len(target), on_empty="fail"
+        ),
+    )
+    spread = {
+        c: float((result[f"{c}_max"] - result[f"{c}_min"]).max()) if len(result) else 0.0
+        for c in columns
+    }
+    return {
+        "output": str(output_path),
+        "target_zones": len(result),
+        "extensive": extensive,
+        "intensive": intensive,
+        "widest_bounds": spread,
+        "provenance": manifest,
+        "verified": True,
+        **extras,
+    }
+
+
 def _read_output_crs(path: str) -> Any:
     """The CRS of a dataset just written, for a check that must not re-validate it."""
     try:

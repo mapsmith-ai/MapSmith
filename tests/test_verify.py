@@ -1353,6 +1353,9 @@ def _spec_fixtures(tmp_path):
         "count_in_polygons": lambda: vector.count_in_polygons(
             str(points), str(layer), out("counts.parquet")
         ),
+        "apportion_by_area": lambda: vector.apportion_by_area(
+            str(layer), str(second), out("apportioned.parquet"), extensive=["v"]
+        ),
         "summarize_points_in_polygons": lambda: vector.summarize_points_in_polygons(
             str(points), str(layer), out("point_summary.parquet"), field="n"
         ),

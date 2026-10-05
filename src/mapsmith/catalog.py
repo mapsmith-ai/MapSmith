@@ -2502,6 +2502,69 @@ OPERATIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        "name": "apportion_by_area",
+        "status": "available",
+        "tool": None,
+        "workload": "small_vector",
+        "category": "vector",
+        "produces": "dataset:vector",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 2, 'geometry': ['polygon']},
+        "summary": "Reallocate population counts, case totals and rates from the units they are "
+                   "reported in to the units you need, with bounds that need no assumption",
+        "phrasings": "the cases are reported by municipality and I need them by health district; "
+                     "population per school catchment from census tract totals; how many residents "
+                     "does each flood zone hold, from the commune counts; redistrict these statistics",
+        "distinguishes": "Reallocates reported statistics between two incompatible sets of reporting "
+                         "units. If finer data exists -- census blocks, a population grid -- summing it "
+                         "per unit is better than any estimate, which assumes each total is spread "
+                         "evenly over its unit.",
+        "description": (
+            "Apportionment of reported statistics, weighted by share of area. Each column is "
+            "declared, never guessed: extensive (a count or total -- residents, cases -- divided in "
+            "proportion) or intensive (a rate, density or mean, averaged). Dividing a rate or "
+            "averaging a count gives a plausible wrong number, so a call declaring neither is "
+            "refused; a rate for the new units is computed afterwards from two reallocated counts. "
+            "The estimate assumes each total is spread uniformly over its unit, and the record "
+            "says so. Beside each estimate, _min and _max hold without that assumption: for a "
+            "count, the totals of the reporting units wholly contained and of all those "
+            "contributing; for a rate, the lowest and highest contributing. source_coverage gives "
+            "the share of each new unit the reporting units reach. Shares are geodesic on the "
+            "ellipsoid, and the result keeps the CRS of the units it was asked for. Checks "
+            "confirm the reallocated counts add up and report any total left unallocated. Called "
+            "through run_operation."
+        ),
+        "parameters": [
+            {"name": "source_path", "type": "str", "required": True,
+             "description": "Polygon layer holding the values (the zones the data is reported in)"},
+            {"name": "target_path", "type": "str", "required": True,
+             "description": "Polygon layer to move them to (the zones you need the answer in)"},
+            {"name": "output_path", "type": "str", "required": True,
+             "description": "Output layer (.parquet or .gpkg): the target zones with each column, "
+                            "its _min and _max, and source_coverage"},
+            {"name": "extensive", "type": "list[str]", "required": False,
+             "description": "Columns that are counts or totals and split with area"},
+            {"name": "intensive", "type": "list[str]", "required": False,
+             "description": "Columns that are rates, densities or means and are averaged by area"},
+        ],
+        "examples": [
+            {"goal": "The cases are counted by municipality and I need them by health district, "
+                     "and the two boundaries cross",
+             "call": {"tool": "run_operation",
+                      "arguments": {"operation": "apportion_by_area",
+                                    "arguments": {"source_path": "municipalities.gpkg",
+                                                  "target_path": "districts.gpkg",
+                                                  "output_path": "districts_cases.parquet",
+                                                  "extensive": ["cases", "population"]}}}},
+            {"goal": "Average the unemployment rate of the census tracts over each school catchment",
+             "call": {"tool": "run_operation",
+                      "arguments": {"operation": "apportion_by_area",
+                                    "arguments": {"source_path": "tracts.gpkg",
+                                                  "target_path": "catchments.gpkg",
+                                                  "output_path": "catchment_rates.parquet",
+                                                  "intensive": ["unemployment_rate"]}}}},
+        ],
+    },
+    {
         "name": "aggregate_weighted",
         "status": "available",
         "tool": None,

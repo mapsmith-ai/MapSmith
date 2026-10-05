@@ -284,6 +284,12 @@ def _count_in_polygons() -> Callable[..., dict[str, Any]]:
     return vector.count_in_polygons
 
 
+def _apportion_by_area() -> Callable[..., dict[str, Any]]:
+    from ..engines import vector
+
+    return vector.apportion_by_area
+
+
 def _summarize_points_in_polygons() -> Callable[..., dict[str, Any]]:
     from ..engines import vector
 
@@ -717,6 +723,14 @@ BINDINGS: dict[str, Binding] = {
         "output_path",
         None,
         ("same_as", "input_path"),
+        "vector",
+    ),
+    "apportion_by_area": Binding(
+        _apportion_by_area,
+        ("source_path", "target_path"),
+        "output_path",
+        None,
+        ("same_as", "target_path"),
         "vector",
     ),
     "count_in_polygons": Binding(
