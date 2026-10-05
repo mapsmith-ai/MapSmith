@@ -516,6 +516,35 @@ def test_clustering_chains_where_thinning_drops(tmp_path):
     assert thinned["kept"] == 3
 
 
+def test_a_distance_joining_too_many_pairs_is_refused_before_anything_is_written(
+    tmp_path, monkeypatch
+):
+    """Ten points all within the distance are 45 pairs; a limit of 10 refuses them.
+
+    The pairs grow with the square of the points when the distance is large, and
+    the distance is the agent's argument (0.8.0 audit: 6,000 points at 1e9 took
+    two minutes and 2.3 GB). The limit is the operator's, not the tool's.
+    """
+    monkeypatch.setenv("MAPSMITH_MAX_SAMPLES", "10")
+    path = _row(tmp_path, [10 * i for i in range(10)])
+    out = tmp_path / "g.parquet"
+    with pytest.raises(ValueError, match="MAPSMITH_MAX_SAMPLES"):
+        spatial_stats.cluster_points_by_distance(str(path), str(out), max_distance=1e9)
+    assert not out.exists()
+    assert not Path(str(out) + ".provenance.json").exists()
+
+
+def test_the_pairs_are_the_same_across_block_boundaries(tmp_path, monkeypatch):
+    """The query runs in blocks; blocks of three must find the chain test's links."""
+    monkeypatch.setattr(spatial_stats, "_PAIR_BLOCK", 3)
+    path = _row(tmp_path, [0, 400, 800, 5000, 5300])
+    out = tmp_path / "groups.parquet"
+    spatial_stats.cluster_points_by_distance(str(path), str(out), max_distance=500.0)
+    written = gpd.read_parquet(out)
+    assert written["cluster_id"].tolist() == [1, 1, 1, 2, 2]
+    assert written["cluster_size"].tolist() == [3, 3, 3, 2, 2]
+
+
 def test_a_link_exactly_at_the_distance_joins(tmp_path):
     path = _row(tmp_path, [0, 500, 1001])
     out = tmp_path / "g.parquet"

@@ -2470,14 +2470,21 @@ def require_polygons(frame, path: str, role: str) -> None:
     as `_uncovered_kinds` argues, and passes. Null and empty geometries are not
     judged here: this refuses the wrong shape, not the absence of one.
     """
+    import numpy as np
+
     geoms = frame.geometry.to_numpy()
     present = geoms[~(shapely.is_missing(geoms) | shapely.is_empty(geoms))]
-    kinds = set()
-    for geom in present:
-        if geom.geom_type == "GeometryCollection":
-            kinds |= {part.geom_type for part in shapely.get_parts(geom)}
-        else:
-            kinds.add(geom.geom_type)
+    # Vectorised: a loop over every geometry in Python was measurable on a
+    # million-polygon layer (0.8.0 review). Only collections are broken apart.
+    type_ids = shapely.get_type_id(present)
+    collections = present[type_ids == 7]  # GeometryCollection
+    if len(collections):
+        type_ids = np.concatenate(
+            [type_ids[type_ids != 7], shapely.get_type_id(shapely.get_parts(collections))]
+        )
+    names = {0: "Point", 1: "LineString", 2: "LinearRing", 3: "Polygon", 4: "MultiPoint",
+             5: "MultiLineString", 6: "MultiPolygon", 7: "GeometryCollection"}
+    kinds = {names.get(int(i), f"type {int(i)}") for i in np.unique(type_ids)}
     kinds -= {"Polygon", "MultiPolygon"}
     if kinds:
         raise ValueError(

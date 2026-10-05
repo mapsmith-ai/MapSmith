@@ -334,10 +334,28 @@ def _shapefile_members(shp: Path) -> dict[str, str]:
     return {ext: sha256_of(path) for ext, path in found.items()}
 
 
-def _container_members(root: Path) -> dict[str, str]:
-    members: dict[str, str] = {}
+def _is_link(path: Path) -> bool:
+    """A symbolic link, or a Windows junction, which `is_symlink()` does not see.
+
+    Spec section 3.3: links are neither members nor followed. A junction is a
+    link to a directory in everything but name, and until 0.8.0 the walk below
+    followed it: a junction inside a `.gdb` pointing outside the workspace put
+    files from there into the digest, and one pointing at a drive root made the
+    walk read the drive (0.8.0 audit). The manifest scan already pruned them.
+    """
+    return path.is_symlink() or path.is_junction()
+
+
+def _container_member_paths(root: Path) -> dict[str, Path]:
+    """The members of a directory container, by the rule of spec section 3.3.
+
+    One enumeration for the digest and for `dataset_size`, which used to walk
+    on its own and count hidden files, OS litter and linked members the digest
+    leaves out -- harmless to correctness, wrong for the cap it feeds.
+    """
+    members: dict[str, Path] = {}
     for dirpath, dirs, files in os.walk(root):
-        dirs[:] = [d for d in dirs if not (Path(dirpath) / d).is_symlink()]
+        dirs[:] = [d for d in dirs if not _is_link(Path(dirpath) / d)]
         for name in files:
             lowered = name.lower()
             if (
@@ -347,10 +365,14 @@ def _container_members(root: Path) -> dict[str, str]:
             ):
                 continue
             member = Path(dirpath) / name
-            if member.is_symlink():
+            if _is_link(member):
                 continue
-            members[member.relative_to(root).as_posix()] = sha256_of(member)
+            members[member.relative_to(root).as_posix()] = member
     return members
+
+
+def _container_members(root: Path) -> dict[str, str]:
+    return {rel: sha256_of(path) for rel, path in _container_member_paths(root).items()}
 
 
 def dataset_sha256(path: str | Path) -> str:
@@ -389,12 +411,7 @@ def dataset_size(path: str | Path) -> int:
     p = Path(path)
     suffix = p.suffix.lower()
     if suffix == ".gdb" and p.is_dir():
-        return sum(
-            (Path(dirpath) / name).stat().st_size
-            for dirpath, _dirs, files in os.walk(p)
-            for name in files
-            if not name.lower().endswith(".lock")
-        )
+        return sum(path.stat().st_size for path in _container_member_paths(p).values())
     if suffix == ".shp":
         stem = p.name[: -len(".shp")].lower()
         return sum(
@@ -687,6 +704,8 @@ class InputRecord:
         layer: str | None = None,
         argument: str | None = None,
     ) -> InputRecord:
+        if layer is None:
+            layer = _only_layer(path)
         return cls(
             path=posix_path(path),
             sha256=dataset_sha256(path),
@@ -694,6 +713,26 @@ class InputRecord:
             layer=layer,
             argument=argument,
         )
+
+
+def _only_layer(path: str | Path) -> str | None:
+    """The layer a reader took from a single-layer directory container, else None.
+
+    A container's digest identifies the container, not the layer (spec section
+    6, draft.9), and a record for a layer of it says which. An operation handed
+    a single-layer `.gdb` reads its only layer without being told the name, and
+    used to record no layer: the lineage walk then met a record for that very
+    layer and stopped with "records claim this container's digest, but for
+    other layers" -- false, it was the layer read (0.8.0 review). A multi-layer
+    container without a chosen layer is refused before this runs (issue #29).
+    """
+    p = Path(path)
+    if p.suffix.lower() != ".gdb" or not p.is_dir():
+        return None
+    from . import readers
+
+    layers = readers.gpkg_layers(str(p))
+    return layers[0] if layers and len(layers) == 1 else None
 
 
 def posix_path(path: str | Path) -> str:

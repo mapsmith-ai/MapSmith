@@ -245,11 +245,19 @@ the line lengths first and refuse above **`MAPSMITH_MAX_SAMPLES`** (default
 environment variable of the server, like `MAPSMITH_ALLOW_EXTENSIONS`, so no
 tool argument can move it.
 
-That is the one limit there is, and it is not a general resource policy: other
-operations are bounded only by their inputs, and a server exposed over HTTP
-should also run under the memory and CPU limits of its container or pod
-(`deploy/` has a Kubernetes example). Found in the pre-release audit of 0.7.0;
-it was there in every earlier release.
+The same limit, counted in **pairs**, bounds `cluster_points_by_distance`: the
+pairs of points within the distance grow with the square of the points when the
+distance is large, and the distance is the agent's argument. The query runs in
+blocks and is refused once the pairs pass the limit, before the next block is
+allocated (0.8.0 audit: 6,000 points at a distance of 1e9 took two minutes and
+2.3 GB without it).
+
+That is all there is, and it is not a general resource policy: other operations
+are bounded only by their inputs -- hotspot analysis with distance-band weights
+is quadratic in the same way and not yet limited -- and a server exposed over
+HTTP should also run under the memory and CPU limits of its container or pod
+(`deploy/` has a Kubernetes example). The sampling limit was found in the
+pre-release audit of 0.7.0; it was there in every earlier release.
 
 ## What MapSmith records, when you ask it to
 
@@ -290,6 +298,14 @@ are truncated and stripped of control characters before they reach a reply,
 because they are quoted from files nobody named and one of them is interpolated
 into a sentence an agent reads. Treat a recovered chain as testimony to be
 checked, not as an attestation.
+
+The walk reads data, not only JSON: each step it reports re-hashes the output
+beside its record (capped per file), and a hop that misses on a shapefile hashes
+the shapefile at the path its consumer read, to match a record written under the
+digest rule before draft.9. A shapefile that is not on the chain is not read
+(until 0.8.0 every shapefile record in the workspace was hashed on every call).
+A directory container (`.gdb`) is hashed in full, without following symbolic
+links or Windows junctions inside it.
 
 **A third containment exception, and it is the filesystem's.** A workspace on a
 cloud-synced folder (OneDrive, Dropbox) may hold placeholder files that the

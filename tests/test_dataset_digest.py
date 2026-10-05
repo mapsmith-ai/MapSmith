@@ -9,6 +9,7 @@ from hashlib by hand, so the test does not trust the function it checks.
 from __future__ import annotations
 
 import hashlib
+import sys
 
 import geopandas as gpd
 import pytest
@@ -180,3 +181,34 @@ def test_an_ambiguous_shapefile_output_keeps_its_manifest_without_a_digest(
     record = json.loads(Path(manifest).read_text(encoding="utf-8"))
     assert "output" not in record
     assert any("output digest not recorded" in note for note in record["notes"])
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="junctions are a Windows reparse point")
+def test_a_junction_inside_a_container_is_neither_a_member_nor_followed(tmp_path):
+    """Spec section 3.3: links are neither members nor followed, and a junction is one.
+
+    `is_symlink()` is False for a junction, so until 0.8.0 the walk followed it:
+    a junction inside a `.gdb` pointing outside the workspace put files from
+    there into the digest (0.8.0 audit). The size the cap reads counts the same
+    files the digest reads.
+    """
+    import subprocess
+
+    from mapsmith.provenance import dataset_size
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_bytes(b"not part of the geodatabase")
+    gdb = tmp_path / "data.gdb"
+    gdb.mkdir()
+    (gdb / "a.gdbtable").write_bytes(b"1")
+    before = dataset_sha256(gdb)
+    size_before = dataset_size(gdb)
+    done = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(gdb / "jn"), str(outside)],
+        capture_output=True, text=True, check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    assert (gdb / "jn" / "secret.txt").exists(), "the junction was not created"
+    assert dataset_sha256(gdb) == before
+    assert dataset_size(gdb) == size_before

@@ -154,11 +154,65 @@ class _Index:
         #: container are not competing claims about either layer.
         self.layer_claims: dict[tuple[str, str], int] = {}
         self.layered: set[str] = set()
+        #: Shapefile records whose digest under the other rule has not been
+        #: computed, by the normalised path of the output beside them. Computed
+        #: only when a hop misses and names that path (`resolve_alias`): until
+        #: 0.8.0 every lineage call hashed every shapefile in the workspace
+        #: while indexing, whatever the chain (found by the 0.8.0 review and
+        #: audit -- tens of gigabytes on a workspace of large shapefiles).
+        self.pending_shapefiles: dict[str, tuple[Path, dict[str, Any], str]] = {}
+        #: Where relative paths in records are read from: the scan root.
+        self.root: Path | None = None
 
     def prefer(self, digest: str, record: dict[str, Any], came_from: Path) -> None:
         """Make `record` the answer for `digest`, without losing the claim count."""
         self.by_digest[digest] = record
         self.source[digest] = came_from
+
+    def resolve_alias(self, digest: str, path_hint: str | None) -> bool:
+        """Index the shapefile at `path_hint` under the other rule, if that gives `digest`.
+
+        A hop that misses carries the path its consumer read. If a record sits
+        beside a shapefile at that path, its output is hashed now, once, and
+        indexed under the other rule's digest when the file proves it (see
+        `_shapefile_alias`). True when `digest` is now indexed.
+        """
+        if not path_hint or not path_hint.lower().endswith(".shp"):
+            return False
+        hint = Path(path_hint)
+        keys = [_path_key(hint)] if hint.is_absolute() else []
+        if not hint.is_absolute() and self.root is not None:
+            keys.append(_path_key(self.root / hint))
+        # A record names the path its consumer passed, which may be relative to
+        # a directory this walk does not know; then any pending shapefile with
+        # the same file name is a candidate. Safe, because an alias is indexed
+        # only when the file hashes to the record's own digest, and it answers
+        # this hop only when the other rule's digest is exactly the one missed.
+        name = hint.name.lower()
+        keys += [k for k in self.pending_shapefiles if Path(k).name.lower() == name]
+        found = False
+        for key in dict.fromkeys(keys):
+            pending = self.pending_shapefiles.pop(key, None)
+            if pending is None:
+                continue
+            manifest, record, recorded = pending
+            alias = _shapefile_alias(manifest, record, recorded)
+            if alias is None:
+                continue
+            self.by_digest.setdefault(alias, record)
+            self.source.setdefault(alias, manifest)
+            self.claims[alias] = self.claims.get(alias, 0) + 1
+            if alias == digest:
+                found = True
+                break
+        return found
+
+
+def _path_key(path: str | Path) -> str:
+    """One spelling per file: absolute, separators and case as the OS compares them."""
+    import os
+
+    return os.path.normcase(os.path.abspath(str(path)))
 
 
 def _index_by_output(directory: Path) -> _Index:
@@ -175,6 +229,7 @@ def _index_by_output(directory: Path) -> _Index:
     from . import workspace
 
     index = _Index()
+    index.root = directory
 
     # Lazily, and capped before the sort. Sorted by the POSIX form rather than
     # by `Path`, whose ordering is case-folded and separator-dependent, so which
@@ -216,11 +271,9 @@ def _index_by_output(directory: Path) -> _Index:
             index.layer_source.setdefault((digest, layer), manifest)
             index.layer_claims[(digest, layer)] = index.layer_claims.get((digest, layer), 0) + 1
             index.layered.add(digest)
-        alias = _shapefile_alias(manifest, record, digest)
-        if alias is not None:
-            index.by_digest.setdefault(alias, record)
-            index.source.setdefault(alias, manifest)
-            index.claims[alias] = index.claims.get(alias, 0) + 1
+        output = str(manifest)[: -len(MANIFEST_SUFFIX)]
+        if output.lower().endswith(".shp"):
+            index.pending_shapefiles.setdefault(_path_key(output), (manifest, record, digest))
     return index
 
 
@@ -541,6 +594,8 @@ class _Walk:
             )
             return
         record = self.index.by_digest.get(digest)
+        if record is None and self.index.resolve_alias(digest, path_hint):
+            record = self.index.by_digest.get(digest)
         source = self.index.source.get(digest)
         claims = self.index.claims.get(digest, 1)
         seen_as: str | tuple[str, str] = digest
@@ -824,6 +879,14 @@ def lineage(
     root = contained or (Path(scan_root).resolve() if scan_root else target.resolve().parent)
 
     is_container = target.suffix.lower() == ".gdb" and target.is_dir()
+    # A layer becomes part of a file name (`<container>.<layer>.provenance.json`),
+    # and on Windows `:` in a name opens an alternate data stream of another file
+    # (0.8.0 audit). A layer name never needs one, nor a control character.
+    if layer and (":" in layer or any(ord(c) < 32 for c in layer)):
+        raise ValueError(
+            f"layer={layer!r} contains ':' or a control character, which no geodatabase "
+            "layer name holds"
+        )
     if layer and not is_container:
         raise ValueError(
             f"layer={layer!r} was given for {output_path}, which is not a directory "

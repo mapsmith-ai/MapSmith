@@ -994,17 +994,52 @@ def _unit_of(gdf: Any) -> str:
         return "unit"
 
 
+#: Points queried against the tree at a time. Small enough that one block of
+#: ordered pairs stays in memory comfortably before it is halved.
+_PAIR_BLOCK = 2048
+
+
 def _pairs_within(geometries: Any, distance: float) -> Any:
     """Each unordered pair within the distance once: no self-pairs, no mirror.
 
     The tree answers every ordered pair and every point with itself, which on a
     dense layer doubled the pairs and added one per point for nothing: 3,000
     points all within the distance gave nine million (measured by the review).
+
+    Queried in blocks, and refused past the operator's limit
+    (`MAPSMITH_MAX_SAMPLES`, counted in pairs) before the next block is
+    allocated. The number of pairs grows with the square of the points when the
+    distance is large, and the distance is the agent's argument: the 0.8.0
+    audit measured 6,000 points at a distance of 1e9 taking two minutes and
+    2.3 GB, and a layer of a few tens of thousands exhausting memory.
     """
+    import numpy as np
     from shapely import STRtree
 
-    pairs = STRtree(geometries).query(geometries, predicate="dwithin", distance=distance)
-    return pairs[:, pairs[0] < pairs[1]]
+    from .. import limits
+
+    cap = limits.max_samples()
+    tree = STRtree(geometries)
+    blocks, total = [], 0
+    for start in range(0, len(geometries), _PAIR_BLOCK):
+        found = tree.query(
+            geometries[start : start + _PAIR_BLOCK], predicate="dwithin", distance=distance
+        )
+        found[0] += start
+        found = found[:, found[0] < found[1]]
+        total += found.shape[1]
+        if total > cap:
+            raise ValueError(
+                f"a distance of {distance} joins more than {cap:,} pairs of points in this "
+                f"layer, over this server's limit (after {min(start + _PAIR_BLOCK, len(geometries)):,} "
+                f"of {len(geometries):,} points). Use a smaller distance, or ask the operator "
+                f"to raise {limits.MAX_SAMPLES_ENV}: it is a setting of the server, not an "
+                "argument of the tool."
+            )
+        blocks.append(found)
+    if not blocks:
+        return np.empty((2, 0), dtype=np.intp)
+    return np.concatenate(blocks, axis=1)
 
 
 def _clusters_match_the_written_points(output_path: str, max_distance: float) -> Any:

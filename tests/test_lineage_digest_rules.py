@@ -225,3 +225,45 @@ def test_a_layer_for_a_plain_file_is_refused(tmp_path):
     f.write_bytes(b"x")
     with pytest.raises(ValueError, match="not a directory container"):
         lineage(f, scan_root=tmp_path, layer="roads")
+
+
+def test_shapefiles_off_the_chain_are_not_hashed(tmp_path, monkeypatch):
+    """Indexing reads JSON; a shapefile is hashed only when a hop needs it.
+
+    Until 0.8.0 every lineage call hashed every shapefile record's output while
+    indexing, whatever the chain asked about -- tens of gigabytes on a
+    workspace of large shapefiles (0.8.0 review and audit). Three shapefiles
+    unrelated to a parquet chain must now cost nothing.
+    """
+    monkeypatch.chdir(tmp_path)
+    import mapsmith.lineage as lineage_module
+
+    calls = []
+    real = lineage_module.shapefile_digests
+    monkeypatch.setattr(
+        lineage_module, "shapefile_digests", lambda path: calls.append(path) or real(path)
+    )
+    for n in range(3):
+        shp = shapefile(tmp_path, f"other{n}", b"x" * (n + 1))
+        write(Path(str(shp) + ".provenance.json"),
+              record(shp.name, dataset_sha256(shp), [], SPEC_VERSION))
+    src = tmp_path / "a.parquet"
+    src.write_bytes(b"a")
+    out = tmp_path / "b.parquet"
+    out.write_bytes(b"b")
+    write(Path(str(src) + ".provenance.json"), record("a.parquet", sha_file(src), [], SPEC_VERSION))
+    write(Path(str(out) + ".provenance.json"),
+          record("b.parquet", sha_file(out), [{"path": "a.parquet", "sha256": sha_file(src)}],
+                 SPEC_VERSION))
+    result = lineage(str(out), scan_root=str(tmp_path))
+    assert len(result["steps"]) == 2
+    assert calls == [], f"hashed shapefiles that are not on the chain: {calls}"
+
+
+@pytest.mark.parametrize("layer", ["a:b", "roads\x00", "x\ny"])
+def test_a_layer_naming_a_stream_or_holding_control_characters_is_refused(tmp_path, layer):
+    gdb = tmp_path / "data.gdb"
+    gdb.mkdir()
+    (gdb / "a.gdbtable").write_bytes(b"1")
+    with pytest.raises(ValueError, match="control character"):
+        lineage(str(gdb), scan_root=str(tmp_path), layer=layer)

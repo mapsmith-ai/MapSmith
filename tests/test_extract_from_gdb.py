@@ -47,3 +47,43 @@ def test_a_layer_is_extracted_from_a_file_geodatabase_with_its_digest(tmp_path):
     # Against the specification's reference, not the function that wrote it.
     assert entry["sha256"] == reference.dataset_sha256(gdb)
     assert validator.problems(record) == []
+
+
+def test_an_operation_reading_a_single_layer_geodatabase_records_the_layer(tmp_path):
+    """The layer read is recorded even when the caller did not name it.
+
+    A single-layer `.gdb` handed to any operation is read as its only layer,
+    and until 0.8.0 the input carried no `layer`: the lineage walk then met the
+    record of that very layer beside the container and stopped with "records
+    claim this container's digest, but for other layers" (0.8.0 review).
+    """
+    import json
+
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    from mapsmith.engines import vector
+    from mapsmith.lineage import lineage
+
+    gdb = tmp_path / "one.gdb"
+    try:
+        gpd.GeoDataFrame({"n": [1]}, geometry=[Point(500000, 5000000)],
+                         crs="EPSG:32633").to_file(gdb, layer="wells", driver="OpenFileGDB")
+    except Exception as exc:  # noqa: BLE001 -- GDAL builds without the OpenFileGDB writer
+        pytest.skip(f"no OpenFileGDB writer: {exc}")
+    from mapsmith.provenance import dataset_sha256
+
+    # The record a third party, or a per-engine emitter, writes for that layer.
+    (tmp_path / "one.gdb.wells.provenance.json").write_text(json.dumps({
+        "spec_version": "1.0.0-draft.10", "operation": "x", "parameters": {}, "inputs": [],
+        "output": {"path": "one.gdb", "sha256": dataset_sha256(gdb), "layer": "wells"},
+        "engine": {"name": "t", "version": "1"},
+        "verification": [{"name": "result_not_empty", "passed": True, "detail": "1"}],
+        "started_at": "2026-10-05T08:00:00Z", "finished_at": "2026-10-05T08:00:01Z",
+    }), encoding="utf-8")
+    out = tmp_path / "buffered.parquet"
+    result = vector.buffer(str(gdb), 10.0, str(out))
+    manifest = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+    assert manifest["inputs"][0].get("layer") == "wells"
+    walk = lineage(str(out), scan_root=str(tmp_path))
+    assert [step["operation"] for step in walk["steps"]] == ["buffer_layer", "x"], walk["stops"]

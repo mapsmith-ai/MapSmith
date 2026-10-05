@@ -56,6 +56,12 @@ implements; `draft.10` gives each input a role and a configuration of its own.
 
 ### Changed
 
+- **`get_lineage` steps carry `inputs[].argument`, `inputs[].environment` and
+  `output.layer`** when the records hold them.
+- **A shapefile output whose member files are ambiguous** (`out.dbf` beside
+  `out.DBF`, possible only on a case-sensitive filesystem) is written with a
+  manifest that has no `output` digest and a note saying why, instead of a
+  digest that would choose one of the two.
 - **`inputs[].x-mapsmith:environment` is `inputs[].environment`**, the field
   spec `draft.10` defines for the configuration that changed how one input was
   read. Same content; only the name moves, and a reader of 0.7.x records reads
@@ -72,6 +78,30 @@ implements; `draft.10` gives each input a role and a configuration of its own.
 
 ### Fixed
 
+- **`cluster_points_by_distance` is bounded.** The pairs of points within the
+  distance grow with the square of the points when the distance is large, and
+  6,000 points at a distance of 1e9 took two minutes and 2.3 GB. The pairs are
+  now found in blocks and the call is refused once they pass
+  `MAPSMITH_MAX_SAMPLES`, the operator's limit, before memory is spent.
+- **`get_lineage` no longer hashes every shapefile in the workspace.** Since
+  the draft.9 digest rule it computed, while indexing, the other rule's digest
+  of every shapefile record's output, whatever the chain asked about. A
+  shapefile is now hashed only when a hop misses on it.
+- **A Windows junction inside a `.gdb` is not followed.** The digest of a
+  directory container walked into junctions, which `is_symlink()` does not
+  report, so files outside the container could enter its digest. Section 3.3 of
+  the specification says links are neither members nor followed. The size used
+  for the re-hash cap now counts the same files as the digest.
+- **A single-layer `.gdb` read by any operation records its layer.** Every
+  operation now reads a single-layer file geodatabase, not only
+  `extract_layer`, and the input records the layer it read: without it, a
+  lineage walk meeting the record of that layer stopped with a false "records
+  claim this container's digest, but for other layers".
+- **`get_lineage` refuses a `layer` holding `:` or a control character.** On
+  Windows `:` in a file name opens an alternate data stream of another file.
+- **`thin_points` refuses a distance that is not a finite positive number**,
+  like `cluster_points_by_distance`; and `least_cost_path` accepts a start or
+  end given as a single-part MultiPoint, which it used to count as no point.
 - **`zonal_statistics` refuses zones that are not polygons.** Line zones were
   accepted and returned the line's length in pixels as the `count`, with a
   mean over the cells it crossed: a plausible table, and not a zonal
