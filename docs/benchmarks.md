@@ -571,10 +571,15 @@ Five findings are worth more than the score, and all five are ours to state:
    really was EPSG:4326. Seven green checks beside a wrong number, on the one
    operation whose entire purpose is a decision about the coordinate system.
    MapSmith failed it on 2026-08-26 and passes it on 2026-08-27; **both runs are
-   published**. The fix is a computation and not a disclosure — read the chosen
-   operation's accuracy, and where it is negative take one that states a bound —
-   which is why the trap is beatable without any provenance format, and why the
-   independent GeoPandas adapter answers it with the same digits.
+   published**. The fix is a computation and not a disclosure, which is why the
+   trap is beatable without any provenance format. Until 0.8.0 MapSmith's was the
+   one the independent GeoPandas adapter uses -- read the chosen operation's
+   accuracy, and where it is negative take one that states a bound -- and both
+   answered with the same digits, 6.3 m from the truth and inside the tolerance:
+   the operation that states a bound for this datum is valid in Sardinia, not
+   where the station is. From 0.9.0 MapSmith goes through the datum's Greenwich
+   twin, EPSG:4265, whose published 4 m operation covers the station, and lands
+   on the truth.
 
 That set is the honest shape of the transition: trajectory benchmarks could not
 see any of the four, and the suite produced them in its first four days. New

@@ -45,7 +45,7 @@ MapSmith's private output: JSON Schema, a toolchain-free validator, a conformanc
 hundred-line emitter that never imports MapSmith. Records carry `spec_version`, and CI validates
 real MapSmith output against the spec's own validator. The specification is archived and citable
 as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213), a concept DOI that
-resolves to the latest *archived* draft. Records written by 0.8.0 declare `1.0.0-draft.10`, and
+resolves to the latest *archived* draft. Records written by 0.8.0 and 0.9.0 declare `1.0.0-draft.10`, and
 0.7.x's declare `1.0.0-draft.8`; if the DOI shows an earlier one, the archive has not caught up, and the
 [repository](https://github.com/mapsmith-ai/manifest-spec) holds the text they are written against. The names MapSmith puts
 in a record beyond the ones the specification defines — every extension check name, and every
@@ -223,13 +223,16 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.8.0**, which is what that command installs. When `main` runs ahead of
+This page describes **0.9.0**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **`main` is ahead of 0.8.0**
-([`[Unreleased]`](CHANGELOG.md#unreleased)) by one operation, `apportion_by_area`, which moves
-counts and rates from the zones they are reported in to zones that cross them, and by fixes to
-what records say about datum shifts -- one of which changes what `reproject_layer` writes where
-a published operation was applied outside its area. **If you run 0.4.0 to 0.6.1, 0.7.0 and
+have to find out by calling a tool that is not there. **From 0.8.0, 0.9.0** adds
+`apportion_by_area`, which moves counts and rates from the zones they are reported in to zones
+that cross them, and makes a record's `transformation` describe what PROJ did to the data's own
+coordinates rather than to a point chosen from the CRS. **That changes what `reproject_layer`
+writes in two cases**: coordinates outside every published operation's area are no longer
+moved by an operation from elsewhere, and a datum counted from another meridian whose
+operations are published only for its Greenwich twin -- Monte Mario from Rome, EPSG:4806 --
+goes through that twin. The [changelog](CHANGELOG.md#090---2026-10-08) names both. **If you run 0.4.0 to 0.6.1, 0.7.0 and
 later change answers you have**: every position read from a point-registered raster
 (`AREA_OR_POINT=Point`, the USGS and Copernicus DEMs) was half a cell off, and the
 [changelog](CHANGELOG.md) says which operations and why. **From 0.7.x, 0.8.0** adds
@@ -237,6 +240,13 @@ later change answers you have**: every position read from a point-registered ras
 shapefile with its attributes and its CRS, reads any single-layer file geodatabase, and fixes
 operations that accepted the wrong geometry and answered anyway (`zonal_statistics` on line
 zones returned their length as a pixel count).
+
+**If you read manifests, 0.9.0 renames no key**: records still declare `1.0.0-draft.10`.
+Three keys of MapSmith's own are new: `crs_decisions.x-mapsmith:areas_measured_on`, from
+`apportion_by_area`, and `x-mapsmith:ballpark_share` and `x-mapsmith:outside_area_of_use`
+inside `transformation`; so are three check names, all from `apportion_by_area`. A run that
+fails where an earlier run's dataset still sits writes its record beside the earlier one, as
+`<output>.failed.provenance.json`, instead of replacing it.
 
 **If you read manifests, 0.8.0 renames one key**: records declare `1.0.0-draft.10`, and a
 second input's own georeferencing facts, `inputs[].x-mapsmith:environment` on 0.7.x, are
@@ -277,7 +287,7 @@ for it:
 ```json
 {
   "spec_version": "1.0.0-draft.10",
-  "producer": {"name": "mapsmith", "version": "0.8.0"},
+  "producer": {"name": "mapsmith", "version": "0.9.0"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{
@@ -880,7 +890,9 @@ route to offer.
 Every tool that writes a dataset also writes `<output>.provenance.json` beside it and
 verifies its own work — CRS agreement, geometry validity, raster dimensions, count and
 extent invariants — recording the results in the manifest *before* raising anything, so
-the audit trail survives the error.
+the audit trail survives the error. A run that fails before writing, where an earlier
+run's dataset still sits at the path, leaves that run's record in place and writes its own
+as `<output>.failed.provenance.json`; the error names it.
 
 Verification runs on the way in as well. Before an operation touches your data, MapSmith
 checks the failures that produce *plausible* junk: an input with no CRS is refused

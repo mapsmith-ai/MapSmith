@@ -6,6 +6,23 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-08
+
+Records still declare `spec_version` `1.0.0-draft.10`, and no key is renamed.
+Three keys of MapSmith's own are new, each declared with the reason it is not
+a synonym of anything the specification has: `x-mapsmith:areas_measured_on` in
+`crs_decisions`, from `apportion_by_area`, and `x-mapsmith:ballpark_share` and
+`x-mapsmith:outside_area_of_use` inside `crs_decisions.transformation`. Three
+check names are new, all from `apportion_by_area`:
+`x-mapsmith:extensive_total_preserved`, `x-mapsmith:every_source_value_placed`
+and `x-mapsmith:no_zone_gives_more_than_it_holds`. **What
+`reproject_layer` writes changes in two cases**, both described under *Fixed*:
+coordinates outside every published operation's area are no longer moved by
+an operation from elsewhere, and a geographic CRS counted from another
+meridian whose operations are published only for its Greenwich twin
+(EPSG:4806, Monte Mario from Rome) goes through that twin. Shapely 2.1 and
+pyarrow 23.0.1 or later are required.
+
 ### Added
 
 - **`apportion_by_area`: move counts and rates from the zones they are reported
@@ -55,18 +72,22 @@ All notable changes to MapSmith are documented here, in the format of
   a move of no coordinates at all records that nothing was transformed; and a
   check with no data to hand asks where the two CRSs' areas of use overlap.
 - **`reproject_layer` no longer applies an operation outside its area of use,
-  and its output changes where it did.** When PROJ's own choice was a ballpark
-  it substituted the first published operation for the pair, wherever it was
-  valid: NAD27 coordinates in Italy were moved by a Canadian operation, about
-  190 m, and recorded as a 20 m shift. Now it substitutes only an operation
-  whose area of use contains every vertex, and otherwise leaves each point
-  where PROJ does. A geographic CRS counted from Rome, Paris or another
-  meridian (EPSG:4806, 4807 ...) whose operations are published for its
-  Greenwich twin goes through that twin: a station in Piedmont on EPSG:4806
+  and its output changes where it did.** When PROJ's own choice at its probe
+  point was a ballpark it substituted the first published operation for the
+  pair, wherever the data was: WGS 84 data in Madrid moved into EPSG:3003 by
+  the Italian operation came out 84.5 m from PROJ's own result, and WGS 84
+  data in Italy moved into EPSG:27700 by the British one, 248 m. Now it
+  substitutes only an operation whose area of use contains every vertex, and
+  otherwise leaves each point where PROJ does. A geographic CRS counted from
+  another meridian whose operations are published only for its Greenwich twin
+  goes through that twin -- EPSG:4806 (Monte Mario, Rome) and EPSG:4819 (Nord
+  Sahara 1959, Paris) among the 23 tried; NTF Paris, EPSG:4807, has an
+  operation of its own and does not change. A station in Piedmont on EPSG:4806
   now lands on the published 4 m operation's answer, where it was 6.3 m off.
 - **`better_available_m` names only an operation that covers the data and is
-  not installed.** It reported any published operation for the pair, so NAD27
-  data in Italy was told to install a grid for Canada.
+  not installed.** It reported any published operation for the pair: EPSG:4806
+  data in Piedmont was told a 44 m operation needed its grid installed, when
+  that operation needs none and is valid in Sardinia only.
 - **A record written on a failing path no longer claims an earlier run's
   output.** With a dataset already at the output path, a run refused by its
   preconditions, or one that crashed before writing, recorded the digest of
@@ -84,6 +105,10 @@ All notable changes to MapSmith are documented here, in the format of
 - **Shapely 2.1 or later is required** (was 2.0): `apportion_by_area` uses its
   maximum inscribed circle to check that a reprojected target still holds its
   own interior.
+- **pyarrow 23.0.1 or later is required** (was 21), the release fixing
+  CVE-2026-25087, a use-after-free reading Arrow IPC files; MapSmith reads none,
+  and the floor keeps an install at the minimum from carrying it. pytest 9.0.3
+  or later for the test extra.
 
 ## [0.8.0] - 2026-10-05
 

@@ -47,6 +47,26 @@ below:
   record. A misleading record is still the defect this bullet names, so it is
   written here and in the CHANGELOG, and `tests/test_failure_manifest.py`
   injects both failures into every writer the catalogue lists.
+
+  Broken in 0.8.0 and earlier, fixed in 0.9.0, found by our own reviews, two
+  more. First, `crs_decisions.transformation` described the operation PROJ
+  picks at one point chosen from the source CRS -- for EPSG:4326, the middle of
+  the world -- not at the data: WGS 84 data in Europe or England was recorded
+  as a ballpark where PROJ applied a published 1 m or 2 m shift, NAD27
+  coordinates in Italy as a 7 m shift where PROJ applied none, and
+  `reproject_layer` on a datum counted from Rome applied the one published
+  operation, valid in Sardinia, to a station in Piedmont (6.3 m from the
+  mainland operation's answer, inside the 44 m the record stated). Second, a
+  run refused by its preconditions or crashing before it wrote recorded the
+  digest of an earlier run's dataset at the same path as its own output, and
+  replaced that run's record. Neither got an advisory under the criterion
+  below: the record that hid a missing shift needs coordinates outside the area
+  of every published operation, which nearly always means a wrongly declared
+  CRS; the false ballparks warned of an error that was not there; the Rome case
+  stayed inside the accuracy it declared; and the failure records exist only
+  where the tool call has already returned an error. `tests/test_datum.py`
+  now compares the record with PROJ point by point, and
+  `tests/test_failure_record_and_earlier_bytes.py` drives both failure paths.
 - **No credentials in a manifest.** Manifests are meant to be shared — attached
   to a review, a bug report, a paper — so a credential must never reach one.
   Since 0.2.2 that is enforced in two layers, in this order:
@@ -252,6 +272,12 @@ distance is large, and the distance is the agent's argument. The query runs in
 blocks and is refused once the pairs pass the limit, before the next block is
 allocated (0.8.0 audit: 6,000 points at a distance of 1e9 took two minutes and
 2.3 GB without it).
+
+`apportion_by_area` measures areas after densifying edges, and its step is
+bounded by each zone's own size; the vertices densification would produce are
+counted first, and the call is refused above the larger of the same limit and
+32 times the vertices it was given (0.9.0 audit, before release: a 1 m source
+zone and a 200 km target, 381 bytes each, allocated over 4 GiB).
 
 That is all there is, and it is not a general resource policy: other operations
 are bounded only by their inputs, and a server exposed over

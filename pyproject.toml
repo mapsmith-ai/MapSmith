@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mapsmith"
-version = "0.8.0"
+version = "0.9.0"
 description = "Professional-grade GIS geoprocessing over MCP, with verifiable provenance"
 dynamic = ["readme"]
 requires-python = ">=3.12"
@@ -42,7 +42,7 @@ dependencies = [
   # LogicalType that is not recognized"), 20 opens it but reports the type as
   # `Undefined`, and 21 reports `Geometry` with its CRS. Below 21 MapSmith could
   # not read back its own run_sql output.
-  "pyarrow>=21",
+  "pyarrow>=23.0.1",  # security floor: CVE-2026-25087 (IPC read; not a path MapSmith uses)
   # security floor: CVE-2024-41672 bypassed enable_external_access (1.4).
   # 1.5 is the floor for the `geoparquet_version` COPY option, which is how the
   # output flavour becomes OUR decision: 1.4 wrote Parquet's native geometry
@@ -76,7 +76,7 @@ retrieval = []
 # test validates against the NORMATIVE schema as well as the standalone
 # validator, and an importorskip would have quietly left CI checking only
 # the lenient one of the two.
-test = ["pytest>=8.0", "ruff>=0.16,<0.17", "jsonschema>=4.23"]
+test = ["pytest>=9.0.3", "ruff>=0.16,<0.17", "jsonschema>=4.23"]
 
 [project.scripts]
 mapsmith = "mapsmith.server:main"
