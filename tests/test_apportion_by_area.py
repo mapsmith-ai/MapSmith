@@ -565,3 +565,59 @@ def test_the_record_says_how_edges_were_densified(zones, tmp_path):
     vector.apportion_by_area(zones["source"], str(path), str(out), extensive=["population"])
     notes = " ".join(_manifest(out)["notes"])
     assert "densified at" in notes and "before being brought onto the source CRS" in notes
+
+
+# --- the fourth review's cases: seams that are not in degrees -----------------------------------
+
+
+def _fiji_target(tmp_path):
+    ring = gpd.GeoSeries([box(179, -10, 180, -9), box(-180, -10, -179, -9)],
+                         crs="EPSG:4326").to_crs("EPSG:3832").union_all()
+    return _layer(tmp_path, "t", [ring], "EPSG:3832")
+
+
+def test_a_target_torn_by_web_mercators_seam_is_refused(tmp_path):
+    """Web Mercator has its seam at 180 degrees too, in metres: the degrees-only check missed it.
+
+    Before: the target received 5000 from a zone 59 degrees away, and the
+    zone inside it was reported as covered by no target.
+    """
+    zones = gpd.GeoSeries([box(179.2, -9.8, 179.8, -9.2), box(120, -10, 121, -9)],
+                          crs="EPSG:4326").to_crs("EPSG:3857")
+    src = _layer(tmp_path, "s", list(zones), "EPSG:3857", population=[100, 5000])
+    out = tmp_path / "o.parquet"
+    with pytest.raises(ValueError, match=r"target zone\(s\) \[0\].*change area by more than 0\.1%"):
+        vector.apportion_by_area(src, _fiji_target(tmp_path), str(out), extensive=["population"])
+    assert not out.exists()
+
+
+def test_a_target_brought_across_no_seam_is_not_refused(tmp_path):
+    """The same target, onto a UTM zone that holds it whole: 200 of 200."""
+    zones = gpd.GeoSeries([box(179.2, -9.8, 179.8, -9.2), box(-179.8, -9.8, -179.2, -9.2)],
+                          crs="EPSG:4326").to_crs("EPSG:32760")
+    src = _layer(tmp_path, "s", list(zones), "EPSG:32760", population=[100, 100])
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(src, _fiji_target(tmp_path), str(out), extensive=["population"])
+    row = gpd.read_parquet(out).iloc[0]
+    assert (row["population"], row["population_min"]) == pytest.approx((200, 200), rel=1e-6)
+
+
+def test_a_densely_drawn_zone_does_not_pull_the_centre_onto_itself(tmp_path):
+    """30001 vertices against 5: weighted per vertex, the layer was refused as wider than a hemisphere."""
+    dense = shapely_segmentize(box(155, -5, 160, 5), 0.001)
+    src = _layer(tmp_path, "s", [box(0, -5, 5, 5), dense], "EPSG:4326", population=[100, 100])
+    tgt = _layer(tmp_path, "t", [box(-1, -6, 6, 6), box(154, -6, 161, 6)], "EPSG:4326")
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    assert list(gpd.read_parquet(out)["population"]) == pytest.approx([100, 100])
+    plane = _manifest(out)["crs_decisions"]["x-mapsmith:areas_measured_on"]
+    assert 70 < float(plane.split("lon_0=")[1].split(",")[0]) < 90
+
+
+def test_two_longitude_conventions_in_one_crs_are_refused(tmp_path):
+    """0..360 against -180..180: the zone at 180..181 and the target at -180..-179 never met (100 / 0)."""
+    src = _layer(tmp_path, "s", [box(179, -10, 180, -9), box(180, -10, 181, -9)], "EPSG:4326",
+                 population=[100, 100])
+    tgt = _layer(tmp_path, "t", [box(179, -10, 180, -9), box(-180, -10, -179, -9)], "EPSG:4326")
+    with pytest.raises(ValueError, match="0..360, the other in -180..180"):
+        vector.apportion_by_area(src, tgt, str(tmp_path / "o.parquet"), extensive=["population"])

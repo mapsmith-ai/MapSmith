@@ -2964,6 +2964,54 @@ def _ellipsoid_words(crs: Any) -> str:
     return words
 
 
+def _zone_vectors(frame: gpd.GeoDataFrame, geodetic: Any) -> tuple[Any, Any]:
+    """Unit vectors of a layer's zones: one per zone, and one per vertex.
+
+    Each vertex is transformed on its own, so a projected zone across the
+    antimeridian is where it is, not where its ring lands once turned into
+    degrees whole. The zone's vector is the mean of its vertices without the
+    closing one, which repeats the first: weighting every vertex alike moved
+    the centre onto whichever zone was drawn densely, and refused a layer that
+    drawn simply was accepted (third review).
+    """
+    import numpy as np
+    from pyproj import Transformer
+
+    geoms = frame.geometry.to_numpy()
+    parts, part_zone = shapely.get_parts(geoms, return_index=True)
+    rings, ring_part = shapely.get_rings(parts, return_index=True)
+    xy, coord_ring = shapely.get_coordinates(rings, return_index=True)
+    closing = np.r_[coord_ring[1:] != coord_ring[:-1], True]
+    xy, coord_ring = xy[~closing], coord_ring[~closing]
+    zone = part_zone[ring_part[coord_ring]]
+    to_lonlat = Transformer.from_crs(frame.crs, geodetic, always_xy=True)
+    lon, lat = (np.radians(a) for a in to_lonlat.transform(xy[:, 0], xy[:, 1]))
+    vertices = np.column_stack([np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)])
+    sums = np.zeros((len(geoms), 3))
+    np.add.at(sums, zone, vertices)
+    lengths = np.linalg.norm(sums, axis=1)
+    zones = sums[lengths > 0] / lengths[lengths > 0, None]
+    return zones, vertices
+
+
+def _equal_area_plane(centre: Any, geodetic: Any) -> tuple[Any, float, float]:
+    """A Lambert azimuthal equal-area plane centred on a unit vector."""
+    import numpy as np
+    from pyproj.crs import ProjectedCRS
+    from pyproj.crs.coordinate_operation import LambertAzimuthalEqualAreaConversion
+
+    lat0 = float(np.degrees(np.arcsin(np.clip(centre[2], -1, 1))))
+    lon0 = float(np.degrees(np.arctan2(centre[1], centre[0])))
+    name = (f"Lambert azimuthal equal-area, lat_0={lat0:.6f} lon_0={lon0:.6f}, "
+            f"on {_ellipsoid_words(geodetic)}")
+    plane = ProjectedCRS(
+        name=name,
+        conversion=LambertAzimuthalEqualAreaConversion(round(lat0, 6), round(lon0, 6)),
+        geodetic_crs=geodetic,
+    )
+    return plane, lat0, lon0
+
+
 def _is_equal_area(crs: Any) -> bool:
     """Whether areas measured in this projected CRS are areas on its ellipsoid.
 
@@ -3167,9 +3215,10 @@ def apportion_by_area(
     if moved_target:
         x0, y0, x1, y1 = target.total_bounds
         step = float(np.hypot(x1 - x0, y1 - y0)) / 1000 or 1.0
-        target = gpd.GeoDataFrame(
+        target_as_drawn = gpd.GeoDataFrame(
             geometry=shapely.segmentize(target.geometry.to_numpy(), step), crs=target.crs
-        ).to_crs(source.crs)
+        )
+        target = target_as_drawn.to_crs(source.crs)
         densified.append(
             f"the target zones' edges were densified at {step:.6g} units of their own CRS "
             "before being brought onto the source CRS"
@@ -3184,7 +3233,21 @@ def apportion_by_area(
                 f"target zone(s) {crossing[:20]} of {target_path} cross the 180th meridian, and "
                 f"in the source zones' CRS ({verify.crs_label(source.crs)}, in degrees) a ring "
                 "across it reads as the rest of the planet. Put the source zones in a projected "
-                "CRS that covers both sides, or split the target zones at 180 degrees."
+                "CRS that covers both sides; splitting the target zones at 180 degrees also "
+                "works unless a zone contains a pole."
+            )
+    if antimeridian._is_in_degrees(source.crs):
+        # One CRS, two conventions: a zone at 181 in a 0..360 layer and the same
+        # ground at -179 in a -180..180 one do not meet on the plane, and the
+        # value went to nothing with only a non-critical check saying so
+        # (third review: 100 / 0 for 100 / 100).
+        sx = shapely.get_coordinates(source.geometry.to_numpy())[:, 0]
+        tx = shapely.get_coordinates(target.geometry.to_numpy())[:, 0]
+        if (sx.max() > 180 and tx.min() < 0) or (tx.max() > 180 and sx.min() < 0):
+            raise ValueError(
+                f"{source_path} and {target_path} write longitude differently -- one in "
+                "0..360, the other in -180..180 -- so the same ground has two x values and "
+                "the zones would not meet. Rewrite one layer in the other's convention."
             )
 
     source_is_equal_area = _is_equal_area(source.crs)
@@ -3195,24 +3258,13 @@ def apportion_by_area(
             label = f"{source.crs.coordinate_operation.method_name} on {_ellipsoid_words(geodetic)}"
         plane_label = f"{label}, the source CRS, which is equal-area"
     else:
-        from pyproj import Transformer
-        from pyproj.crs import ProjectedCRS
-        from pyproj.crs.coordinate_operation import LambertAzimuthalEqualAreaConversion
-
-        # The centre from the VERTICES, each transformed on its own: a
-        # representative point of a projected zone across the antimeridian,
-        # taken after the whole ring was turned into degrees, lands on the far
-        # side of the world (second review: a 2-degree zone at Fiji was refused
-        # as spanning 162 degrees).
-        to_lonlat = Transformer.from_crs(source.crs, geodetic, always_xy=True)
-
-        def unit_vectors(frame: gpd.GeoDataFrame) -> Any:
-            xy = shapely.get_coordinates(frame.geometry.to_numpy())
-            lon, lat = (np.radians(a) for a in to_lonlat.transform(xy[:, 0], xy[:, 1]))
-            return np.column_stack([np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)])
-
-        source_vectors = unit_vectors(source)
-        mean = source_vectors.mean(axis=0)
+        # The centre from the zones, each from its own vertices transformed one
+        # by one: a representative point of a projected zone across the
+        # antimeridian, taken after the whole ring was turned into degrees,
+        # lands on the far side of the world (second review: a 2-degree zone
+        # at Fiji was refused as spanning 162 degrees).
+        zone_vectors, source_vertices = _zone_vectors(source, geodetic)
+        mean = zone_vectors.mean(axis=0)
         norm = float(np.linalg.norm(mean))
         if norm < 1e-6:
             raise ValueError(
@@ -3220,11 +3272,10 @@ def apportion_by_area(
                 "equal-area plane has them on one side. Split the analysis by region."
             )
         mean /= norm
-        lat0 = float(np.degrees(np.arcsin(mean[2])))
-        lon0 = float(np.degrees(np.arctan2(mean[1], mean[0])))
+        plane, lat0, lon0 = _equal_area_plane(mean, geodetic)
         # Every vertex of both layers within a hemisphere of the centre: beyond
         # it the plane approaches its singular point, the antipode.
-        verts = np.concatenate([source_vectors, unit_vectors(target)])
+        verts = np.concatenate([source_vertices, _zone_vectors(target, geodetic)[1]])
         farthest = float(np.degrees(np.arccos(np.clip(verts @ mean, -1, 1))).max())
         if farthest > 90:
             raise ValueError(
@@ -3232,13 +3283,7 @@ def apportion_by_area(
                 f"{lon0:.2f}): more than a hemisphere, where no single equal-area plane "
                 "measures them reliably. Split the analysis by region."
             )
-        plane_label = (f"Lambert azimuthal equal-area, lat_0={lat0:.6f} lon_0={lon0:.6f}, "
-                       f"on {_ellipsoid_words(geodetic)}")
-        plane = ProjectedCRS(
-            name=plane_label,
-            conversion=LambertAzimuthalEqualAreaConversion(round(lat0, 6), round(lon0, 6)),
-            geodetic_crs=geodetic,
-        )
+        plane_label = plane.name
 
     sx0, sy0, sx1, sy1 = source.total_bounds
     area_step = float(np.hypot(sx1 - sx0, sy1 - sy0)) / 1000 or 1.0
@@ -3259,6 +3304,34 @@ def apportion_by_area(
         # would cut a chord.
         dense = shapely.segmentize(geoms, area_step)
         return gpd.GeoSeries(dense, crs=source.crs).to_crs(plane).area.to_numpy()
+
+    if moved_target:
+        # A target brought into the source CRS keeps its vertices and can lose
+        # its shape: where the source CRS has a seam -- 180 degrees in degrees,
+        # +/-20037508 m in Web Mercator, a pole -- a ring drawn whole in its own
+        # CRS becomes one that goes the long way round. Checked by area, which
+        # needs no knowledge of where any CRS keeps its seam: the area of each
+        # target as drawn, on a plane centred on the targets, against the area
+        # of its image in the source CRS (third review: a Web Mercator source
+        # gave a target at Fiji the value of a zone 59 degrees away).
+        own_zones, _ = _zone_vectors(target_as_drawn, target_as_drawn.crs.geodetic_crs or geodetic)
+        own_centre = own_zones.mean(axis=0)
+        if np.linalg.norm(own_centre) > 1e-6:
+            own_plane, _, _ = _equal_area_plane(
+                own_centre / np.linalg.norm(own_centre),
+                target_as_drawn.crs.geodetic_crs or geodetic,
+            )
+            as_drawn = target_as_drawn.to_crs(own_plane).area.to_numpy()
+            as_moved = area_of(target.geometry.to_numpy())
+            torn = np.flatnonzero(np.abs(as_moved - as_drawn) > 1e-3 * as_drawn)
+            if len(torn):
+                raise ValueError(
+                    f"target zone(s) {torn[:20].tolist()} of {target_path} change area by more "
+                    f"than 0.1% when brought into the source zones' CRS "
+                    f"({verify.crs_label(source.crs)}): they cross a seam of that CRS (the "
+                    "180th meridian, a pole) and would be read the long way round. Put the "
+                    "source zones in a CRS where those targets are drawn whole."
+                )
 
     record.crs_decisions = alignment_decisions(
         source.crs,
@@ -3395,9 +3468,11 @@ def apportion_by_area(
         record.notes.extend(densified)
         checks = []
         # A zone gives out no more than it holds unless the targets overlap over
-        # it. The two sides of this come from different places -- "wholly
-        # inside" from a predicate in the source CRS, the overlap from areas on
-        # the plane -- so it is not an identity: it fails when they disagree.
+        # it. With the per-zone overlap above no input makes this fail -- an
+        # overlap it misses is under 1e-9 of the zone -- so it guards the code,
+        # not the data: it goes red if "wholly inside" (a predicate) and the
+        # overlap (areas on the plane) stop agreeing, which is what removing
+        # the per-zone overlap would do. The sabotage test proves it can.
         excess = given[~overlap] - 1.0
         worst = float(excess.max()) if len(excess) else 0.0
         checks.append(verify.Check(
