@@ -656,12 +656,15 @@ def _datum_shift_check(shift: dict[str, Any]) -> Any:
             "the result can be tens of metres from the true position while every "
             "other check passes. "
             + (
-                f"A published operation with a stated accuracy of {better} m exists "
-                "for this pair but its grid is not installed here: install it "
+                f"A published operation with a stated accuracy of {better} m covers "
+                "these coordinates but its grid is not installed here: install it "
                 "(`projinfo -s <source> -t <target>` names the file) and run again."
                 if better is not None
-                else "PROJ has no published operation for this pair at all, so this "
-                "is the best that can be done - treat the result as unshifted."
+                else "No published operation PROJ knows for this pair covers these "
+                "coordinates. Where the pair has operations elsewhere, data outside "
+                "all of them often means the declared CRS is not the one the "
+                "coordinates are really in: check it before treating the result as "
+                "merely unshifted."
             )
         ),
     )
@@ -1375,9 +1378,10 @@ def reproject_raster(
                     "position. "
                     + (
                         f"A published operation with a stated accuracy of {better} m "
-                        "exists for this pair but its grid is not installed here."
+                        "covers these coordinates but its grid is not installed here."
                         if better is not None
-                        else "PROJ has no published operation for this pair at all."
+                        else "No published operation PROJ knows for this pair covers "
+                        "these coordinates."
                     )
                 )
 

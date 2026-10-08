@@ -136,10 +136,16 @@ def _as_crs(value: Any) -> Any:
     return CRS.from_epsg(code) if code else crs
 
 
-#: How many of the data's own coordinates are asked. Enough to reach the corners
-#: of a layer that straddles the edge of a grid; few enough that asking costs
-#: nothing beside the operation it describes.
-_SAMPLED = 24
+#: The most points PROJ itself is asked at, one a transform. Coverage is checked
+#: at EVERY vertex (vectorised, against the operations' areas of use); these
+#: points only learn which operation PROJ picks where one applies, so they are
+#: spread over the layer's extent, one per occupied cell of a grid this size.
+_ASK_GRID = 8
+
+#: A raster covers its bounds, so its "vertices" are a grid over them this many
+#: to a side: corners and centre alone missed a raster whose corners fell
+#: outside a grid that covered most of it.
+_RASTER_GRID = 11
 
 
 def sample_points(data: Any) -> Any:
@@ -157,36 +163,46 @@ def sample_points(data: Any) -> Any:
     The first two accuse the engine of a shift it did not skip; the third is
     Argleton's trap 021 in our own record, hidden by it.
 
-    Accepts a GeoDataFrame or GeoSeries (their vertices), an array of shapely
-    geometries, or raster bounds as ``(left, bottom, right, top)`` (corners and
-    centre: a raster covers its bounds). Vertices are taken evenly through the
-    layer, never the corners of its bounding box, which can lie where no data is
-    and outside the grid the data is inside.
+    Every vertex, not a sample: 24 taken evenly through the layer missed five
+    Italian vertices among ten thousand Texan ones, and the record said 7 m for
+    all of it (review, 2026-10-08). The closing vertex of each ring is dropped,
+    since it repeats the first. Accepts a GeoDataFrame or GeoSeries, an array of
+    shapely geometries, or raster bounds as ``(left, bottom, right, top)``.
     """
+    import numbers
+
     import numpy as np
     import shapely
 
     if data is None:
         return None
-    if isinstance(data, tuple) and len(data) == 4 and all(isinstance(v, (int, float)) for v in data):
+    if isinstance(data, tuple) and len(data) == 4 and all(isinstance(v, numbers.Real) for v in data):
         left, bottom, right, top = (float(v) for v in data)
-        points = np.array([
-            (left, bottom), (left, top), (right, bottom), (right, top),
-            ((left + right) / 2, (bottom + top) / 2),
-        ])
+        xs = np.linspace(left, right, _RASTER_GRID)
+        ys = np.linspace(bottom, top, _RASTER_GRID)
+        points = np.array([(x, y) for x in xs for y in ys])
     else:
-        geometries = getattr(data, "geometry", data)
-        coordinates = shapely.get_coordinates(np.asarray(geometries, dtype=object))
-        if not len(coordinates):
+        geometries = np.asarray(getattr(data, "geometry", data), dtype=object)
+        geometries = geometries[~shapely.is_missing(geometries)]
+        if not len(geometries):
             return None
-        picked = np.unique(np.linspace(0, len(coordinates) - 1, min(len(coordinates), _SAMPLED)).round().astype(int))
-        points = coordinates[picked]
+        parts = shapely.get_parts(geometries)
+        areal = np.isin(shapely.get_type_id(parts), (shapely.GeometryType.POLYGON,))
+        chunks = []
+        if (~areal).any():
+            chunks.append(shapely.get_coordinates(parts[~areal]))
+        if areal.any():
+            rings = shapely.get_rings(parts[areal])
+            xy, ring = shapely.get_coordinates(rings, return_index=True)
+            closing = np.r_[ring[1:] != ring[:-1], True]
+            chunks.append(xy[~closing])
+        points = np.concatenate(chunks) if chunks else np.empty((0, 2))
     points = points[np.isfinite(points).all(axis=1)]
     return points if len(points) else None
 
 
-def _accuracies(transformer: Any, source_crs: Any, target_crs: Any, points: Any) -> list[float | None]:
-    """The stated accuracy of the operation PROJ used at each point, None where none.
+def _accuracies(transformer: Any, source_crs: Any, target_crs: Any, points: Any) -> list[Any]:
+    """The operation PROJ used at each point: (accuracy or None, its PROJ string).
 
     PROJ reports the operation only after one has been used, so use one.
     `Transformer.accuracy` is -1 until `proj_trans` runs; the honest value comes
@@ -195,13 +211,14 @@ def _accuracies(transformer: Any, source_crs: Any, target_crs: Any, points: Any)
     """
     if points is None or not len(points):
         points = [_probe_point(source_crs, target_crs)]
-    found: list[float | None] = []
+    found: list[Any] = []
     for x, y in points:
         try:
             transformer.transform(float(x), float(y))
-            found.append(transformer.get_last_used_operation().accuracy)
+            used = transformer.get_last_used_operation()
+            found.append((used.accuracy, used.to_proj4()))
         except Exception:  # noqa: BLE001 — no operation to inspect is itself the answer
-            found.append(None)
+            found.append((None, None))
     return found
 
 
@@ -211,18 +228,139 @@ def accuracy_of(transformer: Any, source_crs: Any, points: Any = None, target_cr
     The worst over the points asked: None (or a negative value, PROJ's ballpark)
     if any point got no published operation, else the largest stated accuracy.
     """
-    found = _accuracies(transformer, source_crs, target_crs, points)
+    found = [a for a, _ in _accuracies(transformer, source_crs, target_crs, points)]
     if any(a is None or a < _STATED for a in found):
         return next((a for a in found if a is None or a < _STATED), None)
     return max(found)
 
 
-def _ballpark_share(found: list[float | None]) -> dict[str, int] | None:
-    """How many of the points asked got no datum shift, when it is some and not all."""
-    ballpark = sum(1 for a in found if a is None or a < _STATED)
-    if 0 < ballpark < len(found):
-        return {"ballpark": ballpark, "sampled": len(found)}
-    return None
+def _covers(area: Any, lon: Any, lat: Any) -> Any:
+    """Which points an operation's area of use contains (west > east crosses 180)."""
+    import numpy as np
+
+    if area is None:
+        return np.zeros(len(lon), dtype=bool)
+    across = (lon >= area.west) | (lon <= area.east) if area.west > area.east else (
+        (lon >= area.west) & (lon <= area.east)
+    )
+    return across & (lat >= area.south) & (lat <= area.north)
+
+
+class _Survey:
+    """Where the data is, against what PROJ has for this pair.
+
+    `covered` is per vertex: whether any published operation installed here has
+    an area of use containing it. A vertex no such operation covers is carried
+    across with no datum shift -- PROJ selects among operations by area of use,
+    and falls back to the ballpark outside all of them. `asked` is what PROJ
+    reported at a spread of covered points: which operation it really picked.
+
+    The group is built WITHOUT `area_of_interest`, and that is measured rather
+    than assumed: on EPSG:4806 with the extent of the data the group came back
+    holding only the ballpark -- the 44 m operation disappears (PROJ 9.5.1,
+    2026-08-27). Areas are compared here instead, vertex by vertex.
+    """
+
+    def __init__(self, source_crs: Any, target_crs: Any, points: Any, chooser: Any) -> None:
+        import numpy as np
+        from pyproj import Transformer
+        from pyproj.transformer import TransformerGroup
+
+        self.from_data = points is not None and len(points) > 0
+        if not self.from_data:
+            points = np.array([_probe_point(source_crs, target_crs)], dtype=float)
+        # Longitude from GREENWICH, which is what every area of use is stated
+        # in: the source's own geodetic CRS can count from Rome or Paris
+        # (EPSG:4806 does), and its degrees then sat 12 degrees off every area
+        # they were compared with. The datum shift this hop applies is metres;
+        # an area of use is a box drawn to the nearest hundredth of a degree.
+        from pyproj import CRS
+
+        lon, lat = Transformer.from_crs(source_crs, CRS.from_epsg(4326), always_xy=True).transform(
+            points[:, 0], points[:, 1]
+        )
+        lon = (np.asarray(lon) + 180) % 360 - 180
+        lat = np.asarray(lat)
+        group = TransformerGroup(source_crs, target_crs, always_xy=True)
+        self.stated = [
+            t for t in group.transformers if t.accuracy is not None and t.accuracy >= _STATED
+        ]
+        self.unavailable = [
+            op for op in group.unavailable_operations
+            if op.accuracy is not None and op.accuracy >= _STATED
+        ]
+        self.lon, self.lat = lon, lat
+        self.covered = np.zeros(len(points), dtype=bool)
+        for operation in self.stated:
+            self.covered |= _covers(operation.area_of_use, lon, lat)
+        # One covered point per occupied cell of the layer's extent: PROJ is
+        # asked where each part of the data is, not at evenly spaced indices.
+        candidates = np.flatnonzero(self.covered)
+        self.asked: list[Any] = []
+        if len(candidates):
+            cl, ct = lon[candidates], lat[candidates]
+            span_x = max(float(np.ptp(cl)), 1e-12)
+            span_y = max(float(np.ptp(ct)), 1e-12)
+            cell = (
+                np.minimum(((cl - cl.min()) / span_x * _ASK_GRID).astype(int), _ASK_GRID - 1) * _ASK_GRID
+                + np.minimum(((ct - ct.min()) / span_y * _ASK_GRID).astype(int), _ASK_GRID - 1)
+            )
+            _, first = np.unique(cell, return_index=True)
+            self.asked = _accuracies(chooser, source_crs, target_crs, points[candidates[first]])
+        self.n = len(points)
+        self.uncovered = int((~self.covered).sum())
+
+    @property
+    def ballpark_asked(self) -> bool:
+        return any(a is None or a < _STATED for a, _ in self.asked)
+
+    @property
+    def is_ballpark(self) -> bool:
+        return self.uncovered > 0 or self.ballpark_asked or not self.asked
+
+    @property
+    def accuracy(self) -> float | None:
+        stated = [a for a, _ in self.asked if a is not None and a >= _STATED]
+        return float(max(stated)) if stated and not self.is_ballpark else None
+
+    @property
+    def pipeline(self) -> str | None:
+        strings = {s for _, s in self.asked if s}
+        return strings.pop() if len(strings) == 1 else None
+
+    def share(self) -> dict[str, int] | None:
+        """How many of the data's vertices got no shift, when it is some and not all."""
+        if self.from_data and 0 < self.uncovered < self.n:
+            return {"ballpark": self.uncovered, "checked": self.n}
+        return None
+
+    def better_available(self) -> float | None:
+        """A published operation this machine lacks that would cover what got no shift.
+
+        Only operations whose area of use contains every vertex that went
+        without one: an operation for Canada is not a better answer for NAD27
+        coordinates in Italy, and "install its grid" sent a reader to a
+        download that would change nothing (review, 2026-10-08). Only the
+        UNAVAILABLE ones: an installed operation that covers the data would
+        have been used.
+        """
+        import numpy as np
+
+        lon, lat = self.lon[~self.covered], self.lat[~self.covered]
+        if not len(lon):
+            lon, lat = self.lon, self.lat
+        better = [
+            op.accuracy for op in self.unavailable
+            if np.all(_covers(op.area_of_use, lon, lat))
+        ]
+        return float(min(better)) if better else None
+
+    def covering_all(self) -> list[Any]:
+        """Installed operations whose area of use contains every vertex, best first."""
+        import numpy as np
+
+        whole = [t for t in self.stated if np.all(_covers(t.area_of_use, self.lon, self.lat))]
+        return sorted(whole, key=lambda t: t.accuracy)
 
 
 def _probe_point(source_crs: Any, target_crs: Any = None) -> tuple[float, float]:
@@ -286,23 +424,54 @@ def pipeline_of(transformer: Any) -> str | None:
         return None
 
 
-def _stated_operations(source_crs: Any, target_crs: Any) -> list[Any]:
-    """Every published operation for this pair, best accuracy first.
+def _greenwich_twin(crs: Any) -> Any:
+    """The same datum counted from Greenwich, when this CRS counts from elsewhere.
 
-    No `area_of_interest`, and that is measured rather than assumed. Handing
-    PROJ the data's own extent looks obviously right and makes the answer worse:
-    on EPSG:4806 with the extent of the data the group comes back holding ONLY
-    the ballpark -- the 44 m operation disappears -- so the "better" call would
-    fall back to no datum shift at all. Checked on PROJ 9.5.1, 2026-08-27.
+    EPSG registers Monte Mario twice -- EPSG:4265 from Greenwich, EPSG:4806 from
+    Rome -- as two datums, and publishes the mainland Italian operations for
+    the first only. So for EPSG:4806 PROJ offers a 44 m operation valid in
+    Sardinia and the ballpark, and Argleton's trap 021 (a station in Piedmont)
+    has no operation that covers it. The twin route -- a prime-meridian change,
+    exact, then the published 4 m operation -- lands on the truth to 0.0 m.
+    Until 2026-10-08 MapSmith passed that trap by applying the Sardinian
+    operation in Piedmont: 6.3 m off, inside the tolerance, by luck.
+
+    Found by name in the registry ("Monte Mario (Rome)" -> "Monte Mario") and
+    confirmed by ellipsoid and a Greenwich meridian; None when there is none.
     """
-    from pyproj.transformer import TransformerGroup
+    from contextlib import suppress
 
-    source_crs, target_crs = _as_crs(source_crs), _as_crs(target_crs)
-    return [
-        candidate
-        for candidate in TransformerGroup(source_crs, target_crs, always_xy=True).transformers
-        if candidate.accuracy is not None and candidate.accuracy >= _STATED
-    ]
+    from pyproj import CRS
+    from pyproj.database import query_crs_info
+    from pyproj.enums import PJType
+
+    with suppress(Exception):
+        geodetic = crs.geodetic_crs or crs
+        meridian = geodetic.prime_meridian
+        if meridian is None or meridian.name == "Greenwich" or " (" not in geodetic.name:
+            return None
+        base = geodetic.name.rsplit(" (", 1)[0]
+        for info in query_crs_info(auth_name="EPSG", pj_types=PJType.GEOGRAPHIC_2D_CRS):
+            if info.name != base:
+                continue
+            twin = CRS.from_epsg(int(info.code))
+            if twin.prime_meridian.name == "Greenwich" and twin.ellipsoid == geodetic.ellipsoid:
+                return twin
+    return None
+
+
+def _join_pipelines(*transformers: Any) -> Any:
+    """One transformer that applies these in turn, built from their PROJ strings."""
+    from pyproj import Transformer
+
+    steps = []
+    for transformer in transformers:
+        definition = transformer.to_proj4()
+        if not definition:
+            return None
+        steps.append(definition.removeprefix("+proj=pipeline").strip()
+                     if definition.startswith("+proj=pipeline") else f"+step {definition}")
+    return Transformer.from_pipeline("+proj=pipeline " + " ".join(steps))
 
 
 def best_operation(source_crs: Any, target_crs: Any, points: Any = None) -> tuple[Any, dict[str, Any]]:
@@ -312,6 +481,13 @@ def best_operation(source_crs: Any, target_crs: Any, points: Any = None) -> tupl
     section 3.7 of the manifest specification asks for. ``points`` are the
     data's own coordinates in the source CRS (`sample_points`): the operation
     is asked where the data is.
+
+    It substitutes only an operation whose area of use contains EVERY vertex.
+    Substituting the first published one for the pair applied a Canadian
+    operation to NAD27 coordinates in Italy: the data moved about 190 m and
+    the record said 20 m (review, 2026-10-08). Where no single operation covers
+    the data, the default stays -- it picks per point, as `to_crs` does -- and
+    the record says what part of the data got no shift.
     """
     from pyproj import Transformer
 
@@ -319,37 +495,67 @@ def best_operation(source_crs: Any, target_crs: Any, points: Any = None) -> tupl
     chosen = Transformer.from_crs(source_crs, target_crs, always_xy=True)
     if shares_a_datum(source_crs, target_crs):
         return chosen, _within_one_datum(pipeline_of(chosen))
-    accuracy = accuracy_of(chosen, source_crs, points, target_crs)
-    if accuracy is not None and accuracy >= _STATED:
+    survey = _Survey(source_crs, target_crs, points, chosen)
+    if not survey.is_ballpark:
         return chosen, {
-            "pipeline": pipeline_of(chosen),
-            "accuracy_m": float(accuracy),
+            "pipeline": survey.pipeline or pipeline_of(chosen),
+            "accuracy_m": survey.accuracy,
             "is_ballpark": False,
         }
-
-    stated = _stated_operations(source_crs, target_crs)
-    if not stated:
-        # Every route is a ballpark: there is no datum shift to apply, and
-        # saying so is the only honest answer. Recording `is_ballpark: true`
-        # rather than refusing keeps the operation usable where the caller
-        # knows the datums are equivalent -- the point is that the record says
-        # which case this was.
-        return chosen, {
-            "pipeline": pipeline_of(chosen),
-            "accuracy_m": None,
-            "is_ballpark": True,
+    whole = survey.covering_all() if not survey.uncovered else []
+    if whole:
+        best = whole[0]
+        return best, {
+            "pipeline": pipeline_of(best),
+            "accuracy_m": float(best.accuracy),
+            "is_ballpark": False,
+            # The caller is owed this: the transformation the library would
+            # have picked by itself applied no datum shift, and this one was
+            # chosen instead. Without it the record says the right thing and
+            # hides that anything happened.
+            "x-mapsmith:default_was_ballpark": True,
         }
-    best = stated[0]
-    return best, {
-        "pipeline": pipeline_of(best),
-        "accuracy_m": float(best.accuracy),
-        "is_ballpark": False,
-        # The caller is owed this: the transformation the library would have
-        # picked by itself applied no datum shift, and this one was chosen
-        # instead. Without it the record says the right thing and hides that
-        # anything happened.
-        "x-mapsmith:default_was_ballpark": True,
+    # A datum counted from another meridian: its published operations may be
+    # registered for its Greenwich twin only.
+    twin = _greenwich_twin(source_crs) if not whole else None
+    if twin is not None:
+        import numpy as np
+        from pyproj.transformer import TransformerGroup
+
+        candidates = sorted(
+            (
+                t for t in TransformerGroup(twin, target_crs, always_xy=True).transformers
+                if t.accuracy is not None and t.accuracy >= _STATED
+                and np.all(_covers(t.area_of_use, survey.lon, survey.lat))
+            ),
+            key=lambda t: t.accuracy,
+        )
+        route = (
+            _join_pipelines(Transformer.from_crs(source_crs, twin, always_xy=True), candidates[0])
+            if candidates else None
+        )
+        if route is not None:
+            return route, {
+                "pipeline": pipeline_of(route),
+                "accuracy_m": float(candidates[0].accuracy),
+                "is_ballpark": False,
+                "x-mapsmith:default_was_ballpark": True,
+            }
+    # No datum shift for (part of) these coordinates: saying so is the only
+    # honest answer. Recording `is_ballpark: true` rather than refusing keeps
+    # the operation usable where the caller knows the datums are equivalent.
+    record: dict[str, Any] = {
+        "pipeline": survey.pipeline or pipeline_of(chosen),
+        "accuracy_m": None,
+        "is_ballpark": True,
     }
+    share = survey.share()
+    if share:
+        record[BALLPARK_SHARE] = share
+    better = survey.better_available()
+    if better is not None:
+        record["better_available_m"] = better
+    return chosen, record
 
 
 def default_operation(source_crs: Any, target_crs: Any, points: Any = None) -> dict[str, Any]:
@@ -372,16 +578,15 @@ def default_operation(source_crs: Any, target_crs: Any, points: Any = None) -> d
     chosen = Transformer.from_crs(source_crs, target_crs, always_xy=True)
     if shares_a_datum(source_crs, target_crs):
         return _within_one_datum(pipeline_of(chosen))
-    found = _accuracies(chosen, source_crs, target_crs, points)
-    if all(a is not None and a >= _STATED for a in found):
+    survey = _Survey(source_crs, target_crs, points, chosen)
+    if not survey.is_ballpark:
         return {
-            "pipeline": pipeline_of(chosen),
-            "accuracy_m": float(max(found)),
+            "pipeline": survey.pipeline or pipeline_of(chosen),
+            "accuracy_m": survey.accuracy,
             "is_ballpark": False,
         }
-
     record: dict[str, Any] = {
-        "pipeline": pipeline_of(chosen),
+        "pipeline": survey.pipeline or pipeline_of(chosen),
         "accuracy_m": None,
         "is_ballpark": True,
         # Deliberately not "chosen_by": the engine chose, and this module is
@@ -389,14 +594,13 @@ def default_operation(source_crs: Any, target_crs: Any, points: Any = None) -> d
         # describing an operation that never ran.
         "x-mapsmith:chosen_by": "the engine, not MapSmith",
     }
-    share = _ballpark_share(found)
+    share = survey.share()
     if share:
         record[BALLPARK_SHARE] = share
-    stated = _stated_operations(source_crs, target_crs)
-    if stated:
-        # The distinction that matters to whoever reads this: "there is no datum
-        # shift for this pair" and "there is one and this machine has not got
-        # it" are different problems with different fixes.
-        record["better_available_m"] = float(stated[0].accuracy)
+    # "There is no datum shift for these coordinates" and "there is one and
+    # this machine has not got it" are different problems with different
+    # fixes; only the second is a download.
+    better = survey.better_available()
+    if better is not None:
+        record["better_available_m"] = better
     return record
-

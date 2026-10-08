@@ -165,7 +165,7 @@ changed sides; the rule did not.
 
 | key | why it is not one section 3.7 already has |
 |---|---|
-| `x-mapsmith:ballpark_share` | Not `is_ballpark`, which is one boolean for the whole run: a layer straddling the edge of a datum grid gets a real shift on one side and none on the other, `is_ballpark` says true, and this says how many of the data's sampled coordinates fell on each side -- the difference between a layer that is wrong everywhere and one wrong at its edge. |
+| `x-mapsmith:ballpark_share` | Not `is_ballpark`, which is one boolean for the whole run: a layer straddling the edge of a datum grid gets a real shift on one side and none on the other, `is_ballpark` says true, and this says how many of the data's vertices no installed operation covers, out of how many were checked -- the difference between a layer that is wrong everywhere and one wrong at its edge. |
 | `x-mapsmith:chosen_by` | Not `pipeline`, which says WHAT will run: this says WHO picked it, and it is written only where the answer is `the engine, not MapSmith`. The specification has no key for agency because it assumes one producer reporting one choice; here the engine reaches for PROJ on its own and this module can only report what it will get. |
 | `x-mapsmith:default_was_ballpark` | Not `is_ballpark`, and the two are opposites in the same record: this appears when `is_ballpark` is FALSE precisely because MapSmith declined the default. Without it the record says the right thing -- a real datum shift, with its accuracy -- and hides that the library's own choice would have applied none. |
 

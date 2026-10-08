@@ -384,16 +384,19 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
         record.crs_decisions["transformation"] = shift
         if shift.get("x-mapsmith:default_was_ballpark"):
             record.notes.append(
-                "the transformation this library selects by default for this pair is a "
-                "ballpark one, which applies no datum shift at all; a published operation "
-                f"with a stated accuracy of {shift['accuracy_m']} m was used instead"
+                "the transformation this library selects by default for these coordinates "
+                "is a ballpark one, which applies no datum shift at all; a published "
+                f"operation covering all of them, with a stated accuracy of "
+                f"{shift['accuracy_m']} m, was used instead"
             )
         if shift["is_ballpark"]:
             record.notes.append(
-                "no datum transformation is available for this pair, so the coordinates "
-                "were carried across as if the two datums coincided (PROJ calls this a "
-                "ballpark transformation). The result is not shifted; how far it is from "
-                "the true position depends on the datums and can be tens of metres."
+                "no datum transformation installed here covers "
+                + ("part of these coordinates" if shift.get(datum.BALLPARK_SHARE) else "these coordinates")
+                + ", so they were carried across as if the two datums coincided (PROJ "
+                "calls this a ballpark transformation). That part of the result is not "
+                "shifted; how far it is from the true position depends on the datums and "
+                "can be tens of metres."
             )
         _write(reprojected, output_path)
     # reprojection carries geometry through verbatim, so an invalid input gives

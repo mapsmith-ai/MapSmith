@@ -38,16 +38,48 @@ SHIFTLESS_PAIR = ("EPSG:4326", "EPSG:32633")
 PROJECTED_PAIR = ("EPSG:3003", "EPSG:4326")
 
 
-def test_a_pair_with_no_installed_grid_is_reported_as_a_ballpark():
-    record = datum.default_operation(*BALLPARK_PAIR)
+def test_a_pair_with_no_operation_where_the_data_is_is_reported_as_a_ballpark():
+    """Monte Mario (Rome) has one published operation, 44 m, valid in Sardinia only.
+
+    Until 2026-10-08 this test demanded `better_available_m` here, "the fix is to
+    install its grid". The 44 m operation needs no grid and is installed: for
+    coordinates in mainland Italy PROJ has nothing better to apply, and telling
+    a reader to download something sent them to a file that changes nothing.
+    """
+    gpd = pytest.importorskip("geopandas")
+    from shapely.geometry import box
+
+    # EPSG:4806 counts longitude from Rome (12.4523 E of Greenwich).
+    piemonte = gpd.GeoSeries([box(-4.95, 45.0, -4.45, 45.5)], crs="EPSG:4806")
+    record = datum.default_operation(*BALLPARK_PAIR, datum.sample_points(piemonte))
     assert record["is_ballpark"] is True
     assert record["accuracy_m"] is None
-    # The distinction a reader needs in order to act: "there is no operation for
-    # this pair" and "there is one and this machine has not got it" are
-    # different problems with different fixes.
-    assert record["better_available_m"] > 0, (
-        "a published 44 m operation exists for this pair; saying only "
-        "'ballpark' hides that the fix is to install its grid"
+    assert "better_available_m" not in record
+    # Where the operation is valid, it is what PROJ applies.
+    sardinia = gpd.GeoSeries([box(-3.65, 39.5, -3.25, 40.0)], crs="EPSG:4806")
+    inside = datum.default_operation(*BALLPARK_PAIR, datum.sample_points(sardinia))
+    assert inside["is_ballpark"] is False
+    assert inside["accuracy_m"] == 44.0
+
+
+def test_better_available_names_only_a_missing_grid_that_covers_the_data():
+    """NAD27 in the Bering Sea: no installed operation covers it, a missing grid does.
+
+    That grid's area of use crosses the antimeridian (west 167.7, east -130),
+    so this is also the case a plain west <= lon <= east test gets wrong.
+    """
+    gpd = pytest.importorskip("geopandas")
+    from pyproj.transformer import TransformerGroup
+    from shapely.geometry import box
+
+    group = TransformerGroup("EPSG:4267", "EPSG:4326", always_xy=True)
+    if group.best_available:
+        pytest.skip("this machine has the NAD27 grids installed")
+    alaska_bering = gpd.GeoSeries([box(170, 55, 175, 60)], crs="EPSG:4267")
+    record = datum.default_operation("EPSG:4267", "EPSG:4326", datum.sample_points(alaska_bering))
+    assert record["is_ballpark"] is True
+    assert record.get("better_available_m") is not None, (
+        "a grid-based NAD27 operation for the Bering area exists and is not installed"
     )
 
 
@@ -134,7 +166,13 @@ def test_one_datum_is_not_a_ballpark_whatever_PROJ_reports_as_accuracy(monkeypat
     that only ran the current build would go green on the machine that has the
     old PROJ, which is exactly what happened for a day.
     """
-    monkeypatch.setattr(datum, "accuracy_of", lambda *_: -1.0)
+    # What PROJ reports, at every point it is asked: the ballpark value. Until
+    # 2026-10-08 this patched `accuracy_of`, which `default_operation` had
+    # stopped calling, so the sabotage sabotaged nothing (review).
+    monkeypatch.setattr(
+        datum, "_accuracies",
+        lambda transformer, source, target, points: [(-1.0, None)] * (len(points) if points is not None else 1),
+    )
     record = datum.default_operation(*SHIFTLESS_PAIR)
     assert record["is_ballpark"] is False
     assert record["accuracy_m"] == 0.0
@@ -853,7 +891,7 @@ def test_a_layer_straddling_the_edge_of_a_grid_says_how_much_of_it():
     record = datum.default_operation("EPSG:4267", "EPSG:4326", datum.sample_points(straddle))
     assert record["is_ballpark"] is True
     share = record[datum.BALLPARK_SHARE]
-    assert 0 < share["ballpark"] < share["sampled"]
+    assert 0 < share["ballpark"] < share["checked"]
 
 
 def test_an_operation_records_the_shift_its_own_data_got(tmp_path):
@@ -897,7 +935,7 @@ def test_every_call_site_hands_over_its_data_not_only_its_crs():
             if "alignment_decisions" in names:
                 for node in ast.walk(function):
                     if (isinstance(node, ast.Tuple) and len(node.elts) == 2
-                            and isinstance(node.elts[0], (ast.Constant, ast.Name))):
+                            and isinstance(node.elts[0], (ast.Constant, ast.Name, ast.JoinedStr))):
                         moved = node.elts[1]
                         seen += 1
                         if (isinstance(moved, ast.Attribute) and moved.attr == "crs") or (
@@ -910,5 +948,105 @@ def test_every_call_site_hands_over_its_data_not_only_its_crs():
                     seen += 1
                     if len(call.args) < 3 and not any(k.arg == "points" for k in call.keywords):
                         offenders.append(f"{path.name}:{call.lineno} {name} without points")
+                if name == "record_round_trip":
+                    seen += 1
+                    if len(call.args) < 4 and not any(k.arg == "data" for k in call.keywords):
+                        offenders.append(f"{path.name}:{call.lineno} record_round_trip without data")
     assert seen >= 20, f"the sweep saw only {seen} call sites: it has stopped finding them"
     assert not offenders, offenders
+
+
+
+# --- the review of 2026-10-08: substitute only what covers the data ------------------------------
+
+
+def _layer_file(tmp_path, geometries, crs):
+    gpd = pytest.importorskip("geopandas")
+    path = tmp_path / "in.gpkg"
+    gpd.GeoDataFrame({"n": range(len(geometries))}, geometry=list(geometries), crs=crs).to_file(path)
+    return str(path)
+
+
+def test_reproject_layer_leaves_nad27_in_italy_where_proj_leaves_it(tmp_path):
+    """A Canadian operation was applied to it: the data moved ~190 m and the record said 20 m."""
+    gpd = pytest.importorskip("geopandas")
+    from shapely.geometry import box
+
+    from mapsmith.engines import vector
+
+    source = _layer_file(tmp_path, [box(12, 42, 13, 43)], "EPSG:4267")
+    out = tmp_path / "out.parquet"
+    result = vector.reproject(source, "EPSG:4326", str(out))
+    written = gpd.read_parquet(out)
+    assert written.geometry.iloc[0].equals_exact(box(12, 42, 13, 43), 1e-9)
+    shift = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))["crs_decisions"]["transformation"]
+    assert shift["is_ballpark"] is True
+    assert "better_available_m" not in shift, "no operation for NAD27 covers Italy, installed or not"
+
+
+def test_reproject_layer_shifts_each_part_the_way_proj_does(tmp_path):
+    """Texas and Italy in one layer: Texas gets PROJ's own 7 m shift, Italy none."""
+    gpd = pytest.importorskip("geopandas")
+    from shapely.geometry import box
+
+    from mapsmith.engines import vector
+
+    texas, italy = box(-100, 31, -99, 32), box(12, 42, 13, 43)
+    source = _layer_file(tmp_path, [texas, italy], "EPSG:4267")
+    out = tmp_path / "out.parquet"
+    result = vector.reproject(source, "EPSG:4326", str(out))
+    written = gpd.read_parquet(out)
+    expected = gpd.GeoSeries([texas, italy], crs="EPSG:4267").to_crs("EPSG:4326")
+    for got, want in zip(written.geometry, expected, strict=True):
+        assert got.equals_exact(want, 1e-9)
+    shift = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))["crs_decisions"]["transformation"]
+    assert shift["is_ballpark"] is True
+    share = shift[datum.BALLPARK_SHARE]
+    assert share == {"ballpark": 4, "checked": 8}
+
+
+def test_a_few_vertices_outside_the_grid_among_many_inside_are_seen():
+    """Five Italian vertices among ten thousand Texan ones: 24 sampled points never reached them."""
+    gpd = pytest.importorskip("geopandas")
+    import shapely
+    from shapely.geometry import box
+
+    dense = shapely.segmentize(box(-100, 31, -99, 32), 0.0004)
+    layer = gpd.GeoSeries([dense, box(12, 42, 13, 43), dense], crs="EPSG:4267")
+    record = datum.default_operation("EPSG:4267", "EPSG:4326", datum.sample_points(layer))
+    assert record["is_ballpark"] is True
+    assert record[datum.BALLPARK_SHARE]["ballpark"] == 4
+
+
+def test_a_raster_mostly_inside_a_grid_is_not_reported_wholly_outside_it():
+    """Corners and centre fell outside the ETRS89 area for a raster over Europe and Africa."""
+    record = datum.default_operation(
+        "EPSG:4326", "EPSG:3035", datum.sample_points((-20.0, -35.0, 40.0, 70.0))
+    )
+    assert record["is_ballpark"] is True
+    share = record[datum.BALLPARK_SHARE]
+    assert 0 < share["ballpark"] < share["checked"]
+
+
+
+def test_a_datum_counted_from_rome_takes_its_greenwich_twins_operation(tmp_path):
+    """Argleton's trap 021: a station in Piedmont on Monte Mario (Rome), EPSG:4806.
+
+    PROJ offers EPSG:4806 a 44 m operation valid in Sardinia, and the ballpark.
+    The published mainland operation (4 m) is registered for the Greenwich twin,
+    EPSG:4265: a prime-meridian change, then that operation, gives the truth.
+    Before: the Sardinian operation applied in Piedmont, 6.3 m off.
+    """
+    gpd = pytest.importorskip("geopandas")
+    from shapely.geometry import Point
+
+    from mapsmith.engines import vector
+
+    source = _layer_file(tmp_path, [Point(-3.5, 45.5)], "EPSG:4806")
+    out = tmp_path / "out.parquet"
+    result = vector.reproject(source, "EPSG:4326", str(out))
+    assert gpd.read_parquet(out).geometry.iloc[0].y == pytest.approx(45.500669074, abs=1e-8)
+    shift = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))["crs_decisions"]["transformation"]
+    assert shift["is_ballpark"] is False
+    assert shift["accuracy_m"] == 4.0
+    assert "+pm=rome" in shift["pipeline"]

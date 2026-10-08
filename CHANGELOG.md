@@ -43,11 +43,25 @@ All notable changes to MapSmith are documented here, in the format of
   England to EPSG:27700, was recorded as a ballpark (`is_ballpark: true`) where
   PROJ applied a published 1 m or 2 m shift; and NAD27 coordinates in Italy were
   recorded as a 7 m shift where PROJ applied none -- the error a ballpark record
-  exists to report, hidden by it. Every operation that moves an input now hands
-  the moved layer's coordinates to the check, a layer that straddles the edge
-  of a datum grid is recorded as a ballpark with
-  `x-mapsmith:ballpark_share` saying how much of it, and a check with no data
-  to hand asks where the two CRSs' areas of use overlap.
+  exists to report, hidden by it. Every operation that moves an input now
+  checks every vertex of the moved layer against the areas of use of the
+  operations PROJ has, a layer that straddles the edge of a datum grid is
+  recorded as a ballpark with `x-mapsmith:ballpark_share` saying how many
+  vertices no operation covers, and a check with no data to hand asks where the
+  two CRSs' areas of use overlap.
+- **`reproject_layer` no longer applies an operation outside its area of use,
+  and its output changes where it did.** When PROJ's own choice was a ballpark
+  it substituted the first published operation for the pair, wherever it was
+  valid: NAD27 coordinates in Italy were moved by a Canadian operation, about
+  190 m, and recorded as a 20 m shift. Now it substitutes only an operation
+  whose area of use contains every vertex, and otherwise leaves each point
+  where PROJ does. A geographic CRS counted from Rome, Paris or another
+  meridian (EPSG:4806, 4807 ...) whose operations are published for its
+  Greenwich twin goes through that twin: a station in Piedmont on EPSG:4806
+  now lands on the published 4 m operation's answer, where it was 6.3 m off.
+- **`better_available_m` names only an operation that covers the data and is
+  not installed.** It reported any published operation for the pair, so NAD27
+  data in Italy was told to install a grid for Canada.
 
 ### Changed
 

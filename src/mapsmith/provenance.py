@@ -140,8 +140,9 @@ TRANSFORMATION_EXTENSIONS: dict[str, str] = {
         "Not `is_ballpark`, which is one boolean for the whole run: a layer "
         "straddling the edge of a datum grid gets a real shift on one side and "
         "none on the other, `is_ballpark` says true, and this says how many of "
-        "the data's sampled coordinates fell on each side -- the difference "
-        "between a layer that is wrong everywhere and one wrong at its edge."
+        "the data's vertices no installed operation covers, out of how many "
+        "were checked -- the difference between a layer that is wrong "
+        "everywhere and one wrong at its edge."
     ),
     "x-mapsmith:default_was_ballpark": (
         "Not `is_ballpark`, and the two are opposites in the same record: this "
