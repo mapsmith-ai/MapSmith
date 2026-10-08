@@ -665,6 +665,12 @@ def audit_on_failure(record: Any, output_path: str, preconditions: list[Check]):
     words — which the old form happened to satisfy for the empty case. Appending
     satisfies it for both.
     """
+    from .provenance import output_fingerprint
+
+    # What is at the output path as the run begins: if it is still exactly that
+    # when the run fails, the run never wrote it, and its digest is not this
+    # run's to record (`ProvenanceRecord.write_for`).
+    found_before = output_fingerprint(output_path)
     try:
         yield
     except Exception as failure:
@@ -703,11 +709,11 @@ def audit_on_failure(record: Any, output_path: str, preconditions: list[Check]):
             )
             raise failure from None
         try:
-            record.write_for(output_path)
+            record.write_for(output_path, found_before=found_before)
         except Exception:  # noqa: BLE001 - retried below, reported if that fails too
             try:
                 # Drop the one field whose computation reads the output file.
-                record.write_for(output_path, with_output_digest=False)
+                record.write_for(output_path, with_output_digest=False, found_before=found_before)
             except Exception as lost:  # noqa: BLE001 - the original failure must win
                 # Never silent: the caller gets the engine's error with a note
                 # saying the trail is missing, which is the difference between

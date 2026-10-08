@@ -272,6 +272,24 @@ def alignment_decisions(
     return decisions
 
 
+#: `write_for` was not handed a fingerprint, which is not the same as "no file".
+_NOT_TAKEN = object()
+
+
+def output_fingerprint(path: str | Path) -> tuple[int, int, int] | None:
+    """Size, modification time and file id of what is at the path, or None if nothing is.
+
+    Compared, never trusted alone: equal before and after a run means the run
+    did not rewrite the file. For a shapefile or a .gdb the main file stands for
+    the dataset, which is what a writer replaces first.
+    """
+    try:
+        stat = Path(path).stat()
+    except OSError:
+        return None
+    return (stat.st_size, stat.st_mtime_ns, stat.st_ino)
+
+
 def _crs_and_points(value: Any) -> tuple[Any, Any]:
     """A moved input's CRS, and where its data is when the caller handed the layer."""
     from . import datum
@@ -1022,7 +1040,14 @@ class ProvenanceRecord:
         self.finished_at = _utcnow()
         return self
 
-    def write_for(self, output_path: str | Path, *, with_output_digest: bool = True) -> Path:
+    def write_for(
+        self,
+        output_path: str | Path,
+        *,
+        with_output_digest: bool = True,
+        refused: bool = False,
+        found_before: Any = _NOT_TAKEN,
+    ) -> Path:
         """Write the manifest next to the output it describes.
 
         The record carries the OUTPUT's digest too, computed here — the one
@@ -1049,6 +1074,15 @@ class ProvenanceRecord:
         record without `output` is valid (the schema allows its absence) and
         useless only for checking bytes; a record that was never written is
         useless for everything.
+
+        **A failing run describes only bytes it wrote.** `refused=True` is a run
+        stopped by its preconditions, before anything was written, and
+        `found_before` is the output's fingerprint taken as a run that then
+        crashed began (`verify.audit_on_failure`). In both, a file already at
+        the path is an EARLIER run's: its digest went into this record and a
+        lineage walk by digest (section 6) then attributed those bytes to the
+        inputs of the run that failed (review, 2026-10-08). So `output` is
+        omitted and a note says why.
         """
         # Section 3.8, filled here for the same reason redaction runs here: this
         # is the single point where a manifest becomes a file. `verify.audited`
@@ -1083,6 +1117,18 @@ class ProvenanceRecord:
             self.verification = [verification_absent(self.operation).as_dict()]
         self._record_environment()
         self._redact()
+        stale = Path(output_path).exists() and (
+            refused or (found_before is not _NOT_TAKEN and found_before == output_fingerprint(output_path))
+        )
+        if stale:
+            with_output_digest = False
+            note = (
+                "a file was already at the output path before this run and was not "
+                "rewritten by it: its bytes belong to an earlier run, and this record does "
+                "not describe them"
+            )
+            if note not in self.notes:  # the crash path retries this method
+                self.notes.append(note)
         record = asdict(self)
         if with_output_digest and Path(output_path).exists():
             # After `inputs`, where a reader expects it; through the same

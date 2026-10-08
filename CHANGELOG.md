@@ -67,6 +67,13 @@ All notable changes to MapSmith are documented here, in the format of
 - **`better_available_m` names only an operation that covers the data and is
   not installed.** It reported any published operation for the pair, so NAD27
   data in Italy was told to install a grid for Canada.
+- **A record written on a failing path no longer claims an earlier run's
+  output.** With a dataset already at the output path, a run refused by its
+  preconditions, or one that crashed before writing, recorded the digest of
+  the earlier bytes as its own output -- and a lineage walk by digest then
+  attributed them to the inputs of the run that failed. Such a record now
+  omits `output` and says why in a note; bytes the failing run did write keep
+  their digest, as before.
 
 ### Changed
 
