@@ -772,3 +772,48 @@ def test_a_sliver_nanometres_wide_is_not_read_as_torn(tmp_path, source_crs):
     out = tmp_path / "o.parquet"
     vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
     assert gpd.read_parquet(out)["population"].iloc[0] == pytest.approx(1000 * 1e-5 / 1_440_000, rel=0.2)
+
+
+
+# --- the eighth review's cases: where the inner point is taken -----------------------------------
+
+
+@pytest.mark.parametrize("neck", [1.0, 0.2])
+def test_a_target_with_a_narrow_neck_is_not_read_as_torn(tmp_path, neck):
+    """Two blocks joined by a neck under a metre wide: a point on the surface fell in the neck.
+
+    The chord of a reprojected edge there passed half a metre from it, and the
+    target was refused as crossing a seam it does not cross.
+    """
+    import shapely
+    from pyproj import Transformer
+
+    to_laea = Transformer.from_crs("EPSG:4326", "EPSG:3035", always_xy=True)
+    cx, cy = to_laea.transform(25, 70)
+    blocks = [box(cx - 10_000, cy - 30_000, cx + 10_000, cy - 10_000),
+              box(cx + 20_000, cy + 10_000, cx + 40_000, cy + 30_000)]
+    neck_line = shapely.LineString([(cx + 5_000, cy - 15_000), (cx + 25_000, cy + 15_000)])
+    target = shapely.union_all([*blocks, neck_line.buffer(neck / 2, cap_style="flat")])
+    far = box(*to_laea.transform(-20, 35), *to_laea.transform(-19, 36))
+    tgt = _layer(tmp_path, "t", [target, far], "EPSG:3035")
+    src = _layer(tmp_path, "s", [box(-25, 30, 45, 75)], "EPSG:4326", population=[1000])
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    assert gpd.read_parquet(out)["population"].iloc[0] > 0
+
+
+@pytest.mark.parametrize("source_crs", ["EPSG:3857", "EPSG:6933"])
+def test_a_torn_strip_a_micrometre_wide_is_refused(tmp_path, source_crs):
+    """Under the area floor, and with a tolerance read off the torn image's own extent, it passed."""
+    import shapely
+    from pyproj import Transformer
+
+    to_pacific = Transformer.from_crs("EPSG:4326", "EPSG:3832", always_xy=True)
+    strip = shapely.LineString([to_pacific.transform(179.0, -10.0),
+                                to_pacific.transform(-179.0, -9.0)]).buffer(0.5e-6, cap_style="flat")
+    tgt = _layer(tmp_path, "t", [strip], "EPSG:3832")
+    zones = gpd.GeoSeries([box(178.5, -11, 180, -8.5), box(-180, -11, -178.5, -8.5), box(0, -11, 10, -8.5)],
+                          crs="EPSG:4326").to_crs(source_crs)
+    src = _layer(tmp_path, "s", list(zones), source_crs, population=[100, 100, 5000])
+    with pytest.raises(ValueError, match="no longer hold a point of their own interior"):
+        vector.apportion_by_area(src, tgt, str(tmp_path / "o.parquet"), extensive=["population"])

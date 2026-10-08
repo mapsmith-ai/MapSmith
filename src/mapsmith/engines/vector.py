@@ -3426,15 +3426,22 @@ def apportion_by_area(
         # each target as drawn must be inside its image. By area alone, a
         # target torn across a band where it fills half of it has the area it
         # should, and one 179.95 degrees wide received a zone in Africa (sixth
-        # review). Far outside, not merely outside: on a sliver, the chord of
-        # a reprojected edge can pass a hair on the wrong side of the point.
-        inner = gpd.GeoSeries(
-            shapely.point_on_surface(target_as_drawn.geometry.to_numpy()), crs=target_as_drawn.crs
+        # review). The point is the centre of the largest circle inside the
+        # target, and the tolerance half that circle's radius, both taken
+        # where the target is drawn whole: a tear leaves the centre a whole
+        # radius outside, while the chord of a reprojected edge moves it a
+        # hair. A point on the surface could fall in a neck under a metre
+        # wide, and a tolerance read off the image's extent is the extent of
+        # the tear itself (seventh review).
+        circles = shapely.maximum_inscribed_circle(target_as_drawn.geometry.to_numpy())
+        ends = gpd.GeoSeries(
+            np.concatenate([shapely.get_point(circles, 0), shapely.get_point(circles, 1)]),
+            crs=target_as_drawn.crs,
         ).to_crs(source.crs).to_numpy()
-        x0b, y0b, x1b, y1b = shapely.bounds(moved_geoms).T
-        size = np.hypot(x1b - x0b, y1b - y0b)
-        away = shapely.distance(moved_geoms, inner)
-        torn |= ~(away <= 1e-6 * size)
+        centres, rims = ends[: len(circles)], ends[len(circles):]
+        radius = shapely.distance(centres, rims)
+        away = shapely.distance(moved_geoms, centres)
+        torn |= ~(away <= 0.5 * radius)
         if torn.any():
             raise ValueError(
                 f"target zone(s) {np.flatnonzero(torn)[:20].tolist()} of {target_path} change "

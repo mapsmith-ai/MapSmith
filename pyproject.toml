@@ -34,7 +34,7 @@ dependencies = [
   # with MCP Tasks.
   "mcp>=1.28.1,<2",
   "geopandas>=1.1.2",  # security floor: CVE-2025-69662 (to_postgis)
-  "shapely>=2.0",
+  "shapely>=2.1",
   "pyproj>=3.6",
   "pyogrio>=0.9",
   # 21 is the floor for Parquet's geospatial logical types, which DuckDB writes:

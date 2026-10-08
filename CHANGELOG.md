@@ -33,6 +33,12 @@ All notable changes to MapSmith are documented here, in the format of
   the units) are refused; targets keep their own CRS; and the counts written
   are checked against the pieces they came from.
 
+### Changed
+
+- **Shapely 2.1 or later is required** (was 2.0): `apportion_by_area` uses its
+  maximum inscribed circle to check that a reprojected target still holds its
+  own interior.
+
 ## [0.8.0] - 2026-10-05
 
 Records declare `spec_version` `1.0.0-draft.10`. `draft.9` defines the digest
