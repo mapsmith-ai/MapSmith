@@ -140,9 +140,19 @@ TRANSFORMATION_EXTENSIONS: dict[str, str] = {
         "Not `is_ballpark`, which is one boolean for the whole run: a layer "
         "straddling the edge of a datum grid gets a real shift on one side and "
         "none on the other, `is_ballpark` says true, and this says how many of "
-        "the data's vertices no installed operation covers, out of how many "
-        "were checked -- the difference between a layer that is wrong "
-        "everywhere and one wrong at its edge."
+        "the data's vertices were carried across with no shift, as PROJ's own "
+        "answers show, out of how many were checked -- the difference between "
+        "a layer that is wrong everywhere and one wrong at its edge."
+    ),
+    "x-mapsmith:outside_area_of_use": (
+        "Not `is_ballpark`, which says whether a shift was applied: this says "
+        "how many of the data's vertices lie outside the area of use of every "
+        "operation published for the pair, installed or not. The two part "
+        "company -- outside every area PROJ falls back to the ballpark for some "
+        "pairs and extends a published operation for others -- and either way "
+        "the stated accuracy was never established for those coordinates. Not "
+        "evidence that the declared CRS is wrong: a datum counted from another "
+        "meridian can have its operations published for its Greenwich twin only."
     ),
     "x-mapsmith:default_was_ballpark": (
         "Not `is_ballpark`, and the two are opposites in the same record: this "
@@ -317,7 +327,9 @@ def record_round_trip(record: Any, analysis_crs: Any, returned_to: Any, data: An
         import numpy as np
 
         carried = np.column_stack(out.transform(points[:, 0], points[:, 1]))
-        carried = carried[np.isfinite(carried).all(axis=1)] if len(carried) else None
+        carried = carried[np.isfinite(carried).all(axis=1)]
+        # None, not empty: empty means "no coordinates moved", and these did.
+        carried = carried if len(carried) else None
     record.crs_decisions[ROUND_TRIP] = {
         "transformation": datum.default_operation(returned_to, analysis_crs, points),
         "return_transformation": datum.default_operation(analysis_crs, returned_to, carried),

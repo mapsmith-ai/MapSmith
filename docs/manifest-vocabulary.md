@@ -149,7 +149,7 @@ and two keys that started as synonyms are why this list exists.
 | `x-mapsmith:raster_registration` | Cell registration is not a coordinate system, and section 3.7 has no key for it. Not `environment` either: AREA_OR_POINT is a tag INSIDE the file, so it is data, and section 3.8 says a producer's reading of it goes in `crs_decisions` under the producer's own prefixed key. |
 | `x-mapsmith:raster_registration_reason` | Not `reason`, which belongs to the CRS decision and is already taken. Two different reasons under one key silently replaced each other once, and a test caught it. |
 
-## Extension fields inside `crs_decisions.transformation` (3)
+## Extension fields inside `crs_decisions.transformation` (4)
 
 One level further down, and it is the same rule read again: the prefix follows
 the container. `transformation` is an object section 3.7 defines — four keys
@@ -165,9 +165,10 @@ changed sides; the rule did not.
 
 | key | why it is not one section 3.7 already has |
 |---|---|
-| `x-mapsmith:ballpark_share` | Not `is_ballpark`, which is one boolean for the whole run: a layer straddling the edge of a datum grid gets a real shift on one side and none on the other, `is_ballpark` says true, and this says how many of the data's vertices no installed operation covers, out of how many were checked -- the difference between a layer that is wrong everywhere and one wrong at its edge. |
+| `x-mapsmith:ballpark_share` | Not `is_ballpark`, which is one boolean for the whole run: a layer straddling the edge of a datum grid gets a real shift on one side and none on the other, `is_ballpark` says true, and this says how many of the data's vertices were carried across with no shift, as PROJ's own answers show, out of how many were checked -- the difference between a layer that is wrong everywhere and one wrong at its edge. |
 | `x-mapsmith:chosen_by` | Not `pipeline`, which says WHAT will run: this says WHO picked it, and it is written only where the answer is `the engine, not MapSmith`. The specification has no key for agency because it assumes one producer reporting one choice; here the engine reaches for PROJ on its own and this module can only report what it will get. |
 | `x-mapsmith:default_was_ballpark` | Not `is_ballpark`, and the two are opposites in the same record: this appears when `is_ballpark` is FALSE precisely because MapSmith declined the default. Without it the record says the right thing -- a real datum shift, with its accuracy -- and hides that the library's own choice would have applied none. |
+| `x-mapsmith:outside_area_of_use` | Not `is_ballpark`, which says whether a shift was applied: this says how many of the data's vertices lie outside the area of use of every operation published for the pair, installed or not. The two part company -- outside every area PROJ falls back to the ballpark for some pairs and extends a published operation for others -- and either way the stated accuracy was never established for those coordinates. Not evidence that the declared CRS is wrong: a datum counted from another meridian can have its operations published for its Greenwich twin only. |
 
 ## Extension fields in the other containers (2)
 

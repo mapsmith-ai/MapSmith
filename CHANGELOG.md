@@ -43,12 +43,17 @@ All notable changes to MapSmith are documented here, in the format of
   England to EPSG:27700, was recorded as a ballpark (`is_ballpark: true`) where
   PROJ applied a published 1 m or 2 m shift; and NAD27 coordinates in Italy were
   recorded as a 7 m shift where PROJ applied none -- the error a ballpark record
-  exists to report, hidden by it. Every operation that moves an input now
-  checks every vertex of the moved layer against the areas of use of the
-  operations PROJ has, a layer that straddles the edge of a datum grid is
-  recorded as a ballpark with `x-mapsmith:ballpark_share` saying how many
-  vertices no operation covers, and a check with no data to hand asks where the
-  two CRSs' areas of use overlap.
+  exists to report, hidden by it. Every operation that moves an input now hands
+  over the moved layer, PROJ is asked what it did at a spread of the data's own
+  points, inside and outside the areas of use of the operations it has -- outside
+  them it applies no shift for some pairs (NAD27) and stretches a published
+  operation for others (DHDN, the Swiss grid), so the answer is PROJ's and not
+  inferred. A layer straddling the edge of a datum grid is recorded as a
+  ballpark with `x-mapsmith:ballpark_share` saying how many of its vertices got
+  no shift; `x-mapsmith:outside_area_of_use` says how many lie outside the area
+  of every operation published for the pair, whatever PROJ then did with them;
+  a move of no coordinates at all records that nothing was transformed; and a
+  check with no data to hand asks where the two CRSs' areas of use overlap.
 - **`reproject_layer` no longer applies an operation outside its area of use,
   and its output changes where it did.** When PROJ's own choice was a ballpark
   it substituted the first published operation for the pair, wherever it was

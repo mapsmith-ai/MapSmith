@@ -39,6 +39,12 @@ from typing import Any
 #: got none: a layer straddling the edge of a grid. `is_ballpark` is true, which
 #: is the conservative reading, and this says how much of it.
 BALLPARK_SHARE = "x-mapsmith:ballpark_share"
+#: Inside `transformation`, when some of the data lies outside the area of use
+#: of every operation published for the pair, installed or not. Independent of
+#: `is_ballpark`: outside every area PROJ falls back to the ballpark for some
+#: pairs and extends a published operation for others, and either way the
+#: stated accuracy was not established for those coordinates.
+OUTSIDE_AREA = "x-mapsmith:outside_area_of_use"
 
 # A ballpark operation reports accuracy -1 (or nothing at all). Anything >= 0 is
 # a real, published operation with a stated accuracy in metres.
@@ -147,6 +153,9 @@ _ASK_GRID = 8
 #: outside a grid that covered most of it.
 _RASTER_GRID = 11
 
+#: Features per block when their vertices are extracted.
+_BLOCK = 5000
+
 
 def sample_points(data: Any) -> Any:
     """Coordinates where the data actually is, in its own CRS, or None.
@@ -162,6 +171,9 @@ def sample_points(data: Any) -> Any:
 
     The first two accuse the engine of a shift it did not skip; the third is
     Argleton's trap 021 in our own record, hidden by it.
+
+    Returns None only for None; data with no finite coordinate gives an empty
+    array, and the record then says that nothing was transformed.
 
     Every vertex, not a sample: 24 taken evenly through the layer missed five
     Italian vertices among ten thousand Texan ones, and the record said 7 m for
@@ -185,20 +197,27 @@ def sample_points(data: Any) -> Any:
         geometries = np.asarray(getattr(data, "geometry", data), dtype=object)
         geometries = geometries[~shapely.is_missing(geometries)]
         if not len(geometries):
-            return None
-        parts = shapely.get_parts(geometries)
-        areal = np.isin(shapely.get_type_id(parts), (shapely.GeometryType.POLYGON,))
+            return np.empty((0, 2))
+        # In blocks of features: parts, rings and the per-vertex ring index are
+        # each as large as the layer, and built all at once they peaked at 82
+        # bytes a vertex (review: 828 MB on ten million vertices).
         chunks = []
-        if (~areal).any():
-            chunks.append(shapely.get_coordinates(parts[~areal]))
-        if areal.any():
-            rings = shapely.get_rings(parts[areal])
-            xy, ring = shapely.get_coordinates(rings, return_index=True)
-            closing = np.r_[ring[1:] != ring[:-1], True]
-            chunks.append(xy[~closing])
+        for start in range(0, len(geometries), _BLOCK):
+            parts = shapely.get_parts(geometries[start:start + _BLOCK])
+            areal = np.isin(shapely.get_type_id(parts), (shapely.GeometryType.POLYGON,))
+            if (~areal).any():
+                chunks.append(shapely.get_coordinates(parts[~areal]))
+            if areal.any():
+                rings = shapely.get_rings(parts[areal])
+                xy, ring = shapely.get_coordinates(rings, return_index=True)
+                if len(xy):
+                    closing = np.r_[ring[1:] != ring[:-1], True]
+                    chunks.append(xy[~closing])
         points = np.concatenate(chunks) if chunks else np.empty((0, 2))
-    points = points[np.isfinite(points).all(axis=1)]
-    return points if len(points) else None
+    # Data handed over with no finite coordinate is an empty array, not None:
+    # None means "the caller had no data", and falls back to a probe that
+    # recorded a 7 m shift for coordinates that do not exist (review).
+    return points[np.isfinite(points).all(axis=1)]
 
 
 def _accuracies(transformer: Any, source_crs: Any, target_crs: Any, points: Any) -> list[Any]:
@@ -246,24 +265,49 @@ def _covers(area: Any, lon: Any, lat: Any) -> Any:
     return across & (lat >= area.south) & (lat <= area.north)
 
 
-class _Survey:
-    """Where the data is, against what PROJ has for this pair.
+def _spread(lon: Any, lat: Any, indices: Any) -> Any:
+    """One of these indices per occupied cell of an even grid over their extent."""
+    import numpy as np
 
-    `covered` is per vertex: whether any published operation installed here has
-    an area of use containing it. A vertex no such operation covers is carried
-    across with no datum shift -- PROJ selects among operations by area of use,
-    and falls back to the ballpark outside all of them. `asked` is what PROJ
-    reported at a spread of covered points: which operation it really picked.
+    if not len(indices):
+        return indices
+    cl, ct = lon[indices], lat[indices]
+    span_x = max(float(np.ptp(cl)), 1e-12)
+    span_y = max(float(np.ptp(ct)), 1e-12)
+    cell = (
+        np.minimum(((cl - cl.min()) / span_x * _ASK_GRID).astype(int), _ASK_GRID - 1) * _ASK_GRID
+        + np.minimum(((ct - ct.min()) / span_y * _ASK_GRID).astype(int), _ASK_GRID - 1)
+    )
+    _, first = np.unique(cell, return_index=True)
+    return indices[first]
+
+
+class _Survey:
+    """Where the data is, against what PROJ has for this pair, and what PROJ did.
+
+    Two facts, kept apart because they part company. **Coverage**: whether any
+    installed operation's area of use contains a vertex -- a count over every
+    vertex, taken on cells of a hundredth of a degree (an area of use is a box
+    drawn to that precision, and five million vertices fit in a few thousand
+    cells). **What PROJ did**: asked at one point per occupied cell of the
+    covered vertices and one per cell of the uncovered ones. Outside every
+    area PROJ falls back to the ballpark for some pairs (NAD27) and extends a
+    published operation for others (DHDN, NTF, CH1903+): inferring the
+    ballpark from coverage alone recorded "no shift" for coordinates PROJ had
+    moved -- DHDN in Italy, Milan into the Swiss grid -- which is the worst
+    direction to be wrong in (review, 2026-10-08, round two). So `is_ballpark`
+    comes from PROJ's answers, and coverage says how much of the data each
+    answer stands for.
 
     The group is built WITHOUT `area_of_interest`, and that is measured rather
     than assumed: on EPSG:4806 with the extent of the data the group came back
     holding only the ballpark -- the 44 m operation disappears (PROJ 9.5.1,
-    2026-08-27). Areas are compared here instead, vertex by vertex.
+    2026-08-27). Areas are compared here instead.
     """
 
     def __init__(self, source_crs: Any, target_crs: Any, points: Any, chooser: Any) -> None:
         import numpy as np
-        from pyproj import Transformer
+        from pyproj import CRS, Transformer
         from pyproj.transformer import TransformerGroup
 
         self.from_data = points is not None and len(points) > 0
@@ -272,15 +316,24 @@ class _Survey:
         # Longitude from GREENWICH, which is what every area of use is stated
         # in: the source's own geodetic CRS can count from Rome or Paris
         # (EPSG:4806 does), and its degrees then sat 12 degrees off every area
-        # they were compared with. The datum shift this hop applies is metres;
-        # an area of use is a box drawn to the nearest hundredth of a degree.
-        from pyproj import CRS
-
-        lon, lat = Transformer.from_crs(source_crs, CRS.from_epsg(4326), always_xy=True).transform(
-            points[:, 0], points[:, 1]
-        )
-        lon = (np.asarray(lon) + 180) % 360 - 180
-        lat = np.asarray(lat)
+        # they were compared with. A geographic source already counted from
+        # Greenwich is read as it is: the hop would only cost a transform.
+        meridian = getattr(source_crs, "prime_meridian", None)
+        if source_crs.is_geographic and meridian is not None and meridian.name == "Greenwich":
+            lon, lat = points[:, 0], points[:, 1]
+        else:
+            lon, lat = Transformer.from_crs(source_crs, CRS.from_epsg(4326), always_xy=True).transform(
+                points[:, 0], points[:, 1]
+            )
+        lon = (np.asarray(lon, dtype=float) + 180) % 360 - 180
+        lat = np.asarray(lat, dtype=float)
+        key = np.round(lon * 100).astype(np.int64) * 100_000 + np.round(lat * 100).astype(np.int64)
+        _, first, counts = np.unique(key, return_index=True, return_counts=True)
+        del key
+        #: One real vertex per occupied cell, and how many vertices it stands for.
+        self.lon, self.lat, self.weight = lon[first], lat[first], counts
+        self.points = points[first]
+        self.n = int(counts.sum())
         group = TransformerGroup(source_crs, target_crs, always_xy=True)
         self.stated = [
             t for t in group.transformers if t.accuracy is not None and t.accuracy >= _STATED
@@ -289,49 +342,73 @@ class _Survey:
             op for op in group.unavailable_operations
             if op.accuracy is not None and op.accuracy >= _STATED
         ]
-        self.lon, self.lat = lon, lat
-        self.covered = np.zeros(len(points), dtype=bool)
+        self.covered = np.zeros(len(first), dtype=bool)
         for operation in self.stated:
-            self.covered |= _covers(operation.area_of_use, lon, lat)
-        # One covered point per occupied cell of the layer's extent: PROJ is
-        # asked where each part of the data is, not at evenly spaced indices.
-        candidates = np.flatnonzero(self.covered)
-        self.asked: list[Any] = []
-        if len(candidates):
-            cl, ct = lon[candidates], lat[candidates]
-            span_x = max(float(np.ptp(cl)), 1e-12)
-            span_y = max(float(np.ptp(ct)), 1e-12)
-            cell = (
-                np.minimum(((cl - cl.min()) / span_x * _ASK_GRID).astype(int), _ASK_GRID - 1) * _ASK_GRID
-                + np.minimum(((ct - ct.min()) / span_y * _ASK_GRID).astype(int), _ASK_GRID - 1)
-            )
-            _, first = np.unique(cell, return_index=True)
-            self.asked = _accuracies(chooser, source_crs, target_crs, points[candidates[first]])
-        self.n = len(points)
-        self.uncovered = int((~self.covered).sum())
+            self.covered |= _covers(operation.area_of_use, self.lon, self.lat)
+        published = self.covered.copy()
+        for operation in self.unavailable:
+            published |= _covers(operation.area_of_use, self.lon, self.lat)
+        self.uncovered = int(counts[~self.covered].sum())
+        #: Vertices outside the area of use of EVERY operation published for
+        #: the pair, installed or not: a fact about where the data is,
+        #: whatever the engine then did with them.
+        self.outside = int(counts[~published].sum())
+        inside_at = _spread(self.lon, self.lat, np.flatnonzero(self.covered))
+        outside_at = _spread(self.lon, self.lat, np.flatnonzero(~self.covered))
+        self.asked_inside = (
+            _accuracies(chooser, source_crs, target_crs, self.points[inside_at]) if len(inside_at) else []
+        )
+        self.asked_outside = (
+            _accuracies(chooser, source_crs, target_crs, self.points[outside_at]) if len(outside_at) else []
+        )
+
+    @staticmethod
+    def _ballpark(found: list[Any]) -> bool:
+        return any(a is None or a < _STATED for a, _ in found)
 
     @property
-    def ballpark_asked(self) -> bool:
-        return any(a is None or a < _STATED for a, _ in self.asked)
+    def unshifted(self) -> int:
+        """Vertices carried across with no datum shift, as far as PROJ's answers show.
+
+        The uncovered vertices count when PROJ, asked among them, left any
+        unshifted. A covered vertex PROJ left unshifted -- never seen in 17
+        pairs over 14,400 points -- makes the whole layer count.
+        """
+        if self._ballpark(self.asked_inside):
+            return self.n
+        return self.uncovered if self._ballpark(self.asked_outside) else 0
 
     @property
     def is_ballpark(self) -> bool:
-        return self.uncovered > 0 or self.ballpark_asked or not self.asked
+        return self.unshifted > 0
 
     @property
     def accuracy(self) -> float | None:
-        stated = [a for a, _ in self.asked if a is not None and a >= _STATED]
-        return float(max(stated)) if stated and not self.is_ballpark else None
+        if self.is_ballpark:
+            return None
+        stated = [a for a, _ in self.asked_inside + self.asked_outside if a is not None and a >= _STATED]
+        return float(max(stated)) if stated else None
 
     @property
     def pipeline(self) -> str | None:
-        strings = {s for _, s in self.asked if s}
-        return strings.pop() if len(strings) == 1 else None
+        """The operation string, only when PROJ used one operation everywhere it was asked.
+
+        A layer half shifted and half not names no single operation: recording
+        the shifted half's would tell a reader to move the other half too.
+        """
+        strings = {s for _, s in self.asked_inside + self.asked_outside}
+        return strings.pop() if len(strings) == 1 and None not in strings else None
 
     def share(self) -> dict[str, int] | None:
         """How many of the data's vertices got no shift, when it is some and not all."""
-        if self.from_data and 0 < self.uncovered < self.n:
-            return {"ballpark": self.uncovered, "checked": self.n}
+        if self.from_data and 0 < self.unshifted < self.n:
+            return {"ballpark": self.unshifted, "checked": self.n}
+        return None
+
+    def outside_area(self) -> dict[str, int] | None:
+        """How many vertices no published operation's area of use contains."""
+        if self.from_data and self.outside:
+            return {"vertices": self.outside, "checked": self.n}
         return None
 
     def better_available(self) -> float | None:
@@ -424,6 +501,19 @@ def pipeline_of(transformer: Any) -> str | None:
         return None
 
 
+def _nothing_moved() -> dict[str, Any]:
+    """The record for a move of no coordinates at all: nothing to describe."""
+    return {"pipeline": None, "accuracy_m": None, "is_ballpark": False}
+
+
+def _with_outside(survey: Any, record: dict[str, Any]) -> dict[str, Any]:
+    """Add how much of the data no published operation covers, when some is."""
+    outside = survey.outside_area()
+    if outside:
+        record[OUTSIDE_AREA] = outside
+    return record
+
+
 def _greenwich_twin(crs: Any) -> Any:
     """The same datum counted from Greenwich, when this CRS counts from elsewhere.
 
@@ -495,13 +585,15 @@ def best_operation(source_crs: Any, target_crs: Any, points: Any = None) -> tupl
     chosen = Transformer.from_crs(source_crs, target_crs, always_xy=True)
     if shares_a_datum(source_crs, target_crs):
         return chosen, _within_one_datum(pipeline_of(chosen))
+    if points is not None and not len(points):
+        return chosen, _nothing_moved()
     survey = _Survey(source_crs, target_crs, points, chosen)
     if not survey.is_ballpark:
-        return chosen, {
+        return chosen, _with_outside(survey, {
             "pipeline": survey.pipeline or pipeline_of(chosen),
             "accuracy_m": survey.accuracy,
             "is_ballpark": False,
-        }
+        })
     whole = survey.covering_all() if not survey.uncovered else []
     if whole:
         best = whole[0]
@@ -552,6 +644,7 @@ def best_operation(source_crs: Any, target_crs: Any, points: Any = None) -> tupl
     share = survey.share()
     if share:
         record[BALLPARK_SHARE] = share
+    _with_outside(survey, record)
     better = survey.better_available()
     if better is not None:
         record["better_available_m"] = better
@@ -578,13 +671,15 @@ def default_operation(source_crs: Any, target_crs: Any, points: Any = None) -> d
     chosen = Transformer.from_crs(source_crs, target_crs, always_xy=True)
     if shares_a_datum(source_crs, target_crs):
         return _within_one_datum(pipeline_of(chosen))
+    if points is not None and not len(points):
+        return _nothing_moved()
     survey = _Survey(source_crs, target_crs, points, chosen)
     if not survey.is_ballpark:
-        return {
+        return _with_outside(survey, {
             "pipeline": survey.pipeline or pipeline_of(chosen),
             "accuracy_m": survey.accuracy,
             "is_ballpark": False,
-        }
+        })
     record: dict[str, Any] = {
         "pipeline": survey.pipeline or pipeline_of(chosen),
         "accuracy_m": None,
@@ -597,6 +692,7 @@ def default_operation(source_crs: Any, target_crs: Any, points: Any = None) -> d
     share = survey.share()
     if share:
         record[BALLPARK_SHARE] = share
+    _with_outside(survey, record)
     # "There is no datum shift for these coordinates" and "there is one and
     # this machine has not got it" are different problems with different
     # fixes; only the second is a download.

@@ -626,7 +626,7 @@ def resample(
 _GRID_EPSILON = 1e-9
 
 
-def _datum_shift_check(shift: dict[str, Any]) -> Any:
+def _datum_shift_check(shift: dict[str, Any], source_crs: Any = None) -> Any:
     """Say whether a datum shift was actually applied, in the manifest.
 
     `crs_matches` passes whether or not one was: the output really is in the CRS
@@ -643,6 +643,12 @@ def _datum_shift_check(shift: dict[str, Any]) -> Any:
             critical=False,
         )
     better = shift.get("better_available_m")
+    # rasterio hands over its own CRS class; the meridian lives on pyproj's.
+    source = datum._as_crs(source_crs) if source_crs is not None and better is None else None
+    twin = datum._greenwich_twin(source) if source is not None else None
+    twin_of = (
+        (source.geodetic_crs.prime_meridian.name, verify.crs_label(twin)) if twin is not None else None
+    )
     return verify.Check(
         "x-mapsmith:datum_shift_applied",
         # Not critical: a ballpark is legitimate when the caller knows the two
@@ -660,11 +666,18 @@ def _datum_shift_check(shift: dict[str, Any]) -> Any:
                 "these coordinates but its grid is not installed here: install it "
                 "(`projinfo -s <source> -t <target>` names the file) and run again."
                 if better is not None
-                else "No published operation PROJ knows for this pair covers these "
-                "coordinates. Where the pair has operations elsewhere, data outside "
-                "all of them often means the declared CRS is not the one the "
-                "coordinates are really in: check it before treating the result as "
-                "merely unshifted."
+                else (
+                    f"This datum counts longitude from {twin_of[0]}, and its published "
+                    f"operations are registered for its Greenwich twin, {twin_of[1]}: "
+                    "reproject to that CRS first (an exact change of meridian) and then "
+                    "to the target, which is the route reproject_layer takes."
+                    if twin_of
+                    else "No published operation PROJ knows for this pair covers these "
+                    "coordinates. Where the pair has operations elsewhere, data outside "
+                    "all of them often means the declared CRS is not the one the "
+                    "coordinates are really in: check it before treating the result as "
+                    "merely unshifted."
+                )
             )
         ),
     )
@@ -1332,6 +1345,9 @@ def reproject_raster(
         # rasterio builds its own transformer inside `warp`, so recording the
         # BEST available operation here would describe one that never ran.
         shift = datum.default_operation(src.crs, target_crs, datum.sample_points(tuple(src.bounds)))
+        # Kept for the check after the dataset closes: a closed dataset's
+        # attributes are not something to read (`registration()`).
+        shifted_from = src.crs
         # What is true before any pixel moves. `target_crs` and `transformation`
         # are NOT here: they say where the pixels were put and by which
         # operation, and on 2026-09-23 the same shape was found and fixed in
@@ -1399,7 +1415,7 @@ def reproject_raster(
         # `crs_matches` above passes either way, because the output really is
         # in the CRS that was asked for. That pair of facts IS Argleton trap
         # 021, and it was true of this operation until 2026-09-03.
-        checks.append(_datum_shift_check(shift))
+        checks.append(_datum_shift_check(shift, shifted_from))
         checks.append(
             verify.Check(
                 "result_not_empty",

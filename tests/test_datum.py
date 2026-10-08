@@ -1050,3 +1050,67 @@ def test_a_datum_counted_from_rome_takes_its_greenwich_twins_operation(tmp_path)
     assert shift["is_ballpark"] is False
     assert shift["accuracy_m"] == 4.0
     assert "+pm=rome" in shift["pipeline"]
+
+
+
+# --- the second round of review: what PROJ does outside every area -------------------------------
+
+
+@pytest.mark.parametrize(("source", "target", "points"), [
+    # Lugano and Milan into the Swiss grid: PROJ applies the 1 m Helmert to both.
+    ("EPSG:4326", "EPSG:2056", [(8.95, 46.0), (9.19, 45.46)]),
+    # DHDN coordinates in Italy: PROJ moves them with a German operation.
+    ("EPSG:4314", "EPSG:4326", [(12.5, 42.5), (12.6, 42.6)]),
+])
+def test_a_shift_proj_applies_outside_every_area_is_not_recorded_as_none(source, target, points):
+    """Inferred from coverage alone, these were "no shift" where PROJ shifted them by 156 m.
+
+    Outside every area of use PROJ falls back to the ballpark for some pairs and
+    extends a published operation for others: what it did is asked of PROJ, and
+    the record says separately that the data lies outside the published areas.
+    """
+    import numpy as np
+
+    record = datum.default_operation(source, target, np.array(points, dtype=float))
+    assert record["is_ballpark"] is False
+    assert record["accuracy_m"] is not None
+    assert record[datum.OUTSIDE_AREA]["vertices"] >= 1
+
+
+def test_nad27_in_italy_is_both_unshifted_and_outside_every_area():
+    import numpy as np
+
+    record = datum.default_operation("EPSG:4267", "EPSG:4326", np.array([(12.5, 42.5)]))
+    assert record["is_ballpark"] is True
+    assert record[datum.OUTSIDE_AREA] == {"vertices": 1, "checked": 1}
+
+
+def test_a_layer_of_empty_polygons_goes_through_an_operation(tmp_path):
+    """Empty rings crashed the vertex extraction with a raw IndexError and no manifest."""
+    pytest.importorskip("geopandas")
+    from shapely.geometry import Polygon, box
+
+    from mapsmith.engines import vector
+
+    mask = _layer_file(tmp_path, [Polygon()], "EPSG:4267")
+    layer = tmp_path / "layer.gpkg"
+    import geopandas as gpd
+
+    gpd.GeoDataFrame({"n": [1]}, geometry=[box(12, 42, 13, 43)], crs="EPSG:4326").to_file(layer)
+    vector.clip(str(layer), mask, str(tmp_path / "out.parquet"))
+    record = datum.default_operation("EPSG:4267", "EPSG:4326", datum.sample_points([Polygon()]))
+    assert record == {"pipeline": None, "accuracy_m": None, "is_ballpark": False}, (
+        "no coordinates moved, and the record says nothing was transformed rather than a probe's 7 m"
+    )
+
+
+def test_the_raster_hint_names_the_greenwich_twin():
+    """A correctly declared EPSG:4806 raster was told its CRS was probably wrong."""
+    from pyproj import CRS
+
+    from mapsmith.engines import raster
+
+    shift = datum.default_operation("EPSG:4806", "EPSG:4326", datum.sample_points((-3.6, 45.4, -3.4, 45.6)))
+    assert shift["is_ballpark"] is True
+    check = raster._datum_shift_check(shift, CRS.from_epsg(4806))
+    assert "EPSG:4265" in check.hint and "Rome" in check.hint
