@@ -1177,3 +1177,47 @@ def test_coverage_counts_are_exact_against_a_vertex_by_vertex_pass(pair):
     )
     assert survey.n == len(points)
     assert survey.uncovered == int((~covered).sum())
+
+
+
+# --- the fourth round: keys that collide, and what PROJ compares a projected point with -----------
+
+
+def test_a_cell_south_of_null_island_is_not_mistaken_for_the_edge_bucket():
+    """The edge vertices were grouped under key -1, which is also cell (0.00, -0.01)."""
+    import numpy as np
+
+    points = np.array([(-44.004, 50.0), (-44.006, 50.1), (0.001, -0.009), (0.002, -0.011)])
+    record = datum.default_operation("EPSG:4267", "EPSG:4326", points)
+    assert record["is_ballpark"] is True, "PROJ applies no shift at the two points near (0, 0)"
+    assert record[datum.BALLPARK_SHARE] == {"ballpark": 2, "checked": 4}
+
+
+def test_a_projected_layer_is_judged_by_the_area_reprojected_into_its_crs():
+    """EPSG:3035 at 40N: PROJ applies the 1 m operation to 41.04E, past the 38.01E edge in degrees.
+
+    Judged in degrees, 50 vertices in that band and 2 beyond it were one class,
+    and the 2 PROJ left unshifted were hidden: is_ballpark false, 1 m.
+    """
+    import numpy as np
+    from pyproj import Transformer
+
+    lon = np.r_[10.0, 11.0, np.linspace(38.05, 41.02, 50), 41.07, 41.09]
+    x, y = Transformer.from_crs("EPSG:4326", "EPSG:3035", always_xy=True).transform(lon, np.full(len(lon), 40.0))
+    record = datum.default_operation("EPSG:3035", "EPSG:4326", np.column_stack([x, y]))
+    assert record["is_ballpark"] is True
+    assert record[datum.BALLPARK_SHARE] == {"ballpark": 2, "checked": 54}
+
+
+def test_a_layer_partly_without_any_operation_and_partly_without_its_grid_says_both():
+    """One NAD27 vertex under a grid not installed here, one in Italy: "installed or not" was false of the first."""
+    reason, all_outside = datum.why_unshifted({
+        "is_ballpark": True,
+        datum.BALLPARK_SHARE: {"ballpark": 2, "checked": 3},
+        datum.OUTSIDE_AREA: {"vertices": 1, "checked": 3},
+    })
+    assert all_outside is False and "not installed here" in reason
+    reason, all_outside = datum.why_unshifted({
+        "is_ballpark": True, datum.OUTSIDE_AREA: {"vertices": 1, "checked": 1},
+    })
+    assert all_outside is True and "installed or not" in reason

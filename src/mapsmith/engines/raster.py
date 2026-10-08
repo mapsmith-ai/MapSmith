@@ -677,11 +677,19 @@ def _datum_shift_check(shift: dict[str, Any], twin: tuple[str, str] | None = Non
                     "reproject to that CRS first (an exact change of meridian) and then "
                     "to the target, which is the route reproject_layer takes."
                     if twin_of
-                    else "No published operation PROJ knows for this pair covers these "
-                    "coordinates. Where the pair has operations elsewhere, data outside "
-                    "all of them often means the declared CRS is not the one the "
-                    "coordinates are really in: check it before treating the result as "
-                    "merely unshifted."
+                    else (
+                        "PROJ applied no shift to these coordinates because "
+                        + datum.why_unshifted(shift)[0]
+                        + "."
+                        + (
+                            " Where the pair has operations elsewhere, data outside all of "
+                            "them often means the declared CRS is not the one the "
+                            "coordinates are really in: check it before treating the "
+                            "result as merely unshifted."
+                            if datum.why_unshifted(shift)[1]
+                            else ""
+                        )
+                    )
                 )
             )
         ),

@@ -394,9 +394,7 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
                 ("part of these coordinates was" if shift.get(datum.BALLPARK_SHARE) else "these coordinates were")
                 + " carried across as if the two datums coincided (PROJ calls this a "
                 "ballpark transformation), because "
-                + ("no published datum transformation applies to them, installed or not. "
-                   if shift.get(datum.OUTSIDE_AREA) else
-                   "no datum transformation installed here applies to them. ")
+                + datum.why_unshifted(shift)[0] + ". "
                 + ("That part of the result is" if shift.get(datum.BALLPARK_SHARE) else "The result is")
                 + " not shifted; how far it is from the true position depends on the datums "
                 "and can be tens of metres."

@@ -306,6 +306,8 @@ class _Survey:
     """
 
     def __init__(self, source_crs: Any, target_crs: Any, points: Any, chooser: Any) -> None:
+        from contextlib import suppress
+
         import numpy as np
         from pyproj.transformer import TransformerGroup
 
@@ -317,7 +319,6 @@ class _Survey:
         # (EPSG:4806 does), and its degrees then sat 12 degrees off every area
         # they were compared with. A geographic source already counted from
         # Greenwich is read as it is: the hop would only cost a transform.
-        lon, lat = _greenwich_lonlat(source_crs, points)
         group = TransformerGroup(source_crs, target_crs, always_xy=True)
         self.stated = [
             t for t in group.transformers if t.accuracy is not None and t.accuracy >= _STATED
@@ -326,47 +327,80 @@ class _Survey:
             op for op in group.unavailable_operations
             if op.accuracy is not None and op.accuracy >= _STATED
         ]
-        # Coverage is EXACT for every vertex. On cells of a hundredth of a
-        # degree judged by one vertex each, a cell an area's edge runs through
-        # hid the vertices on its other side -- NAD27 at -43.996 recorded as a
-        # 20 m shift beside -44.004 (review, round three). So the vertices of
-        # the cells an edge can cross are judged one by one, and every other
-        # cell, which lies wholly inside or wholly outside each area, by one
-        # of its vertices: exact, at the cost of the few cells on an edge.
         operations = [*self.stated, *self.unavailable]
-        klon = np.round(lon * 100).astype(np.int64)
-        klat = np.round(lat * 100).astype(np.int64)
-        edge_lon = sorted({
-            round(v * 100) + d for op in operations if op.area_of_use is not None
-            for v in (op.area_of_use.west, op.area_of_use.east) for d in (-1, 0, 1)
-        })
-        edge_lat = sorted({
-            round(v * 100) + d for op in operations if op.area_of_use is not None
-            for v in (op.area_of_use.south, op.area_of_use.north) for d in (-1, 0, 1)
-        })
-        on_edge = np.isin(klon, edge_lon) | np.isin(klat, edge_lat)
-        cell = klon * 100_000 + klat
-        del klon, klat
-        _, rest_first, rest_counts = np.unique(
-            np.where(on_edge, -1, cell), return_index=True, return_counts=True
+        # Each operation's area, in the frame PROJ compares a point with. For a
+        # geographic source that is longitude and latitude from Greenwich; for
+        # a PROJECTED one it is the area's envelope reprojected into the source
+        # CRS, 21 points a side -- not the box in degrees: between the two lies
+        # a band where PROJ shifts and the degrees said "outside", and an
+        # EPSG:3035 layer past 38E hid two unshifted vertices among fifty
+        # (review, round four).
+        if source_crs.is_geographic:
+            u, v = _greenwich_lonlat(source_crs, points)
+            step = 0.01
+            boxes = {
+                id(op): (a.west, a.south, a.east, a.north, a.west > a.east)
+                for op in operations if (a := op.area_of_use) is not None
+            }
+        else:
+            from pyproj import CRS, Transformer
+
+            u, v = np.asarray(points[:, 0], dtype=float), np.asarray(points[:, 1], dtype=float)
+            step = max(float(np.ptp(u)), float(np.ptp(v)), 1e-9) / 2000
+            into = Transformer.from_crs(CRS.from_epsg(4326), source_crs, always_xy=True)
+            boxes = {}
+            for op in operations:
+                a = op.area_of_use
+                if a is None:
+                    continue
+                with suppress(Exception):
+                    left, bottom, right, top = into.transform_bounds(
+                        a.west, a.south, a.east, a.north, densify_pts=21
+                    )
+                    if all(math.isfinite(x) for x in (left, bottom, right, top)):
+                        boxes[id(op)] = (left, bottom, right, top, False)
+
+        def inside(op: Any, uu: Any, vv: Any) -> Any:
+            box = boxes.get(id(op))
+            if box is None:
+                return np.zeros(len(uu), dtype=bool)
+            west, south, east, north, wraps = box
+            across = (uu >= west) | (uu <= east) if wraps else (uu >= west) & (uu <= east)
+            return across & (vv >= south) & (vv <= north)
+
+        # Coverage is EXACT for every vertex. On cells judged by one vertex
+        # each, a cell an area's edge runs through hid the vertices on its
+        # other side -- NAD27 at -43.996 recorded as a 20 m shift beside
+        # -44.004 (review, round three). So the vertices of the cells an edge
+        # can cross are judged one by one, and every other cell, wholly inside
+        # or wholly outside each area, by one of its vertices.
+        ku = np.round(u / step).astype(np.int64)
+        kv = np.round(v / step).astype(np.int64)
+        edge_u = sorted({round(box[i] / step) + d for box in boxes.values() for i in (0, 2) for d in (-1, 0, 1)})
+        edge_v = sorted({round(box[i] / step) + d for box in boxes.values() for i in (1, 3) for d in (-1, 0, 1)})
+        on_edge = np.isin(ku, edge_u) | np.isin(kv, edge_v)
+        off = np.flatnonzero(~on_edge)
+        # Only the off-edge vertices are grouped by cell: a sentinel key for
+        # the edge vertices collided with a real cell (review, round four).
+        _, first, rest_counts = np.unique(
+            (ku[off] - ku.min()) * (int(kv.max() - kv.min()) + 1) + (kv[off] - kv.min()),
+            return_index=True, return_counts=True,
         )
-        # The -1 bucket holds every edge vertex; drop it from the cells.
-        keep = ~on_edge[rest_first]
-        rest_first, rest_counts = rest_first[keep], rest_counts[keep]
+        rest_first = off[first]
         exact = np.flatnonzero(on_edge)
-        del cell, on_edge
+        del ku, kv, on_edge, off
         # Each group: one vertex per off-edge cell weighted by the cell's
         # count, and every edge vertex weighted one.
         index = np.concatenate([rest_first, exact])
         weight = np.concatenate([rest_counts, np.ones(len(exact), dtype=rest_counts.dtype)])
-        glon, glat = lon[index], lat[index]
+        gu, gv = u[index], v[index]
         covered = np.zeros(len(index), dtype=bool)
         #: Installed operations whose area contains every vertex, best first.
         self.whole = []
         for operation in self.stated:
-            inside = _covers(operation.area_of_use, glon, glat)
-            covered |= inside
-            if inside.all():
+            mask = inside(operation, gu, gv)
+            covered |= mask
+            if mask.all():
                 self.whole.append(operation)
         self.whole.sort(key=lambda t: t.accuracy)
         published = covered.copy()
@@ -374,10 +408,11 @@ class _Survey:
         #: installed operation covers -- the only kind a download would help.
         self.better: list[float] = []
         for operation in self.unavailable:
-            inside = _covers(operation.area_of_use, glon, glat)
-            published |= inside
-            if inside[~covered].all() if (~covered).any() else inside.all():
+            mask = inside(operation, gu, gv)
+            published |= mask
+            if mask[~covered].all() if (~covered).any() else mask.all():
                 self.better.append(float(operation.accuracy))
+        glon, glat = gu, gv
         self.lon, self.lat, self.weight = glon, glat, weight
         self.points = points[index]
         self.n = int(weight.sum())
@@ -521,6 +556,30 @@ def pipeline_of(transformer: Any) -> str | None:
         return transformer.to_proj4() or None
     except Exception:  # noqa: BLE001 — a missing pipeline string is not a failure
         return None
+
+
+def why_unshifted(shift: dict[str, Any]) -> tuple[str, bool]:
+    """Why the coordinates a record calls unshifted got no shift, and whether all lie outside.
+
+    Three cases a reader acts on differently, told apart by the record's own
+    counts: every unshifted vertex outside the area of every published
+    operation (nothing to install; check the declared CRS), none outside (an
+    installed operation was not used, or a missing one would cover them), or
+    some of each -- where "installed or not" said of all of them was false of
+    the ones a download would fix (review, round four).
+    """
+    share = shift.get(BALLPARK_SHARE)
+    outside = shift.get(OUTSIDE_AREA)
+    unshifted = share["ballpark"] if share else (outside["checked"] if outside else None)
+    if outside and unshifted is not None and outside["vertices"] >= unshifted:
+        return "no published datum transformation applies to them, installed or not", True
+    if outside:
+        reason = (
+            "no published datum transformation applies to some of them, and for the rest "
+            "one exists that is not installed here"
+        )
+        return reason, False
+    return "no datum transformation installed here applies to them", False
 
 
 def _nothing_moved() -> dict[str, Any]:
