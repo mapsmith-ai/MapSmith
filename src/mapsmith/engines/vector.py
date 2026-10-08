@@ -140,7 +140,7 @@ def buffer(input_path: str, distance_meters: float, output_path: str) -> dict[st
         # `record_round_trip`. It goes here rather than beside the `to_crs`
         # because `record.crs_decisions` is assigned by whichever branch really
         # ran, and the Esri branch below discards `buffered` without travelling.
-        record_round_trip(record, analysis_crs, original_crs)
+        record_round_trip(record, analysis_crs, original_crs, gdf)
 
     if routing["stack"] == "esri":
         # The backend computes; verification and the manifest stay MapSmith's.
@@ -272,7 +272,7 @@ def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
         "the mask is brought to the input layer's CRS before clipping"
         if aligned
         else "the mask is already in the input layer's CRS; nothing was reprojected",
-        [("mask_path", mask.crs)] if aligned else [],
+        [("mask_path", mask)] if aligned else [],
     )
     if aligned:
         mask = mask.to_crs(gdf.crs)
@@ -310,7 +310,7 @@ def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
     }
 
 
-def _datum_transformation(source_crs, target_crs) -> tuple[Any, dict[str, Any]]:
+def _datum_transformation(source_crs, target_crs, points=None) -> tuple[Any, dict[str, Any]]:
     """The transformation to use here, and the record of which one it is.
 
     Thin on purpose. The reasoning, the measurements and the ballpark fallback
@@ -323,7 +323,7 @@ def _datum_transformation(source_crs, target_crs) -> tuple[Any, dict[str, Any]]:
     """
     from .. import datum
 
-    return datum.best_operation(source_crs, target_crs)
+    return datum.best_operation(source_crs, target_crs, points)
 
 
 def _transformed(geometry, transformer):
@@ -354,7 +354,7 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
     from pyproj import CRS as _CRS
 
     target = _CRS.from_user_input(target_crs)
-    transformer, shift = _datum_transformation(gdf.crs, target)
+    transformer, shift = _datum_transformation(gdf.crs, target, datum.sample_points(gdf))
     # The field section 3.7 of the manifest spec calls "where this format earns
     # its keep", and which this operation left empty until 2026-08-27 -- the one
     # operation whose entire purpose IS a decision about the CRS.
@@ -479,7 +479,7 @@ def overlay(
         "the overlay layer is brought to the input CRS before overlaying"
         if aligned
         else "both layers are already in this CRS; nothing was reprojected",
-        [("overlay_path", right.crs)] if aligned else [],
+        [("overlay_path", right)] if aligned else [],
     )
     if aligned:
         right = right.to_crs(left.crs)
@@ -625,7 +625,7 @@ def nearest_join(
         verify.enforce(pre, "nearest_join")
 
     original_crs = left.crs
-    moved_right = [] if verify.same_crs(right.crs, left.crs) else [("right_path", right.crs)]
+    moved_right = [] if verify.same_crs(right.crs, left.crs) else [("right_path", right)]
     if moved_right:
         right = right.to_crs(left.crs)
     if original_crs.is_geographic:
@@ -663,7 +663,7 @@ def nearest_join(
         if original_crs.is_geographic:
             joined = joined.to_crs(original_crs)
             # AFTER the way back, never before: see `record_round_trip`.
-            record_round_trip(record, analysis_crs, original_crs)
+            record_round_trip(record, analysis_crs, original_crs, joined)
         _write(joined, output_path)
     manifest, extras = verify.audited(
         record,
@@ -777,7 +777,7 @@ def merge(input_paths: list[str], output_path: str) -> dict[str, Any]:
     # several source CRSs there is no single transformation to report -- so
     # each entry carries its own.
     moved = [
-        (f"input_{i}", frame.crs)
+        (f"input_{i}", frame)
         for i, frame in enumerate(frames, start=1)
         if not verify.same_crs(frame.crs, target)
     ]
@@ -916,7 +916,7 @@ def simplify(input_path: str, tolerance_meters: float, output_path: str) -> dict
         if restore:
             work = work.to_crs(original_crs)
             # AFTER the way back, never before: see `record_round_trip`.
-            record_round_trip(record, analysis_crs, original_crs)
+            record_round_trip(record, analysis_crs, original_crs, work)
         _write(work, output_path)
     manifest, extras = verify.audited(
         record,
@@ -988,7 +988,7 @@ def centroid(input_path: str, output_path: str) -> dict[str, Any]:
         if restore:
             work = work.to_crs(original_crs)
             # AFTER the way back, never before: see `record_round_trip`.
-            record_round_trip(record, analysis_crs, original_crs)
+            record_round_trip(record, analysis_crs, original_crs, work)
         _write(work, output_path)
     manifest, extras = verify.audited(
         record,
@@ -1122,7 +1122,7 @@ def _geodesic_areas(gdf: gpd.GeoDataFrame) -> tuple[list[float], dict[str, Any] 
     # exists to make true. `.ellipsoid` can also be None on an engineering CRS,
     # which raised an AttributeError instead of saying anything.
     moved = not verify.same_crs(gdf.crs, "EPSG:4326")
-    shift = datum.default_operation(gdf.crs, "EPSG:4326") if moved else None
+    shift = datum.default_operation(gdf.crs, "EPSG:4326", datum.sample_points(gdf)) if moved else None
     lonlat = gdf.to_crs("EPSG:4326") if moved else gdf
     ellipsoid = lonlat.crs.ellipsoid
     if ellipsoid is None:  # pragma: no cover - WGS 84 always names one
@@ -1376,7 +1376,7 @@ def spatial_join(
         "the right layer is brought to the left layer's CRS before joining"
         if aligned
         else "both layers are already in this CRS; nothing was reprojected",
-        [("right_path", right.crs)] if aligned else [],
+        [("right_path", right)] if aligned else [],
     )
     if aligned:
         right = right.to_crs(left.crs)
@@ -1769,7 +1769,7 @@ def _geodesic_lengths(gdf: gpd.GeoDataFrame) -> tuple[list[float], dict[str, Any
     # copy was never touched -- the shape #28 is about, and the reason
     # `readers.py` exists.
     moved = not verify.same_crs(gdf.crs, "EPSG:4326")
-    shift = datum.default_operation(gdf.crs, "EPSG:4326") if moved else None
+    shift = datum.default_operation(gdf.crs, "EPSG:4326", datum.sample_points(gdf)) if moved else None
     lonlat = gdf.to_crs("EPSG:4326") if moved else gdf
     ellipsoid = lonlat.crs.ellipsoid
     geod = Geod(a=ellipsoid.semi_major_metre, rf=ellipsoid.inverse_flattening)
@@ -2553,8 +2553,8 @@ def count_in_polygons(
     if verify.has_critical_failure(pre):
         record.add_verification(pre).finish().write_for(output_path)
         verify.enforce(pre, "count_in_polygons")
-    original_points_crs = points.crs
-    aligned = not verify.same_crs(original_points_crs, polygons.crs)
+    original_points = points
+    aligned = not verify.same_crs(original_points.crs, polygons.crs)
     if aligned:
         points = points.to_crs(polygons.crs)
     # After the move, and one call for both branches. This wrote the decision
@@ -2566,7 +2566,7 @@ def count_in_polygons(
         "the points are brought onto the polygons' CRS before counting"
         if aligned
         else "both layers share a CRS; nothing was reprojected",
-        [("points_path", original_points_crs)] if aligned else [],
+        [("points_path", original_points)] if aligned else [],
     )
     pre += verify.verify_input_pairs(
         "count_in_polygons", points_path=points, polygons_path=polygons
@@ -2775,8 +2775,8 @@ def summarize_points_in_polygons(
     if verify.has_critical_failure(pre):
         record.add_verification(pre).finish().write_for(output_path)
         verify.enforce(pre, "summarize_points_in_polygons")
-    original_points_crs = points.crs
-    aligned = not verify.same_crs(original_points_crs, polygons.crs)
+    original_points = points
+    aligned = not verify.same_crs(original_points.crs, polygons.crs)
     if aligned:
         points = points.to_crs(polygons.crs)
     # Written after the move, not before it: on 2026-09-23 six operations were
@@ -2786,7 +2786,7 @@ def summarize_points_in_polygons(
         "the points are brought onto the polygons' CRS before they are placed"
         if aligned
         else "both layers share a CRS; nothing was reprojected",
-        [("points_path", original_points_crs)] if aligned else [],
+        [("points_path", original_points)] if aligned else [],
     )
     pre += verify.verify_input_pairs(
         "summarize_points_in_polygons", points_path=points, polygons_path=polygons
@@ -3466,7 +3466,7 @@ def apportion_by_area(
         + ". The shares are ratios of areas measured on an equal-area surface, normalised "
         "so that the pieces of each zone and the part no target covers add up to it. The "
         "output keeps the target zones in their own CRS.",
-        [("target_path", original_target_crs)] if moved_target else [],
+        [("target_path", original_target)] if moved_target else [],
     )
     pre += verify.verify_input_pairs(
         "apportion_by_area", source_path=source, target_path=target

@@ -136,6 +136,13 @@ TRANSFORMATION_EXTENSIONS: dict[str, str] = {
         "reporting one choice; here the engine reaches for PROJ on its own and "
         "this module can only report what it will get."
     ),
+    "x-mapsmith:ballpark_share": (
+        "Not `is_ballpark`, which is one boolean for the whole run: a layer "
+        "straddling the edge of a datum grid gets a real shift on one side and "
+        "none on the other, `is_ballpark` says true, and this says how many of "
+        "the data's sampled coordinates fell on each side -- the difference "
+        "between a layer that is wrong everywhere and one wrong at its edge."
+    ),
     "x-mapsmith:default_was_ballpark": (
         "Not `is_ballpark`, and the two are opposites in the same record: this "
         "appears when `is_ballpark` is FALSE precisely because MapSmith declined "
@@ -207,8 +214,12 @@ def alignment_decisions(
       machine that is tens of metres, and `is_ballpark` is the boolean a
       consumer branches on.
 
-    `moved` is `(argument name, the CRS it was in)` for each input that really
-    was reprojected. The transformation lands in the specification's own
+    `moved` is `(argument name, what moved)` for each input that really was
+    reprojected, where what moved is **the layer as it was before it moved** --
+    or, where there is no layer to hand, the CRS it was in. The layer is what
+    lets the record say what PROJ did to THESE coordinates: the operation it
+    selects depends on where they are, and asked from the CRS alone the answer
+    was wrong in both directions (`datum.sample_points`). The transformation lands in the specification's own
     `transformation` key when exactly one input moved, and inside each entry
     when several did with different pairs — once, in the place able to hold it,
     rather than twice.
@@ -226,8 +237,9 @@ def alignment_decisions(
     }
     if not moved:
         return decisions
+    sources = [(argument, *_crs_and_points(value)) for argument, value in moved]
     entries = [
-        {"argument": argument, "from": _crs_label(source)} for argument, source in moved
+        {"argument": argument, "from": _crs_label(crs)} for argument, crs, _ in sources
     ]
     # Where the moved inputs ACTUALLY went, which is not always the analysis
     # CRS. `nearest_join` brings its right layer to the left layer's CRS and
@@ -237,7 +249,7 @@ def alignment_decisions(
     # seven-metre shift. A manifest accusing an engine of skipping a datum
     # shift it did not skip is the worst direction to be wrong in.
     destination = analysis_crs if moved_to is None else moved_to
-    shifts = [datum.default_operation(source, destination) for _, source in moved]
+    shifts = [datum.default_operation(crs, destination, points) for _, crs, points in sources]
     if len(moved) == 1:
         decisions["transformation"] = shifts[0]
     else:
@@ -247,7 +259,16 @@ def alignment_decisions(
     return decisions
 
 
-def record_round_trip(record: Any, analysis_crs: Any, returned_to: Any) -> None:
+def _crs_and_points(value: Any) -> tuple[Any, Any]:
+    """A moved input's CRS, and where its data is when the caller handed the layer."""
+    from . import datum
+
+    if hasattr(value, "geometry") and hasattr(value, "crs"):
+        return value.crs, datum.sample_points(value)
+    return value, None
+
+
+def record_round_trip(record: Any, analysis_crs: Any, returned_to: Any, data: Any = None) -> None:
     """Record a completed round trip — called AFTER the way back has happened.
 
     An operation that needs metres computes somewhere else and writes its output
@@ -277,14 +298,28 @@ def record_round_trip(record: Any, analysis_crs: Any, returned_to: Any) -> None:
     So the order is now the contract: `alignment_decisions` says where the work
     happened, this says the output came home, and it can only be called where
     that is true.
+
+    ``data`` is the caller's layer, in ``returned_to``: both legs are asked
+    where it is, the way out at its own coordinates and the way back at the
+    same points carried across.
     """
+    from pyproj import Transformer
+
     from . import datum
 
     if returned_to is None or _same_crs(returned_to, analysis_crs):
         return
+    points = datum.sample_points(data)
+    carried = None
+    if points is not None:
+        out = Transformer.from_crs(returned_to, analysis_crs, always_xy=True)
+        import numpy as np
+
+        carried = np.column_stack(out.transform(points[:, 0], points[:, 1]))
+        carried = carried[np.isfinite(carried).all(axis=1)] if len(carried) else None
     record.crs_decisions[ROUND_TRIP] = {
-        "transformation": datum.default_operation(returned_to, analysis_crs),
-        "return_transformation": datum.default_operation(analysis_crs, returned_to),
+        "transformation": datum.default_operation(returned_to, analysis_crs, points),
+        "return_transformation": datum.default_operation(analysis_crs, returned_to, carried),
     }
 
 

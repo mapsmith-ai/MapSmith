@@ -312,7 +312,7 @@ def nearest_neighbour_index(
         boundary_moved = not verify.same_crs(boundary.crs, gdf.crs)
         if boundary_moved:
             boundary_from = verify.crs_label(boundary.crs)
-            transformation = datum.default_operation(boundary.crs, gdf.crs)
+            transformation = datum.default_operation(boundary.crs, gdf.crs, datum.sample_points(boundary))
             boundary = boundary.to_crs(gdf.crs)
         area = float(boundary.geometry.area.sum())
         area_source = f"the area of {area_path}"
@@ -467,7 +467,7 @@ def compare_layers(
     same_crs = verify.same_crs(left.crs, right.crs)
     aligned = not same_crs and right.crs is not None and left.crs is not None
     alignment = (
-        datum.default_operation(right.crs, left.crs) if aligned else None
+        datum.default_operation(right.crs, left.crs, datum.sample_points(right)) if aligned else None
     )
     if aligned:
         right = right.to_crs(left.crs)

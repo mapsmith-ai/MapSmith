@@ -798,3 +798,117 @@ def test_keys_of_ours_inside_the_round_trip_legs_carry_the_prefix(tmp_path):
                 "specification objects, so a key of ours needs the prefix and a "
                 "declaration in `provenance.TRANSFORMATION_EXTENSIONS`"
             )
+
+
+
+# --- asked where the data is (2026-10-08) --------------------------------------------------------
+#
+# Asked at one point chosen from the CRS alone, the record was wrong in both
+# directions: a ballpark recorded where PROJ applied a published shift, and a
+# published shift recorded where PROJ applied none.
+
+
+def _cell(lon, lat, crs):
+    gpd = pytest.importorskip("geopandas")
+    from shapely.geometry import box
+
+    return gpd.GeoSeries([box(lon, lat, lon + 1, lat + 1)], crs="EPSG:4326").to_crs(crs)
+
+
+@pytest.mark.parametrize(("source", "target", "lon", "lat"), [
+    ("EPSG:4326", "EPSG:3035", 10, 45),  # Europe: ETRS89 to WGS 84, 1 m
+    ("EPSG:4326", "EPSG:27700", -1, 52),  # England: OSGB36 Helmert, 2 m
+])
+def test_a_published_shift_at_the_data_is_not_recorded_as_a_ballpark(source, target, lon, lat):
+    """The probe sat in the Gulf of Guinea, where no European operation is valid."""
+    record = datum.default_operation(source, target, datum.sample_points(_cell(lon, lat, source)))
+    assert record["is_ballpark"] is False
+    assert record["accuracy_m"] is not None and record["accuracy_m"] > 0
+    # And without data, the probe now sits where both CRSs are used.
+    assert datum.default_operation(source, target)["is_ballpark"] is False
+
+
+def test_nad27_data_outside_its_grid_is_recorded_as_the_ballpark_it_gets():
+    """NAD27 coordinates in Italy: PROJ applies a noop there. The record said 7 m.
+
+    Argleton's trap 021, in our own record and hidden by it.
+    """
+    record = datum.default_operation(
+        "EPSG:4267", "EPSG:4326", datum.sample_points(_cell(12, 42, "EPSG:4267"))
+    )
+    assert record["is_ballpark"] is True
+    assert record["accuracy_m"] is None
+    # Where NAD27 is used, the same pair is a real shift.
+    inside = datum.default_operation(
+        "EPSG:4267", "EPSG:4326", datum.sample_points(_cell(-100, 40, "EPSG:4267"))
+    )
+    assert inside["is_ballpark"] is False
+
+
+def test_a_layer_straddling_the_edge_of_a_grid_says_how_much_of_it():
+    gpd = pytest.importorskip("geopandas")
+    from shapely.geometry import box
+
+    straddle = gpd.GeoSeries([box(-125, 40, -60, 41), box(10, 40, 11, 41)], crs="EPSG:4267")
+    record = datum.default_operation("EPSG:4267", "EPSG:4326", datum.sample_points(straddle))
+    assert record["is_ballpark"] is True
+    share = record[datum.BALLPARK_SHARE]
+    assert 0 < share["ballpark"] < share["sampled"]
+
+
+def test_an_operation_records_the_shift_its_own_data_got(tmp_path):
+    """Through clip_layer: a NAD27 mask over Italy was recorded as a 7 m shift."""
+    gpd = pytest.importorskip("geopandas")
+    from shapely.geometry import box
+
+    from mapsmith.engines import vector
+
+    layer = tmp_path / "layer.gpkg"
+    mask = tmp_path / "mask.gpkg"
+    gpd.GeoDataFrame({"n": [1]}, geometry=[box(12, 42, 13, 43)], crs="EPSG:4326").to_file(layer)
+    gpd.GeoDataFrame({"n": [1]}, geometry=[box(12.2, 42.2, 12.8, 42.8)], crs="EPSG:4267").to_file(mask)
+    out = tmp_path / "out.parquet"
+    result = vector.clip(str(layer), str(mask), str(out))
+    manifest = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+    assert manifest["crs_decisions"]["transformation"]["is_ballpark"] is True
+
+
+def test_every_call_site_hands_over_its_data_not_only_its_crs():
+    """A ratchet on the plumbing: a new call that passes a CRS is asked at no data again.
+
+    Derived from source: in every engine function that records an alignment,
+    a moved input is the layer, never `something.crs` or a `*_crs` name; and
+    every direct call to `default_operation` or `best_operation` passes the
+    points.
+    """
+    offenders: list[str] = []
+    seen = 0
+    for path in sorted(ENGINES.glob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        for function in ast.walk(tree):
+            if not isinstance(function, ast.FunctionDef):
+                continue
+            calls = [n for n in ast.walk(function) if isinstance(n, ast.Call)]
+            names = {
+                (c.func.attr if isinstance(c.func, ast.Attribute) else getattr(c.func, "id", None))
+                for c in calls
+            }
+            if "alignment_decisions" in names:
+                for node in ast.walk(function):
+                    if (isinstance(node, ast.Tuple) and len(node.elts) == 2
+                            and isinstance(node.elts[0], (ast.Constant, ast.Name))):
+                        moved = node.elts[1]
+                        seen += 1
+                        if (isinstance(moved, ast.Attribute) and moved.attr == "crs") or (
+                            isinstance(moved, ast.Name) and moved.id.endswith("_crs")
+                        ):
+                            offenders.append(f"{path.name}:{node.lineno} {ast.get_source_segment(source, node)}")
+            for call in calls:
+                name = call.func.attr if isinstance(call.func, ast.Attribute) else getattr(call.func, "id", None)
+                if name in ("default_operation", "best_operation", "_datum_transformation"):
+                    seen += 1
+                    if len(call.args) < 3 and not any(k.arg == "points" for k in call.keywords):
+                        offenders.append(f"{path.name}:{call.lineno} {name} without points")
+    assert seen >= 20, f"the sweep saw only {seen} call sites: it has stopped finding them"
+    assert not offenders, offenders

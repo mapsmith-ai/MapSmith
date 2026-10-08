@@ -163,7 +163,7 @@ def snap_layer(
         # said nothing about how -- and across two datums with no grid
         # installed, that silence is tens of metres.
         crs_decisions["transformation"] = datum.default_operation(
-            reference.crs, gdf.crs
+            reference.crs, gdf.crs, datum.sample_points(reference)
         )
         crs_decisions["reason"] = (
             "the tolerance is in the input layer's unit, so the reference is brought "
@@ -545,7 +545,7 @@ def line_intersections(
                 {"argument": "other_path", "from": verify.crs_label(other.crs)}
             ]
             crs_decisions["transformation"] = datum.default_operation(
-                other.crs, gdf.crs
+                other.crs, gdf.crs, datum.sample_points(other)
             )
             crs_decisions["reason"] = (
                 "crossings are computed in the first layer's CRS, so the output "
@@ -803,7 +803,7 @@ def transform_by_control_points(
         # The control points ARE the georeferencing, so a datum shift applied
         # to them moves everything the fit produces. Recorded for that reason
         # rather than for completeness.
-        control_moved = datum.default_operation(control.crs, target)
+        control_moved = datum.default_operation(control.crs, target, datum.sample_points(control))
         control_from = verify.crs_label(control.crs)
         control = control.to_crs(target)
 

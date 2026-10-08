@@ -35,6 +35,11 @@ from __future__ import annotations
 import math
 from typing import Any
 
+#: Inside `transformation`, when part of the data got a datum shift and part
+#: got none: a layer straddling the edge of a grid. `is_ballpark` is true, which
+#: is the conservative reading, and this says how much of it.
+BALLPARK_SHARE = "x-mapsmith:ballpark_share"
+
 # A ballpark operation reports accuracy -1 (or nothing at all). Anything >= 0 is
 # a real, published operation with a stated accuracy in metres.
 #
@@ -131,25 +136,96 @@ def _as_crs(value: Any) -> Any:
     return CRS.from_epsg(code) if code else crs
 
 
-def accuracy_of(transformer: Any, source_crs: Any) -> float | None:
-    """The stated accuracy in metres of the operation this transformer used.
+#: How many of the data's own coordinates are asked. Enough to reach the corners
+#: of a layer that straddles the edge of a grid; few enough that asking costs
+#: nothing beside the operation it describes.
+_SAMPLED = 24
+
+
+def sample_points(data: Any) -> Any:
+    """Coordinates where the data actually is, in its own CRS, or None.
+
+    Which operation PROJ selects depends on where the coordinate is, so the
+    question has to be asked where the data is. Asked at one point chosen from
+    the CRS alone, the answer was wrong in both directions (measured
+    2026-10-08, PROJ 9.5.1):
+
+        EPSG:4326 -> EPSG:3035, data at 10E 45N   recorded ballpark, PROJ used 1 m
+        EPSG:4326 -> EPSG:27700, data in England  recorded ballpark, PROJ used 2 m
+        EPSG:4267 -> EPSG:4326, data in Italy     recorded 7 m,     PROJ used a noop
+
+    The first two accuse the engine of a shift it did not skip; the third is
+    Argleton's trap 021 in our own record, hidden by it.
+
+    Accepts a GeoDataFrame or GeoSeries (their vertices), an array of shapely
+    geometries, or raster bounds as ``(left, bottom, right, top)`` (corners and
+    centre: a raster covers its bounds). Vertices are taken evenly through the
+    layer, never the corners of its bounding box, which can lie where no data is
+    and outside the grid the data is inside.
+    """
+    import numpy as np
+    import shapely
+
+    if data is None:
+        return None
+    if isinstance(data, tuple) and len(data) == 4 and all(isinstance(v, (int, float)) for v in data):
+        left, bottom, right, top = (float(v) for v in data)
+        points = np.array([
+            (left, bottom), (left, top), (right, bottom), (right, top),
+            ((left + right) / 2, (bottom + top) / 2),
+        ])
+    else:
+        geometries = getattr(data, "geometry", data)
+        coordinates = shapely.get_coordinates(np.asarray(geometries, dtype=object))
+        if not len(coordinates):
+            return None
+        picked = np.unique(np.linspace(0, len(coordinates) - 1, min(len(coordinates), _SAMPLED)).round().astype(int))
+        points = coordinates[picked]
+    points = points[np.isfinite(points).all(axis=1)]
+    return points if len(points) else None
+
+
+def _accuracies(transformer: Any, source_crs: Any, target_crs: Any, points: Any) -> list[float | None]:
+    """The stated accuracy of the operation PROJ used at each point, None where none.
 
     PROJ reports the operation only after one has been used, so use one.
     `Transformer.accuracy` is -1 until `proj_trans` runs; the honest value comes
-    from `get_last_used_operation()` after a transform. A point inside the CRS's
-    own area of use is what gets asked, because which operation PROJ selects can
-    depend on where the coordinate is.
+    from `get_last_used_operation()` after a transform -- one point at a time,
+    because the operation can change from one point to the next.
     """
-    try:
-        x, y = _probe_point(source_crs)
-        transformer.transform(x, y)
-        used = transformer.get_last_used_operation()
-    except Exception:  # noqa: BLE001 — no operation to inspect is itself the answer
-        return None
-    return used.accuracy
+    if points is None or not len(points):
+        points = [_probe_point(source_crs, target_crs)]
+    found: list[float | None] = []
+    for x, y in points:
+        try:
+            transformer.transform(float(x), float(y))
+            found.append(transformer.get_last_used_operation().accuracy)
+        except Exception:  # noqa: BLE001 — no operation to inspect is itself the answer
+            found.append(None)
+    return found
 
 
-def _probe_point(source_crs: Any) -> tuple[float, float]:
+def accuracy_of(transformer: Any, source_crs: Any, points: Any = None, target_crs: Any = None) -> float | None:
+    """The stated accuracy in metres of the operation this transformer used.
+
+    The worst over the points asked: None (or a negative value, PROJ's ballpark)
+    if any point got no published operation, else the largest stated accuracy.
+    """
+    found = _accuracies(transformer, source_crs, target_crs, points)
+    if any(a is None or a < _STATED for a in found):
+        return next((a for a in found if a is None or a < _STATED), None)
+    return max(found)
+
+
+def _ballpark_share(found: list[float | None]) -> dict[str, int] | None:
+    """How many of the points asked got no datum shift, when it is some and not all."""
+    ballpark = sum(1 for a in found if a is None or a < _STATED)
+    if 0 < ballpark < len(found):
+        return {"ballpark": ballpark, "sampled": len(found)}
+    return None
+
+
+def _probe_point(source_crs: Any, target_crs: Any = None) -> tuple[float, float]:
     """A coordinate inside the CRS's own area of use, IN THAT CRS'S OWN UNITS.
 
     `area_of_use` is always in degrees, even for a projected CRS. Feeding its
@@ -179,6 +255,17 @@ def _probe_point(source_crs: Any) -> tuple[float, float]:
     lon = (area.west + area.east) / 2
     if area.west > area.east:
         lon = ((area.west + area.east + 360) / 2 + 180) % 360 - 180
+    # Only a fallback now, for a caller with no data to hand (`sample_points`
+    # is the answer). Where the TARGET's area of use is narrower, the probe goes
+    # in the overlap of the two: EPSG:4326 is the whole world, whose middle is
+    # the Gulf of Guinea, and EPSG:4326 -> EPSG:3035 was recorded a ballpark
+    # because no European operation is valid there.
+    other = getattr(_as_crs(target_crs), "area_of_use", None) if target_crs is not None else None
+    if other is not None and area.west <= area.east and other.west <= other.east:
+        west, east = max(area.west, other.west), min(area.east, other.east)
+        south, north = max(area.south, other.south), min(area.north, other.north)
+        if west < east and south < north:
+            lon, lat = (west + east) / 2, (south + north) / 2
     if getattr(source_crs, "is_geographic", False):
         return (lon, lat)
     from pyproj import CRS, Transformer
@@ -218,11 +305,13 @@ def _stated_operations(source_crs: Any, target_crs: Any) -> list[Any]:
     ]
 
 
-def best_operation(source_crs: Any, target_crs: Any) -> tuple[Any, dict[str, Any]]:
+def best_operation(source_crs: Any, target_crs: Any, points: Any = None) -> tuple[Any, dict[str, Any]]:
     """The transformer to use when the caller gets to choose, and its record.
 
     Returns the transformer and the `crs_decisions.transformation` object that
-    section 3.7 of the manifest specification asks for.
+    section 3.7 of the manifest specification asks for. ``points`` are the
+    data's own coordinates in the source CRS (`sample_points`): the operation
+    is asked where the data is.
     """
     from pyproj import Transformer
 
@@ -230,7 +319,7 @@ def best_operation(source_crs: Any, target_crs: Any) -> tuple[Any, dict[str, Any
     chosen = Transformer.from_crs(source_crs, target_crs, always_xy=True)
     if shares_a_datum(source_crs, target_crs):
         return chosen, _within_one_datum(pipeline_of(chosen))
-    accuracy = accuracy_of(chosen, source_crs)
+    accuracy = accuracy_of(chosen, source_crs, points, target_crs)
     if accuracy is not None and accuracy >= _STATED:
         return chosen, {
             "pipeline": pipeline_of(chosen),
@@ -263,7 +352,7 @@ def best_operation(source_crs: Any, target_crs: Any) -> tuple[Any, dict[str, Any
     }
 
 
-def default_operation(source_crs: Any, target_crs: Any) -> dict[str, Any]:
+def default_operation(source_crs: Any, target_crs: Any, points: Any = None) -> dict[str, Any]:
     """What PROJ does on its own, for engines that do not let us choose.
 
     rasterio's warp, GDAL and DuckDB all take two CRSs and reach for PROJ
@@ -273,7 +362,9 @@ def default_operation(source_crs: Any, target_crs: Any) -> dict[str, Any]:
     order to go and install the missing grid.
 
     Returns the `crs_decisions.transformation` object. There is no transformer
-    to hand back: the engine builds its own.
+    to hand back: the engine builds its own. ``points`` are the data's own
+    coordinates in the source CRS (`sample_points`); without them the answer is
+    a guess from the two CRSs' areas of use.
     """
     from pyproj import Transformer
 
@@ -281,11 +372,11 @@ def default_operation(source_crs: Any, target_crs: Any) -> dict[str, Any]:
     chosen = Transformer.from_crs(source_crs, target_crs, always_xy=True)
     if shares_a_datum(source_crs, target_crs):
         return _within_one_datum(pipeline_of(chosen))
-    accuracy = accuracy_of(chosen, source_crs)
-    if accuracy is not None and accuracy >= _STATED:
+    found = _accuracies(chosen, source_crs, target_crs, points)
+    if all(a is not None and a >= _STATED for a in found):
         return {
             "pipeline": pipeline_of(chosen),
-            "accuracy_m": float(accuracy),
+            "accuracy_m": float(max(found)),
             "is_ballpark": False,
         }
 
@@ -298,6 +389,9 @@ def default_operation(source_crs: Any, target_crs: Any) -> dict[str, Any]:
         # describing an operation that never ran.
         "x-mapsmith:chosen_by": "the engine, not MapSmith",
     }
+    share = _ballpark_share(found)
+    if share:
+        record[BALLPARK_SHARE] = share
     stated = _stated_operations(source_crs, target_crs)
     if stated:
         # The distinction that matters to whoever reads this: "there is no datum

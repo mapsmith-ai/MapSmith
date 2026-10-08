@@ -228,7 +228,7 @@ def zonal_statistics(
                 "output is kept in the raster CRS"
                 if aligned
                 else "zones and raster share the same CRS",
-                [("zones_path", zones.crs)] if aligned else [],
+                [("zones_path", zones)] if aligned else [],
             )
         )
         if aligned:
@@ -759,7 +759,7 @@ def clip_raster(
             "saying so"
             if aligned
             else "mask and raster already share a CRS; nothing was reprojected",
-            [("mask_path", frame.crs)] if aligned else [],
+            [("mask_path", frame)] if aligned else [],
         )
         if aligned:
             frame = frame.to_crs(src.crs)
@@ -1328,7 +1328,7 @@ def reproject_raster(
         # What PROJ will do between these two datums, reported and not chosen:
         # rasterio builds its own transformer inside `warp`, so recording the
         # BEST available operation here would describe one that never ran.
-        shift = datum.default_operation(src.crs, target_crs)
+        shift = datum.default_operation(src.crs, target_crs, datum.sample_points(tuple(src.bounds)))
         # What is true before any pixel moves. `target_crs` and `transformation`
         # are NOT here: they say where the pixels were put and by which
         # operation, and on 2026-09-23 the same shape was found and fixed in

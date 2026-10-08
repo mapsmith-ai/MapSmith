@@ -270,7 +270,7 @@ def sample_raster_at_points(
             "actually falls in; the output keeps that CRS"
             if aligned
             else "points and raster share the same CRS",
-            [("points_path", points.crs)] if aligned else [],
+            [("points_path", points)] if aligned else [],
         )
         if aligned:
             points = points.to_crs(raster_crs)
@@ -470,7 +470,7 @@ def elevation_profile(
             record.crs_decisions["source_crs"] = verify.crs_label(lines.crs)
             record.crs_decisions["target_crs"] = verify.crs_label(raster_crs)
             record.crs_decisions["transformation"] = datum.default_operation(
-                lines.crs, raster_crs
+                lines.crs, raster_crs, datum.sample_points(lines)
             )
 
         rows = _profile_positions(working, spacing)

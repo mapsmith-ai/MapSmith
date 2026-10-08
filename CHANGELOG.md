@@ -33,6 +33,22 @@ All notable changes to MapSmith are documented here, in the format of
   the units) are refused; targets keep their own CRS; and the counts written
   are checked against the pieces they came from.
 
+### Fixed
+
+- **`crs_decisions.transformation` now describes what PROJ did to the data's
+  own coordinates.** Which operation PROJ selects depends on where a
+  coordinate is, and the record asked at one point chosen from the source CRS
+  alone -- for EPSG:4326, the middle of the world, in the Gulf of Guinea. It
+  was wrong in both directions: WGS 84 data in Europe moved to EPSG:3035, or in
+  England to EPSG:27700, was recorded as a ballpark (`is_ballpark: true`) where
+  PROJ applied a published 1 m or 2 m shift; and NAD27 coordinates in Italy were
+  recorded as a 7 m shift where PROJ applied none -- the error a ballpark record
+  exists to report, hidden by it. Every operation that moves an input now hands
+  the moved layer's coordinates to the check, a layer that straddles the edge
+  of a datum grid is recorded as a ballpark with
+  `x-mapsmith:ballpark_share` saying how much of it, and a check with no data
+  to hand asks where the two CRSs' areas of use overlap.
+
 ### Changed
 
 - **Shapely 2.1 or later is required** (was 2.0): `apportion_by_area` uses its

@@ -870,9 +870,13 @@ def least_cost_path(
         # different CRSs, and each then has its own transformation. A cost
         # surface is walked cell by cell, so an endpoint that lands on the
         # wrong cell starts the route in the wrong place.
+        # The point each endpoint actually contributes, not the whole layer:
+        # the record says what PROJ did to the coordinates that were moved.
         moved = [
-            (name, frame.crs)
-            for frame, name in ((starts, "start_path"), (ends, "end_path"))
+            (name, gpd.GeoSeries([point], crs=frame.crs))
+            for frame, point, name in (
+                (starts, start_point, "start_path"), (ends, end_point, "end_path")
+            )
             if not verify.same_crs(frame.crs, src.crs)
         ]
         if not verify.same_crs(starts.crs, src.crs):

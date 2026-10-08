@@ -685,7 +685,7 @@ def watershed(
             "pour points brought to the DEM CRS to align with the flow grid"
             if aligned
             else "pour points and DEM share the same CRS",
-            [("pour_points_path", points.crs)] if aligned else [],
+            [("pour_points_path", points)] if aligned else [],
         )
         if aligned:
             points = points.to_crs(crs)
@@ -1270,7 +1270,7 @@ def viewshed(
             "actually occupies"
             if aligned
             else "stations and DEM share the same CRS",
-            [("stations_path", stations.crs)] if aligned else [],
+            [("stations_path", stations)] if aligned else [],
         )
         if aligned:
             stations = stations.to_crs(crs)
