@@ -3352,7 +3352,10 @@ def apportion_by_area(
             "before its area was measured on the equal-area plane"
         )
 
-    def area_of(geoms: Any) -> Any:
+    # Private, so the datum guard follows it to its caller: the plane is on the
+    # source's own datum, and the one transformation here, the target's, is
+    # recorded by this operation.
+    def _area_of(geoms: Any) -> Any:
         geoms = np.asarray(geoms, dtype=object)
         if not len(geoms):
             return np.zeros(0)
@@ -3381,7 +3384,7 @@ def apportion_by_area(
         # ellipsoid, every target on a sphere (MODIS) was refused, 0.2-0.45%
         # apart; on one plane for all targets, a target near that plane's
         # antipode was (fourth review).
-        as_moved = area_of(target.geometry.to_numpy())
+        as_moved = _area_of(target.geometry.to_numpy())
         moved_geoms = target.geometry.to_numpy()
         # A vectorised first pass on an equal-area plane every target vertex
         # reaches within a hemisphere -- the main one, or for an equal-area
@@ -3475,9 +3478,9 @@ def apportion_by_area(
         src = gpd.GeoDataFrame({"_source": range(len(source))}, geometry=src_geoms, crs=source.crs)
         tgt = gpd.GeoDataFrame({"_target": range(len(target))}, geometry=tgt_geoms, crs=source.crs)
         pieces = gpd.overlay(src, tgt, how="intersection", keep_geom_type=True)
-        source_area = area_of(src_geoms)
-        target_area = area_of(tgt_geoms)
-        piece_area = area_of(pieces.geometry.to_numpy())
+        source_area = _area_of(src_geoms)
+        target_area = _area_of(tgt_geoms)
+        piece_area = _area_of(pieces.geometry.to_numpy())
         s_idx = pieces["_source"].to_numpy(dtype=int)
         t_idx = pieces["_target"].to_numpy(dtype=int)
         # A sliver from a boundary that differs by rounding, against the smaller
@@ -3503,7 +3506,7 @@ def apportion_by_area(
         groups = np.split(order, np.cumsum(counts)[:-1])
         several = np.flatnonzero(counts > 1)
         if len(several):
-            covered_area[several] = area_of(
+            covered_area[several] = _area_of(
                 [shapely.union_all(geometries[groups[z]]) for z in several]
             )
         overlap = piece_sum > covered_area * (1 + 1e-9)
