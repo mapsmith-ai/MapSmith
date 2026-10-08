@@ -335,11 +335,12 @@ class _Survey:
         # a band where PROJ shifts and the degrees said "outside", and an
         # EPSG:3035 layer past 38E hid two unshifted vertices among fifty
         # (review, round four).
-        if source_crs.is_geographic:
+        geographic = bool(source_crs.is_geographic)
+        if geographic:
             u, v = _greenwich_lonlat(source_crs, points)
             step = 0.01
             boxes = {
-                id(op): (a.west, a.south, a.east, a.north, a.west > a.east)
+                id(op): [(a.west, a.south, a.east, a.north, a.west > a.east)]
                 for op in operations if (a := op.area_of_use) is not None
             }
         else:
@@ -353,20 +354,31 @@ class _Survey:
                 a = op.area_of_use
                 if a is None:
                     continue
-                with suppress(Exception):
-                    left, bottom, right, top = into.transform_bounds(
-                        a.west, a.south, a.east, a.north, densify_pts=21
-                    )
-                    if all(math.isfinite(x) for x in (left, bottom, right, top)):
-                        boxes[id(op)] = (left, bottom, right, top, False)
+                # Two rules of PROJ's, measured against it with no disagreement
+                # (review, round five): an area that is the whole world covers
+                # every point -- reprojected into a UTM zone its envelope came
+                # out finite and wrong, and half the zone fell "outside" an
+                # operation valid everywhere -- and an area across the
+                # antimeridian is two areas, each reprojected on its own.
+                if a.west <= -180 + 1e-9 and a.east >= 180 - 1e-9 and a.south <= -90 + 1e-9 and a.north >= 90 - 1e-9:
+                    boxes[id(op)] = [(-math.inf, -math.inf, math.inf, math.inf, False)]
+                    continue
+                pieces = [(a.west, 180.0), (-180.0, a.east)] if a.west > a.east else [(a.west, a.east)]
+                found = []
+                for west, east in pieces:
+                    with suppress(Exception):
+                        envelope = into.transform_bounds(west, a.south, east, a.north, densify_pts=21)
+                        if all(math.isfinite(x) for x in envelope):
+                            found.append((*envelope, False))
+                if found:
+                    boxes[id(op)] = found
 
         def inside(op: Any, uu: Any, vv: Any) -> Any:
-            box = boxes.get(id(op))
-            if box is None:
-                return np.zeros(len(uu), dtype=bool)
-            west, south, east, north, wraps = box
-            across = (uu >= west) | (uu <= east) if wraps else (uu >= west) & (uu <= east)
-            return across & (vv >= south) & (vv <= north)
+            mask = np.zeros(len(uu), dtype=bool)
+            for west, south, east, north, wraps in boxes.get(id(op), ()):
+                across = (uu >= west) | (uu <= east) if wraps else (uu >= west) & (uu <= east)
+                mask |= across & (vv >= south) & (vv <= north)
+            return mask
 
         # Coverage is EXACT for every vertex. On cells judged by one vertex
         # each, a cell an area's edge runs through hid the vertices on its
@@ -376,8 +388,13 @@ class _Survey:
         # or wholly outside each area, by one of its vertices.
         ku = np.round(u / step).astype(np.int64)
         kv = np.round(v / step).astype(np.int64)
-        edge_u = sorted({round(box[i] / step) + d for box in boxes.values() for i in (0, 2) for d in (-1, 0, 1)})
-        edge_v = sorted({round(box[i] / step) + d for box in boxes.values() for i in (1, 3) for d in (-1, 0, 1)})
+        edges = [box for found in boxes.values() for box in found]
+        edge_u = sorted({
+            round(box[i] / step) + d for box in edges for i in (0, 2) if math.isfinite(box[i]) for d in (-1, 0, 1)
+        })
+        edge_v = sorted({
+            round(box[i] / step) + d for box in edges for i in (1, 3) if math.isfinite(box[i]) for d in (-1, 0, 1)
+        })
         on_edge = np.isin(ku, edge_u) | np.isin(kv, edge_v)
         off = np.flatnonzero(~on_edge)
         # Only the off-edge vertices are grouped by cell: a sentinel key for
@@ -420,8 +437,20 @@ class _Survey:
         self.uncovered = int(weight[~covered].sum())
         #: Vertices outside the area of use of EVERY operation published for
         #: the pair, installed or not: a fact about where the data is,
-        #: whatever the engine then did with them.
-        self.outside = int(weight[~published].sum())
+        #: whatever the engine then did with them. It is measured against the
+        #: registry's areas in degrees, which is what it claims -- for a
+        #: projected source PROJ's envelope is wider, and judged in it a band
+        #: 3 degrees past an area's edge stopped counting as outside (review,
+        #: round five). So for a projected source it is its own exact pass.
+        if geographic:
+            self.outside = int(weight[~published].sum())
+        else:
+            lon, lat = _greenwich_lonlat(source_crs, points)
+            registered = np.zeros(len(lon), dtype=bool)
+            for operation in operations:
+                registered |= _covers(operation.area_of_use, lon, lat)
+            self.outside = int((~registered).sum())
+            del lon, lat, registered
         inside_at = _spread(self.lon, self.lat, np.flatnonzero(self.covered))
         outside_at = _spread(self.lon, self.lat, np.flatnonzero(~self.covered))
         self.asked_inside = (

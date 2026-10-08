@@ -678,7 +678,9 @@ def _datum_shift_check(shift: dict[str, Any], twin: tuple[str, str] | None = Non
                     "to the target, which is the route reproject_layer takes."
                     if twin_of
                     else (
-                        "PROJ applied no shift to these coordinates because "
+                        "PROJ applied no shift to "
+                        + ("part of these coordinates" if shift.get(datum.BALLPARK_SHARE) else "these coordinates")
+                        + " because "
                         + datum.why_unshifted(shift)[0]
                         + "."
                         + (

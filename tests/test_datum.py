@@ -1221,3 +1221,43 @@ def test_a_layer_partly_without_any_operation_and_partly_without_its_grid_says_b
         "is_ballpark": True, datum.OUTSIDE_AREA: {"vertices": 1, "checked": 1},
     })
     assert all_outside is True and "installed or not" in reason
+
+
+
+# --- the fifth round: areas the world wide, across 180, and outside counted in degrees -------------
+
+
+def _projected(crs, lonlat):
+    import numpy as np
+    from pyproj import Transformer
+
+    x, y = Transformer.from_crs("EPSG:4326", crs, always_xy=True).transform(*np.array(lonlat, dtype=float).T)
+    return np.column_stack([x, y])
+
+
+def test_an_operation_valid_everywhere_covers_a_projected_source_everywhere():
+    """WGS 72 / UTM 14N in Texas: the world's envelope came out finite, and half the zone "outside"."""
+    record = datum.default_operation("EPSG:32214", "EPSG:4326", _projected("EPSG:32214", [(-99, 30), (-98.5, 30.5)]))
+    assert record["is_ballpark"] is False
+    assert datum.OUTSIDE_AREA not in record
+
+
+def test_an_area_across_the_antimeridian_is_two_areas_in_a_projected_source():
+    """Arctic polar stereographic to Pulkovo 1942: the area across 180 was one envelope covering a gap."""
+    record = datum.default_operation(
+        "EPSG:3995", "EPSG:4284", _projected("EPSG:3995", [(100, 70), (-179, 82), (-180, 82)])
+    )
+    assert record["is_ballpark"] is True
+    assert record[datum.BALLPARK_SHARE] == {"ballpark": 1, "checked": 3}
+
+
+def test_outside_is_counted_against_the_registered_areas_in_degrees():
+    """EPSG:3035 past 38E: PROJ stretches the 1 m operation to 41E, and the band stopped counting as outside."""
+    import numpy as np
+
+    lon = np.r_[10.0, 11.0, np.linspace(38.05, 41.02, 50)]
+    record = datum.default_operation(
+        "EPSG:3035", "EPSG:4326", _projected("EPSG:3035", list(zip(lon, np.full(len(lon), 40.0), strict=True)))
+    )
+    assert record["is_ballpark"] is False
+    assert record[datum.OUTSIDE_AREA] == {"vertices": 50, "checked": 52}
