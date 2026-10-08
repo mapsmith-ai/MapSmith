@@ -734,3 +734,41 @@ def test_parts_wound_opposite_ways_are_not_read_as_torn(tmp_path, source_crs):
         return MultiPolygon([ccw, cw])
 
     assert _winding_case(tmp_path, mixed, source_crs) == pytest.approx(1000 * 2_000_000 / 3_080_400, rel=1e-3)
+
+
+
+# --- the seventh review's case: a tear that keeps its area ---------------------------------------
+
+
+@pytest.mark.parametrize("source_crs", ["EPSG:6933", "EPSG:3857"])
+def test_a_tear_with_the_right_area_is_caught_by_position(tmp_path, source_crs):
+    """A band 179.95 degrees wide centred on 180, torn, is the other half of its band.
+
+    Its area is then what it should be to 0.03%, the area check passed, and the
+    target received a zone in Africa: 5000 where 200 is right.
+    """
+    from pyproj import Transformer
+
+    pacific = "+proj=cea +lon_0=180 +datum=WGS84 +units=m +no_defs"
+    to_pacific = Transformer.from_crs("EPSG:4326", pacific, always_xy=True)
+    half = abs(to_pacific.transform(180 - 179.95 / 2, 0)[0])
+    top = to_pacific.transform(180, 10)[1]
+    tgt = _layer(tmp_path, "t", [box(-half, 0, half, top)], pacific)
+    zones = gpd.GeoSeries([box(175, 1, 180, 9), box(-180, 1, -175, 9), box(0, 1, 10, 9)],
+                          crs="EPSG:4326").to_crs(source_crs)
+    src = _layer(tmp_path, "s", list(zones), source_crs, population=[100, 100, 5000])
+    with pytest.raises(ValueError, match="no longer hold a point of their own interior"):
+        vector.apportion_by_area(src, tgt, str(tmp_path / "o.parquet"), extensive=["population"])
+
+
+
+@pytest.mark.parametrize("source_crs", ["EPSG:4326", "EPSG:6933"])
+def test_a_sliver_nanometres_wide_is_not_read_as_torn(tmp_path, source_crs):
+    """At 1e-8 m, rounding the reprojected coordinates moves the area by percent: not a tear."""
+    x0, y0 = 500_000.0, 5_000_000.0
+    zone = gpd.GeoSeries([box(x0 - 100, y0 - 100, x0 + 1100, y0 + 1100)], crs=CRS).to_crs(source_crs)
+    src = _layer(tmp_path, "s", list(zone), source_crs, population=[1000])
+    tgt = _layer(tmp_path, "t", [box(x0, y0, x0 + 1000, y0 + 1e-8)], CRS)
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    assert gpd.read_parquet(out)["population"].iloc[0] == pytest.approx(1000 * 1e-5 / 1_440_000, rel=0.2)

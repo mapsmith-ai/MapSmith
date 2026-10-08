@@ -3021,8 +3021,8 @@ def _enclosing_centre(start: Any, vertices: Any) -> tuple[Any, float]:
     return best, best_radius
 
 
-def _ring_geodesic_areas(frame: gpd.GeoDataFrame, geod: Any) -> Any:
-    """Each zone's geodesic area, from its own rings.
+def _ring_geodesic_areas(frame: gpd.GeoDataFrame, geod: Any) -> tuple[Any, Any]:
+    """Each zone's geodesic area, from its own rings, and its perimeter.
 
     Ring by ring, in absolute value: the shell minus its holes, part by part.
     The signed sum pyproj returns for a whole polygon is right only when the
@@ -3036,6 +3036,7 @@ def _ring_geodesic_areas(frame: gpd.GeoDataFrame, geod: Any) -> Any:
 
     lonlat = frame.geometry.to_numpy()
     areas = np.zeros(len(lonlat))
+    perimeters = np.zeros(len(lonlat))
     for i, geometry in enumerate(lonlat):
         for part in shapely.get_parts(geometry):
             if part.geom_type != "Polygon":
@@ -3044,9 +3045,11 @@ def _ring_geodesic_areas(frame: gpd.GeoDataFrame, geod: Any) -> Any:
             ring_areas = []
             for ring in rings:
                 xy = np.asarray(ring.coords)
-                ring_areas.append(abs(geod.polygon_area_perimeter(xy[:, 0], xy[:, 1])[0]))
+                area, perimeter = geod.polygon_area_perimeter(xy[:, 0], xy[:, 1])
+                ring_areas.append(abs(area))
+                perimeters[i] += perimeter
             areas[i] += ring_areas[0] - sum(ring_areas[1:])
-    return areas
+    return areas, perimeters
 
 
 def _equal_area_plane(centre: Any, geodetic: Any) -> tuple[Any, float, float]:
@@ -3379,18 +3382,34 @@ def apportion_by_area(
         # apart; on one plane for all targets, a target near that plane's
         # antipode was (fourth review).
         as_moved = area_of(target.geometry.to_numpy())
+        moved_geoms = target.geometry.to_numpy()
+        # A vectorised first pass on an equal-area plane every target vertex
+        # reaches within a hemisphere -- the main one, or for an equal-area
+        # source one centred on the targets: each target's own vertices taken
+        # there one by one, against its image densified in the source CRS.
+        # They differ only where the source CRS read an edge the long way, and
+        # the geodesic loop then runs on the few that differ. Without a plane
+        # for equal-area sources the loop read every target (sixth review:
+        # 100 s against 73 on 100k targets).
+        check_plane = None if source_is_equal_area else plane
+        if source_is_equal_area:
+            _, target_vertices = _zone_vectors(target_as_drawn, geodetic)
+            start = target_vertices.mean(axis=0)
+            if np.linalg.norm(start) < 1e-9:
+                start = target_vertices[0]
+            centre, radius = _enclosing_centre(start, target_vertices)
+            if radius <= 90:
+                check_plane, _, _ = _equal_area_plane(centre, geodetic)
         suspects = np.arange(len(target))
-        if not source_is_equal_area:
-            # A vectorised first pass on the main plane, which every vertex
-            # reaches within a hemisphere: each target's own vertices taken
-            # there one by one, against its image densified in the source CRS.
-            # They differ only where the source CRS read an edge the long way.
-            # The geodesic loop then runs on the few that differ.
-            direct = target_as_drawn.to_crs(plane).area.to_numpy()
-            suspects = np.flatnonzero(~(np.abs(as_moved - direct) <= 1e-4 * direct))
-        torn: list[int] = []
+        if check_plane is not None:
+            direct = target_as_drawn.to_crs(check_plane).area.to_numpy()
+            image = as_moved if check_plane is plane else gpd.GeoSeries(
+                shapely.segmentize(moved_geoms, area_step), crs=source.crs
+            ).to_crs(check_plane).area.to_numpy()
+            suspects = np.flatnonzero(~(np.abs(image - direct) <= 1e-4 * direct))
+        torn = np.zeros(len(target), dtype=bool)
         if len(suspects):
-            as_drawn = _ring_geodesic_areas(
+            as_drawn, perimeter = _ring_geodesic_areas(
                 target_as_drawn.iloc[suspects].to_crs(geodetic), geodetic.get_geod()
             )
             # Not finite counts as torn: a pole in Web Mercator is at infinity.
@@ -3398,17 +3417,33 @@ def apportion_by_area(
             # is refused with the torn ones: allowing the complement would
             # also accept a small target torn on an equal-area world map,
             # whose wrong area is exactly the Earth minus it.
-            whole = np.abs(as_moved[suspects] - as_drawn) <= 1e-3 * as_drawn
-            torn = suspects[~whole].tolist()
-        if torn:
+            # The floor is a millimetre along the perimeter: on a sliver
+            # nanometres wide, rounding the coordinates moves the area by
+            # percent, and a tear moves it by at least a band of latitude.
+            tolerance = np.maximum(1e-3 * as_drawn, 1e-3 * perimeter)
+            torn[suspects] = ~(np.abs(as_moved[suspects] - as_drawn) <= tolerance)
+        # And by position, which a tear cannot match by chance: a point inside
+        # each target as drawn must be inside its image. By area alone, a
+        # target torn across a band where it fills half of it has the area it
+        # should, and one 179.95 degrees wide received a zone in Africa (sixth
+        # review). Far outside, not merely outside: on a sliver, the chord of
+        # a reprojected edge can pass a hair on the wrong side of the point.
+        inner = gpd.GeoSeries(
+            shapely.point_on_surface(target_as_drawn.geometry.to_numpy()), crs=target_as_drawn.crs
+        ).to_crs(source.crs).to_numpy()
+        x0b, y0b, x1b, y1b = shapely.bounds(moved_geoms).T
+        size = np.hypot(x1b - x0b, y1b - y0b)
+        away = shapely.distance(moved_geoms, inner)
+        torn |= ~(away <= 1e-6 * size)
+        if torn.any():
             raise ValueError(
-                f"target zone(s) {torn[:20]} of {target_path} change area by more "
-                f"than 0.1% when brought into the source zones' CRS "
-                f"({verify.crs_label(source.crs)}): either they cross a seam of that CRS "
-                "(the 180th meridian, a pole) and would be read the long way round, or they "
-                "are larger than half the Earth, which area alone cannot tell apart. Put the "
-                "source zones in a CRS where those targets are drawn whole, or split targets "
-                "that large."
+                f"target zone(s) {np.flatnonzero(torn)[:20].tolist()} of {target_path} change "
+                "area by more than 0.1%, or no longer hold a point of their own interior, when "
+                f"brought into the source zones' CRS ({verify.crs_label(source.crs)}): either "
+                "they cross a seam of that CRS (the 180th meridian, a pole) and would be read "
+                "the long way round, or they are larger than half the Earth, which area alone "
+                "cannot tell apart. Put the source zones in a CRS where those targets are drawn "
+                "whole, or split targets that large."
             )
 
     record.crs_decisions = alignment_decisions(

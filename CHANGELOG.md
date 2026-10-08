@@ -27,10 +27,11 @@ All notable changes to MapSmith are documented here, in the format of
   in two targets, and a check fails if a zone with no overlap gives out more
   than it holds. Invalid zones are repaired and the repair recorded; a zone
   the repair leaves with no area or with a coordinate that is not a number,
-  zones spread over more than a hemisphere, and a target that would cross the
-  180th meridian once in the source's degrees are refused; targets keep their
-  own CRS; and the counts written are checked against the pieces they came
-  from.
+  zones spread over more than a hemisphere, layers writing longitude in two
+  conventions, and a target that the source CRS would tear at one of its
+  seams (the 180th meridian, a pole: caught by area and by position, whatever
+  the units) are refused; targets keep their own CRS; and the counts written
+  are checked against the pieces they came from.
 
 ## [0.8.0] - 2026-10-05
 
