@@ -144,3 +144,21 @@ def test_a_crash_in_a_check_of_the_output_keeps_the_new_bytes_digest(tmp_path, m
     assert manifest["output"]["sha256"]
     assert not any("earlier run" in note for note in manifest.get("notes", []))
     assert not Path(str(out) + ".failed.provenance.json").exists()
+
+
+
+def test_the_error_names_the_record_of_this_run_when_it_is_beside(earlier_run, tmp_path, monkeypatch):
+    """An agent reading <output>.provenance.json after a refusal found the earlier run's record."""
+    layer, mask, out = earlier_run
+    no_crs = tmp_path / "no_crs.gpkg"
+    gpd.GeoDataFrame({"n": [1]}, geometry=[box(0, 0, 1, 1)]).to_file(no_crs)
+    with pytest.raises(verify.VerificationError, match=r"out\.parquet\.failed\.provenance\.json"):
+        vector.clip(layer, str(no_crs), str(out))
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("engine died before writing")
+
+    monkeypatch.setattr(vector.gpd, "clip", boom)
+    with pytest.raises(RuntimeError) as crashed:
+        vector.clip(layer, mask, str(out))
+    assert any("out.parquet.failed.provenance.json" in note for note in crashed.value.__notes__)

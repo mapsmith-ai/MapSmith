@@ -712,7 +712,12 @@ def audit_on_failure(record: Any, output_path: str, preconditions: list[Check], 
             )
             raise failure from None
         try:
-            record.write_for(output_path, **since)
+            written = record.write_for(output_path, **since)
+            if str(written).endswith(".failed.provenance.json"):
+                failure.add_note(
+                    f"The manifest of this run is {written.name}: the record beside the "
+                    "output describes an earlier run, whose bytes this one did not rewrite."
+                )
         except Exception:  # noqa: BLE001 - retried below, reported if that fails too
             try:
                 # Drop the one field whose computation reads the output file.
@@ -811,12 +816,21 @@ def audited(
 
 
 def enforce(
-    checks: list[Check], operation: str, repairs: list[dict[str, Any]] | None = None
+    checks: list[Check],
+    operation: str,
+    repairs: list[dict[str, Any]] | None = None,
+    *,
+    record: Any = None,
 ) -> None:
     """Raise VerificationError if any critical check failed.
 
     When repairs were attempted, the message says so: an error about an output
     MapSmith itself rewrote must not read like an error about the original.
+    ``record`` is where the manifest went, named in the message when it is not
+    the usual `<output>.provenance.json`: a refused run whose output path held
+    an earlier run's dataset writes beside it, and an agent reading the usual
+    name found the earlier run's record and took it for its own (review,
+    2026-10-08).
     """
     failed = [c for c in checks if not c.passed and c.critical]
     if failed:
@@ -854,5 +868,10 @@ def enforce(
             f" deterministic verification ({subject}) — {details}. "
             + (f"{hints} " if hints else "")
             + repaired
-            + "The provenance manifest records the full check list."
+            + (
+                f"The provenance manifest of this run, {Path(record).name}, records the full "
+                "check list; the record beside the output describes an earlier run."
+                if record is not None and str(record).endswith(".failed.provenance.json")
+                else "The provenance manifest records the full check list."
+            )
         )

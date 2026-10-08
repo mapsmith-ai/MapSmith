@@ -264,8 +264,8 @@ def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
     # error on a CRS-less input, before our own check could explain it
     pre = verify.verify_loaded_inputs("clip_layer", input_path=gdf, mask_path=mask)
     if verify.has_critical_failure(pre):
-        record.add_verification(pre).finish().write_for(output_path, refused=True)
-        verify.enforce(pre, "clip_layer")
+        written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+        verify.enforce(pre, "clip_layer", record=written)
     aligned = gdf.crs != mask.crs
     record.crs_decisions = alignment_decisions(
         gdf.crs,
@@ -348,8 +348,8 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
     )
     pre = verify.verify_loaded_inputs("reproject_layer", input_path=gdf)
     if verify.has_critical_failure(pre):
-        record.add_verification(pre).finish().write_for(output_path, refused=True)
-        verify.enforce(pre, "reproject_layer")
+        written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+        verify.enforce(pre, "reproject_layer", record=written)
 
     from pyproj import CRS as _CRS
 
@@ -482,8 +482,8 @@ def overlay(
     )
     pre = verify.verify_loaded_inputs("overlay_layers", input_path=left, overlay_path=right)
     if verify.has_critical_failure(pre):
-        record.add_verification(pre).finish().write_for(output_path, refused=True)
-        verify.enforce(pre, "overlay_layers")
+        written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+        verify.enforce(pre, "overlay_layers", record=written)
     aligned = left.crs != right.crs
     record.crs_decisions = alignment_decisions(
         left.crs,
@@ -557,8 +557,8 @@ def dissolve(
     )
     pre = verify.verify_loaded_inputs("dissolve_layer", input_path=gdf)
     if verify.has_critical_failure(pre):
-        record.add_verification(pre).finish().write_for(output_path, refused=True)
-        verify.enforce(pre, "dissolve_layer")
+        written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+        verify.enforce(pre, "dissolve_layer", record=written)
     record.crs_decisions = {
         "analysis_crs": verify.crs_label(gdf.crs),
         "reason": "dissolve is a topological union; computed in the layer's native CRS",
@@ -632,8 +632,8 @@ def nearest_join(
     )
     pre = verify.verify_loaded_inputs("nearest_join", left_path=left, right_path=right)
     if verify.has_critical_failure(pre):
-        record.add_verification(pre).finish().write_for(output_path, refused=True)
-        verify.enforce(pre, "nearest_join")
+        written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+        verify.enforce(pre, "nearest_join", record=written)
 
     original_crs = left.crs
     moved_right = [] if verify.same_crs(right.crs, left.crs) else [("right_path", right)]
@@ -709,8 +709,8 @@ def explode(input_path: str, output_path: str) -> dict[str, Any]:
     )
     pre = verify.verify_loaded_inputs("explode_layer", input_path=gdf)
     if verify.has_critical_failure(pre):
-        record.add_verification(pre).finish().write_for(output_path, refused=True)
-        verify.enforce(pre, "explode_layer")
+        written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+        verify.enforce(pre, "explode_layer", record=written)
     record.crs_decisions = {
         "analysis_crs": verify.crs_label(gdf.crs),
         "reason": "explode changes structure, not coordinates; computed in the native CRS",
@@ -780,8 +780,8 @@ def merge(input_paths: list[str], output_path: str) -> dict[str, Any]:
     named = {f"input_{i}": frame for i, frame in enumerate(frames, start=1)}
     pre = verify.verify_loaded_inputs("merge_layers", **named)
     if verify.has_critical_failure(pre):
-        record.add_verification(pre).finish().write_for(output_path, refused=True)
-        verify.enforce(pre, "merge_layers")
+        written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+        verify.enforce(pre, "merge_layers", record=written)
     target = frames[0].crs
     # Named and paired with the CRS each one was in, not counted: 'three of
     # five were reprojected' does not tell a reader WHICH three, and with
@@ -1063,8 +1063,8 @@ def convert(input_path: str, output_path: str) -> dict[str, Any]:
     )
     pre = verify.verify_loaded_inputs("convert_format", input_path=gdf)
     if verify.has_critical_failure(pre):
-        record.add_verification(pre).finish().write_for(output_path, refused=True)
-        verify.enforce(pre, "convert_format")
+        written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+        verify.enforce(pre, "convert_format", record=written)
     record.crs_decisions = {
         "analysis_crs": verify.crs_label(gdf.crs),
         "reason": "no CRS change: format conversion does not transform coordinates",
@@ -1198,8 +1198,8 @@ def measure_area(
     )
     pre = verify.verify_loaded_inputs("measure_area", input_path=gdf)
     if verify.has_critical_failure(pre):
-        record.add_verification(pre).finish().write_for(output_path, refused=True)
-        verify.enforce(pre, "measure_area")
+        written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+        verify.enforce(pre, "measure_area", record=written)
 
     # Repair BEFORE measuring, not after: the planar area of a self-intersecting
     # ring is the signed shoelace — a number that matches no region and raises
@@ -1379,8 +1379,8 @@ def spatial_join(
     )
     pre = verify.verify_loaded_inputs("spatial_join", left_path=left, right_path=right)
     if verify.has_critical_failure(pre):
-        record.add_verification(pre).finish().write_for(output_path, refused=True)
-        verify.enforce(pre, "spatial_join")
+        written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+        verify.enforce(pre, "spatial_join", record=written)
     aligned = left.crs != right.crs
     record.crs_decisions = alignment_decisions(
         left.crs,
@@ -1477,8 +1477,8 @@ def join_table(
     }
     pre = verify.verify_loaded_inputs("join_table", input_path=gdf)
     if verify.has_critical_failure(pre):
-        record.add_verification(pre).finish().write_for(output_path, refused=True)
-        verify.enforce(pre, "join_table")
+        written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+        verify.enforce(pre, "join_table", record=written)
 
     gdf = gdf.copy()
     gdf[on] = gdf[on].astype(str)
@@ -1649,8 +1649,8 @@ def measure_length(
     )
     pre = verify.verify_loaded_inputs("measure_length", input_path=gdf)
     if verify.has_critical_failure(pre):
-        record.add_verification(pre).finish().write_for(output_path, refused=True)
-        verify.enforce(pre, "measure_length")
+        written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+        verify.enforce(pre, "measure_length", record=written)
 
     has_z = bool(shapely.has_z(gdf.geometry.values).any())
     if method == "3d":
@@ -2562,8 +2562,8 @@ def count_in_polygons(
         "count_in_polygons", points_path=points, polygons_path=polygons
     )
     if verify.has_critical_failure(pre):
-        record.add_verification(pre).finish().write_for(output_path, refused=True)
-        verify.enforce(pre, "count_in_polygons")
+        written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+        verify.enforce(pre, "count_in_polygons", record=written)
     original_points = points
     aligned = not verify.same_crs(original_points.crs, polygons.crs)
     if aligned:
@@ -2784,8 +2784,8 @@ def summarize_points_in_polygons(
         "summarize_points_in_polygons", points_path=points, polygons_path=polygons
     )
     if verify.has_critical_failure(pre):
-        record.add_verification(pre).finish().write_for(output_path, refused=True)
-        verify.enforce(pre, "summarize_points_in_polygons")
+        written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+        verify.enforce(pre, "summarize_points_in_polygons", record=written)
     original_points = points
     aligned = not verify.same_crs(original_points.crs, polygons.crs)
     if aligned:
@@ -3207,8 +3207,8 @@ def apportion_by_area(
         "apportion_by_area", source_path=source, target_path=target
     )
     if verify.has_critical_failure(pre):
-        record.add_verification(pre).finish().write_for(output_path, refused=True)
-        verify.enforce(pre, "apportion_by_area")
+        written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+        verify.enforce(pre, "apportion_by_area", record=written)
     # The output is the target zones as given, in their own CRS: only the copies
     # used for the intersection move.
     original_target = target
@@ -3986,8 +3986,8 @@ def select_features(
 
     pre = verify.verify_loaded_inputs("select_features", input_path=gdf)
     if verify.has_critical_failure(pre):
-        record.add_verification(pre).finish().write_for(output_path, refused=True)
-        verify.enforce(pre, "select_features")
+        written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+        verify.enforce(pre, "select_features", record=written)
     with verify.audit_on_failure(record, output_path, pre):
         _write(out, output_path)
 
@@ -4110,8 +4110,8 @@ def extract_layer(input_path: str, layer: str, output_path: str) -> dict[str, An
 
     pre = verify.verify_loaded_inputs("extract_layer", input_path=gdf)
     if verify.has_critical_failure(pre):
-        record.add_verification(pre).finish().write_for(output_path, refused=True)
-        verify.enforce(pre, "extract_layer")
+        written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+        verify.enforce(pre, "extract_layer", record=written)
     with verify.audit_on_failure(record, output_path, pre):
         _write(gdf, output_path)
 

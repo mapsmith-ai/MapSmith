@@ -780,8 +780,8 @@ def clip_raster(
         )
         pre = verify.verify_loaded_inputs("clip_raster", mask_path=frame)
         if verify.has_critical_failure(pre):
-            record.add_verification(pre).finish().write_for(output_path, refused=True)
-            verify.enforce(pre, "clip_raster")
+            written = record.add_verification(pre).finish().write_for(output_path, refused=True)
+            verify.enforce(pre, "clip_raster", record=written)
         aligned = not verify.same_crs(frame.crs, src.crs)
         record.crs_decisions = alignment_decisions(
             src.crs,
