@@ -1261,3 +1261,36 @@ def test_outside_is_counted_against_the_registered_areas_in_degrees():
     )
     assert record["is_ballpark"] is False
     assert record[datum.OUTSIDE_AREA] == {"vertices": 50, "checked": 52}
+
+
+
+@pytest.mark.parametrize("pair", [("EPSG:3003", "EPSG:4326"), ("EPSG:3338", "EPSG:4326")])
+def test_the_record_counts_what_proj_does_point_by_point_on_a_projected_grid(pair):
+    """The coverage model replicates PROJ's own rules; this is the test that goes red if PROJ changes them.
+
+    A grid over and around the source CRS's area (across the antimeridian for
+    Alaska Albers), each point transformed by PROJ itself and its operation read.
+    """
+    import numpy as np
+    from pyproj import CRS, Transformer
+
+    source = CRS(pair[0])
+    area = source.area_of_use
+    if area.west > area.east:
+        lons = np.r_[np.linspace(area.west, 180, 60), np.linspace(-180, area.east, 60)]
+    else:
+        lons = np.linspace(area.west - 5, area.east + 5, 120)
+    lats = np.linspace(max(area.south - 5, -89), min(area.north + 5, 89), 100)
+    x, y = Transformer.from_crs("EPSG:4326", source, always_xy=True).transform(
+        *np.array([(lo, la) for lo in lons for la in lats]).T
+    )
+    points = np.column_stack([x, y])
+    points = points[np.isfinite(points).all(axis=1)]
+    transformer = Transformer.from_crs(*pair, always_xy=True)
+    unshifted = 0
+    for px, py in points:
+        transformer.transform(px, py)
+        accuracy = transformer.get_last_used_operation().accuracy
+        unshifted += accuracy is None or accuracy < 0
+    survey = datum._Survey(datum._as_crs(pair[0]), datum._as_crs(pair[1]), points, transformer)
+    assert survey.unshifted == unshifted

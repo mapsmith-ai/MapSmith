@@ -348,7 +348,19 @@ class _Survey:
 
             u, v = np.asarray(points[:, 0], dtype=float), np.asarray(points[:, 1], dtype=float)
             step = max(float(np.ptp(u)), float(np.ptp(v)), 1e-9) / 2000
-            into = Transformer.from_crs(CRS.from_epsg(4326), source_crs, always_xy=True)
+            # From the source's own geographic CRS when it counts from
+            # Greenwich, as PROJ does: from EPSG:4326 the edge moved by the
+            # datum shift, ~100 m, and EPSG:3003 had 7 vertices in 24,000 on
+            # the wrong side (review, round six). Not when it counts from
+            # Rome or Paris, whose degrees are not the area's.
+            geodetic = source_crs.geodetic_crs
+            start = (
+                geodetic
+                if geodetic is not None and geodetic.prime_meridian is not None
+                and geodetic.prime_meridian.name == "Greenwich"
+                else CRS.from_epsg(4326)
+            )
+            into = Transformer.from_crs(start, source_crs, always_xy=True)
             boxes = {}
             for op in operations:
                 a = op.area_of_use
