@@ -17,6 +17,7 @@ import geopandas as gpd
 import pytest
 from shapely.geometry import box
 
+from conftest import _spec_problems
 from mapsmith import verify
 from mapsmith.engines import vector
 
@@ -58,6 +59,7 @@ def test_a_refused_run_does_not_claim_the_earlier_bytes_nor_replace_their_record
     failed = _failed(out)
     assert "output" not in failed
     assert any("belong to an earlier run" in note and "left in place" in note for note in failed["notes"])
+    assert _spec_problems(failed) == []
 
 
 def test_a_run_that_crashes_before_writing_does_not_claim_the_earlier_bytes(earlier_run, monkeypatch):
@@ -74,6 +76,7 @@ def test_a_run_that_crashes_before_writing_does_not_claim_the_earlier_bytes(earl
     failed = _failed(out)
     assert "output" not in failed
     assert sum("belong to an earlier run" in note for note in failed["notes"]) == 1
+    assert _spec_problems(failed) == []
 
 
 def test_a_run_that_crashes_after_writing_still_records_its_own_bytes(earlier_run, monkeypatch):
@@ -162,3 +165,51 @@ def test_the_error_names_the_record_of_this_run_when_it_is_beside(earlier_run, t
     with pytest.raises(RuntimeError) as crashed:
         vector.clip(layer, mask, str(out))
     assert any("out.parquet.failed.provenance.json" in note for note in crashed.value.__notes__)
+
+
+
+def test_the_keys_datum_writes_are_declared_as_extensions():
+    """Declared by hand in provenance, written through constants in datum: a rename of either went unnoticed."""
+    from mapsmith import datum
+    from mapsmith.provenance import TRANSFORMATION_EXTENSIONS
+
+    assert datum.BALLPARK_SHARE in TRANSFORMATION_EXTENSIONS
+    assert datum.OUTSIDE_AREA in TRANSFORMATION_EXTENSIONS
+
+
+
+def test_every_audit_opened_while_reading_the_output_says_the_run_has_written():
+    """Derived from source: `audit_on_failure` beside `rasterio.open(output_path)` passes `written=True`.
+
+    Three raster writers opened their check block on the output they had just
+    written without saying so, and a crash in a check dropped the digest of
+    their own bytes (pre-release review of 0.9.0).
+    """
+    import ast
+
+    import mapsmith
+
+    root = Path(mapsmith.__file__).parent
+    seen, missing = 0, []
+    for path in sorted(root.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.With):
+                continue
+            items = [item.context_expr for item in node.items]
+            audits = [c for c in items if isinstance(c, ast.Call) and getattr(c.func, "attr", None) == "audit_on_failure"]
+            # Opened to READ: an open in "w" mode is the write itself, and the
+            # fingerprint there is rightly taken before it.
+            reads_output = any(
+                isinstance(c, ast.Call) and ast.unparse(c.func).endswith("open")
+                and c.args and ast.unparse(c.args[0]) == "output_path"
+                and not (len(c.args) > 1 and isinstance(c.args[1], ast.Constant) and "w" in str(c.args[1].value))
+                for c in items
+            )
+            for call in audits:
+                if reads_output:
+                    seen += 1
+                    if not any(k.arg == "written" for k in call.keywords):
+                        missing.append(f"{path.name}:{call.lineno}")
+    assert seen >= 3, f"only {seen} such blocks found: the sweep has stopped seeing them"
+    assert not missing, missing

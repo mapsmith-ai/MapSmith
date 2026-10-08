@@ -351,7 +351,9 @@ def record_round_trip(record: Any, analysis_crs: Any, returned_to: Any, data: An
 
     if returned_to is None or _same_crs(returned_to, analysis_crs):
         return
-    points = datum.sample_points(data)
+    # Within one datum there is nothing to ask the data about, and sampling a
+    # buffer's ten million vertices first cost three seconds for nothing.
+    points = None if datum.shares_a_datum(returned_to, analysis_crs) else datum.sample_points(data)
     carried = None
     if points is not None:
         out = Transformer.from_crs(returned_to, analysis_crs, always_xy=True)

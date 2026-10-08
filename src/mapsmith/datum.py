@@ -398,14 +398,17 @@ class _Survey:
         # -44.004 (review, round three). So the vertices of the cells an edge
         # can cross are judged one by one, and every other cell, wholly inside
         # or wholly outside each area, by one of its vertices.
-        ku = np.round(u / step).astype(np.int64)
-        kv = np.round(v / step).astype(np.int64)
+        # Relative to the layer's own corner: coincident points make the step
+        # tiny, and absolute coordinates over it overflowed int64 (review).
+        u0, v0 = float(np.min(u)), float(np.min(v))
+        ku = np.round((u - u0) / step).astype(np.int64)
+        kv = np.round((v - v0) / step).astype(np.int64)
         edges = [box for found in boxes.values() for box in found]
         edge_u = sorted({
-            round(box[i] / step) + d for box in edges for i in (0, 2) if math.isfinite(box[i]) for d in (-1, 0, 1)
+            round((box[i] - u0) / step) + d for box in edges for i in (0, 2) if math.isfinite(box[i]) for d in (-1, 0, 1)
         })
         edge_v = sorted({
-            round(box[i] / step) + d for box in edges for i in (1, 3) if math.isfinite(box[i]) for d in (-1, 0, 1)
+            round((box[i] - v0) / step) + d for box in edges for i in (1, 3) if math.isfinite(box[i]) for d in (-1, 0, 1)
         })
         on_edge = np.isin(ku, edge_u) | np.isin(kv, edge_v)
         off = np.flatnonzero(~on_edge)

@@ -1294,3 +1294,17 @@ def test_the_record_counts_what_proj_does_point_by_point_on_a_projected_grid(pai
         unshifted += accuracy is None or accuracy < 0
     survey = datum._Survey(datum._as_crs(pair[0]), datum._as_crs(pair[1]), points, transformer)
     assert survey.unshifted == unshifted
+
+
+
+def test_coincident_points_in_a_projected_source_do_not_overflow_the_cell_keys():
+    """One pour point, one endpoint: the step fell to its minimum and x/step passed int64."""
+    import warnings
+
+    import numpy as np
+
+    points = np.array([(500_000.0, 5_000_000.0), (500_000.0, 5_000_000.0)])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        record = datum.default_operation("EPSG:23032", "EPSG:4326", points)
+    assert record["is_ballpark"] is False

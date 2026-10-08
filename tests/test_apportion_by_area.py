@@ -817,3 +817,45 @@ def test_a_torn_strip_a_micrometre_wide_is_refused(tmp_path, source_crs):
     src = _layer(tmp_path, "s", list(zones), source_crs, population=[100, 100, 5000])
     with pytest.raises(ValueError, match="no longer hold a point of their own interior"):
         vector.apportion_by_area(src, tgt, str(tmp_path / "o.parquet"), extensive=["population"])
+
+
+
+# --- the security audit of 0.9.0 ------------------------------------------------------------------
+
+
+def test_two_tiny_files_cannot_make_it_allocate_without_bound(tmp_path):
+    """A 1 m source and a 200 km target, 381 bytes each: densifying the target at the
+    source's step allocated over 4 GiB. Refused now, before anything is allocated."""
+    import time
+
+    x0, y0 = 500_000.0, 5_000_000.0
+    src = _layer(tmp_path, "s", [box(x0, y0, x0 + 1, y0 + 1)], CRS, population=[100])
+    tgt = _layer(tmp_path, "t", [box(x0 - 100_000, y0 - 100_000, x0 + 100_000, y0 + 100_000)], CRS)
+    started = time.perf_counter()
+    try:
+        vector.apportion_by_area(src, tgt, str(tmp_path / "o.parquet"), extensive=["population"])
+    except ValueError as refused:
+        assert "MAPSMITH_MAX_SAMPLES" in str(refused)
+    assert time.perf_counter() - started < 10
+
+
+def test_a_column_named_twice_is_refused(zones, tmp_path):
+    with pytest.raises(ValueError, match="named more than once"):
+        _run(zones, tmp_path, extensive=["population", "population"])
+
+
+
+def test_a_comb_that_would_densify_past_the_limit_is_refused_by_count(tmp_path, monkeypatch):
+    """The refusal branch on its own: counted, refused, nothing allocated."""
+    from shapely.geometry import Polygon
+
+    monkeypatch.setenv("MAPSMITH_MAX_SAMPLES", "1000")
+    x0, y0 = 500_000.0, 5_000_000.0
+    teeth = []
+    for i in range(300):
+        teeth += [(x0 + i * 10, y0), (x0 + i * 10, y0 + 5000), (x0 + i * 10 + 5, y0 + 5000), (x0 + i * 10 + 5, y0)]
+    comb = Polygon([*teeth, (x0 + 3000, y0 - 10), (x0, y0 - 10)])
+    src = _layer(tmp_path, "s", [comb.buffer(0)], CRS, population=[100])
+    tgt = _layer(tmp_path, "t", [box(x0 - 10, y0 - 20, x0 + 3010, y0 + 5010)], CRS)
+    with pytest.raises(ValueError, match="MAPSMITH_MAX_SAMPLES"):
+        vector.apportion_by_area(src, tgt, str(tmp_path / "o.parquet"), extensive=["population"])

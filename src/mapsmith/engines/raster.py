@@ -557,7 +557,7 @@ def resample(
                 )
 
     checks: list[verify.Check] = []
-    with verify.audit_on_failure(record, output_path, []), rasterio.open(output_path) as out:
+    with verify.audit_on_failure(record, output_path, [], written=True), rasterio.open(output_path) as out:
         checks.append(
             verify.Check(
                 "x-mapsmith:shape_matches_resolution",
@@ -820,7 +820,7 @@ def clip_raster(
         source_shape = (src.height, src.width)
 
     checks: list[verify.Check] = []
-    with verify.audit_on_failure(record, output_path, pre), rasterio.open(output_path) as out:
+    with verify.audit_on_failure(record, output_path, pre, written=True), rasterio.open(output_path) as out:
         checks.append(
             verify.Check(
                 "crs_matches",
@@ -1425,7 +1425,7 @@ def reproject_raster(
                 )
 
     checks: list[verify.Check] = []
-    with verify.audit_on_failure(record, output_path, []), rasterio.open(output_path) as out:
+    with verify.audit_on_failure(record, output_path, [], written=True), rasterio.open(output_path) as out:
         checks.append(
             verify.Check(
                 "crs_matches",

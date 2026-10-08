@@ -2961,6 +2961,46 @@ def summarize_points_in_polygons(
 _AREAL = frozenset({"Polygon", "MultiPolygon"})
 
 
+#: How many times its own vertices densification may multiply an input before
+#: it is refused, above `MAPSMITH_MAX_SAMPLES`. A step taken from one layer's
+#: extent and applied to another's zones made two 381-byte files allocate over
+#: 4 GiB -- a 1 m source and a 200 km target (security audit, 0.9.0).
+_DENSIFY_GROWTH = 32
+
+
+def _densified(geoms: Any, step: float, what: str) -> Any:
+    """Geometries with no edge longer than `step`, nor than a thousandth of their own size.
+
+    The second bound keeps a large zone measured with a small zone's step from
+    turning into millions of vertices; the count is checked before anything is
+    allocated, against the larger of `MAPSMITH_MAX_SAMPLES` and a multiple of
+    the vertices the caller handed over.
+    """
+    import numpy as np
+
+    from .. import limits
+
+    geoms = np.asarray(geoms, dtype=object)
+    if not len(geoms):
+        return geoms
+    x0, y0, x1, y1 = shapely.bounds(geoms).T
+    own = np.hypot(x1 - x0, y1 - y0) / 1000
+    steps = np.maximum(np.where(np.isfinite(own), own, 0.0), step)
+    steps = np.where(steps > 0, steps, 1.0)
+    given = int(shapely.get_num_coordinates(geoms).sum())
+    lengths = shapely.length(geoms)
+    added = float(np.nansum(np.ceil(np.where(np.isfinite(lengths), lengths, 0.0) / steps)))
+    cap = max(limits.max_samples(), _DENSIFY_GROWTH * given)
+    if given + added > cap:
+        raise ValueError(
+            f"measuring the areas of {what} exactly would densify them to about "
+            f"{int(given + added):,} vertices, over this server's limit of {cap:,} "
+            f"({limits.MAX_SAMPLES_ENV}, or {_DENSIFY_GROWTH} times the vertices given). "
+            "Zones of very different sizes multiply this; simplify the zones or raise the limit."
+        )
+    return shapely.segmentize(geoms, steps)
+
+
 def _ellipsoid_words(crs: Any) -> str:
     """The datum and ellipsoid of a CRS in words a reader can rebuild them from.
 
@@ -3155,6 +3195,11 @@ def apportion_by_area(
             "not guess. To get a rate on the target zones, apportion its numerator and "
             "denominator as extensive and divide afterwards."
         )
+    # Each name once: a list repeating one column ran the per-target loop once
+    # per repetition, and wrote the same column over itself (security audit).
+    repeated = sorted({c for c in extensive if extensive.count(c) > 1} | {c for c in intensive if intensive.count(c) > 1})
+    if repeated:
+        raise ValueError(f"{repeated} named more than once; name each column once")
     both = sorted(set(extensive) & set(intensive))
     if both:
         raise ValueError(f"{both} declared both extensive and intensive; a column is one or the other")
@@ -3285,7 +3330,7 @@ def apportion_by_area(
         x0, y0, x1, y1 = target.total_bounds
         step = float(np.hypot(x1 - x0, y1 - y0)) / 1000 or 1.0
         target_as_drawn = gpd.GeoDataFrame(
-            geometry=shapely.segmentize(target.geometry.to_numpy(), step), crs=target.crs
+            geometry=_densified(target.geometry.to_numpy(), step, "the target zones"), crs=target.crs
         )
         target = target_as_drawn.to_crs(source.crs)
         densified.append(
@@ -3375,7 +3420,7 @@ def apportion_by_area(
         # One step for every geometry measured, in the source CRS: a straight
         # edge there is a curve on the plane, and projecting only its two ends
         # would cut a chord.
-        dense = shapely.segmentize(geoms, area_step)
+        dense = _densified(geoms, area_step, "the zones")
         return gpd.GeoSeries(dense, crs=source.crs).to_crs(plane).area.to_numpy()
 
     if moved_target:
@@ -3418,7 +3463,7 @@ def apportion_by_area(
         if check_plane is not None:
             direct = target_as_drawn.to_crs(check_plane).area.to_numpy()
             image = as_moved if check_plane is plane else gpd.GeoSeries(
-                shapely.segmentize(moved_geoms, area_step), crs=source.crs
+                _densified(moved_geoms, area_step, "the target zones"), crs=source.crs
             ).to_crs(check_plane).area.to_numpy()
             suspects = np.flatnonzero(~(np.abs(image - direct) <= 1e-4 * direct))
         torn = np.zeros(len(target), dtype=bool)
