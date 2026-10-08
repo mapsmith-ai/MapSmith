@@ -227,7 +227,9 @@ This page describes **0.8.0**, which is what that command installs. When `main` 
 the published artifact this paragraph says so and names the difference — a reader should never
 have to find out by calling a tool that is not there. **`main` is ahead of 0.8.0**
 ([`[Unreleased]`](CHANGELOG.md#unreleased)) by one operation, `apportion_by_area`, which moves
-counts and rates from the zones they are reported in to zones that cross them. **If you run 0.4.0 to 0.6.1, 0.7.0 and
+counts and rates from the zones they are reported in to zones that cross them, and by fixes to
+what records say about datum shifts -- one of which changes what `reproject_layer` writes where
+a published operation was applied outside its area. **If you run 0.4.0 to 0.6.1, 0.7.0 and
 later change answers you have**: every position read from a point-registered raster
 (`AREA_OR_POINT=Point`, the USGS and Copernicus DEMs) was half a cell off, and the
 [changelog](CHANGELOG.md) says which operations and why. **From 0.7.x, 0.8.0** adds
