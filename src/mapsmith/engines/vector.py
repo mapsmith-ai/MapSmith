@@ -3021,6 +3021,34 @@ def _enclosing_centre(start: Any, vertices: Any) -> tuple[Any, float]:
     return best, best_radius
 
 
+def _ring_geodesic_areas(frame: gpd.GeoDataFrame, geod: Any) -> Any:
+    """Each zone's geodesic area, from its own rings.
+
+    Ring by ring, in absolute value: the shell minus its holes, part by part.
+    The signed sum pyproj returns for a whole polygon is right only when the
+    rings are wound the way it expects, and shapely accepts either way -- a
+    valid target with a hole wound like its shell was refused as torn (fifth
+    review). A ring's geodesic area is reported in (-A/2, A/2], so a zone
+    larger than half the Earth reads as its complement, which the caller
+    cannot tell from a torn ring, and refuses.
+    """
+    import numpy as np
+
+    lonlat = frame.geometry.to_numpy()
+    areas = np.zeros(len(lonlat))
+    for i, geometry in enumerate(lonlat):
+        for part in shapely.get_parts(geometry):
+            if part.geom_type != "Polygon":
+                continue
+            rings = [part.exterior, *part.interiors]
+            ring_areas = []
+            for ring in rings:
+                xy = np.asarray(ring.coords)
+                ring_areas.append(abs(geod.polygon_area_perimeter(xy[:, 0], xy[:, 1])[0]))
+            areas[i] += ring_areas[0] - sum(ring_areas[1:])
+    return areas
+
+
 def _equal_area_plane(centre: Any, geodetic: Any) -> tuple[Any, float, float]:
     """A Lambert azimuthal equal-area plane centred on a unit vector."""
     import numpy as np
@@ -3301,10 +3329,15 @@ def apportion_by_area(
         mean, farthest = _enclosing_centre(mean, verts)
         plane, lat0, lon0 = _equal_area_plane(mean, geodetic)
         if farthest > 90:
+            # The centre is an approximation, so the radius is an upper bound:
+            # say what was found, not what the data are (fifth review: two
+            # antipodal points were reported 180 degrees apart from a centre
+            # where the true cap is 90).
             raise ValueError(
-                f"the zones reach {farthest:.0f} degrees from their centre ({lat0:.2f}, "
-                f"{lon0:.2f}): more than a hemisphere, where no single equal-area plane "
-                "measures them reliably. Split the analysis by region."
+                "no centre was found with every zone within a hemisphere of it -- the best "
+                f"found, ({lat0:.2f}, {lon0:.2f}), leaves a vertex {farthest:.0f} degrees away "
+                "-- and beyond a hemisphere no single equal-area plane measures the zones "
+                "reliably. Split the analysis by region."
             )
         plane_label = plane.name
 
@@ -3345,21 +3378,37 @@ def apportion_by_area(
         # ellipsoid, every target on a sphere (MODIS) was refused, 0.2-0.45%
         # apart; on one plane for all targets, a target near that plane's
         # antipode was (fourth review).
-        geod = geodetic.get_geod()
-        drawn_lonlat = target_as_drawn.to_crs(geodetic)
-        as_drawn = np.array([
-            abs(geod.geometry_area_perimeter(g)[0]) for g in drawn_lonlat.geometry.to_numpy()
-        ])
         as_moved = area_of(target.geometry.to_numpy())
-        # Not finite counts as torn: a pole in Web Mercator is at infinity.
-        torn = np.flatnonzero(~(np.abs(as_moved - as_drawn) <= 1e-3 * as_drawn))
-        if len(torn):
+        suspects = np.arange(len(target))
+        if not source_is_equal_area:
+            # A vectorised first pass on the main plane, which every vertex
+            # reaches within a hemisphere: each target's own vertices taken
+            # there one by one, against its image densified in the source CRS.
+            # They differ only where the source CRS read an edge the long way.
+            # The geodesic loop then runs on the few that differ.
+            direct = target_as_drawn.to_crs(plane).area.to_numpy()
+            suspects = np.flatnonzero(~(np.abs(as_moved - direct) <= 1e-4 * direct))
+        torn: list[int] = []
+        if len(suspects):
+            as_drawn = _ring_geodesic_areas(
+                target_as_drawn.iloc[suspects].to_crs(geodetic), geodetic.get_geod()
+            )
+            # Not finite counts as torn: a pole in Web Mercator is at infinity.
+            # A target larger than half the Earth reads as its complement, and
+            # is refused with the torn ones: allowing the complement would
+            # also accept a small target torn on an equal-area world map,
+            # whose wrong area is exactly the Earth minus it.
+            whole = np.abs(as_moved[suspects] - as_drawn) <= 1e-3 * as_drawn
+            torn = suspects[~whole].tolist()
+        if torn:
             raise ValueError(
-                f"target zone(s) {torn[:20].tolist()} of {target_path} change area by more "
+                f"target zone(s) {torn[:20]} of {target_path} change area by more "
                 f"than 0.1% when brought into the source zones' CRS "
-                f"({verify.crs_label(source.crs)}): they cross a seam of that CRS (the "
-                "180th meridian, a pole) and would be read the long way round. Put the "
-                "source zones in a CRS where those targets are drawn whole."
+                f"({verify.crs_label(source.crs)}): either they cross a seam of that CRS "
+                "(the 180th meridian, a pole) and would be read the long way round, or they "
+                "are larger than half the Earth, which area alone cannot tell apart. Put the "
+                "source zones in a CRS where those targets are drawn whole, or split targets "
+                "that large."
             )
 
     record.crs_decisions = alignment_decisions(

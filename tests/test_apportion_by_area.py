@@ -688,3 +688,49 @@ def test_many_small_zones_at_one_end_do_not_make_a_hemisphere(tmp_path):
     out = tmp_path / "o.parquet"
     vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
     assert gpd.read_parquet(out)["population"].iloc[0] == pytest.approx(1200)
+
+
+
+# --- the sixth review's case: the geodesic check must not read a ring's winding ------------------
+
+
+def _winding_case(tmp_path, target_geometry, source_crs):
+    from shapely.geometry import box as _box
+
+    x0, y0 = 500_000.0, 5_000_000.0
+    zone = gpd.GeoSeries([shapely_segmentize(_box(x0 - 10, y0 - 10, x0 + 3010, y0 + 1010), 10.0)],
+                         crs=CRS).to_crs(source_crs)
+    src = _layer(tmp_path, "s", list(zone), source_crs, population=[1000])
+    tgt = _layer(tmp_path, "t", [target_geometry(x0, y0)], CRS)
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    return gpd.read_parquet(out)["population"].iloc[0]
+
+
+# In degrees the plane's first pass clears the target; equal-area, the geodesic reads every one.
+WINDING_SOURCES = pytest.mark.parametrize("source_crs", ["EPSG:4326", CYLINDRICAL_EQUAL_AREA])
+
+
+@WINDING_SOURCES
+def test_a_hole_wound_like_its_shell_is_not_read_as_torn(tmp_path, source_crs):
+    """Valid to shapely either way; the signed geodesic sum refused it as crossing a seam."""
+    from shapely.geometry import Polygon
+
+    def holed(x0, y0):
+        shell = [(x0, y0), (x0 + 1000, y0), (x0 + 1000, y0 + 1000), (x0, y0 + 1000)]
+        hole = [(x0 + 400, y0 + 400), (x0 + 600, y0 + 400), (x0 + 600, y0 + 600), (x0 + 400, y0 + 600)]
+        return Polygon(shell, [hole])  # both counter-clockwise
+
+    assert _winding_case(tmp_path, holed, source_crs) == pytest.approx(1000 * 960_000 / 3_080_400, rel=1e-3)
+
+
+@WINDING_SOURCES
+def test_parts_wound_opposite_ways_are_not_read_as_torn(tmp_path, source_crs):
+    from shapely.geometry import MultiPolygon, Polygon
+
+    def mixed(x0, y0):
+        ccw = Polygon([(x0, y0), (x0 + 1000, y0), (x0 + 1000, y0 + 1000), (x0, y0 + 1000)])
+        cw = Polygon([(x0 + 2000, y0), (x0 + 2000, y0 + 1000), (x0 + 3000, y0 + 1000), (x0 + 3000, y0)])
+        return MultiPolygon([ccw, cw])
+
+    assert _winding_case(tmp_path, mixed, source_crs) == pytest.approx(1000 * 2_000_000 / 3_080_400, rel=1e-3)
