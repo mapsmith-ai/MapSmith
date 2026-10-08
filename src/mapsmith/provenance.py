@@ -152,7 +152,9 @@ TRANSFORMATION_EXTENSIONS: dict[str, str] = {
         "pairs and extends a published operation for others -- and either way "
         "the stated accuracy was never established for those coordinates. Not "
         "evidence that the declared CRS is wrong: a datum counted from another "
-        "meridian can have its operations published for its Greenwich twin only."
+        "meridian can have its operations published for its Greenwich twin only, "
+        "and where MapSmith takes that route the twin's operations count as "
+        "published for the pair. Counted exactly, vertex by vertex."
     ),
     "x-mapsmith:default_was_ballpark": (
         "Not `is_ballpark`, and the two are opposites in the same record: this "

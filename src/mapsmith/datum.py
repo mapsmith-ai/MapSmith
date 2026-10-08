@@ -307,7 +307,6 @@ class _Survey:
 
     def __init__(self, source_crs: Any, target_crs: Any, points: Any, chooser: Any) -> None:
         import numpy as np
-        from pyproj import CRS, Transformer
         from pyproj.transformer import TransformerGroup
 
         self.from_data = points is not None and len(points) > 0
@@ -318,22 +317,7 @@ class _Survey:
         # (EPSG:4806 does), and its degrees then sat 12 degrees off every area
         # they were compared with. A geographic source already counted from
         # Greenwich is read as it is: the hop would only cost a transform.
-        meridian = getattr(source_crs, "prime_meridian", None)
-        if source_crs.is_geographic and meridian is not None and meridian.name == "Greenwich":
-            lon, lat = points[:, 0], points[:, 1]
-        else:
-            lon, lat = Transformer.from_crs(source_crs, CRS.from_epsg(4326), always_xy=True).transform(
-                points[:, 0], points[:, 1]
-            )
-        lon = (np.asarray(lon, dtype=float) + 180) % 360 - 180
-        lat = np.asarray(lat, dtype=float)
-        key = np.round(lon * 100).astype(np.int64) * 100_000 + np.round(lat * 100).astype(np.int64)
-        _, first, counts = np.unique(key, return_index=True, return_counts=True)
-        del key
-        #: One real vertex per occupied cell, and how many vertices it stands for.
-        self.lon, self.lat, self.weight = lon[first], lat[first], counts
-        self.points = points[first]
-        self.n = int(counts.sum())
+        lon, lat = _greenwich_lonlat(source_crs, points)
         group = TransformerGroup(source_crs, target_crs, always_xy=True)
         self.stated = [
             t for t in group.transformers if t.accuracy is not None and t.accuracy >= _STATED
@@ -342,17 +326,67 @@ class _Survey:
             op for op in group.unavailable_operations
             if op.accuracy is not None and op.accuracy >= _STATED
         ]
-        self.covered = np.zeros(len(first), dtype=bool)
+        # Coverage is EXACT for every vertex. On cells of a hundredth of a
+        # degree judged by one vertex each, a cell an area's edge runs through
+        # hid the vertices on its other side -- NAD27 at -43.996 recorded as a
+        # 20 m shift beside -44.004 (review, round three). So the vertices of
+        # the cells an edge can cross are judged one by one, and every other
+        # cell, which lies wholly inside or wholly outside each area, by one
+        # of its vertices: exact, at the cost of the few cells on an edge.
+        operations = [*self.stated, *self.unavailable]
+        klon = np.round(lon * 100).astype(np.int64)
+        klat = np.round(lat * 100).astype(np.int64)
+        edge_lon = sorted({
+            round(v * 100) + d for op in operations if op.area_of_use is not None
+            for v in (op.area_of_use.west, op.area_of_use.east) for d in (-1, 0, 1)
+        })
+        edge_lat = sorted({
+            round(v * 100) + d for op in operations if op.area_of_use is not None
+            for v in (op.area_of_use.south, op.area_of_use.north) for d in (-1, 0, 1)
+        })
+        on_edge = np.isin(klon, edge_lon) | np.isin(klat, edge_lat)
+        cell = klon * 100_000 + klat
+        del klon, klat
+        _, rest_first, rest_counts = np.unique(
+            np.where(on_edge, -1, cell), return_index=True, return_counts=True
+        )
+        # The -1 bucket holds every edge vertex; drop it from the cells.
+        keep = ~on_edge[rest_first]
+        rest_first, rest_counts = rest_first[keep], rest_counts[keep]
+        exact = np.flatnonzero(on_edge)
+        del cell, on_edge
+        # Each group: one vertex per off-edge cell weighted by the cell's
+        # count, and every edge vertex weighted one.
+        index = np.concatenate([rest_first, exact])
+        weight = np.concatenate([rest_counts, np.ones(len(exact), dtype=rest_counts.dtype)])
+        glon, glat = lon[index], lat[index]
+        covered = np.zeros(len(index), dtype=bool)
+        #: Installed operations whose area contains every vertex, best first.
+        self.whole = []
         for operation in self.stated:
-            self.covered |= _covers(operation.area_of_use, self.lon, self.lat)
-        published = self.covered.copy()
+            inside = _covers(operation.area_of_use, glon, glat)
+            covered |= inside
+            if inside.all():
+                self.whole.append(operation)
+        self.whole.sort(key=lambda t: t.accuracy)
+        published = covered.copy()
+        #: Missing-grid operations whose area contains every vertex that no
+        #: installed operation covers -- the only kind a download would help.
+        self.better: list[float] = []
         for operation in self.unavailable:
-            published |= _covers(operation.area_of_use, self.lon, self.lat)
-        self.uncovered = int(counts[~self.covered].sum())
+            inside = _covers(operation.area_of_use, glon, glat)
+            published |= inside
+            if inside[~covered].all() if (~covered).any() else inside.all():
+                self.better.append(float(operation.accuracy))
+        self.lon, self.lat, self.weight = glon, glat, weight
+        self.points = points[index]
+        self.n = int(weight.sum())
+        self.covered = covered
+        self.uncovered = int(weight[~covered].sum())
         #: Vertices outside the area of use of EVERY operation published for
         #: the pair, installed or not: a fact about where the data is,
         #: whatever the engine then did with them.
-        self.outside = int(counts[~published].sum())
+        self.outside = int(weight[~published].sum())
         inside_at = _spread(self.lon, self.lat, np.flatnonzero(self.covered))
         outside_at = _spread(self.lon, self.lat, np.flatnonzero(~self.covered))
         self.asked_inside = (
@@ -421,23 +455,11 @@ class _Survey:
         UNAVAILABLE ones: an installed operation that covers the data would
         have been used.
         """
-        import numpy as np
-
-        lon, lat = self.lon[~self.covered], self.lat[~self.covered]
-        if not len(lon):
-            lon, lat = self.lon, self.lat
-        better = [
-            op.accuracy for op in self.unavailable
-            if np.all(_covers(op.area_of_use, lon, lat))
-        ]
-        return float(min(better)) if better else None
+        return min(self.better) if self.better else None
 
     def covering_all(self) -> list[Any]:
         """Installed operations whose area of use contains every vertex, best first."""
-        import numpy as np
-
-        whole = [t for t in self.stated if np.all(_covers(t.area_of_use, self.lon, self.lat))]
-        return sorted(whole, key=lambda t: t.accuracy)
+        return list(self.whole)
 
 
 def _probe_point(source_crs: Any, target_crs: Any = None) -> tuple[float, float]:
@@ -564,6 +586,59 @@ def _join_pipelines(*transformers: Any) -> Any:
     return Transformer.from_pipeline("+proj=pipeline " + " ".join(steps))
 
 
+def _greenwich_lonlat(source_crs: Any, points: Any) -> tuple[Any, Any]:
+    """Longitude and latitude counted from Greenwich, which every area of use is stated in.
+
+    A geographic source already counted from Greenwich is read as it is; any
+    other is transformed -- the datum shift that hop applies is metres, and an
+    area of use is a box drawn to the nearest hundredth of a degree.
+    """
+    import numpy as np
+    from pyproj import CRS, Transformer
+
+    meridian = getattr(source_crs, "prime_meridian", None)
+    if source_crs.is_geographic and meridian is not None and meridian.name == "Greenwich":
+        lon, lat = points[:, 0], points[:, 1]
+    else:
+        lon, lat = Transformer.from_crs(source_crs, CRS.from_epsg(4326), always_xy=True).transform(
+            points[:, 0], points[:, 1]
+        )
+    return (np.asarray(lon, dtype=float) + 180) % 360 - 180, np.asarray(lat, dtype=float)
+
+
+def twin_route(source_crs: Any, target_crs: Any, points: Any) -> tuple[Any, Any, Any] | None:
+    """The route through a datum's Greenwich twin, when an operation of the twin covers the data.
+
+    Returns (transformer, the operation, the twin CRS), or None. The covering
+    test is exact over every point: a hint naming the twin to a raster in
+    Spain, where none of the twin's operations reaches, prescribed a route that
+    changes nothing (review, round three).
+    """
+    import numpy as np
+    from pyproj import Transformer
+    from pyproj.transformer import TransformerGroup
+
+    source_crs, target_crs = _as_crs(source_crs), _as_crs(target_crs)
+    twin = _greenwich_twin(source_crs)
+    if twin is None:
+        return None
+    if points is None or not len(points):
+        points = np.array([_probe_point(source_crs, target_crs)], dtype=float)
+    lon, lat = _greenwich_lonlat(source_crs, points)
+    candidates = sorted(
+        (
+            t for t in TransformerGroup(twin, target_crs, always_xy=True).transformers
+            if t.accuracy is not None and t.accuracy >= _STATED
+            and np.all(_covers(t.area_of_use, lon, lat))
+        ),
+        key=lambda t: t.accuracy,
+    )
+    if not candidates:
+        return None
+    route = _join_pipelines(Transformer.from_crs(source_crs, twin, always_xy=True), candidates[0])
+    return (route, candidates[0], twin) if route is not None else None
+
+
 def best_operation(source_crs: Any, target_crs: Any, points: Any = None) -> tuple[Any, dict[str, Any]]:
     """The transformer to use when the caller gets to choose, and its record.
 
@@ -609,30 +684,15 @@ def best_operation(source_crs: Any, target_crs: Any, points: Any = None) -> tupl
         }
     # A datum counted from another meridian: its published operations may be
     # registered for its Greenwich twin only.
-    twin = _greenwich_twin(source_crs) if not whole else None
-    if twin is not None:
-        import numpy as np
-        from pyproj.transformer import TransformerGroup
-
-        candidates = sorted(
-            (
-                t for t in TransformerGroup(twin, target_crs, always_xy=True).transformers
-                if t.accuracy is not None and t.accuracy >= _STATED
-                and np.all(_covers(t.area_of_use, survey.lon, survey.lat))
-            ),
-            key=lambda t: t.accuracy,
-        )
-        route = (
-            _join_pipelines(Transformer.from_crs(source_crs, twin, always_xy=True), candidates[0])
-            if candidates else None
-        )
-        if route is not None:
-            return route, {
-                "pipeline": pipeline_of(route),
-                "accuracy_m": float(candidates[0].accuracy),
-                "is_ballpark": False,
-                "x-mapsmith:default_was_ballpark": True,
-            }
+    found = twin_route(source_crs, target_crs, points) if not whole else None
+    if found is not None:
+        route, operation, _ = found
+        return route, {
+            "pipeline": pipeline_of(route),
+            "accuracy_m": float(operation.accuracy),
+            "is_ballpark": False,
+            "x-mapsmith:default_was_ballpark": True,
+        }
     # No datum shift for (part of) these coordinates: saying so is the only
     # honest answer. Recording `is_ballpark: true` rather than refusing keeps
     # the operation usable where the caller knows the datums are equivalent.

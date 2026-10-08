@@ -1104,13 +1104,76 @@ def test_a_layer_of_empty_polygons_goes_through_an_operation(tmp_path):
     )
 
 
-def test_the_raster_hint_names_the_greenwich_twin():
-    """A correctly declared EPSG:4806 raster was told its CRS was probably wrong."""
-    from pyproj import CRS
+def _raster_hint(bounds):
+    from mapsmith.engines import raster
+
+    where = datum.sample_points(bounds)
+    shift = datum.default_operation("EPSG:4806", "EPSG:4326", where)
+    route = datum.twin_route("EPSG:4806", "EPSG:4326", where)
+    twin = ("Rome", "EPSG:4265") if route is not None else None
+    return shift, raster._datum_shift_check(shift, twin)
+
+
+def test_the_raster_hint_names_the_greenwich_twin_where_it_covers_the_data():
+    """A correctly declared EPSG:4806 raster in Piedmont was told its CRS was probably wrong."""
+    shift, check = _raster_hint((-3.6, 45.4, -3.4, 45.6))
+    assert shift["is_ballpark"] is True
+    assert "EPSG:4265" in check.hint and "Rome" in check.hint
+
+
+def test_the_raster_hint_does_not_prescribe_the_twin_where_it_changes_nothing():
+    """Over Spain no operation of EPSG:4265 reaches: the route would still be a ballpark."""
+    _, check = _raster_hint((-17.0, 40.0, -16.0, 41.0))  # Rome-relative: about 4.5W, Spain
+    assert "EPSG:4265" not in check.hint
+
+
+@pytest.mark.parametrize("order", [1, -1])
+def test_vertices_either_side_of_an_area_edge_are_counted_apart(order):
+    """NAD27's 20 m operation ends at -44.00: one vertex each side, in one cell of 0.01 degree.
+
+    Judged one vertex per cell, the record said a 20 m shift for both, or a
+    ballpark for all, depending on which came first.
+    """
+    import numpy as np
+
+    points = np.array([(-44.004, 50.0), (-43.996, 50.0)])[::order]
+    record = datum.default_operation("EPSG:4267", "EPSG:4326", points)
+    assert record["is_ballpark"] is True
+    assert record[datum.BALLPARK_SHARE] == {"ballpark": 1, "checked": 2}
+
+
+def test_an_accuracy_stretched_beyond_its_area_is_said_to_be_unestablished():
+    """DHDN in Italy: PROJ applies a German 3 m operation, and "3.0 m" passed without a word."""
+    import numpy as np
 
     from mapsmith.engines import raster
 
-    shift = datum.default_operation("EPSG:4806", "EPSG:4326", datum.sample_points((-3.6, 45.4, -3.4, 45.6)))
-    assert shift["is_ballpark"] is True
-    check = raster._datum_shift_check(shift, CRS.from_epsg(4806))
-    assert "EPSG:4265" in check.hint and "Rome" in check.hint
+    shift = datum.default_operation("EPSG:4314", "EPSG:4326", np.array([(12.5, 42.5)]))
+    assert shift["is_ballpark"] is False
+    detail = raster._datum_shift_check(shift).detail
+    assert "never established" in detail
+
+
+
+@pytest.mark.parametrize("pair", [("EPSG:4267", "EPSG:4326"), ("EPSG:4326", "EPSG:3035"), ("EPSG:4314", "EPSG:4326")])
+def test_coverage_counts_are_exact_against_a_vertex_by_vertex_pass(pair):
+    """Grouped by cell for speed, the counts must equal checking every vertex on its own."""
+    import numpy as np
+    from pyproj import Transformer
+    from pyproj.transformer import TransformerGroup
+
+    xs, ys = np.meshgrid(np.arange(-179.995, 180, 0.37), np.arange(-89.995, 90, 0.37))
+    points = np.column_stack([xs.ravel(), ys.ravel()])
+    operations = [
+        t for t in TransformerGroup(*pair, always_xy=True).transformers
+        if t.accuracy is not None and t.accuracy >= 0
+    ]
+    covered = np.zeros(len(points), dtype=bool)
+    for operation in operations:
+        covered |= datum._covers(operation.area_of_use, points[:, 0], points[:, 1])
+    survey = datum._Survey(
+        datum._as_crs(pair[0]), datum._as_crs(pair[1]), points,
+        Transformer.from_crs(*pair, always_xy=True),
+    )
+    assert survey.n == len(points)
+    assert survey.uncovered == int((~covered).sum())

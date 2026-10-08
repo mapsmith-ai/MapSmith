@@ -626,7 +626,7 @@ def resample(
 _GRID_EPSILON = 1e-9
 
 
-def _datum_shift_check(shift: dict[str, Any], source_crs: Any = None) -> Any:
+def _datum_shift_check(shift: dict[str, Any], twin: tuple[str, str] | None = None) -> Any:
     """Say whether a datum shift was actually applied, in the manifest.
 
     `crs_matches` passes whether or not one was: the output really is in the CRS
@@ -634,21 +634,26 @@ def _datum_shift_check(shift: dict[str, Any], source_crs: Any = None) -> Any:
     this repository measures in other people's software and, until 2026-09-03,
     reproduced on its own raster side.
     """
+    outside = shift.get(datum.OUTSIDE_AREA)
     if not shift["is_ballpark"]:
         return verify.Check(
             "x-mapsmith:datum_shift_applied",
             True,
             f"{shift['pipeline'] or 'transformation'} - stated accuracy "
-            f"{shift['accuracy_m']} m",
+            f"{shift['accuracy_m']} m"
+            # The accuracy is the operation's, stated for its area of use: where
+            # PROJ stretched it beyond that, the number was never established
+            # (review, round three: DHDN in Italy passed as "3.0 m").
+            + (
+                f"; {outside['vertices']} of {outside['checked']} points lie outside the "
+                "area of use of every operation published for this pair, where PROJ "
+                "extended one and that accuracy was never established"
+                if outside else ""
+            ),
             critical=False,
         )
     better = shift.get("better_available_m")
-    # rasterio hands over its own CRS class; the meridian lives on pyproj's.
-    source = datum._as_crs(source_crs) if source_crs is not None and better is None else None
-    twin = datum._greenwich_twin(source) if source is not None else None
-    twin_of = (
-        (source.geodetic_crs.prime_meridian.name, verify.crs_label(twin)) if twin is not None else None
-    )
+    twin_of = twin if better is None else None
     return verify.Check(
         "x-mapsmith:datum_shift_applied",
         # Not critical: a ballpark is legitimate when the caller knows the two
@@ -1344,10 +1349,18 @@ def reproject_raster(
         # What PROJ will do between these two datums, reported and not chosen:
         # rasterio builds its own transformer inside `warp`, so recording the
         # BEST available operation here would describe one that never ran.
-        shift = datum.default_operation(src.crs, target_crs, datum.sample_points(tuple(src.bounds)))
-        # Kept for the check after the dataset closes: a closed dataset's
-        # attributes are not something to read (`registration()`).
-        shifted_from = src.crs
+        where = datum.sample_points(tuple(src.bounds))
+        shift = datum.default_operation(src.crs, target_crs, where)
+        # The Greenwich-twin route, named in the hint only where one of the
+        # twin's operations covers this raster (`datum.twin_route`).
+        twin_hint = None
+        if shift["is_ballpark"]:
+            route = datum.twin_route(src.crs, target_crs, where)
+            if route is not None:
+                twin_hint = (
+                    datum._as_crs(src.crs).geodetic_crs.prime_meridian.name,
+                    verify.crs_label(route[2]),
+                )
         # What is true before any pixel moves. `target_crs` and `transformation`
         # are NOT here: they say where the pixels were put and by which
         # operation, and on 2026-09-23 the same shape was found and fixed in
@@ -1415,7 +1428,7 @@ def reproject_raster(
         # `crs_matches` above passes either way, because the output really is
         # in the CRS that was asked for. That pair of facts IS Argleton trap
         # 021, and it was true of this operation until 2026-09-03.
-        checks.append(_datum_shift_check(shift, shifted_from))
+        checks.append(_datum_shift_check(shift, twin_hint))
         checks.append(
             verify.Check(
                 "result_not_empty",

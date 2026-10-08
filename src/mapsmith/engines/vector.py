@@ -393,11 +393,20 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
             record.notes.append(
                 ("part of these coordinates was" if shift.get(datum.BALLPARK_SHARE) else "these coordinates were")
                 + " carried across as if the two datums coincided (PROJ calls this a "
-                "ballpark transformation), because no datum transformation installed here "
-                "applies to them. "
+                "ballpark transformation), because "
+                + ("no published datum transformation applies to them, installed or not. "
+                   if shift.get(datum.OUTSIDE_AREA) else
+                   "no datum transformation installed here applies to them. ")
                 + ("That part of the result is" if shift.get(datum.BALLPARK_SHARE) else "The result is")
                 + " not shifted; how far it is from the true position depends on the datums "
                 "and can be tens of metres."
+            )
+        outside = shift.get(datum.OUTSIDE_AREA)
+        if outside and not shift["is_ballpark"]:
+            record.notes.append(
+                f"{outside['vertices']} of {outside['checked']} points lie outside the area "
+                "of use of every operation published for this pair: PROJ extended one to "
+                "them, and its stated accuracy was never established there"
             )
         _write(reprojected, output_path)
     # reprojection carries geometry through verbatim, so an invalid input gives
