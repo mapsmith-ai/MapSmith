@@ -2950,6 +2950,39 @@ def summarize_points_in_polygons(
 _AREAL = frozenset({"Polygon", "MultiPolygon"})
 
 
+def _ellipsoid_words(crs: Any) -> str:
+    """The datum and ellipsoid of a CRS in words a reader can rebuild them from.
+
+    A datum name alone is not enough: an authority-less CRS is named
+    ``unknown``, and the ellipsoid is the one parameter that changes an area.
+    """
+    ell = crs.ellipsoid
+    datum = crs.datum.name if crs.datum is not None else None
+    words = f"ellipsoid {ell.name} (a={ell.semi_major_metre:.4f} m, 1/f={ell.inverse_flattening:.9g})"
+    if datum and not datum.lower().startswith(("unknown", "unnamed")):
+        return f"datum {datum}, {words}"
+    return words
+
+
+def _is_equal_area(crs: Any) -> bool:
+    """Whether areas measured in this projected CRS are areas on its ellipsoid.
+
+    By the projection method's name, which PROJ keeps stable. Mollweide and the
+    other methods PROJ implements on the sphere only are equal-area only when
+    the CRS IS a sphere: the Mollweide the GHSL population grid is published
+    in is on WGS 84, and its areas are off by 0.3% on a zone from the equator
+    to 75 degrees north.
+    """
+    if not crs.is_projected:
+        return False
+    method = (crs.coordinate_operation.method_name or "").lower()
+    ell = crs.ellipsoid
+    sphere = ell.semi_major_metre == ell.semi_minor_metre
+    if method == "mollweide" or "spherical" in method:
+        return sphere and ("equal area" in method or method == "mollweide")
+    return "equal area" in method or method == "sinusoidal"
+
+
 def apportion_by_area(
     source_path: str,
     target_path: str,
@@ -2970,9 +3003,10 @@ def apportion_by_area(
     zone, which is false wherever people live in one corner of a municipality;
     the record says so. Beside every count are two bounds that need no such
     assumption: ``_min`` is the sum of the source zones lying wholly inside the
-    target and ``_max`` the sum of every source zone touching it -- the true
+    target and ``_max`` the sum of every source zone sharing area with it (one
+    that only touches its edge gives it nothing) -- the true
     value is between them however the count is distributed. A rate gets the
-    lowest and highest rate among the touching zones, and those DO rest on the
+    lowest and highest rate among the contributing zones, and those DO rest on the
     assumption: a part of a zone can have any rate, and the record says that
     too. When the bounds are far apart, the estimate rests on the assumption,
     and finer data
@@ -3063,6 +3097,13 @@ def apportion_by_area(
     original_target = target
     original_target_crs = target.crs
     for path, frame in ((source_path, source), (target_path, target)):
+        coordinates, owner = shapely.get_coordinates(frame.geometry.to_numpy(), return_index=True)
+        bad = sorted({int(i) for i in owner[~np.isfinite(coordinates).all(axis=1)]})
+        if bad:
+            raise ValueError(
+                f"zone(s) {bad[:20]} of {path} have a coordinate that is not a finite number "
+                "(NaN or infinity), so they have no shape to measure. Fix or remove them first."
+            )
         _refuse_naive_antimeridian(frame, path)
         if frame.crs.geodetic_crs is None:
             raise ValueError(
@@ -3122,27 +3163,56 @@ def apportion_by_area(
     # exactly, whatever the chords.
     geodetic = source.crs.geodetic_crs
     moved_target = not verify.same_crs(target.crs, source.crs)
+    densified: list[str] = []
     if moved_target:
         x0, y0, x1, y1 = target.total_bounds
         step = float(np.hypot(x1 - x0, y1 - y0)) / 1000 or 1.0
         target = gpd.GeoDataFrame(
             geometry=shapely.segmentize(target.geometry.to_numpy(), step), crs=target.crs
         ).to_crs(source.crs)
+        densified.append(
+            f"the target zones' edges were densified at {step:.6g} units of their own CRS "
+            "before being brought onto the source CRS"
+        )
+        # A ring that is fine in a projected target can become one drawn the long
+        # way round once it is in degrees: refused here for the reason it is
+        # refused on input (second review: a target at Fiji received a zone 59
+        # degrees away, and the zone inside it received nothing).
+        crossing = antimeridian.naive_crossings(target)
+        if crossing:
+            raise ValueError(
+                f"target zone(s) {crossing[:20]} of {target_path} cross the 180th meridian, and "
+                f"in the source zones' CRS ({verify.crs_label(source.crs)}, in degrees) a ring "
+                "across it reads as the rest of the planet. Put the source zones in a projected "
+                "CRS that covers both sides, or split the target zones at 180 degrees."
+            )
 
-    method = (source.crs.coordinate_operation.method_name or "").lower() if source.crs.is_projected else ""
-    source_is_equal_area = "equal area" in method or method in {"mollweide", "sinusoidal"}
+    source_is_equal_area = _is_equal_area(source.crs)
     if source_is_equal_area:
         plane = source.crs
-        plane_label = f"{verify.crs_label(source.crs)}, the source CRS, which is equal-area"
+        label = verify.crs_label(source.crs)
+        if label.startswith(("unnamed", "undefined", "unknown")):
+            label = f"{source.crs.coordinate_operation.method_name} on {_ellipsoid_words(geodetic)}"
+        plane_label = f"{label}, the source CRS, which is equal-area"
     else:
+        from pyproj import Transformer
         from pyproj.crs import ProjectedCRS
         from pyproj.crs.coordinate_operation import LambertAzimuthalEqualAreaConversion
 
-        lonlat = source.to_crs(geodetic) if not verify.same_crs(source.crs, geodetic) else source
-        pts = shapely.get_coordinates(lonlat.geometry.representative_point().to_numpy())
-        lon, lat = np.radians(pts[:, 0]), np.radians(pts[:, 1])
-        xyz = np.column_stack([np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)])
-        mean = xyz.mean(axis=0)
+        # The centre from the VERTICES, each transformed on its own: a
+        # representative point of a projected zone across the antimeridian,
+        # taken after the whole ring was turned into degrees, lands on the far
+        # side of the world (second review: a 2-degree zone at Fiji was refused
+        # as spanning 162 degrees).
+        to_lonlat = Transformer.from_crs(source.crs, geodetic, always_xy=True)
+
+        def unit_vectors(frame: gpd.GeoDataFrame) -> Any:
+            xy = shapely.get_coordinates(frame.geometry.to_numpy())
+            lon, lat = (np.radians(a) for a in to_lonlat.transform(xy[:, 0], xy[:, 1]))
+            return np.column_stack([np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)])
+
+        source_vectors = unit_vectors(source)
+        mean = source_vectors.mean(axis=0)
         norm = float(np.linalg.norm(mean))
         if norm < 1e-6:
             raise ValueError(
@@ -3154,12 +3224,8 @@ def apportion_by_area(
         lon0 = float(np.degrees(np.arctan2(mean[1], mean[0])))
         # Every vertex of both layers within a hemisphere of the centre: beyond
         # it the plane approaches its singular point, the antipode.
-        verts = []
-        for frame in (lonlat, target.to_crs(geodetic) if not verify.same_crs(target.crs, geodetic) else target):
-            c = np.radians(shapely.get_coordinates(frame.geometry.to_numpy()))
-            verts.append(np.column_stack([np.cos(c[:, 1]) * np.cos(c[:, 0]),
-                                          np.cos(c[:, 1]) * np.sin(c[:, 0]), np.sin(c[:, 1])]))
-        farthest = float(np.degrees(np.arccos(np.clip(np.concatenate(verts) @ mean, -1, 1))).max())
+        verts = np.concatenate([source_vectors, unit_vectors(target)])
+        farthest = float(np.degrees(np.arccos(np.clip(verts @ mean, -1, 1))).max())
         if farthest > 90:
             raise ValueError(
                 f"the zones reach {farthest:.0f} degrees from their centre ({lat0:.2f}, "
@@ -3167,7 +3233,7 @@ def apportion_by_area(
                 "measures them reliably. Split the analysis by region."
             )
         plane_label = (f"Lambert azimuthal equal-area, lat_0={lat0:.6f} lon_0={lon0:.6f}, "
-                       f"on {geodetic.name}")
+                       f"on {_ellipsoid_words(geodetic)}")
         plane = ProjectedCRS(
             name=plane_label,
             conversion=LambertAzimuthalEqualAreaConversion(round(lat0, 6), round(lon0, 6)),
@@ -3176,6 +3242,11 @@ def apportion_by_area(
 
     sx0, sy0, sx1, sy1 = source.total_bounds
     area_step = float(np.hypot(sx1 - sx0, sy1 - sy0)) / 1000 or 1.0
+    if not source_is_equal_area:
+        densified.append(
+            f"every zone and piece was densified at {area_step:.6g} units of the source CRS "
+            "before its area was measured on the equal-area plane"
+        )
 
     def area_of(geoms: Any) -> Any:
         geoms = np.asarray(geoms, dtype=object)
@@ -3192,14 +3263,15 @@ def apportion_by_area(
     record.crs_decisions = alignment_decisions(
         source.crs,
         "the zones are intersected in the source zones' CRS, where a boundary both layers "
-        "share is the same line in both"
+        "share is the same line in both, and an edge is a straight line in it -- in "
+        "degrees a parallel stays a parallel, as the cells of a grid do, which is not a "
+        "geodesic"
         + ("; the target zones are brought onto it first" if moved_target else "")
         + ". The shares are ratios of areas measured on an equal-area surface, normalised "
         "so that the pieces of each zone and the part no target covers add up to it. The "
         "output keeps the target zones in their own CRS.",
         [("target_path", original_target_crs)] if moved_target else [],
     )
-    record.crs_decisions[AREAS_MEASURED_ON] = plane_label
     pre += verify.verify_input_pairs(
         "apportion_by_area", source_path=source, target_path=target
     )
@@ -3212,8 +3284,6 @@ def apportion_by_area(
         pieces = gpd.overlay(src, tgt, how="intersection", keep_geom_type=True)
         source_area = area_of(src_geoms)
         target_area = area_of(tgt_geoms)
-        union = shapely.union_all(tgt_geoms)
-        remainder_area = area_of(shapely.difference(src_geoms, union))
         piece_area = area_of(pieces.geometry.to_numpy())
         s_idx = pieces["_source"].to_numpy(dtype=int)
         t_idx = pieces["_target"].to_numpy(dtype=int)
@@ -3222,19 +3292,44 @@ def apportion_by_area(
         # small target inside a large zone lost its whole piece (0.8.0 review).
         keep = piece_area > 1e-9 * np.minimum(source_area[s_idx], target_area[t_idx])
         pieces, piece_area, s_idx, t_idx = pieces[keep], piece_area[keep], s_idx[keep], t_idx[keep]
+        record.crs_decisions[AREAS_MEASURED_ON] = plane_label
         # Wholly inside is a predicate, decided where the boundaries are exact.
         whole = shapely.covers(tgt_geoms[t_idx], src_geoms[s_idx])
-        # Overlap, also in the source CRS, where the same boundary is the same line.
-        overlapping = bool(shapely.area(tgt_geoms).sum() > shapely.area(union) * (1 + 1e-9))
-        if overlapping:
-            share = piece_area / source_area[s_idx]
-        else:
-            denominator = np.bincount(s_idx, weights=piece_area, minlength=len(source)) + remainder_area
-            share = piece_area / denominator[s_idx]
+        # Overlap is decided zone by zone: what the targets cover of a zone is
+        # the union of its pieces, and the pieces add up to more than that only
+        # where two targets cover the same ground. Decided once for the whole
+        # layer, against the union of every target, an overlap of 100 m2 among
+        # 1.8e11 passed for none, and a building inside it was counted in both
+        # targets with every check green (second review). Per zone, it is also
+        # linear: no union of every target is ever built.
+        piece_sum = np.bincount(s_idx, weights=piece_area, minlength=len(source))
+        covered_area = piece_sum.copy()
+        counts = np.bincount(s_idx, minlength=len(source))
+        geometries = pieces.geometry.to_numpy()
+        order = np.argsort(s_idx, kind="stable")
+        groups = np.split(order, np.cumsum(counts)[:-1])
+        several = np.flatnonzero(counts > 1)
+        if len(several):
+            covered_area[several] = area_of(
+                [shapely.union_all(geometries[groups[z]]) for z in several]
+            )
+        overlap = piece_sum > covered_area * (1 + 1e-9)
+        remainder_area = np.clip(source_area - covered_area, 0.0, None)
+        share = np.where(
+            overlap[s_idx],
+            piece_area / source_area[s_idx],
+            piece_area / (piece_sum + remainder_area)[s_idx],
+        )
         share = np.where(whole, 1.0, share)
-        covered_share = 1.0 - np.clip(remainder_area / np.where(source_area > 0, source_area, 1.0), 0, 1)
-        if not overlapping:
-            covered_share = np.minimum(np.bincount(s_idx, weights=share, minlength=len(source)), 1.0)
+        given = np.bincount(s_idx, weights=share, minlength=len(source))
+        covered_share = np.where(
+            overlap, np.clip(covered_area / np.where(source_area > 0, source_area, 1.0), 0, 1),
+            np.minimum(given, 1.0),
+        )
+        overlapping = bool(overlap.any())
+        # Zones a moved target holds to within the reprojection of its boundary:
+        # the predicate says partly outside, the areas say all but a sliver.
+        near_whole = int(np.sum(~whole & (share >= 1 - 1e-6))) if moved_target else 0
 
         result = original_target.copy()
         frame = pd.DataFrame({"_source": s_idx, "_target": t_idx, "_share": share,
@@ -3286,11 +3381,31 @@ def apportion_by_area(
             )
         if overlapping:
             record.notes.append(
-                "the target zones overlap one another: a piece of a source zone that falls in "
-                "two targets is counted in each, so the targets' total can exceed the value "
-                "they cover"
+                f"the target zones overlap one another over {int(overlap.sum())} source "
+                "zone(s): a piece of a source zone that falls in two targets is counted in "
+                "each, so the targets' total can exceed the value they cover"
             )
+        if near_whole:
+            record.notes.append(
+                f"{near_whole} source zone(s) lie inside a target to within the reprojection "
+                "of its boundary (share of 0.999999 or more) without lying wholly inside it: "
+                "their values count in that target's _max and not its _min, because the two "
+                "layers draw the boundary as different lines"
+            )
+        record.notes.extend(densified)
         checks = []
+        # A zone gives out no more than it holds unless the targets overlap over
+        # it. The two sides of this come from different places -- "wholly
+        # inside" from a predicate in the source CRS, the overlap from areas on
+        # the plane -- so it is not an identity: it fails when they disagree.
+        excess = given[~overlap] - 1.0
+        worst = float(excess.max()) if len(excess) else 0.0
+        checks.append(verify.Check(
+            "x-mapsmith:no_zone_gives_more_than_it_holds",
+            worst <= 1e-9,
+            "every source zone over which no targets overlap gives out at most its whole "
+            f"value (largest excess {max(worst, 0.0):.3g} of a zone)",
+        ))
         written = readers.read_vector(output_path)
         for c in extensive:
             v = values[c].to_numpy(dtype=float)

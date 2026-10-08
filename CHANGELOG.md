@@ -22,10 +22,15 @@ All notable changes to MapSmith are documented here, in the format of
   Shares are ratios of areas measured on an equal-area surface -- the source
   CRS when it is one, otherwise a plane centred on the zones on their own
   datum, named in the record -- so the pieces of each zone add up to it.
-  Invalid zones are repaired and the repair recorded; a zone the repair leaves
-  with no area, and zones spread over more than a hemisphere, are refused;
-  targets keep their own CRS; and the counts written are checked against the
-  pieces they came from.
+  Whether targets overlap is decided zone by zone, so a few square metres of
+  overlapping boundaries are said in the record where they put a zone's value
+  in two targets, and a check fails if a zone with no overlap gives out more
+  than it holds. Invalid zones are repaired and the repair recorded; a zone
+  the repair leaves with no area or with a coordinate that is not a number,
+  zones spread over more than a hemisphere, and a target that would cross the
+  180th meridian once in the source's degrees are refused; targets keep their
+  own CRS; and the counts written are checked against the pieces they came
+  from.
 
 ## [0.8.0] - 2026-10-05
 

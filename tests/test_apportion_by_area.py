@@ -22,7 +22,9 @@ import json
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import pytest
+from shapely import segmentize as shapely_segmentize
 from shapely.geometry import Point, box
 
 from mapsmith.engines import vector
@@ -450,3 +452,116 @@ def test_the_plane_is_named_not_hashed_and_a_moved_target_is_listed(zones, tmp_p
     assert "sha256" not in json.dumps(decisions)
     assert "lat_0=" in decisions["x-mapsmith:areas_measured_on"]
     assert [m["argument"] for m in decisions["x-mapsmith:inputs_reprojected"]] == ["target_path"]
+
+
+# --- the third review's cases: what cutting in the source CRS broke -----------------------------
+
+
+def test_a_projected_target_across_the_antimeridian_is_refused_in_degrees(tmp_path):
+    """Valid in EPSG:3832; in the source's degrees, a ring around the rest of the planet.
+
+    Before: the target received 5000 from a zone 59 degrees away and nothing
+    from the zone inside it, with the total check green.
+    """
+    ring = gpd.GeoSeries([box(179, -10, 180, -9), box(-180, -10, -179, -9)],
+                         crs="EPSG:4326").to_crs("EPSG:3832").union_all()
+    tgt = _layer(tmp_path, "t", [ring], "EPSG:3832")
+    src = _layer(tmp_path, "s", [box(179.2, -9.8, 179.8, -9.2), box(120, -10, 121, -9)],
+                 "EPSG:4326", population=[100, 5000])
+    out = tmp_path / "o.parquet"
+    with pytest.raises(ValueError, match=r"target zone\(s\) \[0\].*180th meridian"):
+        vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    assert not out.exists()
+
+
+def test_a_projected_source_across_the_antimeridian_is_measured_not_refused(tmp_path):
+    """A 2-degree zone at Fiji in EPSG:3832 was refused as spanning 162 degrees."""
+    halves = gpd.GeoSeries([box(179, -18, 180, -17), box(-180, -18, -179, -17)],
+                           crs="EPSG:4326").to_crs("EPSG:3832")
+    src = _layer(tmp_path, "s", [halves.union_all()], "EPSG:3832", population=[100])
+    tgt = _layer(tmp_path, "t", list(halves), "EPSG:3832")
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    assert list(gpd.read_parquet(out)["population"]) == pytest.approx([50, 50], rel=1e-6)
+
+
+def test_targets_overlapping_over_one_building_say_so(tmp_path):
+    """100 m2 of overlap among 1.8e11: decided for the whole layer it passed for none.
+
+    A 36 m2 building inside the overlap was then counted in both targets, 110
+    written for 60, every check green and no note.
+    """
+    a = box(200_000, 4_500_000, 500_000, 4_800_000)
+    b = box(500_000, 4_500_000, 800_000, 4_800_000).union(box(499_990, 4_650_000, 500_000, 4_650_010))
+    src = _layer(tmp_path, "s", [box(499_992, 4_650_002, 499_998, 4_650_008),
+                                 box(300_000, 4_600_000, 301_000, 4_601_000)],
+                 "EPSG:32633", population=[50, 10])
+    tgt = _layer(tmp_path, "t", [a, b], "EPSG:32633")
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    notes = " ".join(_manifest(out)["notes"])
+    assert "overlap one another over 1 source zone" in notes
+
+
+def test_a_zone_cannot_give_out_more_than_it_holds_where_targets_do_not_overlap(zones, tmp_path, monkeypatch):
+    """The check that replaced the identity: sabotage "wholly inside" and it goes red."""
+    import shapely
+
+    monkeypatch.setattr(shapely, "covers", lambda a, b: np.ones(len(a), dtype=bool))
+    with pytest.raises(Exception, match="no_zone_gives_more_than_it_holds"):
+        _run(zones, tmp_path, extensive=["population"])
+
+
+MOLLWEIDE_WGS84 = "+proj=moll +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+
+
+def test_mollweide_on_an_ellipsoid_is_not_taken_as_equal_area(tmp_path):
+    """GHSL's Mollweide is on WGS 84, and PROJ's Mollweide is spherical: 0.3% out.
+
+    A zone from the equator to 75N split at 30N: 517.64 / 482.36 before, where
+    the areas on the ellipsoid give 516.06 / 483.94.
+    """
+    cells = gpd.GeoSeries([box(0, 0, 10, 75), box(0, 0, 10, 30), box(0, 30, 10, 75)],
+                          crs="EPSG:4326")
+    dense = gpd.GeoSeries(shapely_segmentize(cells, 0.01), crs="EPSG:4326").to_crs(MOLLWEIDE_WGS84)
+    src = _layer(tmp_path, "s", [dense.iloc[0]], MOLLWEIDE_WGS84, population=[1000])
+    tgt = _layer(tmp_path, "t", list(dense.iloc[1:]), MOLLWEIDE_WGS84)
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    assert list(gpd.read_parquet(out)["population"]) == pytest.approx([516.06, 483.94], abs=0.02)
+    assert "Lambert azimuthal" in _manifest(out)["crs_decisions"]["x-mapsmith:areas_measured_on"]
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_a_coordinate_that_is_not_a_number_is_refused_by_index(tmp_path, bad):
+    from shapely.geometry import Polygon
+
+    broken = Polygon([(500_000, 5_000_000), (500_100, 5_000_000), (500_100, bad), (500_000, 5_000_100)])
+    src = _layer(tmp_path, "s", [box(500_000, 5_000_000, 500_100, 5_000_100), broken], CRS,
+                 population=[1, 2])
+    tgt = _layer(tmp_path, "t", [box(499_000, 4_999_000, 501_000, 5_001_000)], CRS)
+    with pytest.raises(ValueError, match=r"zone\(s\) \[1\].*not a finite number"):
+        vector.apportion_by_area(src, tgt, str(tmp_path / "o.parquet"), extensive=["population"])
+
+
+def test_the_surfaces_are_named_by_their_ellipsoid_not_by_a_hash(tmp_path):
+    """An authority-less CRS: the record named it by a digest and a datum called 'unknown'."""
+    custom = ("+proj=lcc +lat_1=44 +lat_2=46 +lat_0=45 +lon_0=9 +x_0=0 +y_0=0 "
+              "+a=6378137 +rf=298.257223563 +units=m +no_defs")
+    src = _layer(tmp_path, "s", [box(0, 0, 1000, 1000)], custom, population=[100])
+    tgt = _layer(tmp_path, "t", [box(0, 0, 500, 1000)], custom)
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    plane = _manifest(out)["crs_decisions"]["x-mapsmith:areas_measured_on"]
+    assert "a=6378137.0000 m" in plane and "1/f=298.257224" in plane
+    assert "unknown" not in plane and "sha256" not in plane
+
+
+def test_the_record_says_how_edges_were_densified(zones, tmp_path):
+    target = gpd.read_file(zones["target"]).to_crs("EPSG:4326")
+    path = tmp_path / "t4326.gpkg"
+    target.to_file(path)
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(zones["source"], str(path), str(out), extensive=["population"])
+    notes = " ".join(_manifest(out)["notes"])
+    assert "densified at" in notes and "before being brought onto the source CRS" in notes

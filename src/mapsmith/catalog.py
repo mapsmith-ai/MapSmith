@@ -2533,8 +2533,9 @@ OPERATIONS: list[dict[str, Any]] = [
             "reporting units are drawn, so a shared boundary stays the same line, and shares "
             "are ratios of areas on an equal-area surface, so the pieces of every unit add up "
             "to it; invalid units are repaired and the repair recorded, and the result keeps "
-            "the CRS of the units it was asked for. Checks "
-            "confirm the reallocated counts add up and report any total left unallocated. Called "
+            "the CRS of the units it was asked for. Checks confirm that no unit gives out more "
+            "than it holds unless the new units overlap, that the counts written are the counts "
+            "computed, and report any total left unallocated. Called "
             "through run_operation."
         ),
         "parameters": [
