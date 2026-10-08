@@ -6,6 +6,15 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+### Fixed
+
+- **Documentation only, no code that runs.** `SECURITY.md` gives the reason
+  the two cases where 0.8.0's `reproject_layer` moved data with an operation
+  from elsewhere did not get an advisory; a 0.5.x entry below and a docstring
+  said buffering NAD27 crossed a datum "seven metres each way", which is the
+  operation's stated accuracy -- the shift is tens of metres; and
+  `docs/benchmarks.md` says "through 0.8.0" where it meant it.
+
 ## [0.9.0] - 2026-10-08
 
 Records still declare `spec_version` `1.0.0-draft.10`, and no key is renamed.

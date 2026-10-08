@@ -225,7 +225,9 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 
 This page describes **0.9.0**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **From 0.8.0, 0.9.0** adds
+have to find out by calling a tool that is not there. **`main` is ahead of 0.9.0**
+([`[Unreleased]`](CHANGELOG.md#unreleased)) by documentation corrections only: nothing that runs
+has changed. **From 0.8.0, 0.9.0** adds
 `apportion_by_area`, which moves counts and rates from the zones they are reported in to zones
 that cross them, and makes a record's `transformation` describe what PROJ did to the data's own
 coordinates rather than to a point chosen from the CRS. **That changes what `reproject_layer`
