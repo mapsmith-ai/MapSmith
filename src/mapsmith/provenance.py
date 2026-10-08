@@ -53,6 +53,13 @@ INPUTS_REPROJECTED = "x-mapsmith:inputs_reprojected"
 #: record itself. The key moved; the sentence beside its definition did not.
 ROUND_TRIP = "round_trip"
 
+#: The surface the areas of an operation were measured on, when that is not
+#: where its geometry was computed: `apportion_by_area` intersects zones in the
+#: source CRS and takes the ratios of their areas on an equal-area plane. The
+#: value names the plane in words a reader can rebuild it from (method, centre
+#: to six decimals, datum), not a hash.
+AREAS_MEASURED_ON = "x-mapsmith:areas_measured_on"
+
 #: The two `crs_decisions` keys `grid` contributes. Here rather than there so
 #: that every extension MapSmith adds to that object is declared in one place.
 REGISTRATION_KEY = "x-mapsmith:raster_registration"
@@ -74,6 +81,12 @@ REGISTRATION_REASON_KEY = "x-mapsmith:raster_registration_reason"
 #: written down by the person making it, which is the only mechanism available
 #: for a question that is not mechanical.
 CRS_EXTENSIONS: dict[str, str] = {
+    AREAS_MEASURED_ON: (
+        "Not `analysis_crs`: the geometry was intersected in that CRS, and only "
+        "the AREAS whose ratios became shares were measured here. Naming this "
+        "plane as the analysis CRS would say the zones were cut on it, and they "
+        "were not -- that is the version whose shared boundaries disagreed."
+    ),
     INPUTS_REPROJECTED: (
         "Not `source_crs`: that says where the OPERATION's coordinates were, and "
         "these are other inputs brought to meet them. The output never was in "

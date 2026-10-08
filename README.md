@@ -425,9 +425,9 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 78 | 28% | 17% | 28% |
-| what data I have | 52 | 35% | 22% | 36% |
-| + what I want back | 32 | 45% | 38% | 54% |
+| nothing — words alone | 78 | 28% | 18% | 28% |
+| what data I have | 52 | 34% | 22% | 35% |
+| + what I want back | 32 | 44% | 38% | 53% |
 | + how many datasets I have | 17 | 53% | 45% | 84% |
 | **+ what geometry it holds** | **15** | **60%** | **56%** | **98%** |
 

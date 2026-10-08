@@ -23,7 +23,7 @@ whether this system verified anything at all.
 | `x-mapsmith:operation_completed` | The engine finished. Recorded as a failed check when it did not, so a crash leaves a conforming manifest saying what went wrong instead of a dataset with no record beside it. |
 | `x-mapsmith:verification_present` | Nothing looked at the output. It exists because the specification requires a record for every dataset written and requires at least one check in it; the absence of verification is itself recorded as a failed check rather than papered over. No shipped operation emits it, and a test fails if one starts to. |
 
-## Extension check names (59)
+## Extension check names (58)
 
 Each is a proposition about the dataset that was written. A failed one is
 recorded, never suppressed — the audit trail has to survive the error it
@@ -69,7 +69,6 @@ documents.
 | `x-mapsmith:nothing_exceeds_the_budget` | `network` |
 | `x-mapsmith:one_geometry_type_in_the_layer` | `vector` |
 | `x-mapsmith:origin_is_close_to_the_network` | `network` |
-| `x-mapsmith:pieces_recompose_the_sources` | `vector` |
 | `x-mapsmith:planar_area_matches_ground` | `vector` |
 | `x-mapsmith:point_lies_on_its_feature` | `vector` |
 | `x-mapsmith:segment_costs_add_up_to_the_route_cost` | `network` |
@@ -132,7 +131,7 @@ only `crs_decisions` was missing the half that makes its own case.
 The settings read straight from the engine, unprefixed because they are its
 words and not ours: `GDAL_GEOREF_SOURCES` · `GDAL_PAM_ENABLED`.
 
-## Extension fields in `crs_decisions` (5)
+## Extension fields in `crs_decisions` (6)
 
 Section 3.7 recommends the keys of that object, and since draft.7 every other
 key MUST be named `x-<producer>:<name>`. These are
@@ -142,6 +141,7 @@ and two keys that started as synonyms are why this list exists.
 
 | key | why it is not a synonym |
 |---|---|
+| `x-mapsmith:areas_measured_on` | Not `analysis_crs`: the geometry was intersected in that CRS, and only the AREAS whose ratios became shares were measured here. Naming this plane as the analysis CRS would say the zones were cut on it, and they were not -- that is the version whose shared boundaries disagreed. |
 | `x-mapsmith:computed_in` | Not `analysis_crs`, and its absence is the point. The Esri stack buffers geodesically in the input's own geographic CRS, so no analysis CRS was chosen; naming one would let a consumer read EPSG:4326 as the CRS a metric computation happened in. |
 | `x-mapsmith:input_crs_discarded` | Not `source_crs`, which the specification defines as the system the coordinates WERE IN. This operation exists because that declaration is wrong: a traverse on an assumed grid was never in the CRS its file claimed, so the spec key would state what the run denies. |
 | `x-mapsmith:inputs_reprojected` | Not `source_crs`: that says where the OPERATION's coordinates were, and these are other inputs brought to meet them. The output never was in the CRS named here. |

@@ -16,11 +16,16 @@ All notable changes to MapSmith are documented here, in the format of
   averaging a count gives a plausible wrong number. Each count comes with
   `_min` and `_max` that hold however it is distributed inside the source
   zones; rate bounds rest on the same uniformity the estimate assumes, and the
-  record says which is which. Shares are measured on an equal-area plane
-  centred on the data, on the source's own datum, so the pieces of each zone add
-  up to it; invalid zones are repaired and the repair recorded; targets keep
-  their own CRS; and the counts written are checked against the pieces they
-  came from.
+  record says which is which. Zones are cut in the source zones' own CRS,
+  where a boundary both layers share is the same line, and a zone counts as
+  wholly inside a target by a topological test, not by a ratio of areas.
+  Shares are ratios of areas measured on an equal-area surface -- the source
+  CRS when it is one, otherwise a plane centred on the zones on their own
+  datum, named in the record -- so the pieces of each zone add up to it.
+  Invalid zones are repaired and the repair recorded; a zone the repair leaves
+  with no area, and zones spread over more than a hemisphere, are refused;
+  targets keep their own CRS; and the counts written are checked against the
+  pieces they came from.
 
 ## [0.8.0] - 2026-10-05
 

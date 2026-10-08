@@ -12,8 +12,8 @@ both and touches neither.
                 B = (10*5000 + 20*10000) / 15000 = 16.667, bounds [10, 20]
     total       50 + 90 = 140, the source total: nothing lost, nothing made up
 
-Geodesic areas make the halves equal to about one part in a million rather
-than exactly, which is the tolerance used.
+The zones are cut in their own CRS and the areas measured on an equal-area
+plane, so the halves are equal to rounding, and the tolerance is tight.
 """
 
 from __future__ import annotations
@@ -224,7 +224,7 @@ def test_every_manifest_shape_conforms(zones, tmp_path):
         assert _spec_problems(manifest) == [], manifest
 
 
-# --- the review's cases (0.8.0): geodesic pieces did not recompose a zone ----------------------
+# --- the first review's cases: geodesic pieces did not recompose a zone ------------------------
 
 
 def _layer(tmp_path, name, geometries, crs, **columns):
@@ -275,7 +275,9 @@ def test_a_zone_wholly_inside_its_target_is_seen_as_wholly_inside(tmp_path):
     manifest = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
     checks = {c["name"]: c["passed"] for c in manifest["verification"]}
     assert checks["x-mapsmith:every_source_value_placed"] is True
-    assert checks["x-mapsmith:pieces_recompose_the_sources"] is True
+    # The zones are cut in the source CRS; the plane only measures areas.
+    assert manifest["crs_decisions"]["analysis_crs"] == "EPSG:3035"
+    assert "equal-area" in manifest["crs_decisions"]["x-mapsmith:areas_measured_on"]
 
 
 def test_a_target_equal_to_its_source_in_another_crs_gets_the_whole_value(tmp_path):
@@ -340,3 +342,111 @@ def test_widest_bounds_is_none_rather_than_nan_where_nothing_was_received(zones,
                                       intensive=["rate"])
     assert result["widest_bounds"] == {"rate": None}
     json.dumps(result["widest_bounds"], allow_nan=False)
+
+
+# --- the second review's cases: the equal-area plane cut the zones ------------------------------
+
+
+def _manifest(out):
+    return json.loads(Path(str(out) + ".provenance.json").read_text(encoding="utf-8"))
+
+
+def test_a_zone_sharing_two_edges_with_a_larger_target_is_wholly_inside(tmp_path):
+    """Layers of different extents were densified with different steps.
+
+    On the plane the zone's shared edges then ran a chord away from the
+    target's, the zone came out a sliver outside, and `_min` was 0 instead of
+    1000. Cut in the source CRS, a shared edge is the same line in both.
+    """
+    src = _layer(tmp_path, "s", [box(9.0, 45.0, 9.1, 45.1)], "EPSG:4326", population=[1000])
+    tgt = _layer(tmp_path, "t", [box(9.0, 45.0, 11.0, 47.0)], "EPSG:4326")
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    row = gpd.read_parquet(out).iloc[0]
+    assert (row["population"], row["population_min"], row["population_max"]) == (1000, 1000, 1000)
+    checks = {c["name"]: c["passed"] for c in _manifest(out)["verification"]}
+    assert checks["x-mapsmith:every_source_value_placed"] is True
+
+
+def test_a_zone_the_repair_leaves_with_no_area_is_refused_by_index(tmp_path):
+    """A ring folded onto itself is a line once repaired.
+
+    Before, its value vanished: the written total was 10 of 110 and the repair
+    was recorded as resolved.
+    """
+    from shapely.geometry import Polygon
+
+    folded = Polygon([(500_000, 5_000_000), (500_100, 5_000_000), (500_050, 5_000_000)])
+    src = _layer(tmp_path, "s", [box(500_000, 5_000_100, 500_100, 5_000_200), folded], CRS,
+                 population=[10, 100])
+    tgt = _layer(tmp_path, "t", [box(499_000, 4_999_000, 501_000, 5_001_000)], CRS)
+    out = tmp_path / "o.parquet"
+    with pytest.raises(ValueError, match=r"zone\(s\) \[1\] of source_path enclose no area"):
+        vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    assert not out.exists()
+
+
+def test_a_zone_split_at_the_antimeridian_splits_by_its_true_areas(tmp_path):
+    """One zone in two parts either side of 180 degrees, 1 and 3 degrees wide.
+
+    On one latitude band the areas are exactly 1:3, so 25 and 75. A plane
+    centred on the bounding boxes sat at longitude 0, on the far side of the
+    Earth: 24.9977, and in the review's larger case 98.90 of 100, with no error.
+    """
+    from shapely.geometry import MultiPolygon
+
+    east, west = box(179.0, -10.0, 180.0, -9.0), box(-180.0, -10.0, -177.0, -9.0)
+    src = _layer(tmp_path, "s", [MultiPolygon([east, west])], "EPSG:4326", population=[100])
+    tgt = _layer(tmp_path, "t", [east, west], "EPSG:4326")
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    assert list(gpd.read_parquet(out)["population"]) == pytest.approx([25, 75], rel=1e-7)
+    plane = _manifest(out)["crs_decisions"]["x-mapsmith:areas_measured_on"]
+    # Centred on the zone, at the antimeridian, not on the far side of the Earth.
+    assert abs(float(plane.split("lon_0=")[1].split(",")[0])) > 170
+
+
+def test_zones_around_the_whole_globe_are_refused(tmp_path):
+    """A global grid has no plane with every zone on one side: a GEOS error before."""
+    cells = [box(lon, lat, lon + 30, lat + 30) for lon in range(-180, 180, 30) for lat in range(-90, 90, 30)]
+    src = _layer(tmp_path, "s", cells, "EPSG:4326", population=[1] * len(cells))
+    tgt = _layer(tmp_path, "t", [box(-180, -90, 180, 90)], "EPSG:4326")
+    with pytest.raises(ValueError, match="(?i)hemisphere|around the globe"):
+        vector.apportion_by_area(src, tgt, str(tmp_path / "o.parquet"), extensive=["population"])
+
+
+def test_a_small_target_inside_a_large_zone_receives_its_share(tmp_path):
+    """400 m2 inside 10^12 m2: a sliver threshold on the source alone dropped it to 0."""
+    x0, y0 = 4_000_000.0, 2_000_000.0
+    src = _layer(tmp_path, "s", [box(x0, y0, x0 + 1_000_000, y0 + 1_000_000)], "EPSG:3035",
+                 population=[1e12])
+    tgt = _layer(tmp_path, "t", [box(x0 + 500_000, y0 + 500_000, x0 + 500_020, y0 + 500_020)], "EPSG:3035")
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    row = gpd.read_parquet(out).iloc[0]
+    assert row["population"] == pytest.approx(400, rel=1e-9)
+    assert row["population_max"] == 1e12
+
+
+def test_an_equal_area_source_is_measured_in_its_own_crs(zones, tmp_path):
+    """EPSG:3035 is equal-area already: no second plane, and the record says so."""
+    src = _layer(tmp_path, "s", [box(4_300_000, 2_400_000, 4_300_100, 2_400_100)], "EPSG:3035",
+                 population=[100])
+    tgt = _layer(tmp_path, "t", [box(4_300_000, 2_400_000, 4_300_050, 2_400_100)], "EPSG:3035")
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    assert gpd.read_parquet(out)["population"].iloc[0] == 50
+    assert "the source CRS, which is equal-area" in _manifest(out)["crs_decisions"]["x-mapsmith:areas_measured_on"]
+
+
+def test_the_plane_is_named_not_hashed_and_a_moved_target_is_listed(zones, tmp_path):
+    target = gpd.read_file(zones["target"]).to_crs("EPSG:4326")
+    path = tmp_path / "t4326.gpkg"
+    target.to_file(path)
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(zones["source"], str(path), str(out), extensive=["population"])
+    decisions = _manifest(out)["crs_decisions"]
+    assert decisions["analysis_crs"] == CRS
+    assert "sha256" not in json.dumps(decisions)
+    assert "lat_0=" in decisions["x-mapsmith:areas_measured_on"]
+    assert [m["argument"] for m in decisions["x-mapsmith:inputs_reprojected"]] == ["target_path"]
