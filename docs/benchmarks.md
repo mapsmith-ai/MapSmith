@@ -572,7 +572,7 @@ Five findings are worth more than the score, and all five are ours to state:
    operation whose entire purpose is a decision about the coordinate system.
    MapSmith failed it on 2026-08-26 and passes it on 2026-08-27; **both runs are
    published**. The fix is a computation and not a disclosure, which is why the
-   trap is beatable without any provenance format. Until 0.8.0 MapSmith's was the
+   trap is beatable without any provenance format. Through 0.8.0 MapSmith's was the
    one the independent GeoPandas adapter uses -- read the chosen operation's
    accuracy, and where it is negative take one that states a bound -- and both
    answered with the same digits, 6.3 m from the truth and inside the tolerance:

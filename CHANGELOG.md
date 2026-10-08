@@ -1202,8 +1202,10 @@ guard existed and could not fail.**
   they work in an estimated UTM zone and write the output back where it
   came from. Measured on 2026-09-06: **`estimate_utm_crs()` answers with a
   WGS 84 zone whatever the input's datum is** -- so buffering a NAD27 layer
-  crosses a datum on the way out and again on the way back, seven metres
-  each way (four on NAD83). The two legs largely cancel over one feature,
+  crosses a datum on the way out and again on the way back, tens of metres
+  each way on NAD27 (20.5 m at the test point; first written here as "seven
+  metres each way, four on NAD83", which are the operations' stated
+  accuracies, corrected in 0.9.0). The two legs largely cancel over one feature,
   which is exactly why nothing ever looked wrong; the manifest said
   *estimated UTM zone for metric buffering* and left a reader to conclude
   the trip was free. It now records where the output was returned to, the

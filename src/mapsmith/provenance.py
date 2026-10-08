@@ -317,8 +317,9 @@ def record_round_trip(record: Any, analysis_crs: Any, returned_to: Any, data: An
     back in the caller's CRS. The trip is not free and the manifest used to say
     nothing about it: `estimate_utm_crs()` answers with a **WGS 84** UTM zone
     whatever the input's datum is (measured 2026-09-06), so buffering a NAD27
-    layer crosses a datum on the way out and again on the way back, seven metres
-    each way. The two legs largely cancel over one feature, which is why nothing
+    layer crosses a datum on the way out and again on the way back, tens of metres
+    each way (20.5 m at the test point; "seven metres", written here until 0.9.0,
+    was the operation's stated accuracy). The two legs largely cancel over one feature, which is why nothing
     ever looked wrong.
 
     Both legs are recorded, each asked of PROJ on its own pair, because the trip

@@ -63,7 +63,11 @@ below:
   below: the record that hid a missing shift needs coordinates outside the area
   of every published operation, which nearly always means a wrongly declared
   CRS; the false ballparks warned of an error that was not there; the Rome case
-  stayed inside the accuracy it declared; and the failure records exist only
+  stayed inside the accuracy it declared; the two cases where `reproject_layer`
+  moved data with an operation from elsewhere (WGS 84 data in Madrid into the
+  Italian Gauss-Boaga zone, Italian data into the British grid) put data into a
+  CRS whose own area of use does not contain it, where no published operation
+  applies and no answer is the right one; and the failure records exist only
   where the tool call has already returned an error. `tests/test_datum.py`
   now compares the record with PROJ point by point, and
   `tests/test_failure_record_and_earlier_bytes.py` drives both failure paths.
