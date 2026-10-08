@@ -225,7 +225,9 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 
 This page describes **0.8.0**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **If you run 0.4.0 to 0.6.1, 0.7.0 and
+have to find out by calling a tool that is not there. **`main` is ahead of 0.8.0**
+([`[Unreleased]`](CHANGELOG.md#unreleased)) by one operation, `apportion_by_area`, which moves
+counts and rates from the zones they are reported in to zones that cross them. **If you run 0.4.0 to 0.6.1, 0.7.0 and
 later change answers you have**: every position read from a point-registered raster
 (`AREA_OR_POINT=Point`, the USGS and Copernicus DEMs) was half a cell off, and the
 [changelog](CHANGELOG.md) says which operations and why. **From 0.7.x, 0.8.0** adds
@@ -423,10 +425,10 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 78 | 29% | 17% | 29% |
+| nothing — words alone | 78 | 28% | 17% | 28% |
 | what data I have | 52 | 35% | 22% | 36% |
 | + what I want back | 32 | 45% | 38% | 54% |
-| + how many datasets I have | 17 | 53% | 46% | 84% |
+| + how many datasets I have | 17 | 53% | 45% | 84% |
 | **+ what geometry it holds** | **15** | **60%** | **56%** | **98%** |
 
 **The last row is new on 2026-09-29, and the row above it shows why.** Thirty-one operations
@@ -450,7 +452,7 @@ published under a sentence promising it could be checked.
 The two also differ in a way worth seeing, and this page had it backwards
 until 2026-08-30. It said the embedding engine overtakes BM25 once the facets
 have narrowed. It does not overtake it anywhere: BM25 leads at every row of the
-table above, by twelve points on words alone and by four at the fullest
+table above, by eleven points on words alone and by four at the fullest
 declaration, where the entries that survive are told apart by the words that
 distinguish them — which is what `distinguishes` is for, and what an exact term
 either matches or does not. The embedding engine earns its place on the

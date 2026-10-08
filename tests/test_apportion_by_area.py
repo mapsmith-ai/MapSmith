@@ -180,7 +180,10 @@ def test_overlapping_targets_are_said_and_do_not_fail_the_total(zones, tmp_path)
     manifest = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
     total = next(c for c in manifest["verification"]
                  if c["name"] == "x-mapsmith:extensive_total_preserved")
-    assert total["critical"] is False and "overlap" in total["detail"]
+    # Checked against the pieces, which count a piece once per target: a real
+    # comparison even when the targets overlap (it used to give up there).
+    assert total["passed"] is True and total["critical"] is True and "overlap" in total["detail"]
+    assert any("overlap" in note for note in manifest["notes"])
     assert gpd.read_parquet(out)["population"].sum() == pytest.approx(100, rel=1e-6)
     # And the 50 in the eastern half of West, and East's 40, are in no target.
     placed = next(c for c in manifest["verification"]
@@ -219,3 +222,121 @@ def test_every_manifest_shape_conforms(zones, tmp_path):
         result = vector.apportion_by_area(zones["source"], tgt, str(tmp_path / f"o{n}.parquet"), **kwargs)
         manifest = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
         assert _spec_problems(manifest) == [], manifest
+
+
+# --- the review's cases (0.8.0): geodesic pieces did not recompose a zone ----------------------
+
+
+def _layer(tmp_path, name, geometries, crs, **columns):
+    path = tmp_path / f"{name}.gpkg"
+    gpd.GeoDataFrame(columns or {"zone": [f"z{i}" for i in range(len(geometries))]},
+                     geometry=list(geometries), crs=crs).to_file(path)
+    return str(path)
+
+
+@pytest.mark.parametrize(
+    ("crs", "x0", "y0", "size"),
+    [
+        ("EPSG:3035", 4_300_000.0, 2_400_000.0, 50_000.0),  # 50 km, Europe equal-area
+        ("EPSG:4326", 9.0, 45.0, 0.1),  # a 0.1 degree cell
+        ("EPSG:4326", 0.0, 40.0, 10.0),  # a 10 degree cell: 941.8 people were made up
+    ],
+)
+def test_a_zone_split_in_two_by_its_targets_keeps_its_total(tmp_path, crs, x0, y0, size):
+    source = _layer(tmp_path, "s", [box(x0, y0, x0 + size, y0 + size)], crs, population=[1_000_000])
+    target = _layer(tmp_path, "t", [box(x0, y0, x0 + size / 2, y0 + size),
+                                    box(x0 + size / 2, y0, x0 + size, y0 + size)], crs)
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(source, target, str(out), extensive=["population"])
+    written = gpd.read_parquet(out)
+    assert written["population"].sum() == pytest.approx(1_000_000, rel=1e-9)
+    # Two targets that tile the zone are not "overlapping".
+    manifest = json.loads(Path(str(out) + ".provenance.json").read_text(encoding="utf-8"))
+    assert not any("overlap" in note for note in manifest["notes"])
+
+
+def test_a_zone_wholly_inside_its_target_is_seen_as_wholly_inside(tmp_path):
+    """The target has an extra vertex half way along the zone's west edge.
+
+    Measured geodesically the zone came out 0.002% outside its own target, so
+    `_min` was 0 instead of 1000 and the value was reported as partly unplaced.
+    """
+    x0, y0, s = 4_300_000.0, 2_400_000.0, 50_000.0
+    from shapely.geometry import Polygon
+
+    zone = box(x0, y0, x0 + s, y0 + s)
+    target = Polygon([(x0, y0), (x0 + s, y0), (x0 + s, y0 + s), (x0, y0 + s), (x0, y0 + s / 2)])
+    src = _layer(tmp_path, "s", [zone], "EPSG:3035", population=[1000])
+    tgt = _layer(tmp_path, "t", [target], "EPSG:3035")
+    out = tmp_path / "o.parquet"
+    result = vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    row = gpd.read_parquet(out).iloc[0]
+    assert (row["population"], row["population_min"], row["population_max"]) == pytest.approx((1000, 1000, 1000))
+    manifest = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+    checks = {c["name"]: c["passed"] for c in manifest["verification"]}
+    assert checks["x-mapsmith:every_source_value_placed"] is True
+    assert checks["x-mapsmith:pieces_recompose_the_sources"] is True
+
+
+def test_a_target_equal_to_its_source_in_another_crs_gets_the_whole_value(tmp_path):
+    """The same region, held in another CRS: the estimate never falls below its own bounds.
+
+    The target is densified before it is reprojected, so it is the same region
+    and not a polygon of four chords. The review measured an estimate BELOW its
+    own `_min` here (999999.9997 against 1000000).
+    """
+    import shapely
+
+    zone = box(9.0, 45.0, 9.5, 45.5)
+    src = _layer(tmp_path, "s", [zone], "EPSG:4326", population=[1_000_000])
+    dense = shapely.segmentize(zone, 0.0005)
+    tgt_frame = gpd.GeoDataFrame({"zone": ["same"]}, geometry=[dense], crs="EPSG:4326").to_crs("EPSG:3035")
+    tgt = tmp_path / "t.gpkg"
+    tgt_frame.to_file(tgt)
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(src, str(tgt), str(out), extensive=["population"])
+    row = gpd.read_parquet(out).iloc[0]
+    assert row["population"] == pytest.approx(1_000_000, rel=1e-5)
+    assert row["population_min"] <= row["population"] <= row["population_max"]
+
+
+def test_an_invalid_zone_is_repaired_and_the_repair_recorded(tmp_path):
+    """A bowtie: written with 1e11 people before, then a raw GEOS error."""
+    from shapely.geometry import Polygon
+
+    bowtie = Polygon([(500_000, 5_000_000), (500_100, 5_000_100), (500_100, 5_000_000), (500_000, 5_000_100)])
+    src = _layer(tmp_path, "s", [bowtie], CRS, population=[100])
+    tgt = _layer(tmp_path, "t", [box(499_000, 4_999_000, 501_000, 5_001_000)], CRS)
+    out = tmp_path / "o.parquet"
+    result = vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    assert gpd.read_parquet(out)["population"].iloc[0] == pytest.approx(100, rel=1e-9)
+    manifest = json.loads(Path(result["provenance"]).read_text(encoding="utf-8"))
+    assert manifest["repairs"] and "make_valid" in manifest["repairs"][0]["action"]
+
+
+def test_a_zone_drawn_across_the_antimeridian_as_one_ring_is_refused(tmp_path):
+    from shapely.geometry import Polygon
+
+    naive = Polygon([(179, -10), (-179, -10), (-179, -9), (179, -9)])
+    src = _layer(tmp_path, "s", [naive], "EPSG:4326", population=[100])
+    tgt = _layer(tmp_path, "t", [box(0, -10, 1, -9)], "EPSG:4326")
+    with pytest.raises(ValueError, match="(?i)antimeridian|180"):
+        vector.apportion_by_area(src, tgt, str(tmp_path / "o.parquet"), extensive=["population"])
+
+
+def test_a_crs_with_no_datum_is_refused_with_the_reason(tmp_path):
+    engineering = 'LOCAL_CS["site grid",UNIT["metre",1],AXIS["X",EAST],AXIS["Y",NORTH]]'
+    src = _layer(tmp_path, "s", [box(0, 0, 10, 10)], engineering, population=[1])
+    tgt = _layer(tmp_path, "t", [box(0, 0, 5, 10)], engineering)
+    with pytest.raises(ValueError, match="no geodetic datum"):
+        vector.apportion_by_area(src, tgt, str(tmp_path / "o.parquet"), extensive=["population"])
+
+
+def test_widest_bounds_is_none_rather_than_nan_where_nothing_was_received(zones, tmp_path):
+    only_c = gpd.read_file(zones["target"]).iloc[[2]]
+    path = tmp_path / "only_c.gpkg"
+    only_c.to_file(path)
+    result = vector.apportion_by_area(zones["source"], str(path), str(tmp_path / "o.parquet"),
+                                      intensive=["rate"])
+    assert result["widest_bounds"] == {"rate": None}
+    json.dumps(result["widest_bounds"], allow_nan=False)

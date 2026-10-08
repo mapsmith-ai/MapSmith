@@ -2949,6 +2949,8 @@ def summarize_points_in_polygons(
 #: more: geodesic areas of a polygon and of its intersection with a zone that
 #: contains it differ in the last digits, not more.
 _WHOLE = 1 - 1e-9
+#: The geometry types that enclose an area, which is what a zone has to be.
+_AREAL = frozenset({"Polygon", "MultiPolygon"})
 
 
 def apportion_by_area(
@@ -2980,9 +2982,12 @@ def apportion_by_area(
     -- census blocks, a population grid -- answers better than any
     apportionment: aggregate those instead.
 
-    Areas are geodesic, on the ellipsoid, so no projection's scale distortion
-    enters the shares. Each target also gets ``source_coverage``: the share of
-    its area that any source zone covers.
+    Areas are measured on a Lambert azimuthal equal-area plane centred on the
+    two layers, on the source's own datum: areas there add up exactly, so the
+    pieces of a zone recompose it, and no projection's scale enters a share.
+    Each target also gets ``source_coverage``: the share of its area that any
+    source zone covers. Invalid zones are repaired before anything is
+    measured, and the repair is recorded.
     """
     import numpy as np
 
@@ -3051,40 +3056,110 @@ def apportion_by_area(
     if verify.has_critical_failure(pre):
         record.add_verification(pre).finish().write_for(output_path)
         verify.enforce(pre, "apportion_by_area")
-    # The output is the target zones as given, in their own CRS: only the copy
-    # used for the intersection moves.
+    # The output is the target zones as given, in their own CRS: only the copies
+    # used for the intersection move.
     original_target = target
     original_target_crs = target.crs
-    aligned = not verify.same_crs(original_target_crs, source.crs)
-    if aligned:
-        target = target.to_crs(source.crs)
+    for path, frame in ((source_path, source), (target_path, target)):
+        _refuse_naive_antimeridian(frame, path)
+        if frame.crs.geodetic_crs is None:
+            raise ValueError(
+                f"{path} is in {verify.crs_label(frame.crs)}, which names no geodetic datum, "
+                "so a ground area cannot be measured in it and shares of area would be "
+                "shares of a drawing. Assign the CRS the coordinates are really in."
+            )
+
+    # Invalid zones are repaired before anything is measured, and recorded:
+    # a self-intersecting ring has no area that means anything, and overlay
+    # repairs pieces on its own while the zone total would be measured raw.
+    repairs: list[dict[str, Any]] = []
+    for argument, frame in (("source_path", source), ("target_path", target)):
+        invalid = int((~frame.geometry.is_valid).sum())
+        if not invalid:
+            continue
+        fixed = shapely.make_valid(frame.geometry.to_numpy())
+        polygonal = [
+            g if g.geom_type in _AREAL
+            else shapely.union_all([p for p in shapely.get_parts(g) if p.geom_type in _AREAL])
+            for g in fixed
+        ]
+        frame = frame.copy()
+        frame[frame.geometry.name] = polygonal
+        if argument == "source_path":
+            source = frame
+        else:
+            target = frame
+        repairs.append({
+            "x-mapsmith:round": 1,
+            "check": "x-mapsmith:input_geometry_valid",
+            "action": f"make_valid applied to {invalid} zone(s) of {argument} before any area "
+            "was measured, keeping the polygonal parts: a self-intersecting ring has no "
+            "area that means anything",
+            "error": None,
+            "resolved": True,
+        })
+    if repairs:
+        record.add_repairs(repairs)
+
+    # One equal-area plane for both layers, centred on them and on the SOURCE's
+    # own datum, so the source moves through no datum shift. Areas measured in
+    # it add up exactly: the pieces an overlay cuts a zone into recompose the
+    # zone. Geodesic areas of the pieces did not, because the overlay cuts with
+    # straight segments in the source CRS and a geodesic measure reads each one
+    # as a geodesic: on 50 km zones the counts no longer added up, and a zone
+    # wholly inside a target was not seen as wholly inside (0.8.0 review).
+    from pyproj.crs import ProjectedCRS
+    from pyproj.crs.coordinate_operation import LambertAzimuthalEqualAreaConversion
+
+    geodetic = source.crs.geodetic_crs
+    centres = []
+    for frame in (source, target):
+        lonlat = frame.to_crs(geodetic) if not verify.same_crs(frame.crs, geodetic) else frame
+        x0, y0, x1, y1 = lonlat.total_bounds
+        centres.append(((x0 + x1) / 2, (y0 + y1) / 2))
+    lon0 = float(np.degrees(np.arctan2(
+        sum(np.sin(np.radians(c[0])) for c in centres),
+        sum(np.cos(np.radians(c[0])) for c in centres),
+    )))
+    lat0 = float(np.mean([c[1] for c in centres]))
+    plane = ProjectedCRS(
+        conversion=LambertAzimuthalEqualAreaConversion(round(lat0, 6), round(lon0, 6)),
+        geodetic_crs=geodetic,
+    )
+
+    def onto_plane(frame: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        # Densified first: a straight edge in the layer's own CRS is a curve on
+        # the plane, and projecting only its two ends would cut a chord.
+        x0, y0, x1, y1 = frame.total_bounds
+        step = float(np.hypot(x1 - x0, y1 - y0)) / 1000 or 1.0
+        dense = shapely.segmentize(frame.geometry.to_numpy(), step)
+        return gpd.GeoDataFrame(geometry=dense, crs=frame.crs).to_crs(plane)
+
+    moved = [] if verify.same_crs(target.crs, geodetic) or verify.same_crs(target.crs, source.crs) \
+        else [("target_path", original_target_crs)]
     record.crs_decisions = alignment_decisions(
-        source.crs,
-        "the target zones are brought onto the source zones' CRS before they are "
-        "intersected; the shares are then measured as geodesic areas on the ellipsoid"
-        if aligned
-        else "both layers share a CRS; the shares are measured as geodesic areas on the "
-        "ellipsoid, so no projection's scale enters them",
-        [("target_path", original_target_crs)] if aligned else [],
+        plane.to_wkt("WKT2_2019"),
+        "shares of area are measured on a Lambert azimuthal equal-area plane centred on "
+        f"the two layers ({lat0:.4f}, {lon0:.4f}) on the source's own datum: areas there "
+        "add up exactly, so the pieces of each zone recompose it, and no map projection's "
+        "scale enters a share. The output keeps the target zones in their own CRS.",
+        moved,
     )
     pre += verify.verify_input_pairs(
         "apportion_by_area", source_path=source, target_path=target
     )
 
     with verify.audit_on_failure(record, output_path, pre):
-        src = gpd.GeoDataFrame(
-            {"_source": range(len(source))}, geometry=source.geometry.to_numpy(), crs=source.crs
-        )
-        tgt = gpd.GeoDataFrame(
-            {"_target": range(len(target))}, geometry=target.geometry.to_numpy(), crs=target.crs
-        )
+        src = onto_plane(source).assign(_source=range(len(source)))
+        tgt = onto_plane(target).assign(_target=range(len(target)))
         pieces = gpd.overlay(src, tgt, how="intersection", keep_geom_type=True)
-        source_area, shift = _geodesic_areas(src)
-        target_area, _ = _geodesic_areas(tgt)
-        piece_area, _ = _geodesic_areas(pieces) if len(pieces) else ([], None)
-        pieces = pieces.assign(_area=piece_area)
-        pieces = pieces[pieces["_area"] > 0]
-        share = pieces["_area"].to_numpy() / np.array(source_area)[pieces["_source"].to_numpy()]
+        source_area = src.geometry.area.to_numpy()
+        target_area = tgt.geometry.area.to_numpy()
+        pieces = pieces.assign(_area=pieces.geometry.area.to_numpy())
+        # A shared edge, after projection, can come back as a sliver of 1e-12 m2:
+        # a target that only touches a zone along its boundary receives nothing.
+        pieces = pieces[pieces["_area"] > 1e-9 * source_area[pieces["_source"].to_numpy()]]
+        share = pieces["_area"].to_numpy() / source_area[pieces["_source"].to_numpy()]
 
         result = original_target.copy()
         by_target = {t: group for t, group in pieces.assign(_share=share).groupby("_target")}
@@ -3111,27 +3186,19 @@ def apportion_by_area(
             result[c] = estimate
             result[f"{c}_min"] = low
             result[f"{c}_max"] = high
-        covered = pieces.groupby("_target")["_area"].sum()
+        covered_by_target = pieces.groupby("_target")["_area"].sum()
         result["source_coverage"] = [
-            float(min(covered.get(t, 0.0) / target_area[t], 1.0)) if target_area[t] else 0.0
+            float(min(covered_by_target.get(t, 0.0) / target_area[t], 1.0)) if target_area[t] else 0.0
             for t in range(len(target))
         ]
         _write(result, output_path)
 
-        # How much of each source zone the targets cover, measured on their
-        # UNION: overlapping targets receive the same piece of a source twice,
-        # and summing the pieces would count it twice -- two identical targets
-        # over half a zone sum to the whole zone, and nothing looks wrong.
+        # The targets' union: overlapping targets receive the same piece of a
+        # source twice, and summing pieces would count it twice.
         union = shapely.union_all(tgt.geometry.to_numpy())
-        union_area, _ = _geodesic_areas(gpd.GeoDataFrame(geometry=[union], crs=tgt.crs))
-        covered, _ = _geodesic_areas(gpd.GeoDataFrame(
-            geometry=shapely.intersection(src.geometry.to_numpy(), union), crs=src.crs
-        ))
-        kept_share = np.array(covered) / np.array(source_area)
-        # Overlapping targets make the total over the targets exceed the value
-        # they cover, by construction: a property of the targets, said in the
-        # record, not an error.
-        overlapping = bool(sum(target_area) > union_area[0] * (1 + 1e-9))
+        inside_union = shapely.area(shapely.intersection(src.geometry.to_numpy(), union))
+        kept_share = np.minimum(inside_union / source_area, 1.0)
+        overlapping = bool(target_area.sum() > shapely.area(union) * (1 + 1e-9))
         if extensive:
             record.notes.append(
                 f"counts ({', '.join(extensive)}): each estimate assumes the count is spread "
@@ -3146,38 +3213,48 @@ def apportion_by_area(
                 "_min and _max are the lowest and highest contributing rate and rest on the "
                 "same assumption -- a part of a zone can have any rate"
             )
+        if overlapping:
+            record.notes.append(
+                "the target zones overlap one another: a piece of a source zone that falls in "
+                "two targets is counted in each, so the targets' total can exceed the value "
+                "they cover"
+            )
         checks = []
-        if shift is not None:
-            # Shares are ratios of two areas measured through the same move, so
-            # its accuracy barely touches them; it is recorded all the same, in a
-            # field and not only in a sentence (0.8.0 conformance review).
+        # Where the targets do not overlap, the pieces of each source zone inside
+        # them must recompose the part of the zone the targets cover. Equal-area
+        # areas add up, so this holds to rounding -- and it is the property the
+        # geodesic version broke without a word.
+        if not overlapping:
+            recomposed = np.bincount(
+                pieces["_source"].to_numpy(), weights=pieces["_area"].to_numpy(),
+                minlength=len(source),
+            )
+            gap = float(np.max(np.abs(recomposed - inside_union) / np.maximum(source_area, 1.0)))
             checks.append(verify.Check(
-                "x-mapsmith:datum_shift_applied",
-                not shift.get("is_ballpark"),
-                f"areas measured after moving the coordinates to WGS 84 with "
-                f"{shift.get('pipeline') or 'a ballpark transformation'}"
-                + (f", stated accuracy {shift['accuracy_m']} m" if shift.get("accuracy_m") else ""),
-                critical=False,
+                "x-mapsmith:pieces_recompose_the_sources",
+                gap <= 1e-9,
+                f"largest gap between a source zone's pieces and its covered area: {gap:.3g} "
+                "of the zone",
             ))
         written = readers.read_vector(output_path)
         for c in extensive:
             v = values[c].to_numpy(dtype=float)
-            expected = float((v * np.minimum(kept_share, 1.0)).sum())
+            # Against the value the pieces carry, which counts a piece once per
+            # target it falls in: a count lost or doubled between the computation
+            # and the disk fails here, overlapping targets or not.
+            expected = float(np.sum(v[pieces["_source"].to_numpy()] * share))
             got = float(pd.to_numeric(written[c]).sum())
             tolerance = 1e-9 * max(1.0, abs(expected))
             checks.append(verify.Check(
                 "x-mapsmith:extensive_total_preserved",
-                abs(got - expected) <= tolerance or overlapping,
-                f"{c}: the written targets hold {got:.10g}, the source zones' value inside "
-                f"the targets is {expected:.10g}"
-                + ("; the targets overlap, so a piece of a source is counted in each target "
-                   "it falls in and the totals do not have to agree" if overlapping else ""),
-                # Read back from the file: a count lost or doubled between the
-                # computation and the disk fails here. Not critical when the
-                # targets overlap, where the totals legitimately differ.
-                critical=not overlapping,
+                abs(got - expected) <= tolerance,
+                f"{c}: the written targets hold {got:.10g}; the pieces of the source zones "
+                f"inside them carry {expected:.10g}"
+                + ("; the targets overlap, so a piece in two targets is counted in each"
+                   if overlapping else ""),
             ))
-            lost = float(v.sum()) - expected
+            placed = float((v * kept_share).sum())
+            lost = float(v.sum()) - placed
             checks.append(verify.Check(
                 "x-mapsmith:every_source_value_placed",
                 lost <= tolerance,
@@ -3199,10 +3276,11 @@ def apportion_by_area(
             output_path, expect_crs=original_target_crs, expect_count=len(target), on_empty="fail"
         ),
     )
-    spread = {
-        c: float((result[f"{c}_max"] - result[f"{c}_min"]).max()) if len(result) else 0.0
-        for c in columns
-    }
+    # None, not NaN, where no target received anything: NaN is not JSON.
+    spread = {}
+    for c in columns:
+        widths = (result[f"{c}_max"] - result[f"{c}_min"]).dropna()
+        spread[c] = float(widths.max()) if len(widths) else None
     return {
         "output": str(output_path),
         "target_zones": len(result),

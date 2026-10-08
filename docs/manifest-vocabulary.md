@@ -23,7 +23,7 @@ whether this system verified anything at all.
 | `x-mapsmith:operation_completed` | The engine finished. Recorded as a failed check when it did not, so a crash leaves a conforming manifest saying what went wrong instead of a dataset with no record beside it. |
 | `x-mapsmith:verification_present` | Nothing looked at the output. It exists because the specification requires a record for every dataset written and requires at least one check in it; the absence of verification is itself recorded as a failed check rather than papered over. No shipped operation emits it, and a test fails if one starts to. |
 
-## Extension check names (58)
+## Extension check names (59)
 
 Each is a proposition about the dataset that was written. A failed one is
 recorded, never suppressed — the audit trail has to survive the error it
@@ -69,6 +69,7 @@ documents.
 | `x-mapsmith:nothing_exceeds_the_budget` | `network` |
 | `x-mapsmith:one_geometry_type_in_the_layer` | `vector` |
 | `x-mapsmith:origin_is_close_to_the_network` | `network` |
+| `x-mapsmith:pieces_recompose_the_sources` | `vector` |
 | `x-mapsmith:planar_area_matches_ground` | `vector` |
 | `x-mapsmith:point_lies_on_its_feature` | `vector` |
 | `x-mapsmith:segment_costs_add_up_to_the_route_cost` | `network` |

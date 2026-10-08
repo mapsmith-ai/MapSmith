@@ -2510,7 +2510,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "produces": "dataset:vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 2, 'geometry': ['polygon']},
         "summary": "Reallocate population counts, case totals and rates from the units they are "
-                   "reported in to the units you need, with bounds that need no assumption",
+                   "reported in to the units you need, with bounds for every count",
         "phrasings": "the cases are reported by municipality and I need them by health district; "
                      "population per school catchment from census tract totals; how many residents "
                      "does each flood zone hold, from the commune counts; redistrict these statistics",
@@ -2529,8 +2529,10 @@ OPERATIONS: list[dict[str, Any]] = [
             "of the reporting units wholly contained and of all those contributing. A rate gets "
             "the lowest and highest contributing rate, which rest on the same assumption, and "
             "the record says so. source_coverage gives "
-            "the share of each new unit the reporting units reach. Shares are geodesic on the "
-            "ellipsoid, and the result keeps the CRS of the units it was asked for. Checks "
+            "the share of each new unit the reporting units reach. Shares are measured on an "
+            "equal-area plane centred on the data, so the pieces of every unit add up to it, "
+            "invalid units are repaired and the repair recorded, and the result keeps the CRS "
+            "of the units it was asked for. Checks "
             "confirm the reallocated counts add up and report any total left unallocated. Called "
             "through run_operation."
         ),

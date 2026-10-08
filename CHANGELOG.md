@@ -6,14 +6,6 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
-## [0.8.0] - 2026-10-05
-
-Records declare `spec_version` `1.0.0-draft.10`. `draft.9` defines the digest
-of a dataset made of several files, which is what the first fix below
-implements; `draft.10` gives each input a role and a configuration of its own.
-**One key moves**: a second input's own georeferencing facts,
-`inputs[].x-mapsmith:environment` on 0.7.x, are now `inputs[].environment`.
-
 ### Added
 
 - **`apportion_by_area`: move counts and rates from the zones they are reported
@@ -24,8 +16,22 @@ implements; `draft.10` gives each input a role and a configuration of its own.
   averaging a count gives a plausible wrong number. Each count comes with
   `_min` and `_max` that hold however it is distributed inside the source
   zones; rate bounds rest on the same uniformity the estimate assumes, and the
-  record says which is which. Shares are geodesic, targets keep their own CRS,
-  and the counts written are checked against the source value they cover.
+  record says which is which. Shares are measured on an equal-area plane
+  centred on the data, on the source's own datum, so the pieces of each zone add
+  up to it; invalid zones are repaired and the repair recorded; targets keep
+  their own CRS; and the counts written are checked against the pieces they
+  came from.
+
+## [0.8.0] - 2026-10-05
+
+Records declare `spec_version` `1.0.0-draft.10`. `draft.9` defines the digest
+of a dataset made of several files, which is what the first fix below
+implements; `draft.10` gives each input a role and a configuration of its own.
+**One key moves**: a second input's own georeferencing facts,
+`inputs[].x-mapsmith:environment` on 0.7.x, are now `inputs[].environment`.
+
+### Added
+
 - **`cluster_points_by_distance`: group points chained together within a
   distance.** "Group everything within half a kilometre" is single linkage, not
   thinning: two points share a cluster when a chain of points joins them with
