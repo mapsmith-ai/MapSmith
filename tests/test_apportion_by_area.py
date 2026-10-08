@@ -621,3 +621,70 @@ def test_two_longitude_conventions_in_one_crs_are_refused(tmp_path):
     tgt = _layer(tmp_path, "t", [box(179, -10, 180, -9), box(-180, -10, -179, -9)], "EPSG:4326")
     with pytest.raises(ValueError, match="0..360, the other in -180..180"):
         vector.apportion_by_area(src, tgt, str(tmp_path / "o.parquet"), extensive=["population"])
+
+
+
+# --- the fifth review's cases: the area check must not refuse what is whole --------------------
+
+CYLINDRICAL_EQUAL_AREA = "+proj=cea +lon_0=0 +lat_ts=0 +datum=WGS84 +units=m +no_defs"
+
+
+def _geodesic_area(geometry):
+    from pyproj import Geod
+
+    return abs(Geod(ellps="WGS84").geometry_area_perimeter(shapely_segmentize(geometry, 0.01))[0])
+
+
+@pytest.mark.parametrize("lat", [0, 45, 70])
+def test_a_target_on_a_sphere_is_not_refused_as_torn(tmp_path, lat):
+    """A MODIS sinusoidal grid is on a sphere: 0.2-0.45% from WGS 84, refused as crossing a seam."""
+    modis = "+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs"
+    cell = box(10, lat, 11, lat + 1)
+    zone = box(9, lat - 1, 12, lat + 2)
+    tgt_frame = gpd.GeoSeries([shapely_segmentize(cell, 0.01)], crs="EPSG:4326").to_crs(modis)
+    tgt = _layer(tmp_path, "t", list(tgt_frame), modis)
+    src = _layer(tmp_path, "s", [zone], "EPSG:4326", population=[900])
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    expected = 900 * _geodesic_area(cell) / _geodesic_area(zone)
+    assert gpd.read_parquet(out)["population"].iloc[0] == pytest.approx(expected, rel=1e-3)
+
+
+def test_targets_on_opposite_sides_of_the_earth_are_not_refused(tmp_path):
+    """One plane for every target refused the ones near its antipode; v4 gave 50 / 50."""
+    src_frame = gpd.GeoSeries([box(5, 45, 6, 46), box(-175, -45, -173, -43)],
+                              crs="EPSG:4326").to_crs(CYLINDRICAL_EQUAL_AREA)
+    src = _layer(tmp_path, "s", list(src_frame), CYLINDRICAL_EQUAL_AREA, population=[100, 100])
+    cells = [box(5 + i / 10, 45 + j / 10, 5 + (i + 1) / 10, 45 + (j + 1) / 10)
+             for i in range(10) for j in range(10)]
+    halves = [box(-175, -45, -174, -43), box(-174, -45, -173, -43)]
+    tgt = _layer(tmp_path, "t", cells + halves, "EPSG:4326")
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    written = gpd.read_parquet(out)["population"]
+    assert list(written.iloc[-2:]) == pytest.approx([50, 50], rel=1e-6)
+    assert written.sum() == pytest.approx(200, rel=1e-6)
+
+
+def test_a_torn_target_is_refused_even_when_another_balances_it(tmp_path):
+    """An antipodal target cancelled the targets' mean, and the check was skipped: 5000 for 100."""
+    src_frame = gpd.GeoSeries([box(179.2, -9.8, 179.8, -9.2), box(120, -10, 121, -9)],
+                              crs="EPSG:4326").to_crs(CYLINDRICAL_EQUAL_AREA)
+    src = _layer(tmp_path, "s", list(src_frame), CYLINDRICAL_EQUAL_AREA, population=[100, 5000])
+    ring = gpd.GeoSeries([box(179, -10, 180, -9), box(-180, -10, -179, -9)],
+                         crs="EPSG:4326").to_crs("EPSG:3832").union_all()
+    antipode = gpd.GeoSeries([box(-1, 9, 1, 10)], crs="EPSG:4326").to_crs("EPSG:3832").iloc[0]
+    tgt = _layer(tmp_path, "t", [ring, antipode], "EPSG:3832")
+    with pytest.raises(ValueError, match=r"target zone\(s\) \[0\]"):
+        vector.apportion_by_area(src, tgt, str(tmp_path / "o.parquet"), extensive=["population"])
+
+
+def test_many_small_zones_at_one_end_do_not_make_a_hemisphere(tmp_path):
+    """A zone 120 degrees wide and 200 tiny ones at its end: the mean sat at 119E and refused them."""
+    tiny = [box(119 + i * 0.004, 0, 119 + i * 0.004 + 0.003, 0.003) for i in range(200)]
+    src = _layer(tmp_path, "s", [box(0, -5, 120, 5), *tiny], "EPSG:4326",
+                 population=[1000] + [1] * 200)
+    tgt = _layer(tmp_path, "t", [box(-1, -6, 121, 6)], "EPSG:4326")
+    out = tmp_path / "o.parquet"
+    vector.apportion_by_area(src, tgt, str(out), extensive=["population"])
+    assert gpd.read_parquet(out)["population"].iloc[0] == pytest.approx(1200)

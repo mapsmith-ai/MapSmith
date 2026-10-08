@@ -2994,6 +2994,33 @@ def _zone_vectors(frame: gpd.GeoDataFrame, geodetic: Any) -> tuple[Any, Any]:
     return zones, vertices
 
 
+def _enclosing_centre(start: Any, vertices: Any) -> tuple[Any, float]:
+    """The centre of the smallest cap holding every vertex, and its radius in degrees.
+
+    Badoiu-Clarkson on the sphere: step towards the farthest vertex by 1/(k+1)
+    and keep the best centre seen. A mean of zones, or of vertices, follows
+    whichever zones are many or densely drawn: one zone 120 degrees wide and
+    200 small ones at its eastern end were refused as wider than a hemisphere
+    (fourth review), and the cap holding them is 60 degrees in radius.
+    """
+    import numpy as np
+
+    centre = start / np.linalg.norm(start)
+    best, best_radius = centre, 180.0
+    for k in range(1, 200):
+        cosines = vertices @ centre
+        far = int(np.argmin(cosines))
+        radius = float(np.degrees(np.arccos(np.clip(cosines[far], -1, 1))))
+        if radius < best_radius:
+            best, best_radius = centre, radius
+        step = centre + (vertices[far] - centre) / (k + 1)
+        length = np.linalg.norm(step)
+        if length < 1e-12:
+            break
+        centre = step / length
+    return best, best_radius
+
+
 def _equal_area_plane(centre: Any, geodetic: Any) -> tuple[Any, float, float]:
     """A Lambert azimuthal equal-area plane centred on a unit vector."""
     import numpy as np
@@ -3265,18 +3292,14 @@ def apportion_by_area(
         # at Fiji was refused as spanning 162 degrees).
         zone_vectors, source_vertices = _zone_vectors(source, geodetic)
         mean = zone_vectors.mean(axis=0)
-        norm = float(np.linalg.norm(mean))
-        if norm < 1e-6:
-            raise ValueError(
-                f"{source_path} spreads its zones evenly around the globe, so no single "
-                "equal-area plane has them on one side. Split the analysis by region."
-            )
-        mean /= norm
-        plane, lat0, lon0 = _equal_area_plane(mean, geodetic)
+        if np.linalg.norm(mean) < 1e-9:
+            mean = zone_vectors[0]
         # Every vertex of both layers within a hemisphere of the centre: beyond
-        # it the plane approaches its singular point, the antipode.
+        # it the plane approaches its singular point, the antipode. The centre
+        # is the one that makes that cap smallest.
         verts = np.concatenate([source_vertices, _zone_vectors(target, geodetic)[1]])
-        farthest = float(np.degrees(np.arccos(np.clip(verts @ mean, -1, 1))).max())
+        mean, farthest = _enclosing_centre(mean, verts)
+        plane, lat0, lon0 = _equal_area_plane(mean, geodetic)
         if farthest > 90:
             raise ValueError(
                 f"the zones reach {farthest:.0f} degrees from their centre ({lat0:.2f}, "
@@ -3314,24 +3337,30 @@ def apportion_by_area(
         # target as drawn, on a plane centred on the targets, against the area
         # of its image in the source CRS (third review: a Web Mercator source
         # gave a target at Fiji the value of a zone 59 degrees away).
-        own_zones, _ = _zone_vectors(target_as_drawn, target_as_drawn.crs.geodetic_crs or geodetic)
-        own_centre = own_zones.mean(axis=0)
-        if np.linalg.norm(own_centre) > 1e-6:
-            own_plane, _, _ = _equal_area_plane(
-                own_centre / np.linalg.norm(own_centre),
-                target_as_drawn.crs.geodetic_crs or geodetic,
+        #
+        # "As drawn" is the geodesic area of the target's own vertices on the
+        # SOURCE's ellipsoid: a geodesic follows each densified edge the short
+        # way whatever the longitudes say, and one ellipsoid for both sides
+        # keeps a datum out of the comparison. Measured on the target's own
+        # ellipsoid, every target on a sphere (MODIS) was refused, 0.2-0.45%
+        # apart; on one plane for all targets, a target near that plane's
+        # antipode was (fourth review).
+        geod = geodetic.get_geod()
+        drawn_lonlat = target_as_drawn.to_crs(geodetic)
+        as_drawn = np.array([
+            abs(geod.geometry_area_perimeter(g)[0]) for g in drawn_lonlat.geometry.to_numpy()
+        ])
+        as_moved = area_of(target.geometry.to_numpy())
+        # Not finite counts as torn: a pole in Web Mercator is at infinity.
+        torn = np.flatnonzero(~(np.abs(as_moved - as_drawn) <= 1e-3 * as_drawn))
+        if len(torn):
+            raise ValueError(
+                f"target zone(s) {torn[:20].tolist()} of {target_path} change area by more "
+                f"than 0.1% when brought into the source zones' CRS "
+                f"({verify.crs_label(source.crs)}): they cross a seam of that CRS (the "
+                "180th meridian, a pole) and would be read the long way round. Put the "
+                "source zones in a CRS where those targets are drawn whole."
             )
-            as_drawn = target_as_drawn.to_crs(own_plane).area.to_numpy()
-            as_moved = area_of(target.geometry.to_numpy())
-            torn = np.flatnonzero(np.abs(as_moved - as_drawn) > 1e-3 * as_drawn)
-            if len(torn):
-                raise ValueError(
-                    f"target zone(s) {torn[:20].tolist()} of {target_path} change area by more "
-                    f"than 0.1% when brought into the source zones' CRS "
-                    f"({verify.crs_label(source.crs)}): they cross a seam of that CRS (the "
-                    "180th meridian, a pole) and would be read the long way round. Put the "
-                    "source zones in a CRS where those targets are drawn whole."
-                )
 
     record.crs_decisions = alignment_decisions(
         source.crs,
