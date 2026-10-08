@@ -644,7 +644,7 @@ def advisories(checks: list[Check]) -> list[dict[str, Any]]:
 
 
 @contextmanager
-def audit_on_failure(record: Any, output_path: str, preconditions: list[Check]):
+def audit_on_failure(record: Any, output_path: str, preconditions: list[Check], *, written: bool = False):
     """Persist the preconditions if the operation itself raises.
 
     The diagnosis this module exists to produce ("these extents cannot
@@ -669,8 +669,11 @@ def audit_on_failure(record: Any, output_path: str, preconditions: list[Check]):
 
     # What is at the output path as the run begins: if it is still exactly that
     # when the run fails, the run never wrote it, and its digest is not this
-    # run's to record (`ProvenanceRecord.write_for`).
-    found_before = output_fingerprint(output_path)
+    # run's to record (`ProvenanceRecord.write_for`). Not taken where the run
+    # has already written (`written=True`, from `audited`): there the file IS
+    # this run's, and a fingerprint taken then made a crash in a check of the
+    # output drop the digest of the bytes just written (review, 2026-10-08).
+    since = {} if written else {"found_before": output_fingerprint(output_path)}
     try:
         yield
     except Exception as failure:
@@ -709,11 +712,11 @@ def audit_on_failure(record: Any, output_path: str, preconditions: list[Check]):
             )
             raise failure from None
         try:
-            record.write_for(output_path, found_before=found_before)
+            record.write_for(output_path, **since)
         except Exception:  # noqa: BLE001 - retried below, reported if that fails too
             try:
                 # Drop the one field whose computation reads the output file.
-                record.write_for(output_path, with_output_digest=False, found_before=found_before)
+                record.write_for(output_path, with_output_digest=False, **since)
             except Exception as lost:  # noqa: BLE001 - the original failure must win
                 # Never silent: the caller gets the engine's error with a note
                 # saying the trail is missing, which is the difference between
@@ -771,7 +774,8 @@ def audited(
     order — manifest first, enforce second — is the invariant this helper
     exists to make unmissable.
     """
-    with audit_on_failure(record, output_path, preconditions or []):
+    # The dataset is on disk before this helper runs: every caller writes it first.
+    with audit_on_failure(record, output_path, preconditions or [], written=True):
         checks = checks_fn()
     repairs: list[dict[str, Any]] = []
     if repair:

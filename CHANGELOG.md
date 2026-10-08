@@ -71,9 +71,12 @@ All notable changes to MapSmith are documented here, in the format of
   output.** With a dataset already at the output path, a run refused by its
   preconditions, or one that crashed before writing, recorded the digest of
   the earlier bytes as its own output -- and a lineage walk by digest then
-  attributed them to the inputs of the run that failed. Such a record now
-  omits `output` and says why in a note; bytes the failing run did write keep
-  their digest, as before.
+  attributed them to the inputs of the run that failed -- and its record
+  replaced theirs, leaving them with none. Such a record now omits `output`
+  and says why, and where a record on disk still describes the bytes at the
+  path it is left in place and the failing run's record is written beside it
+  as `<output>.failed.provenance.json`. Bytes the failing run did write keep
+  their digest, including when a check of the output crashes after the write.
 
 ### Changed
 

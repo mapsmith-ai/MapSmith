@@ -280,14 +280,25 @@ def output_fingerprint(path: str | Path) -> tuple[int, int, int] | None:
     """Size, modification time and file id of what is at the path, or None if nothing is.
 
     Compared, never trusted alone: equal before and after a run means the run
-    did not rewrite the file. For a shapefile or a .gdb the main file stands for
-    the dataset, which is what a writer replaces first.
+    did not rewrite the file. For a shapefile the `.shp` is what is stated;
+    for a .gdb it is the folder, whose size and time do not move when files
+    inside it are rewritten -- harmless today only because overwriting a .gdb
+    fails before writing anything.
     """
     try:
         stat = Path(path).stat()
     except OSError:
         return None
     return (stat.st_size, stat.st_mtime_ns, stat.st_ino)
+
+
+def _describes(manifest_path: Path, output_path: str | Path) -> bool:
+    """Whether a manifest on disk records the digest of the bytes now at the output path."""
+    try:
+        recorded = json.loads(manifest_path.read_text(encoding="utf-8"))["output"]["sha256"]
+        return bool(recorded) and recorded == dataset_sha256(output_path)
+    except Exception:  # noqa: BLE001 - no readable record that matches is the answer
+        return False
 
 
 def _crs_and_points(value: Any) -> tuple[Any, Any]:
@@ -1120,13 +1131,25 @@ class ProvenanceRecord:
         stale = Path(output_path).exists() and (
             refused or (found_before is not _NOT_TAKEN and found_before == output_fingerprint(output_path))
         )
+        # Where the record goes. A failing run that wrote nothing must not
+        # replace a record that still describes the bytes at the path: that
+        # left them with no record claiming them, a dataset MapSmith described
+        # and then orphaned (review, 2026-10-08). It goes beside, under another
+        # name, and the trail of the failure survives all the same.
+        manifest_path = Path(f"{output_path}.provenance.json")
         if stale:
             with_output_digest = False
             note = (
                 "a file was already at the output path before this run and was not "
-                "rewritten by it: its bytes belong to an earlier run, and this record does "
-                "not describe them"
+                "rewritten by it: its bytes belong to an earlier run or another "
+                "program, and this record does not describe them"
             )
+            if _describes(manifest_path, output_path):
+                manifest_path = Path(f"{output_path}.failed.provenance.json")
+                note += (
+                    f"; the record that does, {Path(f'{output_path}.provenance.json').name}, "
+                    "is left in place"
+                )
             if note not in self.notes:  # the crash path retries this method
                 self.notes.append(note)
         record = asdict(self)
@@ -1194,7 +1217,6 @@ class ProvenanceRecord:
         for entry in record["inputs"]:
             if entry.get("argument") is None:
                 entry.pop("argument", None)
-        manifest_path = Path(f"{output_path}.provenance.json")
         manifest_path.write_text(
             json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8"
         )

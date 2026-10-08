@@ -41,15 +41,23 @@ def earlier_run(tmp_path):
     return layer, mask, out
 
 
-def test_a_refused_run_does_not_claim_the_earlier_bytes(earlier_run, tmp_path):
+def _failed(out):
+    return json.loads(Path(str(out) + ".failed.provenance.json").read_text(encoding="utf-8"))
+
+
+def test_a_refused_run_does_not_claim_the_earlier_bytes_nor_replace_their_record(earlier_run, tmp_path):
     layer, _, out = earlier_run
+    before = _manifest(out)
     no_crs = tmp_path / "no_crs.gpkg"
     gpd.GeoDataFrame({"n": [1]}, geometry=[box(0, 0, 1, 1)]).to_file(no_crs)
     with pytest.raises(verify.VerificationError):
         vector.clip(layer, str(no_crs), str(out))
-    manifest = _manifest(out)
-    assert "output" not in manifest
-    assert any("belong to an earlier run" in note for note in manifest["notes"])
+    # The earlier record still describes the bytes at the path...
+    assert _manifest(out) == before
+    # ...and the refusal's own trail sits beside it, claiming nothing.
+    failed = _failed(out)
+    assert "output" not in failed
+    assert any("belong to an earlier run" in note and "left in place" in note for note in failed["notes"])
 
 
 def test_a_run_that_crashes_before_writing_does_not_claim_the_earlier_bytes(earlier_run, monkeypatch):
@@ -59,11 +67,13 @@ def test_a_run_that_crashes_before_writing_does_not_claim_the_earlier_bytes(earl
         raise RuntimeError("engine died before writing")
 
     monkeypatch.setattr(vector.gpd, "clip", boom)
+    before = _manifest(out)
     with pytest.raises(RuntimeError):
         vector.clip(layer, mask, str(out))
-    manifest = _manifest(out)
-    assert "output" not in manifest
-    assert sum("belong to an earlier run" in note for note in manifest["notes"]) == 1
+    assert _manifest(out) == before
+    failed = _failed(out)
+    assert "output" not in failed
+    assert sum("belong to an earlier run" in note for note in failed["notes"]) == 1
 
 
 def test_a_run_that_crashes_after_writing_still_records_its_own_bytes(earlier_run, monkeypatch):
@@ -107,3 +117,30 @@ def test_every_write_under_a_refusal_says_it_is_one():
                         missing.append(f"{path.name}:{call.lineno}")
     assert seen >= 15, f"only {seen} refusal writes found: the sweep has stopped seeing them"
     assert not missing, missing
+
+
+
+@pytest.mark.parametrize("earlier", [True, False])
+def test_a_crash_in_a_check_of_the_output_keeps_the_new_bytes_digest(tmp_path, monkeypatch, earlier):
+    """`audited` runs after the write: a fingerprint taken there was of this run's own bytes.
+
+    A check of the output that crashed then dropped the digest of the bytes
+    just written and said they were an earlier run's -- with or without a file
+    there before (review, 2026-10-08).
+    """
+    layer = _layer(tmp_path / "layer.gpkg")
+    mask = _layer(tmp_path / "mask.gpkg")
+    out = tmp_path / "out.parquet"
+    if earlier:
+        vector.clip(layer, mask, str(out))
+
+    def check_dies(*args, **kwargs):
+        raise RuntimeError("a check of the output crashed")
+
+    monkeypatch.setattr(verify, "verify_vector_output", check_dies)
+    with pytest.raises(RuntimeError):
+        vector.clip(layer, mask, str(out))
+    manifest = _manifest(out)
+    assert manifest["output"]["sha256"]
+    assert not any("earlier run" in note for note in manifest.get("notes", []))
+    assert not Path(str(out) + ".failed.provenance.json").exists()
