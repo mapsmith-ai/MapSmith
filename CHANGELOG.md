@@ -76,8 +76,8 @@ All notable changes to MapSmith are documented here, in the format of
   and says why, and where a record on disk still describes the bytes at the
   path it is left in place and the failing run's record is written beside it
   as `<output>.failed.provenance.json`, which the error names. Bytes the
-  failing run did write keep
-  their digest, including when a check of the output crashes after the write.
+  failing run did write keep their digest, including when a check of the
+  output crashes after the write.
 
 ### Changed
 
