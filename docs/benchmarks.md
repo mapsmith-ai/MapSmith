@@ -463,16 +463,17 @@ organisation on purpose: an evaluation that lives inside the thing it
 evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
-What it says about MapSmith (all twenty-nine families, engine tier, `spec_commit`
-[`8e0151b`](https://github.com/argleton/argleton/tree/main/results/2026-09-27-qgis-ground-area)):
+What it says about MapSmith 0.9.0 (all twenty-nine families, engine tier, `spec_commit`
+[`dc31bf1`](https://github.com/argleton/argleton/tree/main/results/2026-10-09-mapsmith-release)):
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
 | MapSmith | **0.00** | 1.00 | 31 | 0 |
 | naive composition (read file, take statistic) | 0.9032 | 1.00 | 31 | 0 |
 
-The second run scored against trap 024's corrected truth (the first was 2026-09-26; this one
-moves only the three QGIS rows, which do not appear here). The runs from 2026-08-30 to 2026-09-15
+The third run scored against trap 024's corrected truth, and the first to name the MapSmith
+release and commit it measured (the earlier two, 2026-09-26 and 2026-09-27, said "main"; no
+MapSmith verdict moved between them and this one). The runs from 2026-08-30 to 2026-09-15
 scored that trap against a wrong truth in MapSmith's favour: the [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) recounts them,
 and the section below the next one says what the trap was and why the fix made it worse.
 
