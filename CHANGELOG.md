@@ -8,7 +8,14 @@ All notable changes to MapSmith are documented here, in the format of
 
 ### Fixed
 
-- **Documentation only, no code that runs.** `SECURITY.md` gives the reason
+- **`nearest_neighbour_index` no longer needs memory in the square of its
+  points.** It built every pairwise distance before taking the nearest, so
+  100,000 points asked for 149 GiB before computing anything -- over HTTP, a
+  denial of service from one ordinary file. It now asks a tree for each
+  point's nearest other point, exactly and in linear memory; duplicated
+  records still count as a neighbour at zero, and still raise the
+  coincident-points note. The answers are the same. Present since 0.4.0.
+- **Documentation, no code that runs.** `SECURITY.md` gives the reason
   the two cases where 0.8.0's `reproject_layer` moved data with an operation
   from elsewhere did not get an advisory; a 0.5.x entry below and a docstring
   said buffering NAD27 crossed a datum "seven metres each way", which is the

@@ -283,6 +283,11 @@ counted first, and the call is refused above the larger of the same limit and
 32 times the vertices it was given (0.9.0 audit, before release: a 1 m source
 zone and a 200 km target, 381 bytes each, allocated over 4 GiB).
 
+`nearest_neighbour_index` built every pairwise distance between its points
+before taking the nearest, from 0.4.0 to 0.9.0: 100,000 points asked for
+149 GiB. It now queries a tree, in memory linear in the points, so it needs
+no limit (pre-release review of 0.9.0, fixed on `main` after it).
+
 That is all there is, and it is not a general resource policy: other operations
 are bounded only by their inputs, and a server exposed over
 HTTP should also run under the memory and CPU limits of its container or pod

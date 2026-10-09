@@ -35,6 +35,7 @@ from typing import Any
 
 import geopandas as gpd
 import numpy as np
+import shapely
 
 from .. import datum, readers, verify
 from .network import _unit
@@ -331,15 +332,7 @@ def nearest_neighbour_index(
             "were sampled within."
         )
 
-    coordinates = np.array([[p.x, p.y] for p in points])
-    # Full pairwise distances: n is small for this statistic in practice, and an
-    # exact answer with an obvious implementation beats a tree that has to be
-    # trusted. The diagonal is set to infinity so a point is never its own
-    # nearest neighbour — the mistake that makes every R come out as zero.
-    differences = coordinates[:, None, :] - coordinates[None, :, :]
-    distances = np.sqrt((differences**2).sum(axis=2))
-    np.fill_diagonal(distances, np.inf)
-    nearest = distances.min(axis=1)
+    nearest = _nearest_other_distances(shapely.get_coordinates(points.to_numpy()))
     coincident = int((nearest == 0).sum())
 
     observed = float(nearest.mean())
@@ -384,6 +377,33 @@ def nearest_neighbour_index(
             "clustered whether or not the pattern is."
         )
     return answer
+
+
+def _nearest_other_distances(coordinates: np.ndarray) -> np.ndarray:
+    """Each point's distance to the nearest OTHER point, in linear memory.
+
+    This was a full pairwise matrix, n x n x 2 floats: 100,000 points asked for
+    149 GiB before computing anything (pre-release review of 0.9.0). A tree
+    answers the same question exactly, but its `exclusive` flag drops every
+    tree point EQUAL to the query, not just the query itself -- so a duplicated
+    record would find its nearest neighbour somewhere else instead of at zero,
+    and the coincident-points warning would go silent. Duplicates are therefore
+    settled first, by exact coordinates: a point that shares its location has a
+    neighbour at distance zero, and among distinct locations equality and
+    identity are the same thing, which is what `exclusive` needs.
+    """
+    distinct, inverse, counts = np.unique(
+        coordinates, axis=0, return_inverse=True, return_counts=True
+    )
+    inverse = inverse.reshape(-1)
+    nearest_distinct = np.zeros(len(distinct))
+    if len(distinct) > 1:
+        locations = shapely.points(distinct)
+        (queried, _), distances = shapely.STRtree(locations).query_nearest(
+            locations, exclusive=True, return_distance=True, all_matches=False
+        )
+        nearest_distinct[queried] = distances
+    return np.where(counts[inverse] > 1, 0.0, nearest_distinct[inverse])
 
 
 def _geometry(value: Any) -> Any:

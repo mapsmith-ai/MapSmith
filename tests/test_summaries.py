@@ -10,6 +10,7 @@ which is the only kind of test worth having on a statistic.
 from __future__ import annotations
 
 import geopandas as gpd
+import numpy as np
 import pytest
 from shapely.geometry import LineString, MultiLineString, Point, Polygon
 
@@ -257,6 +258,51 @@ def test_coincident_points_are_counted_because_they_drag_r_down(tmp_path):
     answer = summaries.nearest_neighbour_index(str(path))
     assert answer["coincident_points"] == 2
     assert "duplicated" in answer["note"].lower()
+
+
+def test_duplicates_have_a_neighbour_at_zero_and_the_rest_do_not(tmp_path):
+    """Nearest distances 0, 0, 100, 100, so the observed mean is 50 exactly.
+
+    The tree that replaced the pairwise matrix drops every point EQUAL to the
+    query when asked to exclude the query, so without the duplicate handling the
+    two points at the origin would each report 100 instead of 0.
+    """
+    points = [Point(0, 0), Point(0, 0), Point(100, 0), Point(0, 100)]
+    gdf = gpd.GeoDataFrame({"id": range(4)}, geometry=points, crs="EPSG:32632")
+    path = tmp_path / "dup.parquet"
+    gdf.to_parquet(path)
+    answer = summaries.nearest_neighbour_index(str(path))
+    assert answer["observed_mean_distance"] == pytest.approx(50.0)
+    assert answer["coincident_points"] == 2
+
+
+def test_the_tree_agrees_with_the_pairwise_matrix_it_replaced():
+    rng = np.random.default_rng(7)
+    coordinates = np.round(rng.uniform(0, 1000, size=(400, 2)), 0)
+    coordinates[50:60] = coordinates[0]  # a cluster of duplicates
+    differences = coordinates[:, None, :] - coordinates[None, :, :]
+    pairwise = np.sqrt((differences**2).sum(axis=2))
+    np.fill_diagonal(pairwise, np.inf)
+    assert np.array_equal(
+        summaries._nearest_other_distances(coordinates), pairwise.min(axis=1)
+    )
+
+
+def test_a_hundred_thousand_points_fit_in_linear_memory(tmp_path):
+    """The pairwise matrix asked for 149 GiB here; the tree needs megabytes.
+
+    A 316 x 316 lattice at 10 m spacing: every nearest neighbour is 10 m away.
+    """
+    side = 316
+    xs, ys = np.meshgrid(np.arange(side) * 10.0, np.arange(side) * 10.0)
+    gdf = gpd.GeoDataFrame(
+        geometry=gpd.points_from_xy(xs.ravel(), ys.ravel()), crs="EPSG:32632"
+    )
+    path = tmp_path / "many.parquet"
+    gdf.to_parquet(path)
+    answer = summaries.nearest_neighbour_index(str(path))
+    assert answer["points"] == side * side
+    assert answer["observed_mean_distance"] == pytest.approx(10.0)
 
 
 @pytest.fixture
