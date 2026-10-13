@@ -6,6 +6,20 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+### Added
+
+- **103 phrasings on 36 operations, taken from how the QGIS Training Manual
+  poses its exercises.** Each is a paraphrase of a problem a lesson sets ("strip
+  along both banks of a stream", "distance along the roads, not as the crow
+  flies"), written from half of the 220 exercises extracted from that manual
+  (GNU FDL 1.3, docs.qgis.org) and measured on the other half, which the
+  phrasings never saw: BM25 found@3 on words alone 47% -> 59%, with the
+  caller's facts 40% -> 51%. On the 118 independent requests of the published
+  table every level moved up (words alone 29% -> 30%, fullest declaration
+  60% -> 62%; the embedding engine 18% -> 19% and 56% -> 62%), and the tables
+  on this page, `docs/catalog-entry-spec.md` and the site say the new figures.
+  No code that runs changed.
+
 ### Fixed
 
 - **`nearest_neighbour_index` no longer needs memory in the square of its

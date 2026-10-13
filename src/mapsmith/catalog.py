@@ -35,7 +35,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["dataset"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Inspect a vector or raster dataset: CRS, schema/bands, extent, "
         "nodata, statistics",
-        "phrasings": "what is in this file; what am I looking at; how many features and what extent; which layers does it have; before I start",
+        "phrasings": "what is in this file; what am I looking at; how many features and what extent; which layers does it have; before I start; how many columns does this layer have; list the attribute fields of each record",
         "distinguishes": "Reports what a file IS — CRS, schema, extent, bands, layers — before anything is "
         "computed over it. Not describe_crs, which answers about a coordinate system with "
         "no file involved.",
@@ -81,7 +81,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "produces": "dataset:vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Metric buffer with automatic UTM estimation on geographic CRS",
-        "phrasings": "everything within a distance of; a zone around; how far out from; catchment radius; protection zone",
+        "phrasings": "everything within a distance of; a zone around; how far out from; catchment radius; protection zone; ground at least 100 m in from the edge; at least 250 m away from any settlement; widen the outline by a margin; no-go zone around nest sites; strip along both banks of a stream; corridor alongside every road",
         "distinguishes": "Grows each feature by a fixed distance. Not voronoi_polygons, which divides all "
         "the space between features; not hull_layer, which wraps them without a distance.",
         "description": (
@@ -146,7 +146,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "produces": "dataset:vector",
         "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2},
         "summary": "Clip a layer with a mask layer (CRS-aligned automatically)",
-        "phrasings": "cut to the study area; keep only what falls inside the boundary; trim to the region",
+        "phrasings": "cut to the study area; keep only what falls inside the boundary; trim to the region; cut lines at the edge of an area, keep attributes; drop grid points that fall outside the stands",
         "distinguishes": "Cuts one layer to the shape of another and keeps the first layer's attributes. Not "
         "overlay_layers, which combines the attributes of both; use clip when the second "
         "layer is a boundary rather than data.",
@@ -213,7 +213,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "summary": "Intersect, union or subtract two polygon layers: set-theoretic "
         "overlay with intersection, union, identity, symmetric_difference and "
         "difference (CRS-aligned automatically)",
-        "phrasings": "the part where two layers overlap; what falls in both; subtract one from the other; combine two sets of polygons",
+        "phrasings": "the part where two layers overlap; what falls in both; subtract one from the other; combine two sets of polygons; the piece of each building inside the suitable zone; land that meets every criterion at once",
         "distinguishes": "Two layers in, one out, keeping only where they coincide or differ. Not "
         "buffer_layer, which grows a single layer; not hull_layer, which wraps one. This is "
         "the one for what falls inside something else, or what is left after subtracting.",
@@ -289,7 +289,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Merge features into one geometry per key, with the aggregation "
         "recorded in the manifest and the group count verified",
-        "phrasings": "collapse into; group by and combine; roll up smaller units into larger ones; merge by attribute",
+        "phrasings": "collapse into; group by and combine; roll up smaller units into larger ones; merge by attribute; overlapping zones fused into one; all addresses of a city as one feature",
         "distinguishes": "Merges features that share an attribute into one. Not merge_layers, which appends "
         "different files without combining anything; not simplify_layer, which thins "
         "vertices inside features that stay separate.",
@@ -498,7 +498,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Area per feature in square metres — ground (ellipsoidal) or "
         "planar with the CRS's own unit, with the distortion checked",
-        "phrasings": "how big is it really on the ground not on the map; true size; hectares; square metres of land",
+        "phrasings": "how big is it really on the ground not on the map; true size; hectares; square metres of land; add a size column to each polygon; rank the polygons by how big they are",
         "distinguishes": "Answers how large something is on the ground, in the unit its CRS actually "
         "declares. Not count_in_polygons, which counts features rather than measuring "
         "surface; not zonal_statistics, which summarises a raster inside the shapes.",
@@ -634,7 +634,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Simplify geometries with the drift measured: area and length "
         "before/after recorded in the manifest",
-        "phrasings": "too many vertices; the outlines are too detailed; make the file lighter; generalise the shapes",
+        "phrasings": "too many vertices; the outlines are too detailed; make the file lighter; generalise the shapes; fewer corner points on the outline; choose how much shape detail to give up",
         "distinguishes": "Removes vertices and keeps the same features. Not dissolve_layer, which removes "
         "features and keeps the vertices; reach for this when a file is too heavy to draw, "
         "and for dissolve when the units are too fine to reason about.",
@@ -711,7 +711,7 @@ OPERATIONS: list[dict[str, Any]] = [
         # for the example we had written, which was the right answer.
         "phrasings": "the centre of mass of each shape; reduce polygons to points for a "
         "distance calculation; one point per feature. NOT for map labels: a centroid can "
-        "fall outside its own polygon, and point_on_surface is the one that cannot",
+        "fall outside its own polygon, and point_on_surface is the one that cannot; centre point of each line and region; one point in the middle of each parcel; geometric centre of the study area",
         "distinguishes": "Collapses each feature to one point, for a distance calculation or a summary. Not "
         "for map labels: the centroid of a concave shape falls outside it, and "
         "point_on_surface is the one that cannot.",
@@ -831,7 +831,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "summary": "Keep the features a question is about \u2014 by geometry type or by an "
         "attribute condition \u2014 and record what was removed",
         "phrasings": "keep only the lines; drop the polygons; just the features where type is X; "
-        "filter out the rest; only the ones between 10 and 20; remove everything else",
+        "filter out the rest; only the ones between 10 and 20; remove everything else; only the areas marked suitable; just a handful of named districts; only patches bigger than a minimum size; which places are classed as towns; only the major roads as their own layer; drop the units that got no measurements; pick out one particular sub-basin",
         "distinguishes": "Removes whole features and keeps the rest unchanged. Not clip_layer, which "
         "cuts geometry to a boundary and can return partial features; not extract_layer, which pulls "
         "a named layer out of a multi-layer container; not run_sql, which can express any condition "
@@ -1044,7 +1044,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "produces": "dataset:vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Reproject a layer to a target CRS (EPSG code or WKT)",
-        "phrasings": "my data is in degrees and I need metres; change the coordinate system; wrong units; put two layers on the same system",
+        "phrasings": "my data is in degrees and I need metres; change the coordinate system; wrong units; put two layers on the same system; back to latitude and longitude from UTM; a whole folder of files to one system at once; a UTM copy so lengths come out right; a metric system suited to the region before measuring",
         "distinguishes": "Changes the coordinate system of a layer that already has one. Not "
         "parse_coordinates, which builds geometry from text columns that have none yet; not "
         "convert_format, which changes the container and leaves the coordinates alone.",
@@ -1110,7 +1110,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2},
         "summary": "Join by spatial predicate (intersects/within/contains); auto-routed to "
         "SedonaDB or DuckDB for speed, GeoPandas fallback",
-        "phrasings": "give each feature the attribute of the area it sits in; tag points with their region; which district is each in",
+        "phrasings": "give each feature the attribute of the area it sits in; tag points with their region; which district is each in; buildings that touch the suitable zone; which buildings lie inside a region",
         "distinguishes": "Copies attributes onto features from whatever area contains them, leaving the "
         "geometry untouched. Not overlay_layers, which cuts geometry; not "
         "count_in_polygons, which counts rather than labels; not join_table, which matches "
@@ -1203,7 +1203,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["dataset"], "requires_projected_crs": False, 'dataset_inputs': None},
         "summary": "Spatial SQL (DuckDB dialect, ST_* functions) over GeoParquet and GDAL "
         "formats; materializes GeoParquet outputs with provenance",
-        "phrasings": "query it like a database; a select with a spatial predicate; join and filter in one go",
+        "phrasings": "query it like a database; a select with a spatial predicate; join and filter in one go; split a text column into two; names containing a letter in any case; count per group showing the name from another table; regions within 100 m of a given one; unique names among features inside a region; shortest straight connection between two features; connect GPS points into a track in time order; rows in one table missing from the other",
         "description": (
             "Run spatial SQL in the DuckDB dialect: read_parquet('file.parquet') for "
             "GeoParquet, ST_Read('file.gpkg') for GDAL formats, full ST_* function set. "
@@ -1276,7 +1276,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "(exact fractional pixel coverage), optionally weighted by a second raster; "
         "requires the [raster] extra",
         "phrasings": "average value of a grid inside each polygon; summarise a raster per area; mean elevation per zone; "
-        "population-weighted average per district; exposure weighted by where people live",
+        "population-weighted average per district; exposure weighted by where people live; maximum and mean of a grid per municipality; which municipality has the worst peak value",
         "distinguishes": "Summarises a raster inside each polygon — mean elevation per basin, rainfall per "
         "catchment. Not count_in_polygons, which counts vector features; not "
         "band_statistics, which summarises a whole grid with no zones at all.",
@@ -1494,7 +1494,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Shaded relief from a DEM (Whitebox engine, in-memory); "
         "requires the [whitebox] extra",
-        "phrasings": "make the terrain look three dimensional; relief for a map; shaded relief",
+        "phrasings": "make the terrain look three dimensional; relief for a map; shaded relief; grey terrain backdrop under the map",
         "description": (
             "Compute a shaded-relief raster from a digital elevation model. Output "
             "values are scaled 0-32767; nodata cells are preserved. The DEM must have "
@@ -1565,7 +1565,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster"], "requires_projected_crs": True, 'dataset_inputs': 1},
         "summary": "Slope gradient from a DEM in degrees, percent or radians "
         "(Whitebox engine); requires the [whitebox] extra",
-        "phrasings": "how steep is the ground; steepness; gradient of the land; where is it too steep to build",
+        "phrasings": "how steep is the ground; steepness; gradient of the land; where is it too steep to build; gradient as a percentage; steepness in degrees, cell by cell; steep ground as a landslide factor; gentle ground under a few degrees",
         "description": (
             "Compute the slope gradient of a digital elevation model "
             "(Zevenbergen-Thorne). Units: degrees (default), percent or radians. "
@@ -1631,7 +1631,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster"], "requires_projected_crs": True, 'dataset_inputs': 1},
         "summary": "Aspect from a DEM: downslope azimuth in degrees, 0 = north, "
         "flat cells = -1 (Whitebox engine); requires the [whitebox] extra",
-        "phrasings": "which way does the hillside face; north facing slopes; exposure",
+        "phrasings": "which way does the hillside face; north facing slopes; exposure; east-facing hillsides only; compass direction the ground faces; which plots get the most sun; orientation of each cell in degrees from north",
         "description": (
             "Compute the aspect of a digital elevation model: the azimuth of the "
             "downslope direction in degrees, 0 = north, 90 = east. FLAT CELLS ARE "
@@ -1686,7 +1686,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "D8 flow accumulation from a DEM with automatic depression filling; "
         "requires the [whitebox] extra",
-        "phrasings": "how much water arrives at each cell; upstream area; where the channels form",
+        "phrasings": "how much water arrives at each cell; upstream area; where the channels form; how much land drains through each cell",
         "distinguishes": "How much upslope area drains through each cell — the grid you threshold to find "
         "channels. Not flow_direction, which is the pointer it is computed from; not "
         "watershed, which asks what drains to one chosen outlet.",
@@ -1902,7 +1902,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["plan"], "requires_projected_crs": False, 'dataset_inputs': 0},
         "summary": "Validate then run a multi-step plan; per-step provenance plus a "
         "plan-level manifest tying the chain together",
-        "phrasings": "run the whole sequence; do all these steps in order",
+        "phrasings": "run the whole sequence; do all these steps in order; repeat the same steps for every watershed; one output per polygon in a loop",
         "description": (
             "Run a validated plan step by step (an invalid plan runs nothing — "
             "validation is repeated internally). '$step_id' references resolve to "
@@ -2045,7 +2045,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Resample a raster to a target cell size; the method is required, "
         "and inventing class codes is reported",
-        "phrasings": "change the pixel size; coarser grid; finer grid; make the cells bigger",
+        "phrasings": "change the pixel size; coarser grid; finer grid; make the cells bigger; same cell size so I can combine cell by cell; match the rainfall grid to the elevation grid",
         "distinguishes": "Changes the cell size and keeps the coordinate system. Not reproject_raster, which "
         "changes the coordinate system; both resample, so both refuse to guess the method.",
         "description": (
@@ -2132,7 +2132,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2},
         "summary": "Clip a raster to a vector mask, with the mask reprojected "
         "explicitly instead of assumed",
-        "phrasings": "cut the grid to the boundary; only the part over the study area",
+        "phrasings": "cut the grid to the boundary; only the part over the study area; elevation only within my selected districts; the tiles cover far more than I need; a separate elevation grid for each watershed",
         "description": (
             "Cut a raster down to the area of a vector mask. The mask is reprojected "
             "to the raster's CRS when they differ and the decision is recorded — "
@@ -2217,7 +2217,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Map value ranges onto new codes, half-open by contract, "
         "with overlaps refused",
-        "phrasings": "bucket the values into classes; turn elevations into bands; group into categories",
+        "phrasings": "bucket the values into classes; turn elevations into bands; group into categories; flag cells in a value range as 1, others 0; yes or no grid from a threshold; blank out everything outside an elevation band; distance in 1, 2 and 3 km classes; keep the suitability map strictly 0 or 1; flat enough to build on; four compass classes from the facing direction; everything higher than 1000 metres",
         "distinguishes": "Buckets continuous values into classes. Not band_math, which computes a new "
         "continuous value; not focal_statistics, which smooths using neighbours.",
         "description": (
@@ -2295,7 +2295,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Arithmetic across a raster's bands (NDVI and friends), with "
         "declared scale and offset applied",
-        "phrasings": "arithmetic between bands; a vegetation index; subtract one band from another",
+        "phrasings": "arithmetic between bands; a vegetation index; subtract one band from another; values are in radians, I need degrees",
         "distinguishes": "Arithmetic between bands, for an index or a difference. Not extract_band, which "
         "separates them; not reclassify_raster, which buckets one band's values into "
         "classes.",
@@ -2578,7 +2578,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "produces": "dataset:vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "A rate over an area: the ratio of totals, with the unweighted mean reported beside it",
-        "phrasings": "average that respects population; weighted mean; do not treat a village like a city",
+        "phrasings": "average that respects population; weighted mean; do not treat a village like a city; forest-wide figure per hectare from stand totals; larger stands should weigh more in the average",
         "description": (
             "Combine a per-feature rate into one figure for the whole area, weighted by a second column. Averaging three unemployment rates treats a town of a thousand as equal to a city of a hundred thousand: 13.67% where the area's actual rate is 1.38%. This computes sum(value * weight) / sum(weight), records both totals so the number can be checked without the data, and returns the unweighted mean beside it — when the two differ materially that difference is the finding, and hiding it would make this a black box that happens to be right. Called through run_operation."
         ),
@@ -2767,7 +2767,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "produces": "dataset:vector",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Convex hull, envelope or minimum rotated rectangle, with the inflation reported",
-        "phrasings": "the outline around these points; bounding shape; extent of the site",
+        "phrasings": "the outline around these points; bounding shape; extent of the site; smallest outline without inward bends around the buildings; tightest outline around all addresses of a city; a rectangle covering my boundary",
         "distinguishes": "Wraps features in a convex hull, bounding box or rotated rectangle — a shape that "
         "CLAIMS more ground than the features occupy, and the inflation is reported. Not "
         "buffer_layer, which grows by a fixed distance; not voronoi_polygons, which divides "
@@ -2949,7 +2949,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "produces": "dataset:vector",
         "applicability": {"inputs": ["vector", "vector"], "requires_projected_crs": False, 'dataset_inputs': 2, 'geometry': ['point', 'polygon']},
         "summary": "Average, total, min or max of a point attribute within each polygon, with empty polygons kept",
-        "phrasings": "average pH by field block; mean value per zone; total population per district; highest reading in each area; sum of sales per territory",
+        "phrasings": "average pH by field block; mean value per zone; total population per district; highest reading in each area; sum of sales per territory; average of the plots falling in each stand; add up the counts the points carry per zone",
         "distinguishes": "Summarises a numeric ATTRIBUTE of the points inside each polygon -- a mean, a sum, a maximum -- "
         "and keeps polygons with no points, with null statistics. Not count_in_polygons, which only counts "
         "them; not summarize_field, which groups by a column the points already carry instead of by where "
@@ -3067,7 +3067,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "produces": "dataset:raster",
         "applicability": {"inputs": ["raster"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Stream network from a flow-accumulation grid, threshold required and its unit recorded",
-        "phrasings": "where the rivers are on this terrain; the channel network",
+        "phrasings": "where the rivers are on this terrain; the channel network; where does a stream begin; drainage lines from the elevation model",
         "description": (
             "Threshold a flow-accumulation grid into a stream network. The threshold is required and its unit is recorded, because that is where this goes wrong: flow accumulation is either a cell count or a specific contributing area depending on how it was produced, the two differ by orders of magnitude, and a threshold tuned for one applied to the other gives a network that is well formed, drawn on the map, and wrong. There is no defensible default — the literature says so plainly — so the caller states it and the record keeps it. Requires the [whitebox] extra. Called through run_operation."
         ),
@@ -3149,7 +3149,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'applicability': {'inputs': ['raster'], 'requires_projected_crs': False, 'dataset_inputs': 1},
         'summary': 'Warp a raster to another CRS; the resampling method is required and '
                    'recorded. Requires the [raster] extra',
-        "phrasings": "warp the grid to another coordinate system; my geotiff is in the wrong projection",
+        "phrasings": "warp the grid to another coordinate system; my geotiff is in the wrong projection; imagery in the project's projection, not on the fly; elevation tiles in degrees, need a metric grid; two grids in different systems, line them up",
         "distinguishes": "Changes the coordinate system of a grid, recomputing it. Not resample_raster, "
         "which keeps the CRS and only changes resolution; not reproject_layer, which is for "
         "vector data.",
@@ -3258,7 +3258,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'applicability': {'inputs': ['raster'], 'requires_projected_crs': False, 'dataset_inputs': 1},
         'summary': 'Per-band min/max/mean/std/sum over the VALID cells only, with the '
                    'masked count. Reads, writes nothing. Requires the [raster] extra',
-        "phrasings": "min and max of the grid; what range are these values; ignore the nodata",
+        "phrasings": "min and max of the grid; what range are these values; ignore the nodata; elevation summary for a single sub-basin; pick a threshold from the grid's mean and spread; true mean and highest value of the tile; how steep is one catchment overall",
         "distinguishes": "Min, max, mean of a whole grid, over the valid cells only. Not zonal_statistics, "
         "which needs polygons to summarise within; not describe_dataset, which reports the "
         "shape and the CRS rather than the values.",
@@ -3422,7 +3422,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'applicability': {'inputs': ['raster'], 'requires_projected_crs': True, 'dataset_inputs': 1},
         'summary': "Distance from every cell to the nearest non-zero cell, in the CRS's "
                    'own units. Requires the [whitebox] extra',
-        "phrasings": "how far is every place from the nearest one; proximity surface; distance to roads",
+        "phrasings": "how far is every place from the nearest one; proximity surface; distance to roads; distance from the rivers for every cell; how far each cell is from the nearest gauge; concentric distance bands around rivers on a grid",
         "distinguishes": "A grid where every cell holds its distance to the nearest feature. Not "
         "geodetic_distance, which answers about two points and writes nothing; not "
         "buffer_layer, which draws one fixed ring instead of a continuous surface.",
@@ -3471,7 +3471,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': 1},
         'summary': 'Inverse-distance-weighted surface from a point layer; the field is '
                    'REQUIRED. Requires the [whitebox] extra',
-        "phrasings": "a surface from scattered measurements; fill in between the gauges; interpolate the readings",
+        "phrasings": "a surface from scattered measurements; fill in between the gauges; interpolate the readings; continuous rainfall surface from station points; nearby points count much more than far ones; rebuild the terrain from scattered heights",
         "distinguishes": "Builds a continuous surface from scattered point measurements. Not "
         "voronoi_polygons, which gives each point a hard territory instead of a gradient; "
         "not focal_statistics, which needs a grid to start from.",
@@ -3543,7 +3543,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1, 'geometry': ['point']},
         'summary': 'Thiessen polygons from points, each verified to hold its own point; '
                    'the clipping boundary is declared',
-        "phrasings": "every place goes to its closest one; catchment areas; service area per shop; Thiessen",
+        "phrasings": "every place goes to its closest one; catchment areas; service area per shop; Thiessen; area closer to each pump than to any other",
         "distinguishes": "Partitions a region so every place belongs to its nearest point. Not buffer_layer, "
         "whose radius is fixed and whose circles overlap; here the boundaries fall where "
         "two points are equidistant and the cells tile the area exactly once.",
@@ -3720,7 +3720,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'summary': "The raster's value at each point, with the ones it could not read "
                    'counted rather than filled in. Requires the [raster] extra',
         "phrasings": "what is the elevation at each of my survey shots; read the grid "
-                     "at these locations; are my levels off compared to the surface",
+                     "at these locations; are my levels off compared to the surface; read the elevation at thousands of random points",
         "distinguishes": "Reads ONE cell per point. Not zonal_statistics, which "
                          "summarises a raster inside polygons and weights partial "
                          "pixels; not band_statistics, which describes a whole grid "
@@ -4042,7 +4042,7 @@ OPERATIONS: list[dict[str, Any]] = [
                    'last segment cut where the budget runs out',
         "phrasings": "which blocks are more than a ten minute walk from a clinic; what "
                      "can be reached from here in twenty minutes; who is cut off if "
-                     "these roads flood",
+                     "these roads flood; streets reachable within 250 m of each point; distance along the roads, not as the crow flies",
         "distinguishes": "Reach along the network. Not buffer_layer, which draws a "
                          "circle that includes the far side of a river with no bridge "
                          "and excludes the house 900 m away along a straight road; not "
@@ -4410,7 +4410,7 @@ OPERATIONS: list[dict[str, Any]] = [
                    'group. Returns the numbers; writes nothing',
         "phrasings": "how much land is in these parcels altogether; what is the average "
                      "population; how many by type; total length of pipe by material; "
-                     "which is the biggest and which the smallest",
+                     "which is the biggest and which the smallest; average across all the field plots; total of a column over the selected features; median and quartiles of the values; how many values are missing",
         "distinguishes": "Hands the number back. Not measure_area or measure_length, "
                          "which COMPUTE a geometric quantity and write it into a column "
                          "of a new layer; not aggregate_weighted, which combines rates "
@@ -4503,7 +4503,7 @@ OPERATIONS: list[dict[str, Any]] = [
                    'spread, against an area you choose',
         "phrasings": "are these trees clustered or scattered; is the distribution of "
                      "cases random; are the shops evenly spread across town; how "
-                     "regular is this pattern",
+                     "regular is this pattern; is this point pattern significantly clustered; one number for how spaced out the points are",
         "distinguishes": "Describes the arrangement of the points themselves, with no "
                          "attribute involved. Not spatial_autocorrelation, which asks "
                          "whether the VALUES on features form a pattern; not hot_spots, "
@@ -4798,7 +4798,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'summary': 'Isolines of a surface at a fixed interval, each carrying the '
                    'elevation it traces. Requires the [whitebox] extra',
         "phrasings": "contours every 10 metres from this DEM; draw the height lines; "
-                     "isolines of the surface; a contour map for the site plan",
+                     "isolines of the surface; a contour map for the site plan; lines of equal value on any surface, not just terrain",
         "distinguishes": "Turns a surface into lines of constant value. Not "
                          "elevation_profile, which is a section ALONG one line; not "
                          "hillshade, which is a picture of the terrain rather than "

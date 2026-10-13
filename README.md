@@ -113,7 +113,7 @@ flowchart TB
 | “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s), polygon | **13** of 78 | `clip_layer` | 1 |
 | “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s), polygon | **2** of 78 | `zonal_statistics` | 2 |
 | “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s), polygon | **24** of 78 | `measure_area` | 1 |
-| “drop the ones where the ground is above 120 metres” | vector, dataset:vector, 1 dataset(s), polygon | **24** of 78 | `select_features` | 2 |
+| “drop the ones where the ground is above 120 metres” | vector, dataset:vector, 1 dataset(s), polygon | **24** of 78 | `select_features` | 1 |
 
 | step | operation | arguments that mattered | CRS decision, recorded | checks |
 |---|---|---|---|---|
@@ -226,9 +226,10 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 This page describes **0.9.0**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
 have to find out by calling a tool that is not there. **`main` is ahead of 0.9.0**
-([`[Unreleased]`](CHANGELOG.md#unreleased)) by one fix and documentation corrections:
-`nearest_neighbour_index` no longer needs memory in the square of its points, and gives the
-same answers. **From 0.8.0, 0.9.0** adds
+([`[Unreleased]`](CHANGELOG.md#unreleased)) by one fix, 103 catalogue phrasings and documentation
+corrections: `nearest_neighbour_index` no longer needs memory in the square of its points, and
+gives the same answers; the phrasings come from the QGIS Training Manual's exercises and moved
+the discovery figures on this page. **From 0.8.0, 0.9.0** adds
 `apportion_by_area`, which moves counts and rates from the zones they are reported in to zones
 that cross them, and makes a record's `transformation` describe what PROJ did to the data's own
 coordinates rather than to a point chosen from the CRS. **That changes what `reproject_layer`
@@ -440,11 +441,11 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 78 | 29% | 18% | 29% |
-| what data I have | 52 | 34% | 21% | 35% |
-| + what I want back | 32 | 44% | 38% | 53% |
-| + how many datasets I have | 17 | 53% | 45% | 84% |
-| **+ what geometry it holds** | **15** | **60%** | **56%** | **98%** |
+| nothing — words alone | 78 | 30% | 19% | 30% |
+| what data I have | 52 | 35% | 24% | 36% |
+| + what I want back | 32 | 46% | 43% | 57% |
+| + how many datasets I have | 17 | 58% | 53% | 89% |
+| **+ what geometry it holds** | **15** | **62%** | **62%** | **98%** |
 
 **The last row is new on 2026-09-29, and the row above it shows why.** Thirty-one operations
 now take one vector layer to another, one more than the threshold below, so a caller who
@@ -466,9 +467,9 @@ published under a sentence promising it could be checked.
 
 The two also differ in a way worth seeing, and this page had it backwards
 until 2026-08-30. It said the embedding engine overtakes BM25 once the facets
-have narrowed. It does not overtake it anywhere: BM25 leads at every row of the
-table above, by eleven points on words alone and by four at the fullest
-declaration, where the entries that survive are told apart by the words that
+have narrowed. It does not overtake it anywhere: BM25 leads or ties at every row of the
+table above, by eleven points on words alone and level at the fullest
+declaration (both 62% since the phrasings added on 2026-10-13), where the entries that survive are told apart by the words that
 distinguish them — which is what `distinguishes` is for, and what an exact term
 either matches or does not. The embedding engine earns its place on the
 phrasings it has never seen, not on the ranking once the set is small. *(This
@@ -573,7 +574,7 @@ Three measurements say this is the right shape, and the third is the one that se
 
 | | |
 |---|---|
-| our ranking puts the answer in the top three | **60%** |
+| our ranking puts the answer in the top three | **62%** |
 | a model handed the same candidates and asked to *choose* gets its first pick right | **69%** |
 | the two labellers who wrote the ground truth agree **with each other** | **70%** |
 
@@ -604,7 +605,7 @@ against a human answer where there is one.
 
 All three are over the same 118 requests, which matters: agreement measured over all 155 requests
 in the file is 68%, and the difference is the 21 pairs where both labellers agreed a request was
-unanswerable — true, and the easy half. Quoting that 68% beside a 60% computed over the 118 would
+unanswerable — true, and the easy half. Quoting that 68% beside a 62% computed over the 118 would
 be comparing two populations, which this table did for half a day.
 
 **The last row is a ceiling, not a baseline**, and the second row sits at it rather than below it.
@@ -661,9 +662,9 @@ catalog grows:
 
 | catalog size | BM25 found@3 | embeddings found@3 |
 |---|---|---|
-| 10 | 73% | 82% |
-| 30 | 65% | 57% |
-| 78 | 55% | 40% |
+| 10 | 72% | 82% |
+| 30 | 65% | 62% |
+| 78 | 55% | 45% |
 
 **This table used to say the opposite, and the reversal is the finding.** Published at 10/30/51
 it read 78/83, 47/65, 40/55 — embeddings ahead at every size — and the sentence under it said
