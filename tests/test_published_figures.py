@@ -54,6 +54,11 @@ SURFACES = {
     # said "16 semantic tools, 336 closed-form tests" and still asked for
     # EUR 35000 to build two artifacts that had shipped, one of them with a DOI.
     "funding.json": ROOT / "funding.json",
+    # The text an agent reads, which is read more often than any page: the
+    # tool instructions said 60% and the catalogue's own docstring 48% on
+    # 2026-10-13, the day every page moved to 62%, because no sweep read them.
+    "server.py": ROOT / "src" / "mapsmith" / "server.py",
+    "catalog.py": ROOT / "src" / "mapsmith" / "catalog.py",
     "argleton/README.md": ARGLETON / "README.md",
     "argleton/site": ARGLETON / "site" / "index.template.html",
 }
@@ -209,6 +214,9 @@ FIGURES: dict[str, Figure] = {
             # and the headline table two hundred lines above said 48% too.
             r"against {n}% for the ranker putting it in the",
             r"beside a {n}% computed over the",
+            # The tool instructions and the catalogue's docstring, which say it
+            # as a sentence and break the line where the source wraps it.
+            r"puts the right\s+(?:#\s+)?operation in the top three {n}%",
         ),
     ),
     "delivered_pct": Figure(

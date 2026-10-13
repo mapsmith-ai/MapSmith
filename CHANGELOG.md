@@ -16,9 +16,10 @@ All notable changes to MapSmith are documented here, in the format of
   phrasings never saw: BM25 found@3 on words alone 47% -> 59%, with the
   caller's facts 40% -> 51%. On the 118 independent requests of the published
   table every level moved up (words alone 29% -> 30%, fullest declaration
-  60% -> 62%; the embedding engine 18% -> 19% and 56% -> 62%), and the tables
-  on this page, `docs/catalog-entry-spec.md` and the site say the new figures.
-  No code that runs changed.
+  60% -> 62%; the embedding engine 18% -> 19% and 56% -> 62%), and the README,
+  `docs/catalog-entry-spec.md`, the site and the tool instructions an agent
+  reads say the new figures. The ranking code did not change; the order
+  `list_operations` returns for a given request can.
 
 ### Fixed
 

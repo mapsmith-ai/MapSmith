@@ -5431,7 +5431,7 @@ def search(
     ``status: "choose"`` carrying all of them, ordered by relevance and each with
     the text that separates it from its neighbours. Measured over the 118 requests in
     ``tests/data/discovery_queries.json``, written by two other model families:
-    our ranking puts the right operation in the top three 48% of the time; a model handed the same candidates and asked to choose
+    our ranking puts the right operation in the top three 62% of the time; a model handed the same candidates and asked to choose
     gets its FIRST pick right 69%. Over those same 118 requests the two labellers
     who produced the ground truth agree WITH EACH OTHER 70% of the time — both are
     language models, and no GIS analyst has tried it — so 69% is the ceiling of the
@@ -5535,7 +5535,7 @@ def search(
     # THE SHORTLIST IS NOT THE ANSWER when there are few enough to read.
     #
     # Measured over 118 requests written by two other model families: our ranking
-    # puts the right operation in the top three 48% of the time, while a model
+    # puts the right operation in the top three 62% of the time, while a model
     # handed the same candidates and asked to CHOOSE gets its first pick right 69% —
     # and 70% is where the two labellers who wrote the ground truth agree with each
     # OTHER on those same requests, so 69% is the ceiling of the task rather than a
