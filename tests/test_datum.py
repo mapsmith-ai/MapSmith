@@ -1308,3 +1308,157 @@ def test_coincident_points_in_a_projected_source_do_not_overflow_the_cell_keys()
         warnings.simplefilter("error", RuntimeWarning)
         record = datum.default_operation("EPSG:23032", "EPSG:4326", points)
     assert record["is_ballpark"] is False
+
+
+#: Monte Mario / Italy zone 1 defined by hand, with the seven IGM parameters
+#: written into the CRS itself. PROJ builds a Helmert from them and reports
+#: accuracy -1 for it, the same value it reports for the ballpark. The false
+#: easting is one metre off EPSG:3003's on purpose: with the registry's own
+#: parameters `datum._as_crs` recognises the code, PROJ then uses the
+#: published 4 m operation, and the control below stops being a ballpark.
+TOWGS84_CRS = (
+    "+proj=tmerc +lat_0=0 +lon_0=9 +k=0.9996 +x_0=1500001 +y_0=0 +ellps=intl "
+    "+towgs84=-104.1,-49.1,-9.9,0.971,-2.917,0.714,-11.68 +units=m +no_defs +type=crs"
+)
+TOWGS84_POINTS = [(1500000.0, 5000000.0), (1510000.0, 5010000.0)]
+
+
+@pytest.mark.parametrize("ask", ["default", "best"])
+def test_a_shift_the_crs_definition_carries_is_not_recorded_as_a_ballpark(ask):
+    """A `+towgs84` CRS gets a Helmert with accuracy -1, and -1 is also the ballpark.
+
+    Measured 2026-10-23 (PROJ 9.5.1): the pipeline PROJ builds for this CRS
+    carries `+proj=helmert` with the seven parameters and moves the data 79 m
+    against the same CRS without them, and both records said `is_ballpark:
+    true` -- "no datum shift was applied" over coordinates that had moved.
+    The discriminator is the pipeline PROJ ran, not the accuracy it reports:
+    a shift step is a shift, with an accuracy nobody has stated.
+    """
+    import numpy as np
+
+    points = np.array(TOWGS84_POINTS)
+    if ask == "default":
+        record = datum.default_operation(TOWGS84_CRS, "EPSG:4326", points)
+    else:
+        _, record = datum.best_operation(TOWGS84_CRS, "EPSG:4326", points)
+    assert "+proj=helmert" in record["pipeline"], "PROJ did build the Helmert"
+    assert record["is_ballpark"] is False
+    assert record["accuracy_m"] is None, "nobody has stated one"
+    assert record[datum.SHIFT_FROM_CRS] is True
+    assert datum.BALLPARK_SHARE not in record
+    assert datum.OUTSIDE_AREA not in record, "nothing is published for a nameless datum: vacuous"
+
+    # The same CRS without the parameters IS the ballpark, and still says so:
+    # the fix must not have bought silence on the pair it was measured against.
+    bare = TOWGS84_CRS.replace("+towgs84=-104.1,-49.1,-9.9,0.971,-2.917,0.714,-11.68 ", "")
+    assert datum._as_crs(bare).to_epsg() is None, "the control must match no registered CRS"
+    plain = datum.default_operation(bare, "EPSG:4326", points)
+    assert plain["is_ballpark"] is True
+    assert datum.SHIFT_FROM_CRS not in plain
+
+    # And the two really are 79 m apart, which is what the record is about.
+    from pyproj import Transformer
+
+    with_shift = Transformer.from_crs(TOWGS84_CRS, "EPSG:4326", always_xy=True).transform(*TOWGS84_POINTS[0])
+    without = Transformer.from_crs(bare, "EPSG:4326", always_xy=True).transform(*TOWGS84_POINTS[0])
+    metres = _metres_between(with_shift, without)
+    assert 70 < metres < 90, metres
+
+
+def _metres_between(a, b):
+    import math
+
+    return math.hypot((a[0] - b[0]) * 111320 * math.cos(math.radians(a[1])), (a[1] - b[1]) * 111320)
+
+
+def test_the_shift_step_test_does_not_depend_on_the_accuracy_value():
+    """`_unshifted` reads the pipeline: -1 with a Helmert is a shift, -1 alone is not."""
+    helmert = "+proj=pipeline +step +proj=cart +step +proj=helmert +x=1 +step +inv +proj=cart"
+    assert datum._unshifted(-1.0, helmert) is False
+    assert datum._unshifted(None, helmert) is False
+    assert datum._unshifted(-1.0, "+proj=pipeline +step +proj=unitconvert +xy_in=rad +xy_out=deg") is True
+    assert datum._unshifted(-1.0, None) is True
+    assert datum._unshifted(4.0, None) is False, "a stated accuracy is a published operation"
+    # PROJ's own name wins over the pipeline: a Helmert chained with a ballpark
+    # leg still carries the word, and a declared shift of zero carries no step.
+    assert datum._unshifted(-1.0, helmert, "Inverse of X + Ballpark geographic offset from A to B + Y") is True
+    assert datum._unshifted(
+        -1.0, "+proj=pipeline +step +proj=cart +step +inv +proj=cart", "Transformation from unknown to WGS84"
+    ) is False
+    assert datum._unshifted(4.0, helmert, "Ballpark geographic offset from A to B") is False, (
+        "a stated accuracy is a published operation whatever the name says"
+    )
+
+
+def test_a_registry_shift_without_a_stated_accuracy_is_not_called_the_crs_own():
+    """PROJ ships 75 Helmerts to WGS 84 with no accuracy (ESRI's, IGNF's).
+
+    They are shifts, applied in full, with accuracy -1: `is_ballpark: false`
+    and `accuracy_m: null` is right for them too. What is not right is the key
+    that says the shift came from the CRS's own definition -- these CRSs carry
+    none, and the key's sentence in the vocabulary would be false 39 times
+    (conformita-manifest, 2026-10-23).
+    """
+    import numpy as np
+    from pyproj import CRS
+    from pyproj.exceptions import CRSError
+
+    try:
+        jordan = CRS.from_user_input("ESRI:104130")
+    except CRSError:
+        pytest.skip("this PROJ has no ESRI:104130")
+    assert not jordan.is_bound
+    area = jordan.area_of_use
+    points = np.array([((area.west + area.east) / 2, (area.south + area.north) / 2)])
+    record = datum.default_operation(jordan, "EPSG:4326", points)
+    if record["is_ballpark"]:
+        pytest.skip("this PROJ has no operation for the pair; nothing to tell apart")
+    assert "+proj=helmert" in record["pipeline"]
+    assert record["accuracy_m"] is None
+    assert datum.SHIFT_FROM_CRS not in record
+
+
+def test_a_bound_crs_is_never_rebuilt_from_a_registry_code():
+    """`_as_crs` rebuilds a CRS from its EPSG code to recover the area of use;
+    a BoundCRS rebuilt that way loses the `+towgs84` the engines apply."""
+    from pyproj import CRS
+
+    kept = datum._as_crs(CRS(TOWGS84_CRS))
+    assert kept.is_bound, "the declared shift must survive"
+    assert kept.coordinate_operation is not None and kept.coordinate_operation.towgs84
+
+
+def test_a_declared_shift_chained_with_a_ballpark_leg_is_still_a_ballpark():
+    """`+towgs84` to NAD27 in Italy: the Helmert runs, then a ballpark leg to the
+    other datum. The pipeline carries a shift step; PROJ's own name carries the
+    word, and the name wins (review, 2026-10-23: the pipeline rule alone said
+    false here)."""
+    import numpy as np
+
+    record = datum.default_operation(TOWGS84_CRS, "EPSG:4267", np.array(TOWGS84_POINTS))
+    assert record["is_ballpark"] is True
+    assert datum.SHIFT_FROM_CRS not in record
+
+
+def test_reproject_never_writes_none_metres_into_its_check(tmp_path):
+    """The check detail is prose a reader acts on: "stated accuracy None m" is not."""
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    from mapsmith.engines import vector
+
+    src = tmp_path / "pts.gpkg"
+    gpd.GeoDataFrame(
+        {"id": [1, 2]}, geometry=[Point(*xy) for xy in TOWGS84_POINTS], crs=TOWGS84_CRS
+    ).to_file(src, driver="GPKG")
+    result = vector.reproject(str(src), "EPSG:4326", str(tmp_path / "out.gpkg"))
+    manifest = json.loads((tmp_path / "out.gpkg.provenance.json").read_text(encoding="utf-8"))
+    shift = manifest["crs_decisions"]["transformation"]
+    assert shift["is_ballpark"] is False and shift["accuracy_m"] is None
+    assert shift[datum.SHIFT_FROM_CRS] is True
+    check = next(c for c in manifest["verification"] if c["name"] == "x-mapsmith:datum_shift_applied")
+    assert "None" not in check["detail"], check["detail"]
+    assert "own definition" in check["detail"]
+    assert not any("PROJ extended one" in n for n in manifest.get("notes", [])), manifest.get("notes")
+    assert result["verified"] is True
+

@@ -156,6 +156,19 @@ TRANSFORMATION_EXTENSIONS: dict[str, str] = {
         "and where MapSmith takes that route the twin's operations count as "
         "published for the pair. Counted exactly, vertex by vertex."
     ),
+    "x-mapsmith:shift_from_crs_definition": (
+        "Not `is_ballpark`, which is false here, and not `accuracy_m`, which is "
+        "null here: this says why the two go together. The datum shift applied "
+        "is the relation to WGS 84 that the CRS's own definition declares "
+        "(`+towgs84`, `+nadgrids`, WKT `TOWGS84[]`), applied as declared -- a "
+        "Helmert PROJ builds from the parameters, or a grid, or a declared "
+        "zero -- for which no registry states an accuracy. Written only when "
+        "one of the two CRSs carries such a declaration: a registry operation "
+        "with no stated accuracy gets the same null and not this key. PROJ "
+        "reports -1 for both, the value it also reports for the ballpark, and "
+        "until 2026-10-23 the record called the CRS's own shift one -- over "
+        "coordinates that had moved 79 m."
+    ),
     "x-mapsmith:default_was_ballpark": (
         "Not `is_ballpark`, and the two are opposites in the same record: this "
         "appears when `is_ballpark` is FALSE precisely because MapSmith declined "

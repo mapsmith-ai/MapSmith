@@ -23,6 +23,33 @@ All notable changes to MapSmith are documented here, in the format of
 
 ### Fixed
 
+- **A datum shift written into the CRS itself is no longer recorded as a
+  ballpark.** For a CRS defined with `+towgs84` (or WKT `TOWGS84[]`) PROJ
+  builds a Helmert from those parameters and applies it in full, but reports
+  accuracy -1 for it -- the value it also reports for the ballpark -- and
+  every `crs_decisions.transformation` read that value as "no datum shift
+  was applied": `reproject_layer`'s since 0.3.0, every other operation's
+  since 0.5.0. Measured on Monte Mario with the seven IGM
+  parameters: the pipeline carried `+proj=helmert` and moved the data 79 m,
+  and the record said `is_ballpark: true`. The verdict now comes from PROJ's
+  own name for the operation it used ("Ballpark geographic offset" is its
+  word, and a concatenation carries every step's) and, failing a name, from
+  the pipeline it ran: a shift step is a shift. A CRS that carries its own
+  shift is also no longer rebuilt from a registry code on the way in, which
+  dropped the `+towgs84`. Such a record says `is_ballpark: false`, `accuracy_m: null` (nobody has
+  stated one) and carries `x-mapsmith:shift_from_crs_definition: true` to say
+  why the two go together; `docs/manifest-vocabulary.md` has the entry. Data
+  and coordinates are unchanged -- only the record was wrong, in the direction
+  that hides a shift. Found by the pre-release review of 0.9.0.
+- **The dashboard's "reachable with facets" probe asks at the published level.**
+  `benchmarks/dashboard.py` declared three facets where the README's headline
+  figures declare four (`geometry` has been a facet since 0.8.0), so at 78
+  entries 31 candidates survived -- one above the threshold below which the
+  whole set is handed over -- and three operations were reported "unreachable
+  even with facets" that the published level delivers. The tuple is now taken
+  from `discovery_report.LEVELS[FULLEST]` rather than written again; the
+  history series' `reachable` column reads 78 of 78 from here on, and earlier
+  rows were asked a weaker question.
 - **`nearest_neighbour_index` no longer needs memory in the square of its
   points.** It built every pairwise distance before taking the nearest, so
   100,000 points asked for 149 GiB before computing anything -- over HTTP, a

@@ -429,8 +429,7 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
                 "x-mapsmith:datum_shift_applied",
                 not shift["is_ballpark"],
                 (
-                    f"{shift['pipeline'] or 'transformation'} — stated accuracy "
-                    f"{shift['accuracy_m']} m"
+                    f"{shift['pipeline'] or 'transformation'} — {datum.stated_accuracy(shift)}"
                     if not shift["is_ballpark"]
                     else "ballpark: no datum transformation was available, so the "
                     "coordinates were carried across unshifted"

@@ -92,8 +92,15 @@ def tool_names() -> list[str]:
 
 
 #: What a caller who describes their own situation accurately would declare.
-#: Not the family: that one is a guess about our taxonomy and only orders.
-DECLARED = ("input_kind", "produces", "dataset_inputs")
+#: Not the family: that one is a guess about our taxonomy and only orders. The
+#: same level the published headline figures are computed at, taken from the
+#: report rather than written here again: until 2026-10-23 this tuple lacked
+#: `geometry` (a facet since 2026-09-29), so the dashboard asked a weaker
+#: question than the README and called three operations "unreachable even with
+#: facets" -- at 78 entries the three facets left 31 candidates, one above the
+#: threshold below which the whole set is handed over, and the engines ranked
+#: instead. With the geometry a caller knows the set is 26 and is delivered.
+DECLARED = discovery_report.LEVELS[discovery_report.FULLEST][1]
 
 
 def _probe(query: str, engine: str, facets: dict[str, Any], name: str) -> dict[str, Any]:

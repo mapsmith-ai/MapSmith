@@ -639,8 +639,7 @@ def _datum_shift_check(shift: dict[str, Any], twin: tuple[str, str] | None = Non
         return verify.Check(
             "x-mapsmith:datum_shift_applied",
             True,
-            f"{shift['pipeline'] or 'transformation'} - stated accuracy "
-            f"{shift['accuracy_m']} m"
+            f"{shift['pipeline'] or 'transformation'} - {datum.stated_accuracy(shift)}"
             # The accuracy is the operation's, stated for its area of use: where
             # PROJ stretched it beyond that, the number was never established
             # (review, round three: DHDN in Italy passed as "3.0 m").

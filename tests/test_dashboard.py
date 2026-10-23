@@ -192,11 +192,18 @@ def test_every_operation_is_probed_twice_and_the_facets_are_the_ones_a_caller_kn
     import dashboard
 
     data = embedded(built)
+    import discovery_report
+
     assert "category" not in dashboard.DECLARED
+    # The same level as the published figures, derived and not restated: the
+    # dashboard once asked at one facet less and called three operations
+    # unreachable that the README's own level delivers (2026-10-23).
+    assert tuple(dashboard.DECLARED) == discovery_report.LEVELS[discovery_report.FULLEST][1]
+    assert "geometry" in dashboard.DECLARED
     for op in data["operations"]:
         for engine in op["probes"].values():
             assert set(engine) == {"bare", "faceted"}
-        assert set(op["declared"]) <= {"input_kind", "produces", "dataset_inputs"}
+        assert set(op["declared"]) <= {"input_kind", "produces", "dataset_inputs", "geometry"}
 
 
 def test_the_figures_on_the_page_are_the_ones_the_report_computes(built):

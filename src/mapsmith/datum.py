@@ -33,6 +33,7 @@ point: a caller can check this without adopting anything of ours.
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
 #: Inside `transformation`, when part of the data got a datum shift and part
@@ -54,6 +55,44 @@ OUTSIDE_AREA = "x-mapsmith:outside_area_of_use"
 # `shares_a_datum`, whose comment records the day the same value started
 # meaning two different things.
 _STATED = 0.0
+
+#: A pipeline step that moves coordinates between datums. An operation PROJ
+#: used whose string carries one of these is a shift whatever accuracy it
+#: reports: a CRS defined with `+towgs84` (or WKT `TOWGS84[]`) gets a Helmert
+#: step with accuracy -1, the same value as the ballpark, and until 2026-10-23
+#: this module recorded `is_ballpark: true` for a pipeline that applied a
+#: 79 m shift (measured, Monte Mario with the IGM parameters, PROJ 9.5.1). A
+#: record saying no shift was applied, over coordinates that moved, is the
+#: sentence this module exists to prevent -- in the direction that hides it.
+_SHIFT_STEP = re.compile(
+    r"\+proj=(helmert|molobadekas|geogoffset|hgridshift|vgridshift|xyzgridshift|molodensky|deformation|defmodel|tinshift|gridshift)\b"
+)
+
+#: Inside `transformation`, when the shift applied is the one the CRS's own
+#: definition carries (`+towgs84`) rather than a published operation: applied
+#: in full, with no accuracy anyone has stated. `is_ballpark` is false and
+#: `accuracy_m` is null, and this says why the two go together.
+SHIFT_FROM_CRS = "x-mapsmith:shift_from_crs_definition"
+
+
+def _unshifted(accuracy: Any, pipeline: Any, description: Any = None) -> bool:
+    """Did this operation leave the datum alone? Only when nothing in it moves one.
+
+    An unknown accuracy is not the test: PROJ reports -1 both for the ballpark
+    and for a Helmert it built from the CRS definition (`createTOWGS84` gives
+    it no accuracy at all, verified in PROJ's sources 2026-10-23). Three
+    signals, in order. A stated accuracy is a published operation. PROJ names
+    its own fallbacks -- "Ballpark geographic offset", "Ballpark geocentric
+    translation" -- and the name of a concatenation carries every step's, so
+    a Helmert chained with a ballpark leg still reads as one; pyproj's own
+    tests look for the word. Without a name, the pipeline string is what PROJ
+    ran, and a shift step in it is a shift.
+    """
+    if accuracy is not None and accuracy >= _STATED:
+        return False
+    if description:
+        return "ballpark" in str(description).lower()
+    return not (pipeline and _SHIFT_STEP.search(pipeline))
 
 
 def shares_a_datum(source_crs: Any, target_crs: Any) -> bool:
@@ -137,6 +176,13 @@ def _as_crs(value: Any) -> Any:
         value.to_wkt() if hasattr(value, "to_wkt") else value
     )
     if crs.area_of_use is not None:
+        return crs
+    # A CRS that carries its own datum shift (`+towgs84`, WKT `TOWGS84[]`) is
+    # a BoundCRS, and the registry's CRS of the same name is not it: rebuilt
+    # from a code it would lose the Helmert the engines go on to apply, and the
+    # record would describe the registry's operation over coordinates moved by
+    # the declared one (api-verifier, 2026-10-23). Kept as handed over.
+    if getattr(crs, "is_bound", False):
         return crs
     code = crs.to_epsg()
     return CRS.from_epsg(code) if code else crs
@@ -235,22 +281,24 @@ def _accuracies(transformer: Any, source_crs: Any, target_crs: Any, points: Any)
         try:
             transformer.transform(float(x), float(y))
             used = transformer.get_last_used_operation()
-            found.append((used.accuracy, used.to_proj4()))
+            found.append((used.accuracy, used.to_proj4(), used.description))
         except Exception:  # noqa: BLE001 — no operation to inspect is itself the answer
-            found.append((None, None))
+            found.append((None, None, None))
     return found
 
 
 def accuracy_of(transformer: Any, source_crs: Any, points: Any = None, target_crs: Any = None) -> float | None:
     """The stated accuracy in metres of the operation this transformer used.
 
-    The worst over the points asked: None (or a negative value, PROJ's ballpark)
-    if any point got no published operation, else the largest stated accuracy.
+    The worst over the points asked: None (or a negative value) if any point
+    went unshifted, else the largest stated accuracy; None too when every
+    point got a shift nobody has stated an accuracy for.
     """
-    found = [a for a, _ in _accuracies(transformer, source_crs, target_crs, points)]
-    if any(a is None or a < _STATED for a in found):
-        return next((a for a in found if a is None or a < _STATED), None)
-    return max(found)
+    found = _accuracies(transformer, source_crs, target_crs, points)
+    if any(_unshifted(*item) for item in found):
+        return next((item[0] for item in found if _unshifted(*item)), None)
+    stated = [item[0] for item in found if item[0] is not None and item[0] >= _STATED]
+    return max(stated) if stated else None
 
 
 def _covers(area: Any, lon: Any, lat: Any) -> Any:
@@ -477,7 +525,17 @@ class _Survey:
 
     @staticmethod
     def _ballpark(found: list[Any]) -> bool:
-        return any(a is None or a < _STATED for a, _ in found)
+        # Items are (accuracy, pipeline[, description]): a test may hand over
+        # the two-field form, which is the pipeline rule alone.
+        return any(_unshifted(*item) for item in found)
+
+    @property
+    def shift_from_crs(self) -> bool:
+        """Every operation PROJ used was a shift with no stated accuracy: the CRS's own."""
+        asked = self.asked_inside + self.asked_outside
+        return bool(asked) and all(
+            (item[0] is None or item[0] < _STATED) and not _unshifted(*item) for item in asked
+        )
 
     @property
     def unshifted(self) -> int:
@@ -497,9 +555,18 @@ class _Survey:
 
     @property
     def accuracy(self) -> float | None:
+        """The worst stated accuracy, or None when any part of the data got a shift nobody has stated one for.
+
+        Not the worst of the stated ones alone: a layer half under a 4 m
+        operation and half under a registry Helmert with no accuracy would
+        then say 4 m for all of it (review, 2026-10-23).
+        """
         if self.is_ballpark:
             return None
-        stated = [a for a, _ in self.asked_inside + self.asked_outside if a is not None and a >= _STATED]
+        asked = self.asked_inside + self.asked_outside
+        if any(item[0] is None or item[0] < _STATED for item in asked):
+            return None
+        stated = [item[0] for item in asked]
         return float(max(stated)) if stated else None
 
     @property
@@ -509,7 +576,7 @@ class _Survey:
         A layer half shifted and half not names no single operation: recording
         the shifted half's would tell a reader to move the other half too.
         """
-        strings = {s for _, s in self.asked_inside + self.asked_outside}
+        strings = {item[1] for item in self.asked_inside + self.asked_outside}
         return strings.pop() if len(strings) == 1 and None not in strings else None
 
     def share(self) -> dict[str, int] | None:
@@ -595,6 +662,21 @@ def _probe_point(source_crs: Any, target_crs: Any = None) -> tuple[float, float]
     return (x, y)
 
 
+def stated_accuracy(shift: dict[str, Any]) -> str:
+    """The accuracy of a transformation record, as a phrase for a check or a note.
+
+    `accuracy_m` is null in two records that are not ballparks -- the CRS's own
+    shift, and a registry operation nobody stated an accuracy for -- and the
+    f-string that wrote "stated accuracy None m" into manifests (review,
+    2026-10-23) said neither.
+    """
+    if shift.get("accuracy_m") is not None:
+        return f"stated accuracy {shift['accuracy_m']} m"
+    if shift.get(SHIFT_FROM_CRS):
+        return "the shift the CRS's own definition declares, for which no accuracy is stated"
+    return "no stated accuracy"
+
+
 def pipeline_of(transformer: Any) -> str | None:
     try:
         return transformer.to_proj4() or None
@@ -631,8 +713,37 @@ def _nothing_moved() -> dict[str, Any]:
     return {"pipeline": None, "accuracy_m": None, "is_ballpark": False}
 
 
+def _shifted(survey: Any, chosen: Any, source_crs: Any, target_crs: Any) -> dict[str, Any]:
+    """The record for data PROJ moved between datums everywhere it was asked.
+
+    The key naming the CRS's own shift is written only when one of the two
+    CRSs is a BoundCRS, i.e. carries one. A registry operation with no stated
+    accuracy -- PROJ ships 75 Helmerts to WGS 84 without one, ESRI's and
+    IGNF's -- gives the same record otherwise, and the key would have called
+    it the CRS's own (conformita-manifest, 2026-10-23).
+    """
+    record: dict[str, Any] = {
+        "pipeline": survey.pipeline or pipeline_of(chosen),
+        "accuracy_m": survey.accuracy,
+        "is_ballpark": False,
+    }
+    bound = any(getattr(crs, "is_bound", False) for crs in (source_crs, target_crs))
+    if survey.accuracy is None and survey.shift_from_crs and bound:
+        record[SHIFT_FROM_CRS] = True
+    return record
+
+
 def _with_outside(survey: Any, record: dict[str, Any]) -> dict[str, Any]:
-    """Add how much of the data no published operation covers, when some is."""
+    """Add how much of the data no published operation covers, when some is.
+
+    Not when the shift applied is the CRS's own: for a datum with no name
+    nothing is published, so "outside every published area" holds of every
+    vertex and says nothing a reader can act on -- and the note it feeds
+    ("PROJ extended one to them") would be false, since PROJ applied the
+    declared one.
+    """
+    if record.get(SHIFT_FROM_CRS):
+        return record
     outside = survey.outside_area()
     if outside:
         record[OUTSIDE_AREA] = outside
@@ -767,11 +878,7 @@ def best_operation(source_crs: Any, target_crs: Any, points: Any = None) -> tupl
         return chosen, _nothing_moved()
     survey = _Survey(source_crs, target_crs, points, chosen)
     if not survey.is_ballpark:
-        return chosen, _with_outside(survey, {
-            "pipeline": survey.pipeline or pipeline_of(chosen),
-            "accuracy_m": survey.accuracy,
-            "is_ballpark": False,
-        })
+        return chosen, _with_outside(survey, _shifted(survey, chosen, source_crs, target_crs))
     whole = survey.covering_all() if not survey.uncovered else []
     if whole:
         best = whole[0]
@@ -838,11 +945,7 @@ def default_operation(source_crs: Any, target_crs: Any, points: Any = None) -> d
         return _nothing_moved()
     survey = _Survey(source_crs, target_crs, points, chosen)
     if not survey.is_ballpark:
-        return _with_outside(survey, {
-            "pipeline": survey.pipeline or pipeline_of(chosen),
-            "accuracy_m": survey.accuracy,
-            "is_ballpark": False,
-        })
+        return _with_outside(survey, _shifted(survey, chosen, source_crs, target_crs))
     record: dict[str, Any] = {
         "pipeline": survey.pipeline or pipeline_of(chosen),
         "accuracy_m": None,
