@@ -415,10 +415,19 @@ def _transforming_functions() -> dict[str, set[str]]:
             # a datum with `to_crs("EPSG:4326")` and record nothing. A helper is
             # where a decision goes to stop being visible, which is the reason
             # the sweep above learned to follow them.
+            # `to_crs`, or the helpers that replaced it in eight operations on
+            # 2026-10-23 (`_aligned`, which chooses the transformation and
+            # applies it with `shapely.transform`): a derivation keyed on the
+            # method name alone stopped seeing those eight the day they were
+            # fixed, and the floor below did NOT notice -- twenty functions
+            # still called `to_crs`, which is above fifteen (review). So the
+            # eight are asserted by name in `test_the_realigned_operations_are_still_seen_as_reprojecting`.
             reprojects = any(
                 isinstance(inner, ast.Call)
-                and isinstance(inner.func, ast.Attribute)
-                and inner.func.attr == "to_crs"
+                and (
+                    (isinstance(inner.func, ast.Attribute) and inner.func.attr == "to_crs")
+                    or getattr(inner.func, "id", None) in ("_aligned", "_aligned_with", "_transformed_all", "_transformed")
+                )
                 for inner in ast.walk(node)
             )
             # Silence is reprojecting WITHOUT recording, and the first version of
@@ -694,7 +703,10 @@ def test_a_reprojection_that_raised_does_not_claim_the_coordinates_moved(
     def transform_that_fails(geometry, transformer):
         raise RuntimeError("the transform failed")
 
+    # Both paths: reproject moved to the vectorised one on 2026-10-23, and a
+    # sabotage aimed at the other would prove nothing.
     monkeypatch.setattr(vector, "_transformed", transform_that_fails)
+    monkeypatch.setattr(vector, "_transformed_all", transform_that_fails)
 
     out = tmp_path / "out.gpkg"
     with pytest.raises(RuntimeError, match="the transform failed"):
@@ -1461,4 +1473,187 @@ def test_reproject_never_writes_none_metres_into_its_check(tmp_path):
     assert "own definition" in check["detail"]
     assert not any("PROJ extended one" in n for n in manifest.get("notes", [])), manifest.get("notes")
     assert result["verified"] is True
+
+
+# --- 2026-10-23: two operations on one input choose the same transformation ----------------------
+
+#: The trap-021 station in Monte Mario (Rome), and where it truly is in WGS 84
+#: by the Greenwich twin's 4 m operation. PROJ's own default for the pair is the
+#: ballpark, 79.5 m away.
+STATION_ROME = (-3.5, 45.5)
+STATION_WGS84 = (8.9519765, 45.5006691)
+
+
+def _box_around(x, y, half_deg):
+    from shapely.geometry import box
+
+    return box(x - half_deg, y - half_deg, x + half_deg, y + half_deg)
+
+
+def test_clip_brings_the_mask_over_by_the_route_reproject_layer_takes(tmp_path):
+    """A 50 m parcel at the station, in EPSG:4806; a 20 m mask at its true WGS 84
+    position. Brought over by the twin's operation the mask falls inside the
+    parcel; brought over by PROJ's default it lands 79.5 m away and the clip is
+    empty. Until 2026-10-23 it was empty."""
+    gpd = pytest.importorskip("geopandas")
+    from mapsmith.engines import vector
+
+    parcel = tmp_path / "parcel.gpkg"
+    gpd.GeoDataFrame({"id": [1]}, geometry=[_box_around(*STATION_ROME, 0.00032)], crs="EPSG:4806").to_file(parcel)
+    mask = tmp_path / "mask.gpkg"
+    gpd.GeoDataFrame({"id": [1]}, geometry=[_box_around(*STATION_WGS84, 0.00012)], crs="EPSG:4326").to_file(mask)
+    result = vector.clip(str(parcel), str(mask), str(tmp_path / "out.gpkg"))
+    assert result["feature_count"] == 1, "the mask was brought over by the ballpark and missed the parcel"
+    shift = json.loads((tmp_path / "out.gpkg.provenance.json").read_text(encoding="utf-8"))["crs_decisions"]["transformation"]
+    assert shift["is_ballpark"] is False
+    assert shift["accuracy_m"] == 4.0
+    assert shift.get("x-mapsmith:default_was_ballpark") is True
+
+
+def test_the_twin_route_serves_a_target_counted_from_rome_too():
+    """`twin_route` looked only at the source; a WGS 84 mask going onto a Rome
+    layer is the same datum problem read the other way."""
+    import numpy as np
+
+    found = datum.twin_route("EPSG:4326", "EPSG:4806", np.array([STATION_WGS84]))
+    assert found is not None
+    route, operation, twin = found
+    assert twin.to_epsg() == 4265
+    assert operation.accuracy == 4.0
+    x, y = route.transform(*STATION_WGS84)
+    assert abs(x - STATION_ROME[0]) < 2e-7 and abs(y - STATION_ROME[1]) < 2e-7, (x, y)
+
+
+def test_the_vectorised_transform_matches_the_per_geometry_one():
+    import numpy as np
+    from pyproj import Transformer
+    from shapely.geometry import Point
+
+    from mapsmith.engines import vector
+
+    transformer = Transformer.from_crs("EPSG:4806", "EPSG:4326", always_xy=True)
+    geoms = np.array([_box_around(*STATION_ROME, 0.01), Point(*STATION_ROME), None], dtype=object)
+    fast = vector._transformed_all(geoms, transformer)
+    assert fast[2] is None
+    assert fast[0].equals_exact(vector._transformed(geoms[0], transformer), 0)
+    assert fast[1].equals_exact(vector._transformed(geoms[1], transformer), 0)
+
+
+def test_the_vectorised_transform_keeps_and_moves_z():
+    """shapely.transform flattens by default; `to_crs` and `_transformed` did not."""
+    import numpy as np
+    from pyproj import Transformer
+    from shapely.geometry import Point, Polygon
+
+    from mapsmith.engines import vector
+
+    transformer = Transformer.from_crs("EPSG:4979", "EPSG:4978", always_xy=True)
+    geoms = np.array(
+        [Point(8.95, 45.5, 100.0), Polygon([(8.9, 45.5, 1), (9.0, 45.5, 2), (9.0, 45.6, 3)]), Point(8.95, 45.5)],
+        dtype=object,
+    )
+    fast = vector._transformed_all(geoms, transformer)
+    assert [g.has_z for g in fast] == [True, True, False]
+    for got, one in zip(fast, geoms, strict=True):
+        assert got.equals_exact(vector._transformed(one, transformer), 1e-6)
+
+
+
+def test_apportion_moves_a_small_target_by_the_route_it_records(tmp_path):
+    """The tear check moved the targets' inner points by `to_crs` (the ballpark
+    on Monte Mario) while the targets took the twin route: a target narrower
+    than 79.5 m was refused as torn. A 30 m target inside a Rome source zone."""
+    gpd = pytest.importorskip("geopandas")
+    from mapsmith.engines import vector
+
+    source = tmp_path / "source.gpkg"
+    gpd.GeoDataFrame({"pop": [100.0]}, geometry=[_box_around(*STATION_ROME, 0.003)], crs="EPSG:4806").to_file(source)
+    target = tmp_path / "target.gpkg"
+    gpd.GeoDataFrame({"id": [1]}, geometry=[_box_around(*STATION_WGS84, 0.0002)], crs="EPSG:4326").to_file(target)
+    vector.apportion_by_area(str(source), str(target), str(tmp_path / "out.gpkg"), extensive=["pop"])
+    shift = json.loads((tmp_path / "out.gpkg.provenance.json").read_text(encoding="utf-8"))["crs_decisions"]["transformation"]
+    assert shift["accuracy_m"] == 4.0
+    assert shift.get("x-mapsmith:default_was_ballpark") is True
+
+
+REALIGNED = (
+    "clip", "overlay", "nearest_join", "merge", "spatial_join",
+    "count_in_polygons", "summarize_points_in_polygons", "apportion_by_area",
+)
+
+
+def test_the_realigned_operations_are_still_seen_as_reprojecting():
+    """The derivation must not go quiet on the eight the day they stopped calling `to_crs`."""
+    _, reprojecting = _transforming_functions()
+    missing = sorted(set(REALIGNED) - reprojecting.get("vector.py", set()))
+    assert not missing, f"the derivation no longer sees these as reprojecting: {missing}"
+
+
+def test_every_caller_of_the_aligner_hands_the_record_what_it_chose():
+    """An operation that aligns with `_aligned` and then calls `alignment_decisions`
+    without `chosen=` records PROJ's own pick beside coordinates moved by ours,
+    and the silence derivation still counts it as recording (review, 2026-10-23)."""
+    source = (ENGINES / "vector.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    offenders = []
+    seen = 0
+    for function in ast.walk(tree):
+        if not isinstance(function, ast.FunctionDef):
+            continue
+        calls = [n for n in ast.walk(function) if isinstance(n, ast.Call)]
+        names = {getattr(c.func, "id", None) or getattr(c.func, "attr", None) for c in calls}
+        if not names & {"_aligned", "_aligned_with"} or "alignment_decisions" not in names:
+            continue
+        seen += 1
+        for call in calls:
+            name = getattr(call.func, "id", None) or getattr(call.func, "attr", None)
+            if name == "alignment_decisions" and not any(k.arg == "chosen" for k in call.keywords):
+                offenders.append(f"{function.name}:{call.lineno}")
+    assert seen >= 8, f"the sweep saw only {seen} aligning operations"
+    assert not offenders, f"alignment_decisions called without chosen= after _aligned: {offenders}"
+
+
+def _station_layers(tmp_path):
+    """Four layers: polygon and point at the station in EPSG:4806, and at its true WGS 84 position."""
+    gpd = pytest.importorskip("geopandas")
+    from shapely.geometry import Point
+
+    paths = {}
+    for name, crs, xy in (("rome", "EPSG:4806", STATION_ROME), ("wgs", "EPSG:4326", STATION_WGS84)):
+        half = 0.0004 if name == "rome" else 0.0002
+        poly = tmp_path / f"{name}_poly.gpkg"
+        gpd.GeoDataFrame({"id": [1], "v": [1.0]}, geometry=[_box_around(*xy, half)], crs=crs).to_file(poly)
+        pts = tmp_path / f"{name}_pts.gpkg"
+        gpd.GeoDataFrame({"id": [1], "w": [2.0]}, geometry=[Point(*xy)], crs=crs).to_file(pts)
+        paths[f"{name}_poly"], paths[f"{name}_pts"] = str(poly), str(pts)
+    return paths
+
+
+@pytest.mark.parametrize(
+    "operation",
+    ["overlay", "spatial_join", "count_in_polygons", "summarize_points_in_polygons", "merge", "nearest_join"],
+)
+def test_each_realigned_operation_records_the_route_it_chose(tmp_path, operation):
+    """End to end, one record per operation: the twin's 4 m operation, not the ballpark."""
+    from mapsmith.engines import vector
+
+    L = _station_layers(tmp_path)
+    out = tmp_path / "out.gpkg"
+    if operation == "overlay":
+        vector.overlay(L["rome_poly"], L["wgs_poly"], str(out), how="intersection")
+    elif operation == "spatial_join":
+        vector.spatial_join(L["rome_poly"], L["wgs_pts"], str(out), predicate="intersects")
+    elif operation == "count_in_polygons":
+        vector.count_in_polygons(L["wgs_pts"], L["rome_poly"], str(out))
+    elif operation == "summarize_points_in_polygons":
+        vector.summarize_points_in_polygons(L["wgs_pts"], L["rome_poly"], str(out), field="w")
+    elif operation == "merge":
+        vector.merge([L["rome_poly"], L["wgs_poly"]], str(out))
+    else:
+        vector.nearest_join(L["wgs_pts"], L["rome_pts"], str(out))
+    decisions = json.loads((tmp_path / "out.gpkg.provenance.json").read_text(encoding="utf-8"))["crs_decisions"]
+    shift = decisions["transformation"]
+    assert shift["is_ballpark"] is False, (operation, shift)
+    assert shift["accuracy_m"] == 4.0, (operation, shift)
+    assert shift.get("x-mapsmith:default_was_ballpark") is True, (operation, shift)
 

@@ -41,6 +41,29 @@ All notable changes to MapSmith are documented here, in the format of
   why the two go together; `docs/manifest-vocabulary.md` has the entry. Data
   and coordinates are unchanged -- only the record was wrong, in the direction
   that hides a shift. Found by the pre-release review of 0.9.0.
+- **The eight vector operations that align a second input choose the datum
+  transformation the way `reproject_layer` does.** `reproject_layer` has chosen its transformation since 0.5.0 (`datum.best_operation`:
+  a published operation that covers the data, or a datum's Greenwich twin), but
+  the eight vector operations that bring a second input onto the first one's CRS
+  -- `clip_layer`, `overlay_layers`, `nearest_join`, `merge_layers`, `spatial_join`,
+  `count_in_polygons`, `summarize_points_in_polygons`, `apportion_by_area` -- let
+  PROJ pick, through `to_crs`. On a Monte Mario (Rome, EPSG:4806) layer PROJ's
+  pick is the ballpark, so a parcel sat 79.5 m apart in `clip_layer` and in
+  `reproject_layer`, each record true of its own run. The eight now go through
+  the same chooser and apply it themselves, and `crs_decisions.transformation`
+  describes what was chosen, with `x-mapsmith:default_was_ballpark` where the
+  engine's own choice would have applied no shift. The twin route also serves a
+  target counted from another meridian (a WGS 84 mask onto a Rome layer), which
+  it did not. Operations that compute in an estimated UTM zone and come back are
+  unchanged: the way out and the way back largely cancel. The coordinates of the eight
+  change only where PROJ's default is the ballpark and a covering operation or a
+  twin exists; everywhere else the chosen transformation is PROJ's own. Five
+  vector operations still let the engine choose and say so in their record
+  (`snap_layer`, `line_intersections`, `transform_by_control_points`,
+  `compare_layers`, `nearest_neighbour_index`), as do the three that bring
+  points onto a raster's CRS (`sample_raster_at_points`, `elevation_profile`,
+  `least_cost_path`): on a Rome-meridian input they still sit 79.5 m from the
+  eight, with `is_ballpark: true` written honestly.
 - **The dashboard's "reachable with facets" probe asks at the published level.**
   `benchmarks/dashboard.py` declared three facets where the README's headline
   figures declare four (`geometry` has been a facet since 0.8.0), so at 78

@@ -1365,7 +1365,11 @@ def reproject_raster(
         twin_hint = None
         if shift["is_ballpark"]:
             route = datum.twin_route(src.crs, target_crs, where)
-            if route is not None:
+            # Only when the twin is the SOURCE's: since 2026-10-23 `twin_route`
+            # also answers for a target counted from another meridian, and the
+            # hint below tells the caller to reproject the source to the twin
+            # first, which is false advice for that case (review).
+            if route is not None and datum._greenwich_twin(datum._as_crs(src.crs)) is not None:
                 twin_hint = (
                     datum._as_crs(src.crs).geodetic_crs.prime_meridian.name,
                     verify.crs_label(route[2]),

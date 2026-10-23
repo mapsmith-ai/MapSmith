@@ -827,29 +827,46 @@ def twin_route(source_crs: Any, target_crs: Any, points: Any) -> tuple[Any, Any,
     test is exact over every point: a hint naming the twin to a raster in
     Spain, where none of the twin's operations reaches, prescribed a route that
     changes nothing (review, round three).
+
+    Either end can be the one counted from another meridian. Until 2026-10-23
+    only the source was looked at, so `clip_layer` bringing a WGS 84 mask onto
+    a Monte Mario (Rome) layer got the ballpark where `reproject_layer` taking
+    the layer out got the 4 m operation: 79.5 m between two operations on the
+    same input, each record true of its own run.
     """
     import numpy as np
     from pyproj import Transformer
     from pyproj.transformer import TransformerGroup
 
     source_crs, target_crs = _as_crs(source_crs), _as_crs(target_crs)
-    twin = _greenwich_twin(source_crs)
-    if twin is None:
-        return None
     if points is None or not len(points):
         points = np.array([_probe_point(source_crs, target_crs)], dtype=float)
     lon, lat = _greenwich_lonlat(source_crs, points)
-    candidates = sorted(
-        (
-            t for t in TransformerGroup(twin, target_crs, always_xy=True).transformers
-            if t.accuracy is not None and t.accuracy >= _STATED
-            and np.all(_covers(t.area_of_use, lon, lat))
-        ),
-        key=lambda t: t.accuracy,
-    )
+
+    def covering(group: Any) -> list[Any]:
+        return sorted(
+            (
+                t for t in group.transformers
+                if t.accuracy is not None and t.accuracy >= _STATED
+                and np.all(_covers(t.area_of_use, lon, lat))
+            ),
+            key=lambda t: t.accuracy,
+        )
+
+    twin = _greenwich_twin(source_crs)
+    if twin is not None:
+        candidates = covering(TransformerGroup(twin, target_crs, always_xy=True))
+        if not candidates:
+            return None
+        route = _join_pipelines(Transformer.from_crs(source_crs, twin, always_xy=True), candidates[0])
+        return (route, candidates[0], twin) if route is not None else None
+    twin = _greenwich_twin(target_crs)
+    if twin is None:
+        return None
+    candidates = covering(TransformerGroup(source_crs, twin, always_xy=True))
     if not candidates:
         return None
-    route = _join_pipelines(Transformer.from_crs(source_crs, twin, always_xy=True), candidates[0])
+    route = _join_pipelines(candidates[0], Transformer.from_crs(twin, target_crs, always_xy=True))
     return (route, candidates[0], twin) if route is not None else None
 
 

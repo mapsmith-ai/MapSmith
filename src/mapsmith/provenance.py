@@ -219,8 +219,17 @@ def alignment_decisions(
     moved: Sequence[tuple[str, Any]] = (),
     *,
     moved_to: Any = None,
+    chosen: Sequence[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """`crs_decisions` for an operation that brings its other inputs to one CRS.
+
+    `chosen`, one record per moved input in the same order, is the
+    transformation the operation actually applied when it chose one itself
+    (`vector._aligned`, which goes through `datum.best_operation`). Without it
+    the record describes what the engine's own `to_crs` gets. Until 2026-10-23
+    every alignment went through `to_crs`, and a Monte Mario parcel sat 79.5 m
+    apart in `clip_layer` and in `reproject_layer`, each record true of its own
+    run: the two operations chose differently on the same input.
 
     Nine operations in `vector` and several elsewhere do the same three things
     and each did them differently, or not at all. Written once, for the reason
@@ -235,8 +244,9 @@ def alignment_decisions(
       it". Those are different claims.
     * **It says which input moved**, under `INPUTS_REPROJECTED`, rather than
       leaving the reader to guess from a sentence.
-    * **It says how.** `to_crs` reaches for PROJ itself, so the record carries
-      what the engine will actually get. Across two datums with no grid on the
+    * **It says how.** Without `chosen`, `to_crs` reaches for PROJ itself and
+      the record carries what the engine will actually get; with it, the
+      transformation the operation chose and applied. Across two datums with no grid on the
       machine that is tens of metres, and `is_ballpark` is the boolean a
       consumer branches on.
 
@@ -263,7 +273,12 @@ def alignment_decisions(
     }
     if not moved:
         return decisions
-    sources = [(argument, *_crs_and_points(value)) for argument, value in moved]
+    # With `chosen` the points are not needed: sampling every vertex of a
+    # layer only to discard the result cost 2.3 s on 3.4 million (review).
+    sources = [
+        (argument, *(_crs_and_points(value) if chosen is None else (_crs_only(value), None)))
+        for argument, value in moved
+    ]
     entries = [
         {"argument": argument, "from": _crs_label(crs)} for argument, crs, _ in sources
     ]
@@ -275,7 +290,12 @@ def alignment_decisions(
     # seven-metre shift. A manifest accusing an engine of skipping a datum
     # shift it did not skip is the worst direction to be wrong in.
     destination = analysis_crs if moved_to is None else moved_to
-    shifts = [datum.default_operation(crs, destination, points) for _, crs, points in sources]
+    if chosen is not None:
+        if len(chosen) != len(sources):
+            raise ValueError("one chosen transformation per moved input, in order")
+        shifts = list(chosen)
+    else:
+        shifts = [datum.default_operation(crs, destination, points) for _, crs, points in sources]
     if len(moved) == 1:
         decisions["transformation"] = shifts[0]
     else:
@@ -312,6 +332,11 @@ def _describes(manifest_path: Path, output_path: str | Path) -> bool:
         return bool(recorded) and recorded == dataset_sha256(output_path)
     except Exception:  # noqa: BLE001 - no readable record that matches is the answer
         return False
+
+
+def _crs_only(value: Any) -> Any:
+    """A moved input's CRS, whether the caller handed the layer or the CRS."""
+    return value.crs if hasattr(value, "geometry") and hasattr(value, "crs") else value
 
 
 def _crs_and_points(value: Any) -> tuple[Any, Any]:

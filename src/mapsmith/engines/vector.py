@@ -267,15 +267,18 @@ def clip(input_path: str, mask_path: str, output_path: str) -> dict[str, Any]:
         written = record.add_verification(pre).finish().write_for(output_path, refused=True)
         verify.enforce(pre, "clip_layer", record=written)
     aligned = gdf.crs != mask.crs
+    original_mask, chosen = mask, None
+    if aligned:
+        mask, shift = _aligned(mask, gdf.crs)
+        chosen = [shift]
     record.crs_decisions = alignment_decisions(
         gdf.crs,
         "the mask is brought to the input layer's CRS before clipping"
         if aligned
         else "the mask is already in the input layer's CRS; nothing was reprojected",
-        [("mask_path", mask)] if aligned else [],
+        [("mask_path", original_mask)] if aligned else [],
+        chosen=chosen,
     )
-    if aligned:
-        mask = mask.to_crs(gdf.crs)
     # extents can only be compared once both layers share a CRS
     pre += verify.verify_input_pairs("clip_layer", input_path=gdf, mask_path=mask)
     with verify.audit_on_failure(record, output_path, pre):
@@ -338,6 +341,61 @@ def _transformed(geometry, transformer):
         return geometry
     return shapely_transform(transformer.transform, geometry)
 
+
+def _transformed_all(geometries, transformer):
+    """Apply a chosen transformer to an array of geometries, all coordinates in one call.
+
+    The same answer as `_transformed` geometry by geometry (checked on a
+    hundred thousand), seventy times sooner: PROJ is asked once per layer
+    instead of once per vertex. Missing geometries stay missing, and a
+    geometry with Z keeps it and has it transformed, as `_transformed` does:
+    shapely's default (`include_z=False`) returned every geometry flat.
+    """
+    import numpy as np
+    import shapely
+
+    def moved(xyz):
+        return np.column_stack(transformer.transform(*(xyz[:, i] for i in range(xyz.shape[1]))))
+
+    geometries = np.asarray(geometries, dtype=object)
+    present = ~shapely.is_missing(geometries)
+    out = geometries.copy()
+    if present.any():
+        out[present] = shapely.transform(geometries[present], moved, include_z=None)
+    return out
+
+
+def _aligned(frame, target_crs):
+    """A layer brought onto another CRS by the transformation this operation chooses.
+
+    Returns the moved layer and the `transformation` record for it. The eight
+    vector operations that bring a second input onto the first one's CRS used
+    `to_crs`, which lets PROJ pick: on a Monte Mario (Rome) layer that is the
+    ballpark, while `reproject_layer` on the same layer takes the Greenwich
+    twin's 4 m operation -- 79.5 m between two operations on one input,
+    measured 2026-10-23. Now both choose the same way (`datum.best_operation`),
+    and the record says what was chosen rather than what the engine would have
+    got.
+    """
+    moved, shift, _ = _aligned_with(frame, target_crs)
+    return moved, shift
+
+
+def _aligned_with(frame, target_crs):
+    """`_aligned`, and the transformer it applied, for a caller that moves more by it.
+
+    `apportion_by_area` checks the moved targets against points it takes from
+    the targets as drawn; moved by `to_crs` those points took PROJ's ballpark
+    while the targets took the twin route, 79.5 m apart on Monte Mario, and a
+    target narrower than that was refused as torn (found 2026-10-23, before
+    this change was committed).
+    """
+    transformer, shift = _datum_transformation(frame.crs, target_crs, datum.sample_points(frame))
+    moved = frame.set_geometry(
+        gpd.GeoSeries(_transformed_all(frame.geometry.to_numpy(), transformer), index=frame.index, crs=target_crs)
+    ).set_crs(target_crs, allow_override=True)
+    return moved, shift, transformer
+
 def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, Any]:
     gdf = _read(input_path)
     record = ProvenanceRecord(
@@ -375,7 +433,7 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
     }
     with verify.audit_on_failure(record, output_path, pre):
         reprojected = gdf.set_geometry(
-            gdf.geometry.apply(lambda g: _transformed(g, transformer))
+            gpd.GeoSeries(_transformed_all(gdf.geometry.to_numpy(), transformer), index=gdf.index, crs=target)
         ).set_crs(target, allow_override=True)
         # The coordinates are there now, so the record may say where they went
         # and by which operation. The notes are the same claim in prose and move
@@ -484,16 +542,19 @@ def overlay(
         written = record.add_verification(pre).finish().write_for(output_path, refused=True)
         verify.enforce(pre, "overlay_layers", record=written)
     aligned = left.crs != right.crs
+    original_right, chosen = right, None
+    if aligned:
+        right, shift = _aligned(right, left.crs)
+        chosen = [shift]
     record.crs_decisions = alignment_decisions(
         left.crs,
         "the overlay layer is brought to the input CRS before overlaying"
         if aligned
         else "both layers are already in this CRS; nothing was reprojected",
-        [("overlay_path", right)] if aligned else [],
+        [("overlay_path", original_right)] if aligned else [],
+        chosen=chosen,
     )
-    if aligned:
-        right = right.to_crs(left.crs)
-    else:
+    if not aligned:
         record.crs_decisions = {
             "analysis_crs": verify.crs_label(left.crs),
             "reason": "both layers share the same CRS; no reprojection needed",
@@ -636,8 +697,10 @@ def nearest_join(
 
     original_crs = left.crs
     moved_right = [] if verify.same_crs(right.crs, left.crs) else [("right_path", right)]
+    chosen_right = None
     if moved_right:
-        right = right.to_crs(left.crs)
+        right, shift = _aligned(right, left.crs)
+        chosen_right = [shift]
     if original_crs.is_geographic:
         # The distance column is in METERS, always: nearest-in-degrees is the
         # classic silent killer of this operation (a degree of longitude is not
@@ -651,6 +714,7 @@ def nearest_join(
                 # The right layer went to the LEFT layer's CRS, not to the UTM
                 # zone: both are taken out to UTM together on the next line.
                 moved_to=original_crs,
+                chosen=chosen_right,
             ),
         }
         left_m, right_m = left.to_crs(analysis_crs), right.to_crs(analysis_crs)
@@ -662,6 +726,7 @@ def nearest_join(
             else "the right layer is brought to the left layer's CRS, and the "
             "distances are measured there",
             moved_right,
+            chosen=chosen_right,
         )
         left_m, right_m = left, right
     pre += verify.verify_input_pairs("nearest_join", left_path=left_m, right_path=right_m)
@@ -791,6 +856,17 @@ def merge(input_paths: list[str], output_path: str) -> dict[str, Any]:
         for i, frame in enumerate(frames, start=1)
         if not verify.same_crs(frame.crs, target)
     ]
+    chosen = []
+    if moved:
+        brought = []
+        for frame in frames:
+            if verify.same_crs(frame.crs, target):
+                brought.append(frame)
+            else:
+                frame, shift = _aligned(frame, target)
+                brought.append(frame)
+                chosen.append(shift)
+        frames = brought
     record.crs_decisions = alignment_decisions(
         target,
         f"{len(moved)} of {len(frames)} layers are brought to the first "
@@ -798,12 +874,8 @@ def merge(input_paths: list[str], output_path: str) -> dict[str, Any]:
         if moved
         else "all layers share the first layer's CRS; nothing was reprojected",
         moved,
+        chosen=chosen if moved else None,
     )
-    if moved:
-        frames = [
-            frame if verify.same_crs(frame.crs, target) else frame.to_crs(target)
-            for frame in frames
-        ]
     # A column missing from one input becomes nulls in its rows — data that
     # looks measured and is actually absent. The manifest names those columns.
     per_layer = [set(frame.columns) - {frame.geometry.name} for frame in frames]
@@ -1381,15 +1453,18 @@ def spatial_join(
         written = record.add_verification(pre).finish().write_for(output_path, refused=True)
         verify.enforce(pre, "spatial_join", record=written)
     aligned = left.crs != right.crs
+    original_right, chosen = right, None
+    if aligned:
+        right, shift = _aligned(right, left.crs)
+        chosen = [shift]
     record.crs_decisions = alignment_decisions(
         left.crs,
         "the right layer is brought to the left layer's CRS before joining"
         if aligned
         else "both layers are already in this CRS; nothing was reprojected",
-        [("right_path", right)] if aligned else [],
+        [("right_path", original_right)] if aligned else [],
+        chosen=chosen,
     )
-    if aligned:
-        right = right.to_crs(left.crs)
     pre += verify.verify_input_pairs("spatial_join", left_path=left, right_path=right)
     with verify.audit_on_failure(record, output_path, pre):
         joined = gpd.sjoin(left, right, predicate=predicate, how="inner")
@@ -2565,10 +2640,12 @@ def count_in_polygons(
         verify.enforce(pre, "count_in_polygons", record=written)
     original_points = points
     aligned = not verify.same_crs(original_points.crs, polygons.crs)
+    chosen = None
     if aligned:
-        points = points.to_crs(polygons.crs)
+        points, shift = _aligned(points, polygons.crs)
+        chosen = [shift]
     # After the move, and one call for both branches. This wrote the decision
-    # before `to_crs` and then overwrote it by hand when nothing moved -- no
+    # before the move and then overwrote it by hand when nothing moved -- no
     # false record reached disk, because nothing is written between the two
     # lines, but it is the order six operations were fixed for on 2026-09-23.
     record.crs_decisions = alignment_decisions(
@@ -2577,6 +2654,7 @@ def count_in_polygons(
         if aligned
         else "both layers share a CRS; nothing was reprojected",
         [("points_path", original_points)] if aligned else [],
+        chosen=chosen,
     )
     pre += verify.verify_input_pairs(
         "count_in_polygons", points_path=points, polygons_path=polygons
@@ -2787,8 +2865,10 @@ def summarize_points_in_polygons(
         verify.enforce(pre, "summarize_points_in_polygons", record=written)
     original_points = points
     aligned = not verify.same_crs(original_points.crs, polygons.crs)
+    chosen = None
     if aligned:
-        points = points.to_crs(polygons.crs)
+        points, shift = _aligned(points, polygons.crs)
+        chosen = [shift]
     # Written after the move, not before it: on 2026-09-23 six operations were
     # found recording a reprojection before it happened.
     record.crs_decisions = alignment_decisions(
@@ -2797,6 +2877,7 @@ def summarize_points_in_polygons(
         if aligned
         else "both layers share a CRS; nothing was reprojected",
         [("points_path", original_points)] if aligned else [],
+        chosen=chosen,
     )
     pre += verify.verify_input_pairs(
         "summarize_points_in_polygons", points_path=points, polygons_path=polygons
@@ -3331,7 +3412,7 @@ def apportion_by_area(
         target_as_drawn = gpd.GeoDataFrame(
             geometry=_densified(target.geometry.to_numpy(), step, "the target zones"), crs=target.crs
         )
-        target = target_as_drawn.to_crs(source.crs)
+        target, target_shift, target_transformer = _aligned_with(target_as_drawn, source.crs)
         densified.append(
             f"the target zones' edges were densified at {step:.6g} units of their own CRS "
             "before being brought onto the source CRS"
@@ -3492,10 +3573,12 @@ def apportion_by_area(
         # wide, and a tolerance read off the image's extent is the extent of
         # the tear itself (seventh review).
         circles = shapely.maximum_inscribed_circle(target_as_drawn.geometry.to_numpy())
-        ends = gpd.GeoSeries(
+        # Moved by the transformer the targets were moved by, not `to_crs`:
+        # PROJ's own pick can be another operation (the ballpark, on Monte Mario).
+        ends = _transformed_all(
             np.concatenate([shapely.get_point(circles, 0), shapely.get_point(circles, 1)]),
-            crs=target_as_drawn.crs,
-        ).to_crs(source.crs).to_numpy()
+            target_transformer,
+        )
         centres, rims = ends[: len(circles)], ends[len(circles):]
         radius = shapely.distance(centres, rims)
         away = shapely.distance(moved_geoms, centres)
@@ -3522,6 +3605,7 @@ def apportion_by_area(
         "so that the pieces of each zone and the part no target covers add up to it. The "
         "output keeps the target zones in their own CRS.",
         [("target_path", original_target)] if moved_target else [],
+        chosen=[target_shift] if moved_target else None,
     )
     pre += verify.verify_input_pairs(
         "apportion_by_area", source_path=source, target_path=target
