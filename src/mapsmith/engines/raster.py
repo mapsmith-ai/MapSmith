@@ -221,6 +221,10 @@ def zonal_statistics(
             engine=_engine_info(),
         )
         aligned = raster_crs is not None and not verify.same_crs(zones.crs, raster_crs)
+        original_zones, chosen = zones, None
+        if aligned:
+            zones, _, shift = datum.aligned(zones, raster_crs)
+            chosen = [shift]
         record.crs_decisions.update(
             alignment_decisions(
                 raster_crs,
@@ -228,11 +232,10 @@ def zonal_statistics(
                 "output is kept in the raster CRS"
                 if aligned
                 else "zones and raster share the same CRS",
-                [("zones_path", zones)] if aligned else [],
+                [("zones_path", original_zones)] if aligned else [],
+                chosen=chosen,
             )
         )
-        if aligned:
-            zones = zones.to_crs(raster_crs)
         # exactextract takes the cell footprint from GDAL's geotransform, which
         # already centres each cell on its sample for a point-registered file
         # (RFC 33). Until 2026-09-25 the zones were moved half a cell here for a
@@ -782,6 +785,10 @@ def clip_raster(
             written = record.add_verification(pre).finish().write_for(output_path, refused=True)
             verify.enforce(pre, "clip_raster", record=written)
         aligned = not verify.same_crs(frame.crs, src.crs)
+        original_frame, chosen = frame, None
+        if aligned:
+            frame, _, shift = datum.aligned(frame, src.crs)
+            chosen = [shift]
         record.crs_decisions = alignment_decisions(
             src.crs,
             "the mask is brought to the raster CRS before clipping; rasterio.mask "
@@ -789,10 +796,9 @@ def clip_raster(
             "saying so"
             if aligned
             else "mask and raster already share a CRS; nothing was reprojected",
-            [("mask_path", frame)] if aligned else [],
+            [("mask_path", original_frame)] if aligned else [],
+            chosen=chosen,
         )
-        if aligned:
-            frame = frame.to_crs(src.crs)
         # nodata: rasterio.mask falls back to 0 when the raster declares none,
         # and 0 is a valid elevation, reflectance and temperature. Refuse to
         # let that be implicit.

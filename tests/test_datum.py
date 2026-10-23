@@ -426,7 +426,7 @@ def _transforming_functions() -> dict[str, set[str]]:
                 isinstance(inner, ast.Call)
                 and (
                     (isinstance(inner.func, ast.Attribute) and inner.func.attr == "to_crs")
-                    or getattr(inner.func, "id", None) in ("_aligned", "_aligned_with", "_transformed_all", "_transformed")
+                    or getattr(inner.func, "id", None) in ("_aligned", "_aligned_with", "_transformed_all", "_transformed", "aligned")
                 )
                 for inner in ast.walk(node)
             )
@@ -1656,4 +1656,44 @@ def test_each_realigned_operation_records_the_route_it_chose(tmp_path, operation
     assert shift["is_ballpark"] is False, (operation, shift)
     assert shift["accuracy_m"] == 4.0, (operation, shift)
     assert shift.get("x-mapsmith:default_was_ballpark") is True, (operation, shift)
+
+
+def test_compare_layers_and_the_index_choose_like_the_rest(tmp_path):
+    """Two answer-only operations aligned with `to_crs` until 2026-10-23 and said so;
+    now they choose like the eight, and their answers carry the chosen record."""
+    from mapsmith.engines import summaries
+
+    L = _station_layers(tmp_path)
+    answer = summaries.compare_layers(L["rome_poly"], L["wgs_poly"])
+    shift = answer["transformation"]
+    assert shift["is_ballpark"] is False and shift["accuracy_m"] == 4.0
+    assert shift.get("x-mapsmith:default_was_ballpark") is True
+
+
+def test_no_engine_aligns_a_vector_input_with_to_crs_any_more():
+    """`to_crs` may still take a layer out to an analysis CRS and back (a round
+    trip, recorded by `record_round_trip`); it must not bring a SECOND input
+    onto the first one's CRS -- that is `datum.aligned`'s job, and the list of
+    sites that still did it was written down on 2026-10-23 and emptied."""
+    allowed_round_trips = {
+        # (file, function): round trips to an analysis CRS, recorded as such
+        ("vector.py", "buffer"), ("vector.py", "nearest_join"), ("vector.py", "simplify"),
+        ("vector.py", "centroid"), ("vector.py", "_geodesic_areas"), ("vector.py", "_geodesic_lengths"),
+        ("vector.py", "apportion_by_area"),
+        # the equal-area plane sits on the source's own datum: no shift to choose
+        ("vector.py", "_area_of"),
+    }
+    offenders = []
+    for path in sorted(ENGINES.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for function in ast.walk(tree):
+            if not isinstance(function, ast.FunctionDef):
+                continue
+            uses = [
+                n for n in ast.walk(function)
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "to_crs"
+            ]
+            if uses and (path.name, function.name) not in allowed_round_trips:
+                offenders.append(f"{path.name}:{function.name} ({len(uses)} to_crs)")
+    assert not offenders, offenders
 

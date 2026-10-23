@@ -343,26 +343,8 @@ def _transformed(geometry, transformer):
 
 
 def _transformed_all(geometries, transformer):
-    """Apply a chosen transformer to an array of geometries, all coordinates in one call.
-
-    The same answer as `_transformed` geometry by geometry (checked on a
-    hundred thousand), seventy times sooner: PROJ is asked once per layer
-    instead of once per vertex. Missing geometries stay missing, and a
-    geometry with Z keeps it and has it transformed, as `_transformed` does:
-    shapely's default (`include_z=False`) returned every geometry flat.
-    """
-    import numpy as np
-    import shapely
-
-    def moved(xyz):
-        return np.column_stack(transformer.transform(*(xyz[:, i] for i in range(xyz.shape[1]))))
-
-    geometries = np.asarray(geometries, dtype=object)
-    present = ~shapely.is_missing(geometries)
-    out = geometries.copy()
-    if present.any():
-        out[present] = shapely.transform(geometries[present], moved, include_z=None)
-    return out
+    """Apply a chosen transformer to an array of geometries at once: `datum.transformed_all`."""
+    return datum.transformed_all(geometries, transformer)
 
 
 def _aligned(frame, target_crs):
@@ -390,10 +372,7 @@ def _aligned_with(frame, target_crs):
     target narrower than that was refused as torn (found 2026-10-23, before
     this change was committed).
     """
-    transformer, shift = _datum_transformation(frame.crs, target_crs, datum.sample_points(frame))
-    moved = frame.set_geometry(
-        gpd.GeoSeries(_transformed_all(frame.geometry.to_numpy(), transformer), index=frame.index, crs=target_crs)
-    ).set_crs(target_crs, allow_override=True)
+    moved, transformer, shift = datum.aligned(frame, target_crs)
     return moved, shift, transformer
 
 def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, Any]:

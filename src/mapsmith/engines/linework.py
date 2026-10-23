@@ -156,20 +156,15 @@ def snap_layer(
         crs_decisions[INPUTS_REPROJECTED] = [
             {"argument": "reference_path", "from": reference_crs}
         ]
-        # `default_operation` and not `best_operation`: `to_crs` reaches for
-        # PROJ itself, so the record has to describe the transformation the
-        # engine will actually get rather than one we would have preferred.
-        # Without this the manifest said a layer had been reprojected and
-        # said nothing about how -- and across two datums with no grid
-        # installed, that silence is tens of metres.
-        crs_decisions["transformation"] = datum.default_operation(
-            reference.crs, gdf.crs, datum.sample_points(reference)
-        )
+        # Chosen and applied by us (`datum.aligned`, 2026-10-23), so the record
+        # describes what ran; until then `to_crs` let PROJ pick and the record
+        # described that pick -- honestly, and 79.5 m from `reproject_layer`
+        # on a Rome-meridian input.
+        reference, _, crs_decisions["transformation"] = datum.aligned(reference, gdf.crs)
         crs_decisions["reason"] = (
             "the tolerance is in the input layer's unit, so the reference is brought "
             "into that CRS rather than the other way round"
         )
-        reference = reference.to_crs(gdf.crs)
 
     # Every vertex of every geometry type, in reference order, nulls and empties
     # skipped. This was `geometry.coords if hasattr(geometry, "coords")`, and on
@@ -544,14 +539,11 @@ def line_intersections(
             crs_decisions[INPUTS_REPROJECTED] = [
                 {"argument": "other_path", "from": verify.crs_label(other.crs)}
             ]
-            crs_decisions["transformation"] = datum.default_operation(
-                other.crs, gdf.crs, datum.sample_points(other)
-            )
+            other, _, crs_decisions["transformation"] = datum.aligned(other, gdf.crs)
             crs_decisions["reason"] = (
                 "crossings are computed in the first layer's CRS, so the output "
                 "coordinates are in it"
             )
-            other = other.to_crs(gdf.crs)
         pairs = [
             (i, j)
             for i in range(len(gdf))
@@ -803,9 +795,8 @@ def transform_by_control_points(
         # The control points ARE the georeferencing, so a datum shift applied
         # to them moves everything the fit produces. Recorded for that reason
         # rather than for completeness.
-        control_moved = datum.default_operation(control.crs, target, datum.sample_points(control))
         control_from = verify.crs_label(control.crs)
-        control = control.to_crs(target)
+        control, _, control_moved = datum.aligned(control, target)
 
     needed = TRANSFORMS[kind]
     if len(control) < needed:

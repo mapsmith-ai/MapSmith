@@ -879,11 +879,18 @@ def least_cost_path(
             )
             if not verify.same_crs(frame.crs, src.crs)
         ]
+        from .. import datum
+
+        chosen = []
         if not verify.same_crs(starts.crs, src.crs):
             # The point itself, reprojected -- not whatever feature comes first.
-            start_point = gpd.GeoSeries([start_point], crs=starts.crs).to_crs(src.crs).iloc[0]
+            series, _, shift = datum.aligned(gpd.GeoSeries([start_point], crs=starts.crs), src.crs)
+            start_point = series.iloc[0]
+            chosen.append(shift)
         if not verify.same_crs(ends.crs, src.crs):
-            end_point = gpd.GeoSeries([end_point], crs=ends.crs).to_crs(src.crs).iloc[0]
+            series, _, shift = datum.aligned(gpd.GeoSeries([end_point], crs=ends.crs), src.crs)
+            end_point = series.iloc[0]
+            chosen.append(shift)
 
         def to_cell(point, name: str) -> tuple[int, int]:
             if not (bounds.left <= point.x <= bounds.right
@@ -1036,6 +1043,7 @@ def least_cost_path(
             "the search runs on the cost surface's own grid; the endpoints are "
             "brought to it so that each one lands on the cell it occupies",
             moved,
+            chosen=chosen if moved else None,
         ),
         **registration,
     }

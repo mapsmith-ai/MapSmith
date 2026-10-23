@@ -57,13 +57,19 @@ All notable changes to MapSmith are documented here, in the format of
   it did not. Operations that compute in an estimated UTM zone and come back are
   unchanged: the way out and the way back largely cancel. The coordinates of the eight
   change only where PROJ's default is the ballpark and a covering operation or a
-  twin exists; everywhere else the chosen transformation is PROJ's own. Five
-  vector operations still let the engine choose and say so in their record
-  (`snap_layer`, `line_intersections`, `transform_by_control_points`,
-  `compare_layers`, `nearest_neighbour_index`), as do the three that bring
-  points onto a raster's CRS (`sample_raster_at_points`, `elevation_profile`,
-  `least_cost_path`): on a Rome-meridian input they still sit 79.5 m from the
-  eight, with `is_ballpark: true` written honestly.
+  twin exists; everywhere else the chosen transformation is PROJ's own. The
+  same chooser now serves every operation that brings a vector input onto
+  another CRS: `snap_layer`, `line_intersections`, `transform_by_control_points`,
+  `compare_layers`, `nearest_neighbour_index`, the points of
+  `sample_raster_at_points`, `elevation_profile` and `least_cost_path`, and the
+  zones and mask of `zonal_statistics` and `clip_raster`. Only `reproject_raster`
+  still reports the engine's own pick, because rasterio warps the pixels itself;
+  a test keeps the list of `to_crs` call sites to the recorded round trips. Two
+  consequences to know about: `transform_by_control_points` fits against
+  control points moved by the chosen operation, so on a Rome-meridian control
+  layer the fit itself moves with them; and bringing a layer across datums now
+  costs a survey of its vertices (about 5 s for 200,000 polygons against 1 s
+  before), the price of a record that says which operation covered them.
 - **The dashboard's "reachable with facets" probe asks at the published level.**
   `benchmarks/dashboard.py` declared three facets where the README's headline
   figures declare four (`geometry` has been a facet since 0.8.0), so at 78

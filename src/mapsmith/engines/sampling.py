@@ -264,16 +264,21 @@ def sample_raster_at_points(
             engine=_engine_info(),
         )
         aligned = not verify.same_crs(points.crs, raster_crs)
+        original_points, chosen = points, None
+        if aligned:
+            from .. import datum
+
+            points, _, shift = datum.aligned(points, raster_crs)
+            chosen = [shift]
         record.crs_decisions = alignment_decisions(
             raster_crs,
             "points brought to the raster's CRS so each one lands on the cell it "
             "actually falls in; the output keeps that CRS"
             if aligned
             else "points and raster share the same CRS",
-            [("points_path", points)] if aligned else [],
+            [("points_path", original_points)] if aligned else [],
+            chosen=chosen,
         )
-        if aligned:
-            points = points.to_crs(raster_crs)
         centroids = points.geometry.representative_point()
         values = _read_at(dataset, band, centroids.x, centroids.y, method)
 
@@ -469,19 +474,16 @@ def elevation_profile(
 
             record.crs_decisions["source_crs"] = verify.crs_label(lines.crs)
             record.crs_decisions["target_crs"] = verify.crs_label(raster_crs)
-            record.crs_decisions["transformation"] = datum.default_operation(
+            chosen_transformer, record.crs_decisions["transformation"] = datum.best_operation(
                 lines.crs, raster_crs, datum.sample_points(lines)
             )
 
         rows = _profile_positions(working, spacing)
         read_x, read_y = [r["x"] for r in rows], [r["y"] for r in rows]
         if aligned and rows:
-            from shapely.geometry import Point as _Point
-
-            moved = gpd.GeoSeries(
-                [_Point(x, y) for x, y in zip(read_x, read_y)], crs=lines.crs
-            ).to_crs(raster_crs)
-            read_x, read_y = list(moved.x), list(moved.y)
+            # The same transformation the record names, applied by us.
+            moved_x, moved_y = chosen_transformer.transform(read_x, read_y)
+            read_x, read_y = list(moved_x), list(moved_y)
         values = _read_at(dataset, band, read_x, read_y, method)
 
     from shapely.geometry import Point

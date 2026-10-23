@@ -677,6 +677,59 @@ def stated_accuracy(shift: dict[str, Any]) -> str:
     return "no stated accuracy"
 
 
+def transformed_all(geometries: Any, transformer: Any) -> Any:
+    """Apply a chosen transformer to an array of geometries, all coordinates in one call.
+
+    The same answer as `shapely.ops.transform` geometry by geometry (checked on
+    a hundred thousand), seventy times sooner: PROJ is asked once per layer
+    instead of once per vertex. Missing geometries stay missing; a Z is kept
+    and transformed (`include_z=None`: shapely's default drops it, found by the
+    conformance review 2026-10-23).
+    """
+    import numpy as np
+    import shapely
+
+    def moved(xyz):
+        if xyz.shape[1] == 3:
+            x, y, z = transformer.transform(xyz[:, 0], xyz[:, 1], xyz[:, 2])
+            return np.column_stack([x, y, z])
+        x, y = transformer.transform(xyz[:, 0], xyz[:, 1])
+        return np.column_stack([x, y])
+
+    geometries = np.asarray(geometries, dtype=object)
+    present = ~shapely.is_missing(geometries)
+    out = geometries.copy()
+    if present.any():
+        out[present] = shapely.transform(geometries[present], moved, include_z=None)
+    return out
+
+
+def aligned(frame: Any, target_crs: Any) -> tuple[Any, Any, dict[str, Any]]:
+    """A layer brought onto another CRS by the transformation this operation chooses.
+
+    Returns (the moved layer, the transformer applied, the `transformation`
+    record). `best_operation` chooses -- a published operation that covers the
+    data, or a datum's Greenwich twin -- where `to_crs` lets PROJ pick: on a
+    Monte Mario (Rome) layer PROJ's pick is the ballpark, and two operations
+    on one input sat 79.5 m apart (2026-10-23). Accepts a GeoDataFrame or a
+    GeoSeries; every engine that aligns a vector input goes through here.
+    """
+    import geopandas as gpd
+
+    # Within one datum there is nothing to choose and nothing to survey: the
+    # vertices are not extracted (0.85 s on 800,000 of them, measured 2026-10-23;
+    # `best_operation` answers from the datums before it looks at points).
+    points = None if shares_a_datum(frame.crs, target_crs) else sample_points(frame)
+    transformer, shift = best_operation(frame.crs, target_crs, points)
+    geometries = getattr(frame, "geometry", frame)
+    moved = gpd.GeoSeries(
+        transformed_all(geometries.to_numpy(), transformer), index=frame.index, crs=target_crs
+    )
+    if hasattr(frame, "set_geometry"):
+        moved = frame.set_geometry(moved).set_crs(target_crs, allow_override=True)
+    return moved, transformer, shift
+
+
 def pipeline_of(transformer: Any) -> str | None:
     try:
         return transformer.to_proj4() or None

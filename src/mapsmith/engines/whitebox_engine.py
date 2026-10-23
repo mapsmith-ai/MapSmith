@@ -680,15 +680,20 @@ def watershed(
         # points were already on the DEM's grid — and the manifest then recorded
         # a reprojection that never happened.
         aligned = not verify.same_crs(points.crs, crs)
+        original_points, chosen = points, None
+        if aligned:
+            from .. import datum
+
+            points, _, shift = datum.aligned(points, crs)
+            chosen = [shift]
         record.crs_decisions = alignment_decisions(
             crs,
             "pour points brought to the DEM CRS to align with the flow grid"
             if aligned
             else "pour points and DEM share the same CRS",
-            [("pour_points_path", points)] if aligned else [],
+            [("pour_points_path", original_points)] if aligned else [],
+            chosen=chosen,
         )
-        if aligned:
-            points = points.to_crs(crs)
 
         filled = wbe.hydrology.depressions_storage.fill_depressions(dem=dem)
         pointer = wbe.hydrology.flow_routing.d8_pointer(dem=filled)
@@ -1264,16 +1269,21 @@ def viewshed(
             engine=_engine_info(),
         )
         aligned = not verify.same_crs(stations.crs, crs)
+        original_stations, chosen = stations, None
+        if aligned:
+            from .. import datum
+
+            stations, _, shift = datum.aligned(stations, crs)
+            chosen = [shift]
         record.crs_decisions = alignment_decisions(
             crs,
             "stations brought to the DEM CRS so each one stands on the cell it "
             "actually occupies"
             if aligned
             else "stations and DEM share the same CRS",
-            [("stations_path", stations)] if aligned else [],
+            [("stations_path", original_stations)] if aligned else [],
+            chosen=chosen,
         )
-        if aligned:
-            stations = stations.to_crs(crs)
 
         with verify.audit_on_failure(record, output_path, []):
             ws = workspace.root()
