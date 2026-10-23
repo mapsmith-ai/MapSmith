@@ -17,6 +17,39 @@ below:
   trick under the documented threat model, GDAL virtual filesystem, SQL —
   is a vulnerability.
 
+  **A coordinate reference system is a path argument in disguise, and until
+  0.10.0 the jail did not see it.** PROJ reads grid files by the path it finds
+  in `+nadgrids=` / `+geoidgrids=` (and WKT `PARAMETERFILE`), and parses the
+  file named by `+init=`; a CRS arrives as a tool argument (`target_crs`) and
+  inside the files an agent reads (a GeoParquet's PROJJSON, a GeoPackage's
+  WKT). Measured 2026-10-23, reproduced on 0.9.0: a `+nadgrids=` path outside
+  the workspace was read and its content moved the output; a `//host/share`
+  grid was opened over SMB. From 0.10.0 `crs_policy` refuses, wherever a CRS
+  enters MapSmith's own code (`run_sql` excepted, below), any grid, init or
+  model name that is not a bare name from PROJ's own data directories, and
+  reads the declared SRS as text from the file's own catalogue -- GeoPackage
+  and OGR SQLite through sqlite, shapefile `.prj` through any member of the
+  family, GeoParquet `geo` metadata, a raster's `.aux.xml` through an XML
+  parser -- before GDAL or PROJ parse it, because both open a grid named
+  there while parsing. **What stays open, stated rather than hidden** (fifth
+  audit pass, 2026-10-23, measured unless said otherwise): a dataset in any
+  other GDAL format -- a zipped shapefile or GeoPackage, a directory of
+  shapefiles, CSV with a `.prj`, GeoJSON with a `crs` member; a GeoTIFF with
+  the SRS in its own keys was not measured -- is opened by GDAL first, and
+  GDAL reads its SRS and a grid it names before MapSmith can refuse it. An
+  operation still refuses before any coordinate moves; `validate_plan` may
+  answer `valid` and `describe_dataset` may report the CRS of such a file. And
+  `run_sql`: DuckDB's spatial extension carries its own PROJ, which opens
+  files natively, so under a workspace `ST_Transform(geom, 'EPSG:4326',
+  '+init=<a file outside the workspace>:1')` reads that file and
+  `ST_Read` of a dataset whose SRS names a grid opens the grid, while
+  `read_text` on the same path is refused. That one is a break of the
+  containment promise above, not a limit of the policy, and it is open:
+  issue to follow, fix by walking the statement (`json_serialize_sql`) and
+  admitting only constant CRS and path arguments that pass the two policies.
+  Affected: every release with `reproject_layer`; whether the class gets an
+  advisory is decided under *When a break becomes an advisory*.
+
   **Two paths are written that no agent names, and they are stated here
   rather than left to be found.** MapSmith's one-time install of the DuckDB
   `spatial` extension lands in DuckDB's own extension directory
@@ -71,6 +104,20 @@ below:
   where the tool call has already returned an error. `tests/test_datum.py`
   now compares the record with PROJ point by point, and
   `tests/test_failure_record_and_earlier_bytes.py` drives both failure paths.
+
+  Broken in 0.9.0 and earlier, fixed in 0.10.0, found by our own reviews: a
+  CRS that carries its own datum shift (`+towgs84`, WKT `TOWGS84[]`, a
+  BoundCRS) got a Helmert PROJ builds from the parameters and reports with
+  accuracy -1 -- the value it also reports for the ballpark -- and every
+  record since `reproject_layer` exists read that value as "no datum shift was
+  applied", over coordinates the Helmert had moved (79 m on Monte Mario with
+  the IGM parameters). The same day the fix was found to trust the name of
+  that transformation, which the file's author writes: renamed "Ballpark
+  geocentric translation", the shift read as none again. The verdict now
+  comes from PROJ's own operation name with the declared names cut out, and
+  from the pipeline it ran. No advisory under the criterion below: the record
+  warned of a missing shift that was in fact applied, the direction a reader
+  acts on by checking the data, and the data were right.
 - **No credentials in a manifest.** Manifests are meant to be shared — attached
   to a review, a bug report, a paper — so a credential must never reach one.
   Since 0.2.2 that is enforced in two layers, in this order:
@@ -119,6 +166,12 @@ below:
   does through DuckDB's Python API and no statement can ask for. Any way to
   make SQL, GDAL or a tool argument reach the network from a
   workspace-confined server is a vulnerability.
+
+  PROJ is a third way out, closed in 0.10.0: with its networking on
+  (`PROJ_NETWORK=ON` or `proj.ini`), a grid named `http://host/x.tif` inside a
+  CRS made two requests to that host (measured 2026-10-23). Under a workspace
+  MapSmith now switches PROJ networking off at startup, whatever the
+  environment says, and the CRS policy above refuses URL grid names anyway.
 
   This is why the catalogue's embedding engine does **not** download its model
   under a workspace. 0.3.0 made that engine the default, and the model weights

@@ -141,5 +141,10 @@ def apply(force: bool = False) -> dict[str, str]:
         return {name: os.environ.get(name, "") for name in APPLIED_ENV}
     os.environ["GDAL_SKIP"] = _merge(os.environ.get("GDAL_SKIP", ""), _RASTER_SKIP)
     os.environ["OGR_SKIP"] = _merge(os.environ.get("OGR_SKIP", ""), _VECTOR_SKIP)
+    # PROJ inside GDAL and rasterio is not pyproj's PROJ: three libraries, three
+    # contexts, and `pyproj.network.set_network_enabled(False)` reaches one.
+    # The environment reaches them all, read when each creates its context,
+    # which is after this module is imported (second audit pass, 2026-10-23).
+    os.environ["PROJ_NETWORK"] = "OFF"
     os.environ[SENTINEL] = "applied"
     return {name: os.environ[name] for name in APPLIED_ENV}

@@ -389,9 +389,9 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
         written = record.add_verification(pre).finish().write_for(output_path, refused=True)
         verify.enforce(pre, "reproject_layer", record=written)
 
-    from pyproj import CRS as _CRS
+    from .. import crs_policy
 
-    target = _CRS.from_user_input(target_crs)
+    target = crs_policy.parse(target_crs)
     transformer, shift = _datum_transformation(gdf.crs, target, datum.sample_points(gdf))
     # The field section 3.7 of the manifest spec calls "where this format earns
     # its keep", and which this operation left empty until 2026-08-27 -- the one
@@ -1973,6 +1973,8 @@ def parse_coordinates(
     """
     import pandas as pd
 
+    from .. import crs_policy
+
     def columns_of(spec: str, what: str) -> list[str]:
         names = [c.strip() for c in spec.split(",") if c.strip()]
         if len(names) not in (1, 3, 4):
@@ -2038,7 +2040,7 @@ def parse_coordinates(
     points = gpd.GeoDataFrame(
         table.copy(),
         geometry=gpd.points_from_xy(longitudes, latitudes),
-        crs=crs,
+        crs=crs_policy.parse(crs),
     )
     with verify.audit_on_failure(record, output_path, []):
         _write(points, output_path)

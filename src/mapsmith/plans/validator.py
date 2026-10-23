@@ -97,12 +97,13 @@ def _outside_workspace(path: str, ws: Path) -> bool:
 
 def _parse_crs(value: str) -> str | None:
     """Normalize a CRS string ('EPSG:32632', WKT, ...) or None if unparseable."""
-    from pyproj import CRS
     from pyproj.exceptions import CRSError
 
+    from .. import crs_policy
+
     try:
-        crs = CRS.from_user_input(value)
-    except CRSError:
+        crs = crs_policy.parse(value)  # refuses a file or a host before PROJ reads `+init=`
+    except (CRSError, ValueError):
         return None
     epsg = crs.to_epsg()
     return f"EPSG:{epsg}" if epsg else crs.name
@@ -112,12 +113,13 @@ def _is_geographic(crs_value: str) -> bool | None:
     """True/False when determinable, None when the CRS is unknown/unparseable."""
     if crs_value == UNKNOWN_CRS:
         return None
-    from pyproj import CRS
     from pyproj.exceptions import CRSError
 
+    from .. import crs_policy
+
     try:
-        return CRS.from_user_input(crs_value).is_geographic
-    except CRSError:
+        return crs_policy.parse(crs_value).is_geographic
+    except (CRSError, ValueError):
         return None
 
 
@@ -279,6 +281,16 @@ def _check_literal_input(
                 message=f"'{arg}' resolves outside MAPSMITH_WORKSPACE: {value}",
             )
         )
+        return None
+    # The one gate, here too: `probe_crs` below opens the file with GDAL, which
+    # reads the SRS and the grid it names before anything else (fourth audit
+    # pass, 2026-10-23: 21 opens from `validate_plan`, and `valid: true`).
+    try:
+        from .. import crs_policy
+
+        crs_policy.refuse_declared_in_file(value)
+    except ValueError as exc:
+        errors.append(Issue(code="CRS_REFUSED", step_id=step_id, message=f"'{arg}': {exc}"))
         return None
     dependency = context.literal_outputs.get(_canon(value))
     if dependency and dependency[1] != step_id:

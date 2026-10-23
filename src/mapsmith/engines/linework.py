@@ -787,9 +787,9 @@ def transform_by_control_points(
             f"known in both systems. It holds {sorted(set(control.geometry.geom_type))}."
         )
 
-    from pyproj import CRS as _CRS
+    from .. import crs_policy
 
-    target = _CRS.from_user_input(target_crs)
+    target = crs_policy.parse(target_crs)
     control_moved: dict[str, Any] | None = None
     if not verify.same_crs(control.crs, target):
         # The control points ARE the georeferencing, so a datum shift applied

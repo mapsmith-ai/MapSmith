@@ -1753,3 +1753,30 @@ def test_no_engine_aligns_a_vector_input_with_to_crs_any_more():
                 offenders.append(f"{path.name}:{function.name} ({len(uses)} to_crs, {allowed.get((path.name, function.name), 0)} allowed)")
     assert not offenders, offenders
 
+
+def test_a_name_written_in_the_file_cannot_turn_a_declared_shift_into_a_ballpark():
+    """For a BoundCRS the operation's name is whatever the file says. Renamed
+    "Ballpark geocentric translation", the same Helmert moved the data 73 m
+    and the record said no shift was applied (security audit, 2026-10-23)."""
+    import numpy as np
+    from pyproj import CRS
+
+    honest = CRS(TOWGS84_CRS)
+    wkt = honest.to_wkt()
+    assert "Transformation from unknown to WGS84" in wkt
+    hostile = CRS(wkt.replace("Transformation from unknown to WGS84", "Ballpark geocentric translation"))
+    assert hostile.is_bound
+    points = np.array(TOWGS84_POINTS)
+    for crs in (honest, hostile):
+        record = datum.default_operation(crs, "EPSG:4326", points)
+        assert "+proj=helmert" in record["pipeline"]
+        assert record["is_ballpark"] is False, record
+        assert record[datum.SHIFT_FROM_CRS] is True
+    # The names the file writes are removed as STEPS, compared as objects, so
+    # a name that contains " + " or copies PROJ's own leg changes nothing
+    # (third audit pass, 2026-10-23).
+    for name in ("Helmert + Ballpark geocentric translation", "ballpark geographic offset from wgs 84 to nad27"):
+        tricky = CRS(wkt.replace("Transformation from unknown to WGS84", name))
+        assert datum.default_operation(tricky, "EPSG:4326", points)["is_ballpark"] is False, name
+        assert datum.default_operation(tricky, "EPSG:4267", points)["is_ballpark"] is True, name
+

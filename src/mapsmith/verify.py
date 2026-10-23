@@ -40,6 +40,11 @@ def probe_crs(path: str) -> str:
     via pyogrio. Returns ``"unknown"`` whenever the CRS cannot be determined.
     """
     lower = str(path).lower()
+    # Defence in depth behind `workspace.guard`: a file whose declared SRS
+    # names a grid is not probed, because the probe opens the grid.
+    from . import crs_policy
+
+    crs_policy.refuse_declared_in_file(str(path))
     try:
         if lower.endswith(".parquet"):
             return _probe_geoparquet_crs(str(path))

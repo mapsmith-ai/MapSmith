@@ -75,7 +75,7 @@ _SHIFT_STEP = re.compile(
 SHIFT_FROM_CRS = "x-mapsmith:shift_from_crs_definition"
 
 
-def _unshifted(accuracy: Any, pipeline: Any, description: Any = None) -> bool:
+def _unshifted(accuracy: Any, pipeline: Any, description: Any = None, bound: Any = ()) -> bool:
     """Did this operation leave the datum alone? Only when nothing in it moves one.
 
     An unknown accuracy is not the test: PROJ reports -1 both for the ballpark
@@ -87,12 +87,35 @@ def _unshifted(accuracy: Any, pipeline: Any, description: Any = None) -> bool:
     a Helmert chained with a ballpark leg still reads as one; pyproj's own
     tests look for the word. Without a name, the pipeline string is what PROJ
     ran, and a shift step in it is a shift.
+
+    `bound`: the names of the shifts the two CRSs declare themselves (WKT2
+    `BOUNDCRS`, PROJJSON, `+towgs84`). Those names are WRITTEN IN THE FILE, by
+    whoever wrote it, and a Helmert called "Ballpark geocentric translation"
+    recorded `is_ballpark: true` over coordinates it had moved 73 m (security
+    audit, 2026-10-23). They are cut out of the description before the word
+    is looked for; what remains is PROJ's own -- a ballpark leg PROJ adds to
+    reach a third datum is invisible in the pipeline and visible only there.
     """
     if accuracy is not None and accuracy >= _STATED:
         return False
-    if description:
+    if description is not None:
+        # `_accuracies` hands in PROJ's own description, the declared steps
+        # already removed as objects (`_projs_own_description`); `bound` is kept
+        # for callers that still pass names, and is ignored.
+        del bound
         return "ballpark" in str(description).lower()
     return not (pipeline and _SHIFT_STEP.search(pipeline))
+
+
+def _declared_names(*crss: Any) -> tuple[str, ...]:
+    """The names of the shifts these CRSs carry themselves (BoundCRS): data, not PROJ."""
+    names = []
+    for crs in crss:
+        if getattr(crs, "is_bound", False):
+            operation = getattr(crs, "coordinate_operation", None)
+            if operation is not None and getattr(operation, "name", None):
+                names.append(str(operation.name))
+    return tuple(names)
 
 
 def shares_a_datum(source_crs: Any, target_crs: Any) -> bool:
@@ -172,9 +195,11 @@ def _as_crs(value: Any) -> Any:
     """
     from pyproj import CRS
 
-    crs = value if isinstance(value, CRS) else CRS.from_user_input(
-        value.to_wkt() if hasattr(value, "to_wkt") else value
-    )
+    from . import crs_policy
+
+    # Refused here for every operation that reaches PROJ through this module:
+    # a CRS naming a grid file by path, a UNC share or a URL (`crs_policy`).
+    crs = crs_policy.parse(value if isinstance(value, CRS) else (value.to_wkt() if hasattr(value, "to_wkt") else value))
     if crs.area_of_use is not None:
         return crs
     # A CRS that carries its own datum shift (`+towgs84`, WKT `TOWGS84[]`) is
@@ -276,15 +301,52 @@ def _accuracies(transformer: Any, source_crs: Any, target_crs: Any, points: Any)
     """
     if points is None or not len(points):
         points = [_probe_point(source_crs, target_crs)]
+    declared = [
+        op for op in (getattr(_as_crs(c), "coordinate_operation", None) for c in (source_crs, target_crs) if c is not None)
+        if op is not None
+    ]
     found: list[Any] = []
     for x, y in points:
         try:
             transformer.transform(float(x), float(y))
             used = transformer.get_last_used_operation()
-            found.append((used.accuracy, used.to_proj4(), used.description))
+            found.append((used.accuracy, used.to_proj4(), _projs_own_description(used, declared)))
         except Exception:  # noqa: BLE001 — no operation to inspect is itself the answer
             found.append((None, None, None))
     return found
+
+
+def _projs_own_description(used: Any, declared: list[Any]) -> str | None:
+    """PROJ's description of the operation it used, without the steps a CRS declared itself.
+
+    The steps are compared as objects (`is_exact_same`, and the inverse by
+    method and parameters), never by name: a declared shift called
+    "Helmert + Ballpark geocentric translation" split a name-based filter on
+    " + " and read as a ballpark, and one named like PROJ's own leg hid that
+    leg (third audit pass, 2026-10-23). What remains is PROJ's own, where
+    "Ballpark" is PROJ's word.
+    """
+    steps = list(getattr(used, "operations", None) or ())
+    if not steps:
+        # Not a concatenation: the one operation is either the declared one or PROJ's.
+        return "" if any(_same_operation(used, d) for d in declared) else used.description
+    kept = [step for step in steps if not any(_same_operation(step, d) for d in declared)]
+    return " + ".join(step.name for step in kept)
+
+
+def _same_operation(step: Any, declared: Any) -> bool:
+    """Is this step the declared operation, or its inverse?"""
+    try:
+        if step.is_exact_same(declared):
+            return True
+        # PROJ names the inverse's METHOD "Inverse of <method>" too, not only
+        # the step (fourth audit pass, 2026-10-23: the rule never fired).
+        method = str(getattr(step, "method_name", "") or "").removeprefix("Inverse of ")
+        same_method = method == str(getattr(declared, "method_name", "") or "")
+        same_params = [(p.name, p.value) for p in (step.params or [])] == [(p.name, p.value) for p in (declared.params or [])]
+        return bool(same_method and same_params and str(step.name).startswith("Inverse of "))
+    except Exception:  # noqa: BLE001 - a step that cannot be compared is PROJ's, and stays
+        return False
 
 
 def accuracy_of(transformer: Any, source_crs: Any, points: Any = None, target_crs: Any = None) -> float | None:
@@ -295,8 +357,9 @@ def accuracy_of(transformer: Any, source_crs: Any, points: Any = None, target_cr
     point got a shift nobody has stated an accuracy for.
     """
     found = _accuracies(transformer, source_crs, target_crs, points)
-    if any(_unshifted(*item) for item in found):
-        return next((item[0] for item in found if _unshifted(*item)), None)
+    bound = _declared_names(_as_crs(source_crs), _as_crs(target_crs) if target_crs is not None else None)
+    if any(_unshifted(*item, bound=bound) for item in found):
+        return next((item[0] for item in found if _unshifted(*item, bound=bound)), None)
     stated = [item[0] for item in found if item[0] is not None and item[0] >= _STATED]
     return max(stated) if stated else None
 
@@ -362,6 +425,9 @@ class _Survey:
         self.from_data = points is not None and len(points) > 0
         if not self.from_data:
             points = np.array([_probe_point(source_crs, target_crs)], dtype=float)
+        #: The names of the shifts the CRSs declare themselves: they come from
+        #: the file, and are cut out of PROJ's description before it is read.
+        self.bound = _declared_names(source_crs, target_crs)
         # Longitude from GREENWICH, which is what every area of use is stated
         # in: the source's own geodetic CRS can count from Rome or Paris
         # (EPSG:4806 does), and its degrees then sat 12 degrees off every area
@@ -523,18 +589,17 @@ class _Survey:
             _accuracies(chooser, source_crs, target_crs, self.points[outside_at]) if len(outside_at) else []
         )
 
-    @staticmethod
-    def _ballpark(found: list[Any]) -> bool:
+    def _ballpark(self, found: list[Any]) -> bool:
         # Items are (accuracy, pipeline[, description]): a test may hand over
         # the two-field form, which is the pipeline rule alone.
-        return any(_unshifted(*item) for item in found)
+        return any(_unshifted(*item, bound=self.bound) for item in found)
 
     @property
     def shift_from_crs(self) -> bool:
         """Every operation PROJ used was a shift with no stated accuracy: the CRS's own."""
         asked = self.asked_inside + self.asked_outside
         return bool(asked) and all(
-            (item[0] is None or item[0] < _STATED) and not _unshifted(*item) for item in asked
+            (item[0] is None or item[0] < _STATED) and not _unshifted(*item, bound=self.bound) for item in asked
         )
 
     @property
@@ -726,7 +791,7 @@ def aligned(frame: Any, target_crs: Any) -> tuple[Any, Any, dict[str, Any]]:
         transformed_all(geometries.to_numpy(), transformer), index=frame.index, crs=target_crs
     )
     if hasattr(frame, "set_geometry"):
-        moved = frame.set_geometry(moved).set_crs(target_crs, allow_override=True)
+        moved = frame.set_geometry(moved)  # the series already carries target_crs
     return moved, transformer, shift
 
 

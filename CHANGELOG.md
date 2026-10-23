@@ -6,6 +6,30 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+### Security
+
+- **A coordinate reference system that reaches MapSmith's own code can no
+  longer make PROJ read a file outside the workspace or contact a host.** `+nadgrids=`, `+geoidgrids=` and the WKT
+  and PROJJSON spellings of a parameter file name grid files by path, `+init=`
+  names a file to parse, and a CRS reaches PROJ as a tool argument
+  (`target_crs`) and from the metadata of the files an agent reads. Under a
+  workspace a path outside it was read and its content moved the output; a
+  `//host/share` grid was opened over SMB; with PROJ networking on, an
+  `http://` grid made requests to any host (measured 2026-10-23, present since
+  `reproject_layer` exists). A CRS policy now refuses, wherever a CRS enters --
+  tool arguments, the CRS a file declares, every reader, the datum module, and
+  the admission of every input path, before GDAL probes the file -- any grid,
+  init or model name that is not a bare name from PROJ's data directories
+  (`@null` allowed), any transformation written as a PROJ string, and any
+  declared SRS PROJ cannot read; the declared SRS is read as text from the
+  file's own catalogue (GeoPackage by its bytes, shapefile `.prj`, GeoParquet
+  `geo`), and the server switches PROJ networking off under a workspace at
+  startup, for pyproj's PROJ and GDAL's. `SECURITY.md` records it, and names
+  what stays open: datasets in other GDAL formats, which GDAL opens first, and
+  `run_sql`, whose DuckDB spatial extension carries a PROJ of its own that
+  this policy does not reach -- a break of the containment promise, open and
+  stated.
+
 ### Added
 
 - **103 phrasings on 36 operations, taken from how the QGIS Training Manual
@@ -34,7 +58,10 @@ All notable changes to MapSmith are documented here, in the format of
   and the record said `is_ballpark: true`. The verdict now comes from PROJ's
   own name for the operation it used ("Ballpark geographic offset" is its
   word, and a concatenation carries every step's) and, failing a name, from
-  the pipeline it ran: a shift step is a shift. A CRS that carries its own
+  the pipeline it ran: a shift step is a shift. The name of a shift a CRS
+  declares itself is written by whoever wrote the file, so it is cut out of
+  the description before the word is looked for: a Helmert called "Ballpark
+  geocentric translation" is still a shift (security review, same day). A CRS that carries its own
   shift is also no longer rebuilt from a registry code on the way in, which
   dropped the `+towgs84`. Such a record says `is_ballpark: false`, `accuracy_m: null` (nobody has
   stated one) and carries `x-mapsmith:shift_from_crs_definition: true` to say

@@ -1330,8 +1330,17 @@ def reproject_raster(
         # The pixel count is preserved in each dimension and the cell size
         # follows from the reprojected extent, which is deterministic and
         # explainable. A caller who needs a specific cell size passes one.
+        # The policy before any PROJ in the process sees the two CRSs: the
+        # target is the caller's text, and GDAL would hand a bare file name or
+        # a URL to OSRSetFromUserInput (second audit pass, 2026-10-23). The
+        # raster's own CRS was parsed by GDAL on open; its text is checked here.
+        from .. import crs_policy
+
+        target_checked = crs_policy.parse(target_crs)
+        if src.crs is not None and (why := crs_policy.reason_to_refuse_text(src.crs.to_wkt())):
+            raise ValueError(f"{input_path}: the raster's coordinate system is refused: {why}.")
         left, bottom, right, top = transform_bounds(
-            src.crs, target_crs, *src.bounds, densify_pts=21
+            src.crs, target_checked.to_wkt(), *src.bounds, densify_pts=21
         )
         if resolution is not None:
             if resolution <= 0:

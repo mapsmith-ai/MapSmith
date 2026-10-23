@@ -15,7 +15,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 
-from . import __version__, catalog, jobs, stacks, ui, workspace
+from . import __version__, catalog, crs_policy, jobs, stacks, ui, workspace
 from .engines import dispatch, duckdb_engine, vector
 from .plans import Plan
 from .provenance import read_provenance
@@ -1031,6 +1031,11 @@ def server_info() -> dict[str, Any]:
 
 
 def main() -> None:
+    # Under a workspace PROJ must not fetch grids: a grid named inside a CRS
+    # an agent passes, or a file declares, would be a request to any host
+    # (`crs_policy`, 2026-10-23). pyproj's default is off; `PROJ_NETWORK=ON`
+    # or `proj.ini` can turn it on underneath, and this turns it back off.
+    crs_policy.network_off_under_workspace()
     mcp.run(transport="streamable-http" if _HTTP else "stdio")
 
 

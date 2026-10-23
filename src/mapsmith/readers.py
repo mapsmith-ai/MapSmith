@@ -27,6 +27,8 @@ from typing import TYPE_CHECKING, Any
 
 import geopandas as gpd
 
+from . import crs_policy
+
 if TYPE_CHECKING:
     from pyproj import CRS
 
@@ -74,6 +76,43 @@ def native_geometry_column(path: str) -> tuple[str, str] | None:
     return found[0] if found else None
 
 
+def _declared_srs_texts(path: str) -> list[str]:
+    """The SRS text a file declares: `crs_policy.declared_srs_texts`."""
+    return crs_policy.declared_srs_texts(path)
+
+
+def _refuse_declared(path: str) -> None:
+    """Refuse a file whose declared coordinate system names a file or a host, before opening it."""
+    crs_policy.refuse_declared_in_file(path)
+
+
+def _checked(frame: Any, path: str) -> Any:
+    """The frame a reader returns, refused when the CRS it carries names a file or a host.
+
+    GeoParquet's CRS reaches the frame through geopandas, never through
+    `native_crs`; GDAL's drivers carry the file's WKT the same way. One gate
+    for every read path (`crs_policy`, 2026-10-23).
+    """
+    crs = getattr(frame, "crs", None)
+    if crs is not None:
+        why = crs_policy.reason_to_refuse(crs)
+        if why:
+            raise ValueError(f"{path}: the file's coordinate system is refused: {why}.")
+    return frame
+
+
+def _admitted(crs: Any) -> tuple[Any, str | None]:
+    """A parsed CRS, or the reason the policy refuses it: a grid or init file it names.
+
+    The CRS a file declares is data the file's author wrote, and PROJ reads
+    grid files by the path it finds there (`crs_policy`, 2026-10-23).
+    """
+    why = crs_policy.reason_to_refuse(crs)
+    if why:
+        return None, f"the file's coordinate system is refused: {why}."
+    return crs, None
+
+
 def native_crs(path: str, declaration: str) -> tuple[CRS | None, str | None]:
     """Resolve a native Parquet CRS declaration: ``(CRS, None)`` or ``(None, why)``.
 
@@ -104,7 +143,7 @@ def native_crs(path: str, declaration: str) -> tuple[CRS | None, str | None]:
         return CRS.from_user_input("OGC:CRS84"), None
     if text.startswith("{"):
         try:
-            return CRS.from_json(text), None
+            return _admitted(CRS.from_json(text))
         except (CRSError, ValueError) as exc:
             return None, (
                 "the file carries an inline PROJJSON coordinate system that PROJ "
@@ -123,7 +162,7 @@ def native_crs(path: str, declaration: str) -> tuple[CRS | None, str | None]:
                 "is internally inconsistent and needs rewriting at the source."
             )
         try:
-            return CRS.from_json(document.decode()), None
+            return _admitted(CRS.from_json(document.decode()))
         except (CRSError, ValueError, UnicodeDecodeError) as exc:
             return None, (
                 f"the file's '{key}' metadata entry is not a coordinate system PROJ "
@@ -139,8 +178,11 @@ def native_crs(path: str, declaration: str) -> tuple[CRS | None, str | None]:
             "authority string, or assign the CRS explicitly if you know which one "
             "it means."
         )
+    # Before PROJ parses it: `+init=<file>` is read during parsing.
+    if why := crs_policy.reason_to_refuse_text(text):
+        return None, f"the file's coordinate system is refused: {why}."
     try:
-        return CRS.from_user_input(text), None
+        return _admitted(CRS.from_user_input(text))
     except (CRSError, ValueError) as exc:
         return None, (
             f"the file declares its coordinate system as '{text}', which PROJ does "
@@ -274,10 +316,11 @@ def read_vector(path: str) -> gpd.GeoDataFrame:
     :func:`read_vector_or_table`: verification prefers the stem-named layer of
     outputs MapSmith wrote and named itself.
     """
+    _refuse_declared(path)
     if str(path).lower().endswith(".parquet"):
-        return _read_geoparquet(path, allow_no_geometry=False)
+        return _checked(_read_geoparquet(path, allow_no_geometry=False), path)
     refuse_ambiguous_container(path)
-    return gpd.read_file(path)
+    return _checked(gpd.read_file(path), path)
 
 
 def read_named_layer(path: str, layer: str) -> gpd.GeoDataFrame:
@@ -317,7 +360,8 @@ def read_named_layer(path: str, layer: str) -> gpd.GeoDataFrame:
             "names are case-sensitive; describe_dataset lists them with their "
             "feature counts and geometry types."
         )
-    return gpd.read_file(path, layer=layer)
+    _refuse_declared(path)
+    return _checked(gpd.read_file(path, layer=layer), path)
 
 
 def read_vector_or_table(path: str) -> gpd.GeoDataFrame:
@@ -333,19 +377,22 @@ def read_vector_or_table(path: str) -> gpd.GeoDataFrame:
     """
     lower = str(path).lower()
     if lower.endswith(".parquet"):
-        return _read_geoparquet(path, allow_no_geometry=True)
+        _refuse_declared(path)
+        return _checked(_read_geoparquet(path, allow_no_geometry=True), path)
     if lower.endswith(".gpkg"):
         stem = Path(path).stem
         layers = gpkg_layers(path) or []
         if stem in layers:
-            return gpd.read_file(path, layer=stem)
+            _refuse_declared(path)
+            return _checked(gpd.read_file(path, layer=stem), path)
         if len(layers) > 1:
             # Verification-only tolerance, chosen on purpose rather than
             # inherited from GDAL: a foreign multi-layer container must still
             # be INSPECTABLE for its defects so the checks land in a manifest,
             # and the repair separately refuses to rewrite containers.
             # Operational reads refuse this same case outright (#29).
-            return gpd.read_file(path, layer=layers[0])
+            _refuse_declared(path)
+            return _checked(gpd.read_file(path, layer=layers[0]), path)
     return read_vector(path)
 
 
@@ -375,7 +422,8 @@ def read_vector_capped(path: str, cap: int) -> tuple[gpd.GeoDataFrame, int, list
         total = len(gdf)
         bounds = [float(v) for v in gdf.total_bounds] if total else None
         return gdf.head(cap), total, bounds
-    return gpd.read_file(path, max_features=cap), total, [float(v) for v in meta_bounds]
+    _refuse_declared(path)
+    return _checked(gpd.read_file(path, max_features=cap), path), total, [float(v) for v in meta_bounds]
 
 
 def crs_reason(frame: Any) -> str | None:

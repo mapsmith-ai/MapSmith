@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pyproj import CRS, Geod
+from pyproj import Geod
 from pyproj.exceptions import CRSError
 
 # The ellipsoids a caller is plausibly asked to reproduce a legacy number on.
@@ -59,9 +59,11 @@ def describe_crs(crs: str | int) -> dict[str, Any]:
     `is_deprecated` is reported too: superseded EPSG codes keep working, and keep
     giving the answer their superseded definition implies.
     """
+    from .. import crs_policy
+
     try:
-        parsed = CRS.from_user_input(crs)
-    except CRSError as error:
+        parsed = crs_policy.parse(crs)
+    except (CRSError, ValueError) as error:
         raise ValueError(
             f"{crs!r} is not a CRS pyproj can read: {error}. Accepted forms include "
             "'EPSG:4326', the bare code 4326, a PROJ string, or WKT."

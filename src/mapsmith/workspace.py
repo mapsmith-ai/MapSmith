@@ -243,4 +243,12 @@ def guard(path: str, arg: str) -> str:
             "Use a path inside the workspace (relative paths resolve against "
             "the server's working directory, so prefer absolute ones)."
         )
+    # An input file's declared coordinate system is a path argument in
+    # disguise, and GDAL reads it -- and a grid it names -- the moment the
+    # file is probed. One gate, here, before `probe_crs`, the layer listing,
+    # the preview and every reader (third audit pass, 2026-10-23).
+    if os.path.isfile(path):
+        from . import crs_policy
+
+        crs_policy.refuse_declared_in_file(path)
     return path
