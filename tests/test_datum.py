@@ -422,11 +422,16 @@ def _transforming_functions() -> dict[str, set[str]]:
             # fixed, and the floor below did NOT notice -- twenty functions
             # still called `to_crs`, which is above fifteen (review). So the
             # eight are asserted by name in `test_the_realigned_operations_are_still_seen_as_reprojecting`.
+            # `id` OR `attr`: `datum.aligned(...)` is an Attribute, and a sweep
+            # that read `id` alone saw none of the twelve operations moved to
+            # it on 2026-10-23 -- the floor below stayed green at sixteen
+            # (review, the same afternoon). `best_operation` counts because
+            # `elevation_profile` applies the transformer it returns itself.
             reprojects = any(
                 isinstance(inner, ast.Call)
                 and (
-                    (isinstance(inner.func, ast.Attribute) and inner.func.attr == "to_crs")
-                    or getattr(inner.func, "id", None) in ("_aligned", "_aligned_with", "_transformed_all", "_transformed", "aligned")
+                    (inner.func.attr if isinstance(inner.func, ast.Attribute) else getattr(inner.func, "id", None))
+                    in ("to_crs", "_aligned", "_aligned_with", "_transformed_all", "_transformed", "aligned", "best_operation")
                 )
                 for inner in ast.walk(node)
             )
@@ -1576,16 +1581,31 @@ def test_apportion_moves_a_small_target_by_the_route_it_records(tmp_path):
     assert shift.get("x-mapsmith:default_was_ballpark") is True
 
 
-REALIGNED = (
-    "clip", "overlay", "nearest_join", "merge", "spatial_join",
-    "count_in_polygons", "summarize_points_in_polygons", "apportion_by_area",
-)
+REALIGNED = {
+    "vector.py": {"clip", "overlay", "nearest_join", "merge", "spatial_join",
+                  "count_in_polygons", "summarize_points_in_polygons", "apportion_by_area"},
+    "linework.py": {"snap_layer", "line_intersections", "transform_by_control_points"},
+    "summaries.py": {"nearest_neighbour_index", "compare_layers"},
+    "sampling.py": {"sample_raster_at_points", "elevation_profile"},
+    "network.py": {"least_cost_path"},
+    "raster.py": {"zonal_statistics", "clip_raster"},
+    "whitebox_engine.py": {"watershed", "viewshed"},
+}
 
 
 def test_the_realigned_operations_are_still_seen_as_reprojecting():
-    """The derivation must not go quiet on the eight the day they stopped calling `to_crs`."""
+    """The derivation must not go quiet on an operation the day it stops calling `to_crs`.
+
+    Twenty operations moved to `datum.aligned` on 2026-10-23, in two batches;
+    after the first the sweep still saw eight of them, after the second none
+    of the twelve, and its floor stayed green both times. By name, per module.
+    """
     _, reprojecting = _transforming_functions()
-    missing = sorted(set(REALIGNED) - reprojecting.get("vector.py", set()))
+    missing = {
+        module: sorted(names - reprojecting.get(module, set()))
+        for module, names in REALIGNED.items()
+        if names - reprojecting.get(module, set())
+    }
     assert not missing, f"the derivation no longer sees these as reprojecting: {missing}"
 
 
@@ -1593,23 +1613,28 @@ def test_every_caller_of_the_aligner_hands_the_record_what_it_chose():
     """An operation that aligns with `_aligned` and then calls `alignment_decisions`
     without `chosen=` records PROJ's own pick beside coordinates moved by ours,
     and the silence derivation still counts it as recording (review, 2026-10-23)."""
-    source = (ENGINES / "vector.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
     offenders = []
     seen = 0
-    for function in ast.walk(tree):
-        if not isinstance(function, ast.FunctionDef):
-            continue
-        calls = [n for n in ast.walk(function) if isinstance(n, ast.Call)]
-        names = {getattr(c.func, "id", None) or getattr(c.func, "attr", None) for c in calls}
-        if not names & {"_aligned", "_aligned_with"} or "alignment_decisions" not in names:
-            continue
-        seen += 1
-        for call in calls:
-            name = getattr(call.func, "id", None) or getattr(call.func, "attr", None)
-            if name == "alignment_decisions" and not any(k.arg == "chosen" for k in call.keywords):
-                offenders.append(f"{function.name}:{call.lineno}")
-    assert seen >= 8, f"the sweep saw only {seen} aligning operations"
+    for path in sorted(ENGINES.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for function in ast.walk(tree):
+            if not isinstance(function, ast.FunctionDef):
+                continue
+            calls = [n for n in ast.walk(function) if isinstance(n, ast.Call)]
+            names = {getattr(c.func, "id", None) or getattr(c.func, "attr", None) for c in calls}
+            # Every engine and the attribute form (`datum.aligned`): read in
+            # vector.py alone, this guard let two `chosen=` be removed from
+            # the raster and sampling engines with the suite green (review,
+            # 2026-10-23) -- the record then described PROJ's pick beside
+            # coordinates moved by ours, the defect it exists to catch.
+            if not names & {"_aligned", "_aligned_with", "aligned"} or "alignment_decisions" not in names:
+                continue
+            seen += 1
+            for call in calls:
+                name = getattr(call.func, "id", None) or getattr(call.func, "attr", None)
+                if name == "alignment_decisions" and not any(k.arg == "chosen" for k in call.keywords):
+                    offenders.append(f"{path.name}:{function.name}:{call.lineno}")
+    assert seen >= 14, f"the sweep saw only {seen} aligning operations"
     assert not offenders, f"alignment_decisions called without chosen= after _aligned: {offenders}"
 
 
@@ -1651,11 +1676,17 @@ def test_each_realigned_operation_records_the_route_it_chose(tmp_path, operation
         vector.merge([L["rome_poly"], L["wgs_poly"]], str(out))
     else:
         vector.nearest_join(L["wgs_pts"], L["rome_pts"], str(out))
-    decisions = json.loads((tmp_path / "out.gpkg.provenance.json").read_text(encoding="utf-8"))["crs_decisions"]
-    shift = decisions["transformation"]
+    manifest = json.loads((tmp_path / "out.gpkg.provenance.json").read_text(encoding="utf-8"))
+    shift = manifest["crs_decisions"]["transformation"]
     assert shift["is_ballpark"] is False, (operation, shift)
     assert shift["accuracy_m"] == 4.0, (operation, shift)
     assert shift.get("x-mapsmith:default_was_ballpark") is True, (operation, shift)
+    # And a quantity the coordinates decide: by the twin route the WGS 84
+    # feature falls inside the Rome parcel; 79 m away by the ballpark it does
+    # not, and the join or overlay is empty (review, 2026-10-23).
+    if operation in ("overlay", "spatial_join"):
+        gpd = pytest.importorskip("geopandas")
+        assert len(gpd.read_file(out)) == 1, operation
 
 
 def test_compare_layers_and_the_index_choose_like_the_rest(tmp_path):
@@ -1668,6 +1699,28 @@ def test_compare_layers_and_the_index_choose_like_the_rest(tmp_path):
     shift = answer["transformation"]
     assert shift["is_ballpark"] is False and shift["accuracy_m"] == 4.0
     assert shift.get("x-mapsmith:default_was_ballpark") is True
+    # nearest_neighbour_index with the WGS 84 parcel as the study area around
+    # the Rome points: by the twin route the parcel contains the point and the
+    # index is computed; by the ballpark it sits 79 m away. A quantity the
+    # coordinates decide, not only a record (review, 2026-10-23).
+    from pyproj import Transformer
+    from shapely.geometry import Point
+
+    gpd = pytest.importorskip("geopandas")
+    # The index refuses degrees, so the points go in the projected CRS on the
+    # same Rome-meridian datum (Monte Mario (Rome) / Italy zone 1): the twin
+    # route then serves the TARGET side, through EPSG:4265.
+    x0, y0 = Transformer.from_crs("EPSG:4806", "EPSG:26591", always_xy=True).transform(*STATION_ROME)
+    pts = tmp_path / "pts4.gpkg"
+    gpd.GeoDataFrame(
+        {"id": range(4)},
+        geometry=[Point(x0 + dx, y0 + dy) for dx, dy in ((0, 0), (10, 0), (0, 10), (10, 10))],
+        crs="EPSG:26591",
+    ).to_file(pts)
+    index = summaries.nearest_neighbour_index(str(pts), area_path=L["wgs_poly"])
+    moved = index["boundary_reprojected"]["transformation"]
+    assert moved["is_ballpark"] is False and moved["accuracy_m"] == 4.0
+    assert index["points"] == 4, "the parcel brought over by the twin route contains all four points"
 
 
 def test_no_engine_aligns_a_vector_input_with_to_crs_any_more():
@@ -1675,13 +1728,16 @@ def test_no_engine_aligns_a_vector_input_with_to_crs_any_more():
     trip, recorded by `record_round_trip`); it must not bring a SECOND input
     onto the first one's CRS -- that is `datum.aligned`'s job, and the list of
     sites that still did it was written down on 2026-10-23 and emptied."""
-    allowed_round_trips = {
-        # (file, function): round trips to an analysis CRS, recorded as such
-        ("vector.py", "buffer"), ("vector.py", "nearest_join"), ("vector.py", "simplify"),
-        ("vector.py", "centroid"), ("vector.py", "_geodesic_areas"), ("vector.py", "_geodesic_lengths"),
-        ("vector.py", "apportion_by_area"),
-        # the equal-area plane sits on the source's own datum: no shift to choose
-        ("vector.py", "_area_of"),
+    # (file, function): how many `to_crs` each may hold. Round trips to an
+    # analysis CRS and back, recorded by `record_round_trip`; the one-way
+    # measures of `_geodesic_*` (to EPSG:4326, parts per million on the
+    # answer); and the equal-area plane of `_area_of`, on the source's own
+    # datum. A count, not a name: a new alignment `to_crs` inside one of these
+    # would otherwise pass under the function's name (review, 2026-10-23).
+    allowed = {
+        ("vector.py", "buffer"): 2, ("vector.py", "nearest_join"): 3, ("vector.py", "simplify"): 2,
+        ("vector.py", "centroid"): 2, ("vector.py", "_geodesic_areas"): 1, ("vector.py", "_geodesic_lengths"): 1,
+        ("vector.py", "apportion_by_area"): 4, ("vector.py", "_area_of"): 1,
     }
     offenders = []
     for path in sorted(ENGINES.glob("*.py")):
@@ -1693,7 +1749,7 @@ def test_no_engine_aligns_a_vector_input_with_to_crs_any_more():
                 n for n in ast.walk(function)
                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "to_crs"
             ]
-            if uses and (path.name, function.name) not in allowed_round_trips:
-                offenders.append(f"{path.name}:{function.name} ({len(uses)} to_crs)")
+            if uses and len(uses) != allowed.get((path.name, function.name), 0):
+                offenders.append(f"{path.name}:{function.name} ({len(uses)} to_crs, {allowed.get((path.name, function.name), 0)} allowed)")
     assert not offenders, offenders
 

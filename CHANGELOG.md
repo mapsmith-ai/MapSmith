@@ -41,8 +41,8 @@ All notable changes to MapSmith are documented here, in the format of
   why the two go together; `docs/manifest-vocabulary.md` has the entry. Data
   and coordinates are unchanged -- only the record was wrong, in the direction
   that hides a shift. Found by the pre-release review of 0.9.0.
-- **The eight vector operations that align a second input choose the datum
-  transformation the way `reproject_layer` does.** `reproject_layer` has chosen its transformation since 0.5.0 (`datum.best_operation`:
+- **Every operation that brings a vector input onto another CRS chooses the
+  datum transformation the way `reproject_layer` does.** `reproject_layer` has chosen its transformation since 0.5.0 (`datum.best_operation`:
   a published operation that covers the data, or a datum's Greenwich twin), but
   the eight vector operations that bring a second input onto the first one's CRS
   -- `clip_layer`, `overlay_layers`, `nearest_join`, `merge_layers`, `spatial_join`,
@@ -61,15 +61,21 @@ All notable changes to MapSmith are documented here, in the format of
   same chooser now serves every operation that brings a vector input onto
   another CRS: `snap_layer`, `line_intersections`, `transform_by_control_points`,
   `compare_layers`, `nearest_neighbour_index`, the points of
-  `sample_raster_at_points`, `elevation_profile` and `least_cost_path`, and the
-  zones and mask of `zonal_statistics` and `clip_raster`. Only `reproject_raster`
-  still reports the engine's own pick, because rasterio warps the pixels itself;
-  a test keeps the list of `to_crs` call sites to the recorded round trips. Two
-  consequences to know about: `transform_by_control_points` fits against
-  control points moved by the chosen operation, so on a Rome-meridian control
-  layer the fit itself moves with them; and bringing a layer across datums now
-  costs a survey of its vertices (about 5 s for 200,000 polygons against 1 s
-  before), the price of a record that says which operation covered them.
+  `sample_raster_at_points`, `elevation_profile` and `least_cost_path`, the
+  zones and mask of `zonal_statistics` and `clip_raster`, and the pour points
+  and stations of `watershed` and `viewshed`. What still lets the engine pick:
+  `reproject_raster`, because rasterio warps the pixels itself, and the one-way
+  measures `measure_area` and `measure_length` take in WGS 84, where the
+  difference is parts per million of the answer. A test keeps every remaining
+  `to_crs` to the recorded round trips, by function and by count. Two
+  consequences to know about: on a Rome-meridian input, sampled values, zonal
+  statistics, crossings, snaps, basins and viewsheds move with the input by up
+  to about 80 m, as `reproject_layer`'s output already did; and
+  `transform_by_control_points` fits against control points moved by the
+  chosen operation, so the fit moves with them. No new cost: the record
+  already surveyed the vertices before this change (about 7 s on 200,000
+  Monte Mario polygons, before and after), and within one datum the survey is
+  now skipped (1.0 s against 2.7 s).
 - **The dashboard's "reachable with facets" probe asks at the published level.**
   `benchmarks/dashboard.py` declared three facets where the README's headline
   figures declare four (`geometry` has been a facet since 0.8.0), so at 78

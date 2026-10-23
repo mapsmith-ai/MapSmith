@@ -375,6 +375,7 @@ def _aligned_with(frame, target_crs):
     moved, transformer, shift = datum.aligned(frame, target_crs)
     return moved, shift, transformer
 
+
 def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, Any]:
     gdf = _read(input_path)
     record = ProvenanceRecord(

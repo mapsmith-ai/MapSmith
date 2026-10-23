@@ -225,7 +225,7 @@ def alignment_decisions(
 
     `chosen`, one record per moved input in the same order, is the
     transformation the operation actually applied when it chose one itself
-    (`vector._aligned`, which goes through `datum.best_operation`). Without it
+    (`datum.aligned`, which goes through `datum.best_operation`). Without it
     the record describes what the engine's own `to_crs` gets. Until 2026-10-23
     every alignment went through `to_crs`, and a Monte Mario parcel sat 79.5 m
     apart in `clip_layer` and in `reproject_layer`, each record true of its own
