@@ -441,11 +441,12 @@ public places: the CHANGELOG entry of the release that fixes it, and this file,
 in the paragraph of the promise it broke. There is no third option where a break
 is neither advised nor mentioned.
 
-The criterion exists because the alternative spends the signal. Both advisories
-listed at the top are ones a reader acts on -- GHSA-g95f-6vxv-mgv7 asks you to
-rotate a credential, GHSA-3rcc-xpw3-r4xh to upgrade off a version that fetches
-URLs an attacker chose. A third advisory of much smaller weight, filed next to
-those, teaches a reader to skip the next one.
+The criterion exists because the alternative spends the signal. Every advisory
+listed at the top is one a reader acts on -- GHSA-g95f-6vxv-mgv7 asks you to
+rotate a credential, GHSA-3rcc-xpw3-r4xh and GHSA-3wvg-2qh8-8gg6 to upgrade off
+a version that fetches URLs an attacker chose or reads files outside the
+workspace. An advisory of much smaller weight, filed next to those, teaches a
+reader to skip the next one.
 
 A worked example, so the criterion can be checked instead of trusted. On
 2026-09-06 `contour_lines` was found writing four files into the process working
