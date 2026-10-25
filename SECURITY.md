@@ -25,11 +25,12 @@ below:
   WKT). Measured 2026-10-23, reproduced on 0.9.0: a `+nadgrids=` path outside
   the workspace was read and its content moved the output; a `//host/share`
   grid was opened over SMB. From 0.10.0 `crs_policy` refuses, wherever a CRS
-  enters MapSmith's own code (`run_sql` excepted, below), any grid, init or
+  enters MapSmith's own code (and in `run_sql`, below), any grid, init or
   model name that is not a bare name from PROJ's own data directories, and
   reads the declared SRS as text from the file's own catalogue -- GeoPackage
   and OGR SQLite through sqlite, shapefile `.prj` through any member of the
-  family, GeoParquet `geo` metadata, a raster's `.aux.xml` through an XML
+  family, GeoParquet `geo` metadata and the native Parquet `GEOMETRY` type's
+  CRS, a raster's `.aux.xml` through an XML
   parser -- before GDAL or PROJ parse it, because both open a grid named
   there while parsing. **What stays open, stated rather than hidden** (fifth
   audit pass, 2026-10-23, measured unless said otherwise): a dataset in any
@@ -38,16 +39,33 @@ below:
   the SRS in its own keys was not measured -- is opened by GDAL first, and
   GDAL reads its SRS and a grid it names before MapSmith can refuse it. An
   operation still refuses before any coordinate moves; `validate_plan` may
-  answer `valid` and `describe_dataset` may report the CRS of such a file. And
-  `run_sql`: DuckDB's spatial extension carries its own PROJ, which opens
-  files natively, so under a workspace `ST_Transform(geom, 'EPSG:4326',
-  '+init=<a file outside the workspace>:1')` reads that file and
-  `ST_Read` of a dataset whose SRS names a grid opens the grid, while
-  `read_text` on the same path is refused. That one is a break of the
-  containment promise above, not a limit of the policy, and it is open:
-  issue to follow, fix by walking the statement (`json_serialize_sql`) and
-  admitting only constant CRS and path arguments that pass the two policies.
-  Affected: every release with `reproject_layer`; whether the class gets an
+  answer `valid` and `describe_dataset` may report the CRS of such a file.
+
+  **`run_sql` had the same hole by a route of its own, closed in 0.10.0.**
+  DuckDB's spatial extension carries its own PROJ, which opens files
+  natively and so never meets the connection sandbox: under a workspace
+  `ST_Transform(geom, 'EPSG:4326', '+init=<a file outside the workspace>:1')`
+  read that file -- the output moved by the false easting written in it --
+  and so did `ST_SetCRS` followed by a two-argument `ST_Transform`, while
+  `read_text` on the same path was refused; `ST_Read` of a dataset whose SRS
+  names a grid opened the grid. A break of the containment promise above,
+  in every release with the sandboxed connection (0.2.0 to 0.9.0). From
+  0.10.0, under a workspace, `run_sql` reads the statement with DuckDB's own
+  parser before running it: every CRS (`ST_Transform`, `ST_SetCRS`, a
+  `GEOMETRY('…')` type) must be a literal that the CRS policy accepts, every
+  path given to a reader of datasets with a coordinate system (`ST_Read`,
+  `read_parquet`, a file named in `FROM`; a glob is expanded by the sandboxed
+  connection and each match checked) must be a literal that the path gate
+  accepts, and what GDAL would open must be a format whose SRS MapSmith reads
+  first, recognised by its bytes (GeoPackage, a shapefile's `.shp`,
+  GeoParquet): the open class of the previous paragraph is refused in
+  `run_sql` rather than stated. What cannot be read that way is refused too:
+  a statement other than `SELECT`, SQL held in a string (`query()`), GDAL
+  open options. An audit of this change before release found two routes the
+  first version missed, both closed in the same release: a Parquet file that
+  declares its CRS only in the column's native `GEOMETRY` type, with no `geo`
+  key, which the path gate did not read (now it does, for every tool), and a
+  FlatGeobuf or GeoJSON handed to `ST_Read`. Whether the class gets an
   advisory is decided under *When a break becomes an advisory*.
 
   **Two paths are written that no agent names, and they are stated here

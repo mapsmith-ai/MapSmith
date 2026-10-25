@@ -220,6 +220,15 @@ def run_sql(query: str, output_path: str | None = None) -> dict[str, Any]:
     # MAPSMITH_ALLOW_EXTENSIONS, which lives outside the agent's reach.
     sql_policy.refuse_extension_loading_in_sql(query)
     con = _connect()
+    # DuckDB's spatial extension carries its own PROJ, which opens the files a
+    # CRS names without going through the sandbox above: under a workspace,
+    # every CRS and dataset path in the statement passes the same two policies
+    # as a tool argument, or the statement does not run.
+    sql_policy.refuse_unchecked_crs_and_paths(query, con)
+    # A missing layer in ST_Read is a segmentation fault upstream, i.e. a dead
+    # server: checked in every mode, after the paths so ST_Read_Meta only opens
+    # what the policy above admitted.
+    sql_policy.refuse_missing_gdal_layer(query, con)
     record = ProvenanceRecord(
         operation="run_sql",
         parameters={"query": query},

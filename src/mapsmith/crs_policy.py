@@ -226,10 +226,16 @@ def declared_srs_texts(path: str) -> list[str]:
         import pyarrow.parquet as pq
 
         try:
-            meta = pq.ParquetFile(path).metadata.metadata or {}
+            parquet = pq.ParquetFile(path)
+            meta = parquet.metadata.metadata or {}
         except Exception:  # noqa: BLE001 - not a Parquet file after all: GDAL reads it, and `_checked` follows
             return texts
         import json
+
+        try:
+            texts.extend(_native_parquet_crs_texts(parquet, meta))
+        except ValueError as exc:
+            raise ValueError(f"{path}: its coordinate system could not be checked: {exc}") from None
 
         for key, value in meta.items():
             raw = value.decode("utf-8", "replace")
@@ -255,6 +261,70 @@ def declared_srs_texts(path: str) -> list[str]:
     if aux.is_file():
         texts.extend(_aux_srs_texts(aux, path))
     return texts
+
+
+def _native_parquet_crs_texts(parquet: Any, meta: dict[bytes, bytes]) -> list[str]:
+    """The CRS of each native Parquet GEOMETRY/GEOGRAPHY column, as text.
+
+    A Parquet file can declare its coordinate system in the column's logical
+    type and carry no `geo` key at all (GeoParquet 2.0 written without the 1.x
+    layer). DuckDB reads that CRS and hands it to its own PROJ: an audit on
+    2026-10-25 made `run_sql` read a grid outside the workspace through a file
+    this module had passed with nothing to check. The type's CRS is a PROJJSON
+    or PROJ string, `projjson:<key>` naming a metadata key, or `srid:<n>`.
+    Pure metadata: nothing is opened.
+    """
+    import json
+
+    texts: list[str] = []
+    schema = parquet.schema
+    for i in range(len(schema)):
+        try:
+            logical = json.loads(schema.column(i).logical_type.to_json())
+        except Exception as exc:  # noqa: BLE001 - closed: a type MapSmith cannot read may carry a CRS
+            raise ValueError(f"the type of column {i} could not be read ({exc}).") from None
+        if not isinstance(logical, dict) or str(logical.get("Type", "")).lower() not in ("geometry", "geography"):
+            continue
+        crs = logical.get("crs")
+        if not isinstance(crs, str) or not crs.strip():
+            continue  # no CRS in the type means OGC:CRS84
+        if crs.startswith("projjson:"):
+            value = meta.get(crs.removeprefix("projjson:").encode())
+            # A reference to a key that is not there is not a CRS anyone can check.
+            texts.append(value.decode("utf-8", "replace") if value is not None else crs)
+        elif crs.startswith("srid:") and crs.removeprefix("srid:").isdigit():
+            continue  # a number names no file
+        else:
+            texts.append(crs)
+    return texts
+
+
+def srs_is_read_before_gdal(path: str) -> bool:
+    """Whether `declared_srs_texts` reads this dataset's coordinate system itself.
+
+    True for the formats it reads from their own catalogue, recognised by
+    their BYTES: an SQLite file (GeoPackage, OGR SQLite), a Parquet file, and a
+    `.shp` that starts with the shapefile magic number. GDAL picks its driver
+    from the content, not the name, so a GeoJSON called `x.parquet` or `x.shp`
+    is opened as GeoJSON -- with its `crs` member -- and a name-based answer
+    here would pass it. False for every other format, for the other members of
+    a shapefile (pass the `.shp`), and for a directory (a `.gdb`): GDAL reads
+    their SRS, and a grid it names, on open, before any policy can look. A path
+    that does not exist is True: there is nothing to open.
+    """
+    p = Path(path)
+    if not p.exists():
+        return True
+    if not p.is_file():
+        return False
+    try:
+        with p.open("rb") as handle:
+            head = handle.read(16)
+    except OSError:
+        return False
+    return head.startswith((b"SQLite format 3\x00", b"PAR1")) or (
+        p.name.lower().endswith(".shp") and head.startswith(b"\x00\x00\x27\x0a")
+    )
 
 
 def _aux_srs_texts(aux: Path, path: str) -> list[str]:

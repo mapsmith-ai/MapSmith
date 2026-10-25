@@ -1025,8 +1025,13 @@ Set `MAPSMITH_WORKSPACE=/data` to confine the server to one directory:
   out of reach of a textual path check: filesystem whitelisted to the workspace
   (`allowed_directories` + external access off, which also covers GDAL-backed `ST_Read`),
   memory and temp disk capped (`MAPSMITH_DUCKDB_MEMORY`, default 4GB;
-  `MAPSMITH_DUCKDB_TEMP_LIMIT`, default 8GB), configuration locked. SQL can name any path it
-  likes; the engine refuses to open it.
+  `MAPSMITH_DUCKDB_TEMP_LIMIT`, default 8GB), configuration locked. DuckDB's spatial
+  extension carries a PROJ of its own that this filesystem never sees, so the statement is
+  also read with DuckDB's parser before it runs: only `SELECT`, and every coordinate system
+  (`ST_Transform`, `ST_SetCRS`) and dataset path (`ST_Read`, `read_parquet`) as a literal
+  that passes the same checks as a tool argument, and through GDAL only GeoPackage,
+  shapefile and GeoParquet, whose coordinate system MapSmith reads first (since 0.10.0;
+  SECURITY.md has the hole it closes).
 
 `MAPSMITH_DISCOVERY_LOG` is one of three paths MapSmith writes to that no tool argument
 names. The other two are written whether or not anyone asks — DuckDB's extension directory

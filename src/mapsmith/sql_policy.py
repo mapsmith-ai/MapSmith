@@ -33,7 +33,9 @@ credential can reach a manifest through a parameter that is not SQL at all.
 
 from __future__ import annotations
 
+import json
 import re
+from typing import Any
 
 # `--` to end of line, and `/* ... */` including newlines. Removed before
 # matching so `CREATE /*x*/ SECRET` cannot walk past the check — the audit used
@@ -218,6 +220,316 @@ def refuse_extension_loading_in_sql(query: str) -> None:
             f"{ALLOW_EXTENSIONS}={name} in its environment (comma-separated for "
             f"more than one). Extensions already loaded keep working — this "
             f"refuses acquiring new ones, not using what is there."
+        )
+
+
+#: Functions whose text arguments DuckDB's spatial extension hands to its OWN
+#: PROJ, which opens files natively and so walks past `allowed_directories`.
+#: Measured 2026-10-25 under a workspace: `ST_Transform(g, 'EPSG:4326',
+#: '+init=<a file outside>:1')` read the file (x came back as the `+x_0` written
+#: in it), and so did `ST_SetCRS(g, '+init=…')` followed by the two-argument
+#: `ST_Transform`, while `read_text` on the same path was refused.
+_CRS_FUNCTIONS = frozenset({"st_transform", "st_setcrs"})
+
+#: Readers whose dataset carries a coordinate system that reaches PROJ: GDAL
+#: opens a grid the SRS names while reading it, and a GeoParquet's CRS becomes
+#: the source of a two-argument `ST_Transform`. Each path goes through the same
+#: gate as a tool argument, `workspace.guard`, which reads the declared SRS as
+#: text before anything parses it. Readers of CSV, JSON or text carry no CRS
+#: and stay behind DuckDB's own filesystem sandbox, which does hold for them.
+_DATASET_READERS = frozenset(
+    {"st_read", "st_read_meta", "st_readshp", "st_readosm", "shapefile_meta", "read_parquet", "parquet_scan"}
+)
+
+#: The readers that hand the file to GDAL, which reads the SRS -- and opens a
+#: grid it names -- in whatever format it recognises. The path gate can only
+#: vouch for the formats `crs_policy` reads itself, so these take those and
+#: nothing else (audit 2026-10-25: a FlatGeobuf naming a grid outside the
+#: workspace passed the gate with nothing checked, and the grid was read).
+_GDAL_READERS = frozenset({"st_read", "st_read_meta"})
+
+#: File names DuckDB reads natively when they appear in FROM; any other name is
+#: handed to GDAL by the spatial extension's replacement scan.
+_NATIVE_SCAN = re.compile(r"(?i)\.(?:parquet|csv|tsv|json|jsonl|ndjson)(?:\.(?:gz|zst))?$")
+
+#: Table functions that execute SQL held in a string, where no walk of the
+#: statement can see it.
+_SQL_IN_A_STRING = frozenset({"query", "query_table", "json_execute_serialized_sql"})
+
+_GLOB_CHARACTERS = re.compile(r"[*?\[]")
+
+
+def refuse_unchecked_crs_and_paths(query: str, con: Any) -> None:
+    """Under a workspace, refuse SQL whose coordinate systems or dataset paths MapSmith cannot check.
+
+    The connection sandbox (`allowed_directories`, external access off) is
+    DuckDB's filesystem, and DuckDB's spatial extension carries its own PROJ,
+    which does not go through it. So the statement is read with DuckDB's own
+    parser (`json_serialize_sql`) and every place a CRS or a dataset path can
+    enter is held to the policy the tools already apply:
+
+    - a CRS argument of `ST_Transform` / `ST_SetCRS`, or a `GEOMETRY('…')`
+      type, must be a literal that `crs_policy.parse` accepts;
+    - a path given to a reader of datasets with a coordinate system
+      (`ST_Read`, `read_parquet`, a file named in FROM) must be a literal that
+      `workspace.guard` accepts; a glob is expanded by the sandboxed connection
+      and every match is checked; and what GDAL would open (`ST_Read`, a file
+      in FROM that DuckDB does not read natively) must be a format whose SRS
+      `crs_policy` reads first, recognised by its bytes;
+    - a statement the parser cannot serialise (anything but SELECT), a table
+      function that runs SQL from a string, and GDAL open options are refused.
+
+    Fails closed: what cannot be read as a constant is refused with how to
+    write it, because a check that passes what it cannot see is the hole this
+    replaces. Without a workspace, file access is unconfined by design and
+    this returns at once.
+
+    `con` is the sandboxed connection: it serialises the statement and expands
+    globs, so a pattern is matched by the same engine, under the same sandbox,
+    that will read it.
+    """
+    from . import workspace
+
+    if workspace.root() is None:
+        return
+    raw = con.execute("SELECT json_serialize_sql(?::VARCHAR)", [query]).fetchone()[0]
+    tree = json.loads(raw)
+    if tree.get("error"):
+        raise ValueError(
+            "under MAPSMITH_WORKSPACE, run_sql runs only SELECT statements that MapSmith can read "
+            f"before they run ({tree.get('error_message', 'unreadable')}). Write the query as one or "
+            "more SELECTs; to keep a result, pass output_path instead of COPY or CREATE TABLE."
+        )
+    ctes = {name.lower() for name in _cte_names(tree)}
+    _walk(tree, ctes, con)
+
+
+def refuse_missing_gdal_layer(query: str, con: Any) -> None:
+    """Refuse `ST_Read(..., layer := 'x')` when the dataset has no layer called x.
+
+    DuckDB's spatial extension (1.5.5) kills the process with a segmentation
+    fault on that call, and with it the MCP server: one line of agent-written
+    SQL was a denial of service (audit, 2026-10-25; reproduced on a bare
+    connection, so the defect is upstream). The layer is checked against the
+    names `ST_Read_Meta` lists before the statement runs. Applies in every
+    mode, because a crash is not a question of file access; a statement the
+    parser cannot serialise is left alone here, and under a workspace it is
+    refused anyway.
+    """
+    raw = con.execute("SELECT json_serialize_sql(?::VARCHAR)", [query]).fetchone()[0]
+    tree = json.loads(raw)
+    if tree.get("error"):
+        return
+    for node in _functions_named(tree, "st_read"):
+        children = node.get("children") or []
+        layer = _named_argument(children, "layer")
+        if layer is None:
+            continue
+        path = _constant(children[0]) if children else None
+        name = _constant(layer)
+        if path is None or name is None or path[0] != "VARCHAR" or name[0] != "VARCHAR" or name[1] is None:
+            raise ValueError(
+                "ST_Read(..., layer := …) takes the path and the layer as literals, so the layer can be "
+                "checked before GDAL opens it: DuckDB's spatial extension crashes the process on a layer "
+                "the dataset does not have."
+            )
+        layers = con.execute(
+            "SELECT [l.name FOR l IN layers] FROM ST_Read_Meta(?::VARCHAR)", [str(path[1])]
+        ).fetchone()
+        names = list(layers[0]) if layers and layers[0] is not None else []
+        if str(name[1]) not in names:
+            raise ValueError(
+                f"ST_Read: {path[1]} has no layer {name[1]!r} (its layers: {names}). Refused before running, "
+                "because DuckDB's spatial extension crashes the process on a missing layer."
+            )
+
+
+def _argument(child: Any) -> tuple[str, Any]:
+    """(name, value node) of a table-function argument; the name is '' when positional.
+
+    `layer := 'x'` serialises as the value with an alias; `layer = 'x'`
+    serialises as a COMPARISON of a column called `layer` with the value, and
+    DuckDB still EXECUTES it as the named parameter (second audit pass,
+    2026-10-25). A check that reads one spelling is walked past by the other.
+    """
+    if not isinstance(child, dict):
+        return "", child
+    alias = str(child.get("alias", "")).lower()
+    if alias:
+        return alias, child
+    left = child.get("left") or {}
+    names = left.get("column_names") or []
+    if child.get("type") == "COMPARE_EQUAL" and left.get("class") == "COLUMN_REF" and len(names) == 1:
+        return str(names[0]).lower(), child.get("right")
+    return "", child
+
+
+def _named_argument(children: list[Any], name: str) -> Any:
+    """The value node of the argument called `name`, in either spelling, or None."""
+    for child in children:
+        alias, value = _argument(child)
+        if alias == name:
+            return value
+    return None
+
+
+def _functions_named(node: Any, wanted: str) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+    if isinstance(node, dict):
+        if node.get("class") == "FUNCTION" and str(node.get("function_name", "")).lower() == wanted:
+            found.append(node)
+        for value in node.values():
+            found.extend(_functions_named(value, wanted))
+    elif isinstance(node, list):
+        for item in node:
+            found.extend(_functions_named(item, wanted))
+    return found
+
+
+def _cte_names(node: Any) -> list[str]:
+    names: list[str] = []
+    if isinstance(node, dict):
+        for entry in (node.get("cte_map") or {}).get("map") or []:
+            names.append(str(entry.get("key", "")))
+        for value in node.values():
+            names.extend(_cte_names(value))
+    elif isinstance(node, list):
+        for item in node:
+            names.extend(_cte_names(item))
+    return names
+
+
+def _walk(node: Any, ctes: set[str], con: Any) -> None:
+    """Visit every node: the checks look at a node, the recursion at what is inside it."""
+    if isinstance(node, list):
+        for item in node:
+            _walk(item, ctes, con)
+        return
+    if not isinstance(node, dict):
+        return
+    if node.get("class") == "FUNCTION":
+        name = str(node.get("function_name", "")).lower()
+        children = node.get("children") or []
+        if name in _SQL_IN_A_STRING:
+            raise ValueError(
+                f"{name}() runs SQL held in a string, which MapSmith cannot read before it runs; "
+                "under MAPSMITH_WORKSPACE write the statement itself."
+            )
+        if name in _CRS_FUNCTIONS:
+            for child in children[1:]:
+                _check_crs_argument(name, child)
+        if name in _DATASET_READERS:
+            for child in children:
+                alias, value = _argument(child)
+                if alias in ("", "sibling_files"):
+                    for path in _literal_paths(name, value):
+                        _check_path(path, con, gdal=name in _GDAL_READERS and alias == "")
+                elif alias == "open_options":
+                    raise ValueError(
+                        f"{name}(open_options := …) is refused under MAPSMITH_WORKSPACE: a GDAL open "
+                        "option can name a file, and MapSmith does not check them. Read the dataset "
+                        "without it."
+                    )
+    if node.get("type") == "BASE_TABLE":
+        # `FROM 'parcels.gpkg'` is a reader too: DuckDB swaps a file name for
+        # `read_parquet` or, with spatial loaded, for GDAL. A CTE of the same
+        # name shadows the file, so it is not a path.
+        table = str(node.get("table_name", ""))
+        if table.lower() not in ctes and any(c in table for c in "./\\"):
+            _check_path(table, con, gdal=not _NATIVE_SCAN.search(table))
+    modifiers = node.get("user_type_modifiers")
+    if modifiers:
+        # GEOMETRY('…') carries a CRS in the type, and DuckDB resolves it.
+        for modifier in modifiers:
+            if (modifier.get("type") or {}).get("id") == "VARCHAR" and not modifier.get("is_null"):
+                _check_crs_text("a GEOMETRY type", str(modifier.get("value")))
+    for value in node.values():
+        _walk(value, ctes, con)
+
+
+def _constant(node: Any) -> tuple[str | None, Any] | None:
+    """(type id, value) of a literal, or None when the node is not one."""
+    if isinstance(node, dict) and node.get("class") == "CONSTANT":
+        value = node.get("value") or {}
+        return (value.get("type") or {}).get("id"), (None if value.get("is_null") else value.get("value"))
+    return None
+
+
+def _check_crs_argument(function: str, child: Any) -> None:
+    constant = _constant(child)
+    if constant is not None:
+        kind, value = constant
+        if kind == "BOOLEAN" or value is None:
+            return
+        if kind == "VARCHAR":
+            _check_crs_text(f"{function}()", str(value))
+            return
+    # `always_xy := true` arrives as a cast of a literal to BOOLEAN, and a
+    # BOOLEAN cannot carry a coordinate system, wherever it sits.
+    if (
+        isinstance(child, dict)
+        and child.get("class") == "CAST"
+        and (child.get("cast_type") or {}).get("id") == "BOOLEAN"
+        and _constant(child.get("child")) is not None
+    ):
+        return
+    raise ValueError(
+        f"{function}() takes its coordinate systems as literals under MAPSMITH_WORKSPACE, such as "
+        "'EPSG:32633': a CRS computed from a column or an expression cannot be checked before PROJ "
+        "opens the files it names."
+    )
+
+
+def _check_crs_text(where: str, text: str) -> None:
+    from . import crs_policy
+
+    try:
+        crs_policy.parse(text)
+    except ValueError as exc:
+        raise ValueError(f"{where}: {exc}") from None
+    except Exception as exc:  # noqa: BLE001 - whatever pyproj raises: what MapSmith cannot read is not passed on
+        raise ValueError(
+            f"{where}: PROJ could not read the coordinate system {text!r} ({exc}), and one MapSmith "
+            "cannot check is not run."
+        ) from None
+
+
+def _literal_paths(function: str, child: Any) -> list[str]:
+    constant = _constant(child)
+    if constant is not None and constant[0] == "VARCHAR" and constant[1] is not None:
+        return [str(constant[1])]
+    if isinstance(child, dict) and child.get("function_name") == "list_value":
+        items = [_constant(item) for item in child.get("children") or []]
+        if all(item is not None and item[0] == "VARCHAR" and item[1] is not None for item in items):
+            return [str(item[1]) for item in items]  # type: ignore[index]
+    raise ValueError(
+        f"{function}() takes its paths as literals under MAPSMITH_WORKSPACE ('data/parcels.gpkg', or "
+        "a list of them): a path computed in SQL cannot be checked before the reader opens it."
+    )
+
+
+def _check_path(path: str, con: Any, gdal: bool = False) -> None:
+    if not _GLOB_CHARACTERS.search(path):
+        _check_one_path(path, gdal)
+        return
+    try:
+        matches = [row[0] for row in con.execute("SELECT file FROM glob(?)", [path]).fetchall()]
+    except Exception as exc:  # noqa: BLE001 - the sandbox refusing the pattern is a refusal here too
+        raise ValueError(f"'run_sql': the pattern {path!r} could not be expanded inside the workspace ({exc}).") from None
+    for match in matches:
+        _check_one_path(str(match), gdal)
+
+
+def _check_one_path(path: str, gdal: bool) -> None:
+    from . import crs_policy, workspace
+
+    workspace.guard(path, "run_sql")
+    if gdal and not crs_policy.srs_is_read_before_gdal(path):
+        raise ValueError(
+            f"'run_sql': {path} would be opened by GDAL, which reads its coordinate system -- and a grid "
+            "file it names, wherever that is -- before MapSmith can check it. Under MAPSMITH_WORKSPACE "
+            "run_sql reads through GDAL only the formats MapSmith checks first: GeoPackage, a shapefile's "
+            ".shp, GeoParquet. Convert it to one of those first."
         )
 
 

@@ -499,6 +499,10 @@ def run_sql(query: str, output_path: str = "") -> dict[str, Any]:
 
     Without output_path: returns up to 50 preview rows. With output_path (.parquet):
     materializes the full result as GeoParquet with a provenance manifest.
+    Under MAPSMITH_WORKSPACE only SELECT runs, and coordinate systems
+    (ST_Transform, ST_SetCRS) and dataset paths (ST_Read, read_parquet) must be
+    string literals, so they can be checked before anything opens them; ST_Read
+    takes GeoPackage, shapefile (.shp) and GeoParquet there.
     """
     out = output_path or None
     if out:

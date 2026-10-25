@@ -25,10 +25,34 @@ All notable changes to MapSmith are documented here, in the format of
   file's own catalogue (GeoPackage by its bytes, shapefile `.prj`, GeoParquet
   `geo`), and the server switches PROJ networking off under a workspace at
   startup, for pyproj's PROJ and GDAL's. `SECURITY.md` records it, and names
-  what stays open: datasets in other GDAL formats, which GDAL opens first, and
-  `run_sql`, whose DuckDB spatial extension carries a PROJ of its own that
-  this policy does not reach -- a break of the containment promise, open and
-  stated.
+  what stays open: datasets in other GDAL formats, which GDAL opens first.
+- **`run_sql` under a workspace can no longer make DuckDB's own PROJ read a
+  file outside it.** DuckDB's spatial extension carries a PROJ of its own,
+  which opens files natively and never met the connection sandbox:
+  `ST_Transform(geom, 'EPSG:4326', '+init=<a file outside>:1')` read that file
+  -- the output moved by the false easting written in it -- and so did
+  `ST_SetCRS` followed by a two-argument `ST_Transform`, while `read_text` on
+  the same path was refused (measured 2026-10-25; every release with the
+  sandboxed connection, 0.2.0 to 0.9.0). Under a workspace the statement is
+  now read with DuckDB's own parser (`json_serialize_sql`) before it runs:
+  every CRS in `ST_Transform`, `ST_SetCRS` or a `GEOMETRY('…')` type must be a
+  literal the CRS policy accepts, every path given to `ST_Read`,
+  `ST_Read_Meta`, `read_parquet` or named in `FROM` must be a literal the path
+  gate accepts (globs are expanded by the sandboxed connection and each match
+  is checked), what GDAL would open must be a GeoPackage, a shapefile's `.shp`
+  or a GeoParquet, recognised by its bytes -- FlatGeobuf, GeoJSON and the other
+  formats whose SRS GDAL reads before MapSmith can are refused in `run_sql` --
+  and the rest is refused with how to write it: statements other than
+  `SELECT` (pass `output_path` to keep a result), SQL held in a string
+  (`query()`), GDAL open options, and a CRS or a path computed in SQL. Without
+  a workspace nothing changes: file access there is unconfined by design.
+- **The path gate reads the CRS a Parquet file declares in the column's
+  native `GEOMETRY`/`GEOGRAPHY` type, not only in the `geo` key.** A file
+  with the CRS there and no `geo` key at all passed the gate with nothing to
+  check, and DuckDB read that CRS and handed it to its PROJ: through
+  `run_sql`, a grid outside the workspace was read (found by the audit of the
+  change above, before release). The `projjson:<key>` and `srid:<n>` forms
+  are followed too. Every tool's input admission goes through the same gate.
 
 ### Added
 
@@ -47,6 +71,14 @@ All notable changes to MapSmith are documented here, in the format of
 
 ### Fixed
 
+- **`run_sql` can no longer crash the server with `ST_Read` of a layer that
+  is not there.** DuckDB's spatial extension (1.5.5) ends the process with a
+  segmentation fault on `ST_Read('roads.gpkg', layer := 'nope')`, and the
+  MCP server with it: one line of agent-written SQL was a denial of service.
+  The defect is upstream (reproduced on a bare connection); MapSmith now
+  checks the layer, in either spelling (`:=` or `=`), against the names
+  `ST_Read_Meta` lists and refuses a missing one with the list, in every
+  mode. Found by the audit of the `run_sql` change above.
 - **A datum shift written into the CRS itself is no longer recorded as a
   ballpark.** For a CRS defined with `+towgs84` (or WKT `TOWGS84[]`) PROJ
   builds a Helmert from those parameters and applies it in full, but reports
