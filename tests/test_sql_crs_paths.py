@@ -386,6 +386,28 @@ def test_a_missing_layer_is_refused_before_it_crashes_the_process(monkeypatch, t
     )["rows"] == [[1]]
 
 
+@pytest.mark.parametrize(
+    "template",
+    [
+        "CREATE TABLE t AS SELECT * FROM ST_Read('{p}', layer := 'nope')",
+        "COPY (SELECT * FROM ST_Read('{p}', layer = 'nope')) TO '{o}' (FORMAT parquet)",
+        "SELECT 1; CREATE TABLE t AS SELECT * FROM ST_Read('{p}', layer := 'nope')",
+    ],
+)
+def test_a_layer_outside_a_select_is_refused_without_a_workspace(monkeypatch, tmp_path, template):
+    """Without a workspace non-SELECT statements run, and the walk cannot read
+    them: the same crash was one CREATE TABLE away (showcase review, 2026-10-25)."""
+    gpd = pytest.importorskip("geopandas")
+    from shapely.geometry import Point
+
+    monkeypatch.delenv("MAPSMITH_WORKSPACE", raising=False)
+    path = tmp_path / "a.gpkg"
+    gpd.GeoDataFrame({"id": [1]}, geometry=[Point(0, 0)], crs="EPSG:4326").to_file(path, layer="roads")
+    query = template.format(p=_sql_path(path), o=_sql_path(tmp_path / "o.parquet"))
+    with pytest.raises(ValueError, match="only inside a SELECT"):
+        duckdb_engine.run_sql(query)
+
+
 def test_gdal_still_reads_the_formats_mapsmith_checks_first(ws):
     gpd = pytest.importorskip("geopandas")
     from shapely.geometry import Point

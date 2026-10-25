@@ -78,7 +78,12 @@ All notable changes to MapSmith are documented here, in the format of
   The defect is upstream (reproduced on a bare connection); MapSmith now
   checks the layer, in either spelling (`:=` or `=`), against the names
   `ST_Read_Meta` lists and refuses a missing one with the list, in every
-  mode. Found by the audit of the `run_sql` change above.
+  mode. A statement other than `SELECT` cannot be checked that way, so one
+  that names `ST_Read` and a layer is refused with the advice to write the
+  `SELECT` and pass `output_path`; that matters without a workspace, where
+  such statements run (`CREATE TABLE … AS` still crashed after the first
+  version of this fix, found by the pre-release review). Found by the audit
+  of the `run_sql` change above.
 - **A datum shift written into the CRS itself is no longer recorded as a
   ballpark.** For a CRS defined with `+towgs84` (or WKT `TOWGS84[]`) PROJ
   builds a Helmert from those parameters and applies it in full, but reports
@@ -151,6 +156,11 @@ All notable changes to MapSmith are documented here, in the format of
   point's nearest other point, exactly and in linear memory; duplicated
   records still count as a neighbour at zero, and still raise the
   coincident-points note. The answers are the same. Present since 0.4.0.
+  A layer with a feature that has no or an empty geometry is now refused, as
+  `cluster_points_by_distance` refuses it: 0.9.0 crashed on it, and the first
+  version of the tree counted the row in the number of points but not in the
+  distances, answering R = 4.47 for four points on a square whose R is 4.0
+  (found by the pre-release review).
 - **Documentation, no code that runs.** `SECURITY.md` gives the reason
   the two cases where 0.8.0's `reproject_layer` moved data with an operation
   from elsewhere did not get an advisory; a 0.5.x entry below and a docstring

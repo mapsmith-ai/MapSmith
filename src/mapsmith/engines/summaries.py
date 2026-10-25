@@ -294,6 +294,19 @@ def nearest_neighbour_index(
             "ratio would be a number with no meaning. Reproject to a projected CRS "
             "first (reproject_layer)."
         )
+    # A row with no position has no nearest neighbour, but it still counted in n:
+    # density and the standard error used every row while the observed mean came
+    # from the rows with coordinates, so four points on a square plus one empty
+    # row answered R = 4.47 instead of 4.0, with no note (pre-release review of
+    # 0.10.0; 0.9.0 crashed on the same input). Refused like the clustering
+    # operation refuses it, because which n is meant is the caller's decision.
+    missing = gdf.geometry.isna() | gdf.geometry.is_empty
+    if missing.any():
+        raise ValueError(
+            f"{input_path} has {int(missing.sum())} feature(s) with no or an empty "
+            "geometry. A point with no position has no nearest neighbour, and counting "
+            "it in the number of points would change R; remove those features first."
+        )
     points = gdf.geometry.representative_point()
     n = len(points)
     if n < 3:

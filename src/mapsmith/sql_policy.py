@@ -252,6 +252,11 @@ _GDAL_READERS = frozenset({"st_read", "st_read_meta"})
 #: handed to GDAL by the spatial extension's replacement scan.
 _NATIVE_SCAN = re.compile(r"(?i)\.(?:parquet|csv|tsv|json|jsonl|ndjson)(?:\.(?:gz|zst))?$")
 
+#: `ST_Read` and a `layer` argument in statement text the parser cannot
+#: serialise. Raw text, comments included, on purpose: a false positive costs
+#: a rewrite as a SELECT, a miss costs the server.
+_LAYER_IN_TEXT = re.compile(r"(?is)\bst_read\b.*\blayer\b")
+
 #: Table functions that execute SQL held in a string, where no walk of the
 #: statement can see it.
 _SQL_IN_A_STRING = frozenset({"query", "query_table", "json_execute_serialized_sql"})
@@ -312,13 +317,24 @@ def refuse_missing_gdal_layer(query: str, con: Any) -> None:
     SQL was a denial of service (audit, 2026-10-25; reproduced on a bare
     connection, so the defect is upstream). The layer is checked against the
     names `ST_Read_Meta` lists before the statement runs. Applies in every
-    mode, because a crash is not a question of file access; a statement the
-    parser cannot serialise is left alone here, and under a workspace it is
-    refused anyway.
+    mode, because a crash is not a question of file access.
+
+    A statement the parser cannot serialise (anything but SELECT) cannot be
+    walked, and the first version let it through: `CREATE TABLE t AS SELECT *
+    FROM ST_Read(..., layer := 'nope')` still ended the process without a
+    workspace (found by the showcase review, 2026-10-25). So when the text
+    names both, it is refused -- closed, by a scan, because there is no tree
+    to read -- and the caller is told to write the SELECT, which is checked.
     """
     raw = con.execute("SELECT json_serialize_sql(?::VARCHAR)", [query]).fetchone()[0]
     tree = json.loads(raw)
     if tree.get("error"):
+        if _LAYER_IN_TEXT.search(query):
+            raise ValueError(
+                "ST_Read(..., layer := …) is checked before it runs only inside a SELECT: DuckDB's spatial "
+                "extension crashes the process on a layer the dataset does not have. Write the query as a "
+                "SELECT, and pass output_path to keep the result."
+            )
         return
     for node in _functions_named(tree, "st_read"):
         children = node.get("children") or []

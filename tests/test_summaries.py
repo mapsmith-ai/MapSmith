@@ -250,6 +250,24 @@ def test_a_geographic_crs_is_refused_because_degrees_are_not_a_length(tmp_path):
         summaries.nearest_neighbour_index(str(path))
 
 
+@pytest.mark.parametrize("hole", [None, Point()], ids=["missing", "empty"])
+def test_a_feature_without_a_position_is_refused_rather_than_counted(tmp_path, hole):
+    """Four points on a 10 m square give R = 4.0 against their hull (observed 10,
+    density 4/100, expected 2.5). A fifth row with no position used to count in
+    n and not in the distances, answering 4.4721 with no note."""
+    square_points = [Point(0, 0), Point(10, 0), Point(0, 10), Point(10, 10)]
+    clean = tmp_path / "square.parquet"
+    gpd.GeoDataFrame({"id": range(4)}, geometry=square_points, crs="EPSG:32632").to_parquet(clean)
+    assert summaries.nearest_neighbour_index(str(clean))["r"] == pytest.approx(4.0, abs=1e-4)
+
+    holed = tmp_path / "holed.parquet"
+    gpd.GeoDataFrame(
+        {"id": range(5)}, geometry=[*square_points, hole], crs="EPSG:32632"
+    ).to_parquet(holed)
+    with pytest.raises(ValueError, match="1 feature"):
+        summaries.nearest_neighbour_index(str(holed))
+
+
 def test_coincident_points_are_counted_because_they_drag_r_down(tmp_path):
     points = [Point(0, 0), Point(0, 0), Point(100, 0), Point(0, 100)]
     gdf = gpd.GeoDataFrame({"id": range(4)}, geometry=points, crs="EPSG:32632")
