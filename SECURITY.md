@@ -1,6 +1,7 @@
 # Security policy
 
 > Published advisories:
+> [GHSA-3wvg-2qh8-8gg6](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-3wvg-2qh8-8gg6) — a coordinate reference system could make PROJ read files outside the workspace and open network shares, in the tools and in `run_sql`. Affects >= 0.2.0 < 0.10.0, fixed in 0.10.0.
 > [GHSA-g95f-6vxv-mgv7](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-g95f-6vxv-mgv7) — `run_sql` could install and load arbitrary DuckDB extensions, disclosing host credentials. Affects >= 0.1.0 < 0.4.0, fixed in 0.4.0.
 > [GHSA-3rcc-xpw3-r4xh](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-3rcc-xpw3-r4xh) — a plain local file could make MapSmith fetch attacker-chosen URLs. Affects <= 0.2.1, fixed in 0.2.2.
 
@@ -65,8 +66,15 @@ below:
   first version missed, both closed in the same release: a Parquet file that
   declares its CRS only in the column's native `GEOMETRY` type, with no `geo`
   key, which the path gate did not read (now it does, for every tool), and a
-  FlatGeobuf or GeoJSON handed to `ST_Read`. Whether the class gets an
-  advisory is decided under *When a break becomes an advisory*.
+  FlatGeobuf or GeoJSON handed to `ST_Read`.
+
+  **Both routes have one advisory,
+  [GHSA-3wvg-2qh8-8gg6](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-3wvg-2qh8-8gg6)**,
+  filed against `>= 0.2.0, < 0.10.0`: under the criterion below, whoever
+  reads it would do something different -- upgrade. The lower bound is where
+  the workspace and the refusal of network shares first shipped, checked by
+  downloading the packages: 0.1.0 had neither, so there was no promise to
+  break, though a CRS reached PROJ unchecked there too.
 
   **Two paths are written that no agent names, and they are stated here
   rather than left to be found.** MapSmith's one-time install of the DuckDB

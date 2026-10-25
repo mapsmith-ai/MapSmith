@@ -223,18 +223,21 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.9.0**, which is what that command installs. When `main` runs ahead of
+This page describes **0.10.0**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **`main` is ahead of 0.9.0**
-([`[Unreleased]`](CHANGELOG.md#unreleased)) by three fixes to the server, 103 catalogue phrasings and documentation
-corrections: `nearest_neighbour_index` no longer needs memory in the square of its points, and
-gives the same answers; a datum shift a CRS itself declares (`+towgs84`) is no longer recorded
-as a ballpark; every operation that brings a vector input onto another CRS -- the eight that align
-a second input, and the samplers, zones, masks, pour points and stations of the raster ones --
-chooses the datum transformation the way `reproject_layer` does, which moves their results where
-PROJ's own pick was the ballpark and a covering operation or a Greenwich twin exists (Monte Mario
-from Rome: up to about 80 m); the phrasings come from the
-QGIS Training Manual's exercises and moved the discovery figures on this page. **From 0.8.0, 0.9.0** adds
+have to find out by calling a tool that is not there. **If you run 0.9.0 or earlier under
+`MAPSMITH_WORKSPACE`, update**: a coordinate reference system -- a tool argument, or the one a
+file declares -- could make PROJ read a file outside the workspace or open a network share, and
+in `run_sql` DuckDB's own PROJ could do the same; [`SECURITY.md`](SECURITY.md) has both. **From
+0.9.0, 0.10.0** also: every operation that brings a vector input onto another CRS -- the eight
+that align a second input, and the samplers, zones, masks, pour points and stations of the
+raster ones -- chooses the datum transformation the way `reproject_layer` does, which moves
+their results where PROJ's own pick was the ballpark and a covering operation or a Greenwich
+twin exists (Monte Mario from Rome: up to about 80 m); a datum shift a CRS itself declares
+(`+towgs84`) is no longer recorded as a ballpark; `nearest_neighbour_index` works in linear
+memory and refuses a feature with no position; under a workspace `run_sql` runs only `SELECT`,
+with coordinate systems and dataset paths as literals; and 103 catalogue phrasings from the QGIS
+Training Manual's exercises moved the discovery figures on this page. **From 0.8.0, 0.9.0** adds
 `apportion_by_area`, which moves counts and rates from the zones they are reported in to zones
 that cross them, and makes a record's `transformation` describe what PROJ did to the data's own
 coordinates rather than to a point chosen from the CRS. **That changes what `reproject_layer`
@@ -249,6 +252,11 @@ later change answers you have**: every position read from a point-registered ras
 shapefile with its attributes and its CRS, reads any single-layer file geodatabase, and fixes
 operations that accepted the wrong geometry and answered anyway (`zonal_statistics` on line
 zones returned their length as a pixel count).
+
+**If you read manifests, 0.10.0 renames no key**: records still declare `1.0.0-draft.10`.
+Two keys of MapSmith's own are new inside `crs_decisions.transformation`:
+`x-mapsmith:shift_from_crs_definition`, when the shift is written into the CRS itself, and
+`x-mapsmith:default_was_ballpark`, when the engine's own choice would have applied no shift.
 
 **If you read manifests, 0.9.0 renames no key**: records still declare `1.0.0-draft.10`.
 Three keys of MapSmith's own are new: `crs_decisions.x-mapsmith:areas_measured_on`, from
@@ -296,7 +304,7 @@ for it:
 ```json
 {
   "spec_version": "1.0.0-draft.10",
-  "producer": {"name": "mapsmith", "version": "0.9.0"},
+  "producer": {"name": "mapsmith", "version": "0.10.0"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{

@@ -6,6 +6,27 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-25
+
+**Update if you run MapSmith under `MAPSMITH_WORKSPACE`.** A coordinate
+reference system -- a tool argument, or the one a file declares -- could make
+PROJ read a file outside the workspace or open a network share, and in
+`run_sql` DuckDB's own PROJ could do the same, in every release since the
+workspace and the refusal of network shares arrived (0.2.0). Both are closed
+here (*Security* below, and `SECURITY.md`), and both are in one advisory,
+[GHSA-3wvg-2qh8-8gg6](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-3wvg-2qh8-8gg6).
+
+Records still declare `spec_version` `1.0.0-draft.10`, and no key is renamed.
+Two keys of MapSmith's own are new inside `crs_decisions.transformation`:
+`x-mapsmith:shift_from_crs_definition`, when the datum shift is written into
+the CRS itself (`+towgs84`), and `x-mapsmith:default_was_ballpark`, when the
+engine's own choice would have applied no shift. Results move where an
+operation that brings a vector input onto another CRS now chooses the datum
+transformation as `reproject_layer` does (Monte Mario from Rome: up to about
+80 m); `nearest_neighbour_index` refuses a feature with no position. Under a
+workspace, `run_sql` runs only `SELECT` and takes coordinate systems and
+dataset paths as literals.
+
 ### Security
 
 - **A coordinate reference system that reaches MapSmith's own code can no
