@@ -463,16 +463,16 @@ organisation on purpose: an evaluation that lives inside the thing it
 evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
-What it says about MapSmith 0.10.0 (all twenty-nine families, engine tier, `spec_commit`
-[`2ad4efd`](https://github.com/argleton/argleton/tree/main/results/2026-10-25-mapsmith-v0-10-0)):
+What it says about MapSmith 0.10.1 (all twenty-nine families, engine tier, `spec_commit`
+[`85287cd`](https://github.com/argleton/argleton/tree/main/results/2026-10-26-mapsmith-v0-10-1)):
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
 | MapSmith | **0.00** | 1.00 | 31 | 0 |
 | naive composition (read file, take statistic) | 0.9032 | 1.00 | 31 | 0 |
 
-The fourth run scored against trap 024's corrected truth, measuring the 0.10.0 release; every
-verdict, MapSmith's and the other eight systems', matches the run of 2026-10-09, the first to
+The fifth run scored against trap 024's corrected truth, measuring the 0.10.1 release; every
+verdict, MapSmith's and the other eight systems', matches the runs of 2026-10-25 and 2026-10-09, the first to
 name the MapSmith release and commit it measured (the two before it, 2026-09-26 and 2026-09-27,
 said "main"; no MapSmith verdict moved between any of them). The runs from 2026-08-30 to 2026-09-15
 scored that trap against a wrong truth in MapSmith's favour: the [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) recounts them,
