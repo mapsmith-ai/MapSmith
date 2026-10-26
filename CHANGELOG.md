@@ -6,6 +6,24 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+### Security
+
+- **Under a workspace, the coordinate system of every dataset format MapSmith
+  accepts is read before GDAL opens the file, and a format it does not
+  recognise is refused.** 0.10.0 read the declared SRS of GeoPackage,
+  shapefile and GeoParquet only; for the other formats GDAL read it first, and
+  PROJ opened any grid file it named, before MapSmith refused the file
+  (`SECURITY.md` listed this as open). The path gate now reads it from the
+  bytes for GeoJSON and Esri JSON (with a JSON parser, so an escaped key is
+  seen), GML and its `.gfs`, FlatGeobuf, GeoTIFF's GeoKey text, file
+  geodatabases, folders of shapefiles, zips of these, and a `.prj` beside any
+  file. Under `MAPSMITH_WORKSPACE` a format it does not recognise -- an ERDAS
+  `.img`, a netCDF, a JPEG 2000 -- is refused with the list of the ones it
+  does; without a workspace it is opened as before. `run_sql`'s `ST_Read`
+  accepts every recognised format, where 0.10.0 accepted three. The verdict is
+  cached by file name, size and modification time, so one input is no longer
+  parsed by the gate, the probe and the reader in turn.
+
 ## [0.10.0] - 2026-10-25
 
 **Update if you run MapSmith under `MAPSMITH_WORKSPACE`.** A coordinate

@@ -225,7 +225,10 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 
 This page describes **0.10.0**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **If you run 0.9.0 or earlier under
+have to find out by calling a tool that is not there. **`main` is ahead of 0.10.0**
+([`[Unreleased]`](CHANGELOG.md#unreleased)) by one security change: under a workspace the
+coordinate system of every dataset format MapSmith accepts is read before GDAL opens the file,
+and a format it does not recognise is refused. **If you run 0.9.0 or earlier under
 `MAPSMITH_WORKSPACE`, update**: a coordinate reference system -- a tool argument, or the one a
 file declares -- could make PROJ read a file outside the workspace or open a network share, and
 in `run_sql` DuckDB's own PROJ could do the same; [`SECURITY.md`](SECURITY.md) has both. **From
@@ -1029,6 +1032,9 @@ Set `MAPSMITH_WORKSPACE=/data` to confine the server to one directory:
 
 - every path argument of every tool must resolve inside the workspace (checked at the MCP
   boundary, and again by plan validation with stable error codes);
+- the coordinate system an input declares is read from its bytes before GDAL opens it, because
+  GDAL would open any grid file it names (on `main`: every format MapSmith accepts, and a
+  format it does not recognise is refused; 0.10.0 reads GeoPackage, shapefile and GeoParquet);
 - the `run_sql` DuckDB connection is sandboxed in the engine itself, because SQL text is
   out of reach of a textual path check: filesystem whitelisted to the workspace
   (`allowed_directories` + external access off, which also covers GDAL-backed `ST_Read`),

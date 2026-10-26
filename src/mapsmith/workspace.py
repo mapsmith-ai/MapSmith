@@ -247,7 +247,9 @@ def guard(path: str, arg: str) -> str:
     # disguise, and GDAL reads it -- and a grid it names -- the moment the
     # file is probed. One gate, here, before `probe_crs`, the layer listing,
     # the preview and every reader (third audit pass, 2026-10-23).
-    if os.path.isfile(path):
+    # Folders too: a file geodatabase and a folder of shapefiles are opened by
+    # GDAL as datasets, with the SRS of every layer in them (2026-10-26).
+    if os.path.exists(path):
         from . import crs_policy
 
         crs_policy.refuse_declared_in_file(path)

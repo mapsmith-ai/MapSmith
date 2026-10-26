@@ -33,14 +33,21 @@ below:
   family, GeoParquet `geo` metadata and the native Parquet `GEOMETRY` type's
   CRS, a raster's `.aux.xml` through an XML
   parser -- before GDAL or PROJ parse it, because both open a grid named
-  there while parsing. **What stays open, stated rather than hidden** (fifth
-  audit pass, 2026-10-23, measured unless said otherwise): a dataset in any
-  other GDAL format -- a zipped shapefile or GeoPackage, a directory of
-  shapefiles, CSV with a `.prj`, GeoJSON with a `crs` member; a GeoTIFF with
-  the SRS in its own keys was not measured -- is opened by GDAL first, and
-  GDAL reads its SRS and a grid it names before MapSmith can refuse it. An
-  operation still refuses before any coordinate moves; `validate_plan` may
-  answer `valid` and `describe_dataset` may report the CRS of such a file.
+  there while parsing. **What stays open in 0.10.0, stated rather than
+  hidden** (fifth audit pass, 2026-10-23, measured unless said otherwise): a
+  dataset in any other GDAL format -- a zipped shapefile or GeoPackage, a
+  directory of shapefiles, CSV with a `.prj`, GeoJSON with a `crs` member; a
+  GeoTIFF with the SRS in its own keys was not measured -- is opened by GDAL
+  first, and GDAL reads its SRS and a grid it names before MapSmith can
+  refuse it. An operation still refuses before any coordinate moves;
+  `validate_plan` may answer `valid` and `describe_dataset` may report the CRS
+  of such a file. **Closed on `main`, for the next release:** the path gate
+  reads the declared coordinate system of those formats too -- GeoJSON and
+  Esri JSON, GML and its `.gfs`, FlatGeobuf, GeoTIFF tags, file geodatabases,
+  folders, zips, a `.prj` beside any file -- recognising each by its bytes,
+  and under a workspace refuses a format it does not recognise. Until that
+  release is published, run 0.10.0 under a workspace only on datasets in the
+  formats listed above as read.
 
   **`run_sql` had the same hole by a route of its own, closed in 0.10.0.**
   DuckDB's spatial extension carries its own PROJ, which opens files

@@ -320,7 +320,10 @@ def test_a_crs_held_only_in_the_native_parquet_type_is_checked(ws, grid_outside)
             duckdb_engine.run_sql(_LATITUDE.format(g="geometry", source=source))
 
 
-def test_a_format_whose_srs_mapsmith_cannot_read_is_not_handed_to_gdal(ws, grid_outside):
+def test_a_hostile_crs_in_a_gdal_format_is_not_handed_to_gdal(ws, grid_outside):
+    """Since 2026-10-26 the path gate reads these formats' SRS itself (srs_sources):
+    the grid never reaches GDAL because the CRS is read and refused, where on
+    2026-10-25 it was because the format was refused unread."""
     gpd = pytest.importorskip("geopandas")
     from pyproj import CRS
     from shapely.geometry import Point
@@ -333,7 +336,14 @@ def test_a_format_whose_srs_mapsmith_cannot_read_is_not_handed_to_gdal(ws, grid_
     fgb = ws / "parcels.fgb"
     hostile.to_file(fgb, driver="FlatGeobuf")
     disguised = ws / "parcels.parquet"  # GeoJSON content under a Parquet name: GDAL goes by content
-    hostile.to_file(ws / "parcels.geojson", driver="GeoJSON")
+    # Written by hand: GDAL's GeoJSON writer emits no `crs` member at all, so a
+    # file it writes from this frame is not hostile (the first version of this
+    # test used one, and it only passed because the format was refused unread).
+    (ws / "parcels.geojson").write_text(json.dumps({
+        "type": "FeatureCollection",
+        "crs": {"type": "name", "properties": {"name": f"+proj=longlat +ellps=clrk66 +nadgrids={grid_outside} +type=crs"}},
+        "features": [{"type": "Feature", "properties": {"id": 1}, "geometry": {"type": "Point", "coordinates": [12, 45]}}],
+    }), encoding="utf-8")
     disguised.write_bytes((ws / "parcels.geojson").read_bytes())
 
     # Counterpart: GDAL reads the FlatGeobuf's SRS, and PROJ the grid, through the bare sandbox.
@@ -349,8 +359,16 @@ def test_a_format_whose_srs_mapsmith_cannot_read_is_not_handed_to_gdal(ws, grid_
         f"'{_sql_path(fgb)}'",
         f"ST_Read('{_sql_path(ws)}/*.fgb')",
     ):
-        with pytest.raises(ValueError, match="GDAL"):
+        with pytest.raises(ValueError, match="refused"):
             duckdb_engine.run_sql(_LATITUDE.format(g="geom", source=source))
+
+
+def test_a_format_mapsmith_does_not_recognise_is_not_handed_to_gdal(ws):
+    path = ws / "scene.img"
+    path.write_bytes(b"\x89HFA\x00\x01\x02\x03" + bytes(range(256)) * 4)
+    for source in (f"ST_Read('{_sql_path(path)}')", f"'{_sql_path(path)}'"):
+        with pytest.raises(ValueError, match="GDAL"):
+            duckdb_engine.run_sql(f"SELECT count(*) FROM {source}")
 
 
 def test_open_options_are_refused_in_both_spellings(ws):

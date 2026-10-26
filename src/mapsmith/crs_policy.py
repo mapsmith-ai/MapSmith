@@ -152,28 +152,66 @@ def parse(value: Any) -> Any:
 
 
 def declared_srs_texts(path: str) -> list[str]:
-    """The coordinate systems a file declares, as the text its own catalogue holds.
+    """The coordinate systems a file declares, as the text its own catalogue holds (see `declared`)."""
+    return declared(path).crs_texts
 
-    Read without GDAL and without pyproj, because both open a grid file named
-    in the SRS while parsing it (second audit pass, 2026-10-23: 20 opens from
-    `pyogrio.read_info` on one GeoPackage). A GeoPackage is recognised by its
-    first bytes, not its extension (`gpkg_spatial_ref_sys` through sqlite, and
-    an SQLite file this cannot read is refused rather than passed on); a
-    shapefile by the ``.prj`` beside it, in either case; GeoParquet by the
-    ``geo`` metadata. Any other format is opened by GDAL first, and
-    ``SECURITY.md`` says so.
+
+def declared(path: str):
+    """Everything a dataset declares that GDAL would hand to PROJ, read without GDAL or pyproj.
+
+    Both open a grid file named in the SRS while parsing it (second audit pass,
+    2026-10-23: 20 opens from `pyogrio.read_info` on one GeoPackage). The format
+    is recognised by its first bytes, not its extension: GeoPackage and OGR
+    SQLite through their catalogue (an SQLite file this cannot read is refused
+    rather than passed on), a shapefile by the ``.prj`` beside it, GeoParquet by
+    the ``geo`` metadata and the native type, and since 2026-10-26 every other
+    format `srs_sources` reads -- GeoJSON, GML, FlatGeobuf, GeoTIFF tags, file
+    geodatabases, folders, zips, text with a ``.prj``. Returns a
+    `srs_sources.Declared`; its ``kind`` is ``unknown`` for a format nobody here
+    reads, and the caller decides what that means.
     """
-    texts: list[str] = []
+    from . import srs_sources
+
     p = Path(path)
     try:
-        if not p.is_file():
-            return texts
-        with p.open("rb") as handle:
-            head = handle.read(16)
+        if not p.exists():
+            return srs_sources.Declared("missing")
+        if p.is_dir():
+            try:
+                return srs_sources.read(p)
+            except srs_sources.Unreadable as exc:
+                return srs_sources.Declared("directory", unreadable=str(exc))
+        kind = srs_sources.sniff(p)
     except OSError:
-        return texts
+        return srs_sources.Declared("missing")
+    out = srs_sources.Declared(kind)
     lower = p.name.lower()
-    if head.startswith(b"SQLite format 3\x00"):
+    if kind in ("sqlite", "parquet"):
+        out.crs_texts.extend(_catalogue_texts(p, kind, path))
+    else:
+        try:
+            out.extend(srs_sources.read(p))
+        except srs_sources.Unreadable as exc:
+            out.unreadable = str(exc)
+    if lower.endswith(_SHAPEFILE_FAMILY) and kind != "shapefile":
+        # GDAL can open any member of a shapefile as the shapefile, whatever
+        # its bytes say: the `.prj` is read for a family name in any case.
+        for candidate in (p.with_suffix(".prj"), p.with_suffix(".PRJ")):
+            if candidate.is_file():
+                out.crs_texts.append(candidate.read_text(encoding="utf-8", errors="replace"))
+                break
+    # GDAL's persistent auxiliary metadata beside a raster carries an SRS of
+    # its own, read on open (`reproject_raster`, `describe_dataset`: 31 opens).
+    aux = Path(str(path) + ".aux.xml")
+    if aux.is_file():
+        out.crs_texts.extend(_aux_srs_texts(aux, path))
+    return out
+
+
+def _catalogue_texts(p: Path, kind: str, path: str) -> list[str]:
+    """The SRS texts of an SQLite catalogue or a Parquet file's metadata."""
+    texts: list[str] = []
+    if kind == "sqlite":
         import sqlite3
         from contextlib import closing
 
@@ -186,15 +224,15 @@ def declared_srs_texts(path: str) -> list[str]:
                 # thing to this connection and another to GDAL's, which
                 # registers ST_* functions (fourth audit pass, 2026-10-23).
                 kinds = {
-                    name: (kind, sql or "")
-                    for name, kind, sql in db.execute(
+                    name: (table_kind, sql or "")
+                    for name, table_kind, sql in db.execute(
                         "SELECT lower(name), type, sql FROM sqlite_master "
                         "WHERE lower(name) IN ('gpkg_spatial_ref_sys', 'spatial_ref_sys')"
                     )
                 }
-                for name, (kind, sql) in kinds.items():
-                    if kind != "table" or "VIRTUAL" in sql.upper():
-                        raise ValueError(f"{name} is a {kind}, not a table")
+                for name, (table_kind, sql) in kinds.items():
+                    if table_kind != "table" or "VIRTUAL" in sql.upper():
+                        raise ValueError(f"{name} is a {table_kind}, not a table")
                 if "gpkg_spatial_ref_sys" in kinds:
                     columns = {row[1] for row in db.execute("PRAGMA table_info(gpkg_spatial_ref_sys)")}
                     wanted = [c for c in ("definition", "definition_12_063") if c in columns]
@@ -214,15 +252,7 @@ def declared_srs_texts(path: str) -> list[str]:
                             texts.extend(str(v) for v in row if v and str(v).strip().lower() not in ("undefined", ""))
         except Exception as exc:  # an SQLite file whose catalogue cannot be read is refused, not passed on
             raise ValueError(f"{path}: its spatial reference catalogue could not be read ({exc}).") from exc
-    elif lower.endswith(_SHAPEFILE_FAMILY):
-        # Any member of the family names the layer: GDAL opens `.dbf` or
-        # `.shx` as the shapefile too (fourth audit pass). Two stats, not a
-        # glob: a directory of 20,000 files made the glob cost 73 ms a file.
-        for candidate in (p.with_suffix(".prj"), p.with_suffix(".PRJ")):
-            if candidate.is_file():
-                texts.append(candidate.read_text(encoding="utf-8", errors="replace"))
-                break
-    elif lower.endswith(".parquet") or head.startswith(b"PAR1"):
+    elif kind == "parquet":
         import pyarrow.parquet as pq
 
         try:
@@ -255,11 +285,6 @@ def declared_srs_texts(path: str) -> list[str]:
                         texts.append(crs)
             elif key.startswith(b"projjson"):
                 texts.append(raw)
-    # GDAL's persistent auxiliary metadata beside a raster carries an SRS of
-    # its own, read on open (`reproject_raster`, `describe_dataset`: 31 opens).
-    aux = Path(str(path) + ".aux.xml")
-    if aux.is_file():
-        texts.extend(_aux_srs_texts(aux, path))
     return texts
 
 
@@ -300,31 +325,23 @@ def _native_parquet_crs_texts(parquet: Any, meta: dict[bytes, bytes]) -> list[st
 
 
 def srs_is_read_before_gdal(path: str) -> bool:
-    """Whether `declared_srs_texts` reads this dataset's coordinate system itself.
+    """Whether MapSmith reads this dataset's coordinate system itself, before GDAL.
 
-    True for the formats it reads from their own catalogue, recognised by
-    their BYTES: an SQLite file (GeoPackage, OGR SQLite), a Parquet file, and a
-    `.shp` that starts with the shapefile magic number. GDAL picks its driver
-    from the content, not the name, so a GeoJSON called `x.parquet` or `x.shp`
-    is opened as GeoJSON -- with its `crs` member -- and a name-based answer
-    here would pass it. False for every other format, for the other members of
-    a shapefile (pass the `.shp`), and for a directory (a `.gdb`): GDAL reads
-    their SRS, and a grid it names, on open, before any policy can look. A path
-    that does not exist is True: there is nothing to open.
+    True for every format `srs_sources` recognises by its BYTES (GDAL picks its
+    driver from the content, not the name, so a GeoJSON called `x.parquet` is
+    read as the GeoJSON it is), and for a path that does not exist: there is
+    nothing to open. False for a format nobody here reads -- GDAL would read its
+    SRS, and a grid it names, on open, before any policy could look.
     """
+    from . import srs_sources
+
     p = Path(path)
     if not p.exists():
         return True
-    if not p.is_file():
-        return False
     try:
-        with p.open("rb") as handle:
-            head = handle.read(16)
+        return srs_sources.sniff(p) in srs_sources.RECOGNISED
     except OSError:
         return False
-    return head.startswith((b"SQLite format 3\x00", b"PAR1")) or (
-        p.name.lower().endswith(".shp") and head.startswith(b"\x00\x00\x27\x0a")
-    )
 
 
 def _aux_srs_texts(aux: Path, path: str) -> list[str]:
@@ -357,20 +374,90 @@ _MAX_SRS_BYTES = 64 * 1024
 
 
 def refuse_declared_in_file(path: str) -> None:
-    """Refuse an input file whose declared coordinate system names a file or a host, before anything opens it.
+    """Refuse an input whose declared coordinate system names a file or a host, before anything opens it.
 
-    Each declared text goes through `parse`: the text check, pyproj's parser
-    (no grid opened), and the check again on what pyproj writes back.
+    Each declared CRS text goes through `parse`: the text check, pyproj's parser
+    (no grid opened), and the check again on what pyproj writes back. Free text
+    (a geodatabase table, a GeoTIFF citation, a text format) gets the text check.
+
+    Under a workspace it is closed in the two directions it can be open: a
+    format MapSmith does not recognise by its content, and a recognised one it
+    could not read, are refused -- GDAL would read their SRS, and open a grid it
+    names, before anything here could look (2026-10-26: 21 to 32 opens from a
+    GeoJSON, a GML and a FlatGeobuf that this function used to pass). Without a
+    workspace, file access is unconfined by design and both pass; a CRS found
+    to name a file or a host is refused in either mode.
+
+    The verdict is cached by the input's name, size and modification time and
+    those of its sidecars: one input reaches this from the path gate, the probe
+    and the reader, and a SpatiaLite catalogue took 13 s a call.
     """
-    for text in declared_srs_texts(path):
+    from . import workspace
+
+    strict = workspace.root() is not None
+    why = _cached_refusal(_fingerprint(path), strict)
+    if why:
+        raise ValueError(why)
+
+
+def _fingerprint(path: str) -> tuple:
+    p = Path(path)
+    stats = []
+    candidates = [p, Path(str(p) + ".aux.xml"), p.with_suffix(".prj"), p.with_suffix(".PRJ"),
+                  Path(str(p) + ".prj"), p.with_suffix(".gfs")]
+    try:
+        if p.is_dir():
+            candidates.extend(sorted(p.iterdir()))
+    except OSError:
+        pass
+    for candidate in candidates:
+        try:
+            st = candidate.stat()
+            stats.append((str(candidate), st.st_size, st.st_mtime_ns))
+        except OSError:
+            stats.append((str(candidate), None, None))
+    return (str(p), tuple(stats))
+
+
+@functools.lru_cache(maxsize=1024)
+def _cached_refusal(fingerprint: tuple, strict: bool) -> str | None:
+    from . import srs_sources
+
+    path = fingerprint[0]
+    try:
+        found = declared(path)
+    except srs_sources.Unreadable as exc:
+        return str(exc) if strict else None
+    except ValueError as exc:
+        # An SQLite or Parquet catalogue, or an `.aux.xml`, that could not be
+        # read: refused in either mode, as before this function cached anything.
+        return str(exc)
+    # What was read is checked first, in either mode; then, under a workspace,
+    # what could not be read and what is not recognised are refused.
+    for text in found.crs_texts:
         if len(text) > _MAX_SRS_BYTES:
-            raise ValueError(
+            return (
                 f"{path}: the file's coordinate system is refused: {len(text)} characters is more than a "
                 "coordinate system definition needs."
             )
         why = _verdict(text)
         if why:
-            raise ValueError(f"{path}: the file's coordinate system is refused: {why}")
+            return f"{path}: the file's coordinate system is refused: {why}"
+    for text in found.free_texts:
+        why = reason_to_refuse_text(text)
+        if why:
+            return f"{path}: the file names a coordinate system that is refused: {why}"
+    if strict and found.unreadable:
+        return found.unreadable
+    if strict and found.kind == "unknown":
+        return (
+            f"{path}: under MAPSMITH_WORKSPACE MapSmith opens only formats whose coordinate system it reads "
+            "before GDAL does -- GDAL reads it, and opens any grid file it names, the moment it opens the file. "
+            "Recognised by content: GeoPackage and other SQLite datasets, shapefiles, GeoParquet, GeoTIFF, "
+            "GeoJSON and Esri JSON, GML, KML and other XML, FlatGeobuf, CSV and other text with a .prj, file "
+            "geodatabases, folders and zips of these. Convert the file to one of them first."
+        )
+    return None
 
 
 @functools.lru_cache(maxsize=4096)
