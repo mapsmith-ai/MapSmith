@@ -1,6 +1,7 @@
 # Security policy
 
 > Published advisories:
+> [GHSA-36xg-cr27-6r4m](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-36xg-cr27-6r4m) — a dataset in GeoJSON, GML, FlatGeobuf and other GDAL formats could make PROJ open files outside the workspace and network shares. Affects >= 0.2.0 < 0.10.1, fixed in 0.10.1.
 > [GHSA-3wvg-2qh8-8gg6](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-3wvg-2qh8-8gg6) — a coordinate reference system could make PROJ read files outside the workspace and open network shares, in the tools and in `run_sql`. Affects >= 0.2.0 < 0.10.0, fixed in 0.10.0.
 > [GHSA-g95f-6vxv-mgv7](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-g95f-6vxv-mgv7) — `run_sql` could install and load arbitrary DuckDB extensions, disclosing host credentials. Affects >= 0.1.0 < 0.4.0, fixed in 0.4.0.
 > [GHSA-3rcc-xpw3-r4xh](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-3rcc-xpw3-r4xh) — a plain local file could make MapSmith fetch attacker-chosen URLs. Affects <= 0.2.1, fixed in 0.2.2.
@@ -41,13 +42,19 @@ below:
   first, and GDAL reads its SRS and a grid it names before MapSmith can
   refuse it. An operation still refuses before any coordinate moves;
   `validate_plan` may answer `valid` and `describe_dataset` may report the CRS
-  of such a file. **Closed on `main`, for the next release:** the path gate
-  reads the declared coordinate system of those formats too -- GeoJSON and
-  Esri JSON, GML and its `.gfs`, FlatGeobuf, GeoTIFF tags, file geodatabases,
-  folders, zips, a `.prj` beside any file -- recognising each by its bytes,
-  and under a workspace refuses a format it does not recognise. Until that
-  release is published, run 0.10.0 under a workspace only on datasets in the
-  formats listed above as read.
+  of such a file. **Closed in 0.10.1
+  ([GHSA-36xg-cr27-6r4m](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-36xg-cr27-6r4m)).**
+  Measured on 0.10.0 with a named pipe standing in for the grid: a GeoJSON
+  `crs` member, a GML `srsName` and a FlatGeobuf header made GDAL open it 21
+  to 32 times before the file was refused. From 0.10.1 the path gate reads the
+  declared coordinate system of those formats too -- GeoJSON and the other
+  JSON feature formats (with a JSON parser), GML and its `.gfs` (refusing a DOCTYPE wherever it
+  appears), FlatGeobuf, GeoTIFF's GeoKey text, file geodatabases, folders,
+  zips, a `.prj` beside any file -- recognising each by its bytes, and under a
+  workspace refuses a format it does not recognise: netCDF, HDF, JPEG 2000,
+  ERDAS IMG and GRIB rasters among them, until MapSmith reads their coordinate
+  system itself. An adversarial audit of the change before release found no
+  way past it, and four defects in it, fixed in the same release.
 
   **`run_sql` had the same hole by a route of its own, closed in 0.10.0.**
   DuckDB's spatial extension carries its own PROJ, which opens files
@@ -450,7 +457,7 @@ is neither advised nor mentioned.
 
 The criterion exists because the alternative spends the signal. Every advisory
 listed at the top is one a reader acts on -- GHSA-g95f-6vxv-mgv7 asks you to
-rotate a credential, GHSA-3rcc-xpw3-r4xh and GHSA-3wvg-2qh8-8gg6 to upgrade off
+rotate a credential, GHSA-3rcc-xpw3-r4xh, GHSA-3wvg-2qh8-8gg6 and GHSA-36xg-cr27-6r4m to upgrade off
 a version that fetches URLs an attacker chose or reads files outside the
 workspace. An advisory of much smaller weight, filed next to those, teaches a
 reader to skip the next one.

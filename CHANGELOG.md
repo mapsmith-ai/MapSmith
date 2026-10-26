@@ -6,6 +6,19 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-26
+
+**Update if you run MapSmith under `MAPSMITH_WORKSPACE`.** A dataset in a
+format whose coordinate system MapSmith did not read itself -- GeoJSON with a
+`crs` member, GML, FlatGeobuf and others -- could make PROJ open a file outside
+the workspace, or a network share, before MapSmith refused it
+([GHSA-36xg-cr27-6r4m](https://github.com/mapsmith-ai/MapSmith/security/advisories/GHSA-36xg-cr27-6r4m)).
+This is the part 0.10.0's `SECURITY.md` and GHSA-3wvg-2qh8-8gg6 listed as still
+open. Under a workspace, netCDF, HDF, JPEG 2000, ERDAS IMG and GRIB rasters are
+now refused until MapSmith reads their coordinate system itself; without a
+workspace nothing changes. Records still declare `spec_version`
+`1.0.0-draft.10`, no key is new or renamed, and the answers are those of 0.10.0.
+
 ### Security
 
 - **Under a workspace, the coordinate system of every dataset format MapSmith

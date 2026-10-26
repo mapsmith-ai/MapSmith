@@ -223,15 +223,15 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.10.0**, which is what that command installs. When `main` runs ahead of
+This page describes **0.10.1**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **`main` is ahead of 0.10.0**
-([`[Unreleased]`](CHANGELOG.md#unreleased)) by one security change: under a workspace the
-coordinate system of every dataset format MapSmith accepts is read before GDAL opens the file,
-and a format it does not recognise is refused. **If you run 0.9.0 or earlier under
+have to find out by calling a tool that is not there. **If you run 0.10.0 or earlier under
 `MAPSMITH_WORKSPACE`, update**: a coordinate reference system -- a tool argument, or the one a
 file declares -- could make PROJ read a file outside the workspace or open a network share, and
-in `run_sql` DuckDB's own PROJ could do the same; [`SECURITY.md`](SECURITY.md) has both. **From
+in `run_sql` DuckDB's own PROJ could do the same; 0.10.0 closed that for tool arguments and for
+GeoPackage, shapefile and GeoParquet inputs, and 0.10.1 for every other format MapSmith accepts
+-- under a workspace it now reads each input's coordinate system before GDAL opens the file,
+and refuses a format it does not recognise. [`SECURITY.md`](SECURITY.md) has all of it. **From
 0.9.0, 0.10.0** also: every operation that brings a vector input onto another CRS -- the eight
 that align a second input, and the samplers, zones, masks, pour points and stations of the
 raster ones -- chooses the datum transformation the way `reproject_layer` does, which moves
@@ -307,7 +307,7 @@ for it:
 ```json
 {
   "spec_version": "1.0.0-draft.10",
-  "producer": {"name": "mapsmith", "version": "0.10.0"},
+  "producer": {"name": "mapsmith", "version": "0.10.1"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{
@@ -1033,8 +1033,9 @@ Set `MAPSMITH_WORKSPACE=/data` to confine the server to one directory:
 - every path argument of every tool must resolve inside the workspace (checked at the MCP
   boundary, and again by plan validation with stable error codes);
 - the coordinate system an input declares is read from its bytes before GDAL opens it, because
-  GDAL would open any grid file it names (on `main`: every format MapSmith accepts, and a
-  format it does not recognise is refused; 0.10.0 reads GeoPackage, shapefile and GeoParquet);
+  GDAL would open any grid file it names, for every format MapSmith accepts, and a format it
+  does not recognise is refused -- netCDF, HDF, JPEG 2000, ERDAS IMG and GRIB rasters among
+  them, until MapSmith reads their coordinate system itself (since 0.10.1);
 - the `run_sql` DuckDB connection is sandboxed in the engine itself, because SQL text is
   out of reach of a textual path check: filesystem whitelisted to the workspace
   (`allowed_directories` + external access off, which also covers GDAL-backed `ST_Read`),
