@@ -79,10 +79,11 @@ class Declared:
 
 #: The kinds whose SRS this module reads. Anything else is `unknown`.
 RECOGNISED = frozenset(
-    {"sqlite", "parquet", "shapefile", "tiff", "json", "xml", "flatgeobuf", "zip", "text", "gdb", "directory"}
+    {"sqlite", "parquet", "shapefile", "tiff", "image", "json", "xml", "flatgeobuf", "zip", "text", "gdb", "directory"}
 )
 
 _TIFF_MAGIC = (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")
+_IMAGE_MAGIC = (b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a", b"BM")
 
 
 def sniff_bytes(head: bytes, name: str) -> str:
@@ -97,6 +98,12 @@ def sniff_bytes(head: bytes, name: str) -> str:
         return "flatgeobuf"
     if head.startswith((b"PK\x03\x04", b"PK\x05\x06")):
         return "zip"
+    if head.startswith(b"\x00\x00\x27\x0a"):
+        return "shapefile"  # the .shp magic number, whatever the file is called
+    if head.startswith(_IMAGE_MAGIC):
+        # PNG, JPEG, GIF, BMP: GDAL takes their georeferencing from sidecars
+        # (.aux.xml, .prj, world files), which are read, and from nothing inside.
+        return "image"
     # Content before name: a JSON or an XML document is opened by its own
     # driver whatever it is called, `x.dbf` included.
     text = head.lstrip(b"\xef\xbb\xbf").lstrip()
@@ -136,7 +143,14 @@ _SAFE_CURIE = re.compile(r"^\[([A-Za-z][\w.-]*:[\w.-]+)\]$")
 
 
 def _json_documents(raw: bytes) -> list:
-    text = raw.decode("utf-8-sig", errors="strict")
+    # JSON's structure is ASCII. A Latin-1 byte in an attribute is not UTF-8,
+    # GDAL reads it anyway, and refusing the file for it was a false positive
+    # (audit, 2026-10-26): Latin-1 maps every byte to one character, so the
+    # keys and any coordinate system text survive it unchanged.
+    try:
+        text = raw.decode("utf-8-sig", errors="strict")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
     try:
         return [json.loads(text)]
     except ValueError:
@@ -196,12 +210,6 @@ def read_json(raw: bytes) -> Declared:
 _EPSG_XML = re.compile(r"epsg\.xml#(\d+)$", re.IGNORECASE)
 
 
-def _xml_events(source):
-    from xml.etree import ElementTree
-
-    return ElementTree.iterparse(source, events=("start",))
-
-
 def _refuse_doctype(raw_head: bytes, where: str) -> None:
     upper = raw_head.upper()
     if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
@@ -215,19 +223,52 @@ def _srs_name(value: str) -> str:
 
 
 def read_xml(source, where: str) -> Declared:
-    """`srsName` attributes anywhere in the document, and `SRSName` elements (a `.gfs`)."""
-    from xml.etree import ElementTree
+    """`srsName` attributes anywhere in the document, and `SRSName` elements (a `.gfs`).
+
+    Straight on expat, streaming, with a handler that refuses a DOCTYPE wherever
+    it appears: the first version looked for one in the first 4 KiB only, and a
+    long comment ahead of it walked past (audit, 2026-10-26).
+    """
+    from xml.parsers import expat
 
     out = Declared("xml")
+    in_srs_element: list[bool] = [False]
+    text: list[str] = []
+
+    def refuse_doctype(*_args):
+        raise ValueError(f"{where} carries a DOCTYPE, which MapSmith does not read.")
+
+    def start(tag, attrs):
+        for name, value in attrs.items():
+            if name.rsplit("}", 1)[-1].lower() == "srsname" and value.strip():
+                out.crs_texts.append(_srs_name(value))
+        if tag.rsplit("}", 1)[-1].lower() == "srsname":
+            in_srs_element[0] = True
+            text.clear()
+
+    def end(tag):
+        if in_srs_element[0] and tag.rsplit("}", 1)[-1].lower() == "srsname":
+            in_srs_element[0] = False
+            if "".join(text).strip():
+                out.crs_texts.append(_srs_name("".join(text)))
+
+    def chars(data):
+        if in_srs_element[0]:
+            text.append(data)
+
+    parser = expat.ParserCreate(namespace_separator="}")
+    parser.StartDoctypeDeclHandler = refuse_doctype
+    parser.EntityDeclHandler = refuse_doctype
+    parser.StartElementHandler = start
+    parser.EndElementHandler = end
+    parser.CharacterDataHandler = chars
     try:
-        for _, element in _xml_events(source):
-            for name, value in element.attrib.items():
-                if name.rsplit("}", 1)[-1].lower() == "srsname" and value.strip():
-                    out.crs_texts.append(_srs_name(value))
-            if element.tag.rsplit("}", 1)[-1].lower() == "srsname" and (element.text or "").strip():
-                out.crs_texts.append(_srs_name(element.text))
-            element.clear()
-    except ElementTree.ParseError as exc:
+        if isinstance(source, str):
+            with open(source, "rb") as handle:
+                parser.ParseFile(handle)
+        else:
+            parser.ParseFile(source)
+    except expat.ExpatError as exc:
         raise ValueError(f"{where} could not be read as XML ({exc}).") from None
     return out
 
@@ -460,7 +501,11 @@ def read(path: Path) -> Declared:
         return _read(path)
     except Unreadable:
         raise
-    except (ValueError, OSError, UnicodeDecodeError, struct.error) as exc:
+    except RecursionError:
+        # 60,000 nested JSON arrays made the gate crash instead of answering
+        # (audit, 2026-10-26): a document this deep is not one anyone checks.
+        raise Unreadable(f"{path}: nested too deeply to check its coordinate system") from None
+    except (ValueError, OSError, struct.error) as exc:
         message = str(exc) if str(exc).startswith(str(path)) else f"{path}: {exc}"
         raise Unreadable(f"{message} (its coordinate system could not be read)") from None
 

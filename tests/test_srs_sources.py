@@ -258,6 +258,40 @@ def test_an_xml_doctype_is_refused_under_a_workspace(ws):
         workspace.guard(str(path), "input_path")
 
 
+def test_a_doctype_after_a_long_comment_is_still_refused(ws):
+    """The first version looked for a DOCTYPE in the first 4 KiB (audit, 2026-10-26)."""
+    path = ws / "a.gml"
+    path.write_text('<?xml version="1.0"?><!--' + "x" * 6000 + '--><!DOCTYPE x [<!ENTITY e "EPSG:4326">]>'
+                    '<x srsName="&e;"/>', encoding="utf-8")
+    with pytest.raises(ValueError, match="DOCTYPE"):
+        workspace.guard(str(path), "input_path")
+
+
+def test_json_nested_too_deep_is_refused_rather_than_crashing_the_gate(monkeypatch, tmp_path):
+    path = tmp_path / "ws" / "deep.json"
+    path.parent.mkdir()
+    path.write_text("[" * 60000 + "1" + "]" * 60000, encoding="utf-8")
+    monkeypatch.setenv("MAPSMITH_WORKSPACE", str(path.parent))
+    with pytest.raises(ValueError, match="nested too deeply"):
+        workspace.guard(str(path), "input_path")
+    monkeypatch.delenv("MAPSMITH_WORKSPACE")
+    assert workspace.guard(str(path), "input_path") == str(path)  # a clean answer, not a RecursionError
+
+
+def test_false_positives_the_audit_found_now_pass(ws):
+    # A PNG carries no coordinate system inside it: GDAL takes it from sidecars.
+    (ws / "a.png").write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(64))
+    # A shapefile under another name is recognised by its magic number, and its .prj is read.
+    _points().to_file(ws / "b.shp")
+    (ws / "b.shp").rename(ws / "b.data")
+    assert srs_sources.sniff(ws / "b.data") == "shapefile"
+    # A GeoJSON with a Latin-1 byte in an attribute: GDAL reads it, so must the gate.
+    raw = json.dumps(_feature_collection()).replace('"id": 1', '"name": "XX"').encode("utf-8")
+    (ws / "c.geojson").write_bytes(raw.replace(b"XX", b"Citt\xe0"))
+    for name in ("a.png", "b.data", "c.geojson"):
+        assert workspace.guard(str(ws / name), "input_path") == str(ws / name), name
+
+
 def test_the_content_decides_the_format_not_the_name(ws):
     """A GeoJSON called `.parquet` or `.dbf` is opened by GDAL as GeoJSON."""
     for name in ("a.parquet", "a.dbf", "a.tif"):
