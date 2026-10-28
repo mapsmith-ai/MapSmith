@@ -201,6 +201,10 @@ CONTAINER_EXTENSIONS: dict[str, dict[str, str]] = {
             "wrapper would name a component that cannot explain a change in the "
             "answer."
         ),
+        "x-mapsmith:qgis_code_revision": (
+            "The QGIS source revision returned by qgis_process. Not engine.version, "
+            "which is the release label and does not distinguish two builds of it."
+        ),
     },
     "repairs[]": {
         "x-mapsmith:round": (

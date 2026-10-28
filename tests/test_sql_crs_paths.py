@@ -112,6 +112,29 @@ def test_a_crs_computed_in_sql_is_refused_because_it_cannot_be_checked(ws, query
         duckdb_engine.run_sql(query)
 
 
+def test_a_bare_grid_is_refused_because_duckdb_proj_can_use_the_server_cwd(ws):
+    query = (
+        "SELECT ST_Transform(ST_Point(12, 45), 'EPSG:4326', "
+        "'+proj=longlat +ellps=clrk66 +nadgrids=shift.gsb +type=crs', always_xy := true)"
+    )
+    with pytest.raises(ValueError, match="external grid files"):
+        duckdb_engine.run_sql(query)
+
+
+def test_a_dataset_declaring_a_bare_grid_is_refused_by_run_sql(ws):
+    path = _native_parquet(ws / "bare-grid.parquet", "shift.gsb")
+    with pytest.raises(ValueError, match="external grid files"):
+        duckdb_engine.run_sql(_LATITUDE.format(g="geometry", source=f"read_parquet('{path}')"))
+
+
+def test_the_null_grid_is_not_an_external_file(ws):
+    result = duckdb_engine.run_sql(
+        "SELECT ST_Y(ST_Transform(ST_Point(12, 45), 'EPSG:4326', "
+        "'+proj=longlat +ellps=clrk66 +nadgrids=@null +type=crs', always_xy := true))"
+    )
+    assert result["rows"][0][0] == pytest.approx(45.0, abs=1e-6)
+
+
 def test_a_honest_transform_still_answers(ws):
     """Longitude 15 on the equator is the central meridian of UTM 33N: x = 500000, y = 0."""
     result = duckdb_engine.run_sql(
@@ -228,6 +251,40 @@ def test_a_cte_named_like_a_file_is_not_a_path(ws):
     assert result["rows"] == [[3]]
 
 
+def test_a_nested_cte_does_not_hide_a_file_in_the_parent_scope(ws):
+    _hostile_parquet(ws / "evil.parquet")
+    query = (
+        "SELECT * FROM 'evil.parquet' WHERE EXISTS "
+        "(WITH \"evil.parquet\" AS (SELECT 1 AS x) SELECT 1)"
+    )
+    with pytest.raises(ValueError, match="refused"):
+        duckdb_engine.run_sql(query)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "WITH \"evil.parquet\" AS (SELECT * FROM 'evil.parquet') SELECT * FROM \"evil.parquet\"",
+        "WITH a AS (SELECT * FROM 'evil.parquet'), \"evil.parquet\" AS (SELECT 1 AS x) SELECT * FROM a",
+        ("WITH RECURSIVE \"evil.parquet\" AS (SELECT * FROM 'evil.parquet' "
+         "UNION ALL SELECT 1) SELECT * FROM \"evil.parquet\""),
+    ],
+)
+def test_a_cte_does_not_hide_a_file_inside_its_own_or_an_earlier_definition(ws, query):
+    _hostile_parquet(ws / "evil.parquet")
+    with pytest.raises(ValueError, match="refused"):
+        duckdb_engine.run_sql(query)
+
+
+def test_a_replacement_scan_without_an_extension_is_still_checked(ws):
+    import shutil
+
+    hostile = _hostile_parquet(ws / "evil.parquet")
+    shutil.copy(hostile, ws / "evil")
+    with pytest.raises(ValueError, match="refused"):
+        duckdb_engine.run_sql("SELECT * FROM 'evil'")
+
+
 def test_the_output_path_still_materialises_a_checked_query(ws):
     a = _sql_path(_parquet(ws / "a.parquet"))
     out = ws / "out.parquet"
@@ -274,6 +331,86 @@ def _ntv2_grid(path) -> str:
     ])
     path.write_bytes(data)
     return str(path).replace("\\", "/")
+
+
+def _cwd_grid_probe(tmp_path, runtime, pin):
+    import subprocess
+    import sys
+
+    ws = tmp_path / "ws"
+    cwd = tmp_path / "cwd"
+    ws.mkdir()
+    cwd.mkdir()
+    _ntv2_grid(cwd / "shift.gsb")
+    source = "+proj=longlat +ellps=clrk66 +nadgrids=shift.gsb +type=crs"
+    if runtime == "pyproj":
+        probe = (
+            "from pyproj import Transformer\n"
+            f"t = Transformer.from_crs({source!r}, 'EPSG:4326', always_xy=True)\n"
+            "print(t.transform(12, 45)[1])\n"
+        )
+    elif runtime == "rasterio":
+        probe = (
+            "from rasterio.warp import transform\n"
+            f"print(transform({source!r}, 'EPSG:4326', [12], [45])[1][0])\n"
+        )
+    else:
+        probe = (
+            "from mapsmith.engines import duckdb_engine\n"
+            f"print(duckdb_engine._connect().sql(\"SELECT ST_Y(ST_Transform(ST_Point(12, 45), {source!r}, "
+            "'EPSG:4326', always_xy := true))\").fetchone()[0])\n"
+        )
+    code = (
+        "import os\n"
+        f"os.environ['MAPSMITH_WORKSPACE'] = {str(ws)!r}\n"
+        f"os.chdir({str(cwd)!r})\n"
+        "from mapsmith import crs_policy\n"
+        + ("crs_policy.pin_search_paths_under_workspace()\n" if pin else "")
+        + "try:\n"
+        + "".join(f"    {line}\n" for line in probe.splitlines())
+        + "except Exception:\n    print('nan')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True, timeout=30,
+    )
+    return float(result.stdout.strip())
+
+
+def test_duckdb_cannot_read_a_grid_from_the_old_server_cwd(tmp_path):
+    """The same fixture moved latitude to 47.5 before the cwd was confined.
+    With no grid in the workspace, DuckDB now returns infinity instead."""
+    import math
+
+    assert math.isinf(_cwd_grid_probe(tmp_path, "duckdb", pin=False))
+
+
+@pytest.mark.parametrize("runtime", ["pyproj", "rasterio"])
+def test_explicit_proj_search_paths_do_not_fall_back_to_the_cwd(tmp_path, runtime):
+    assert _cwd_grid_probe(tmp_path, runtime, pin=True) != pytest.approx(47.5, abs=1e-5)
+
+
+def test_pinned_proj_paths_still_resolve_epsg(tmp_path):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    import subprocess
+    import sys
+
+    code = (
+        "import os\n"
+        f"os.environ['MAPSMITH_WORKSPACE'] = {str(ws)!r}\n"
+        "from mapsmith import crs_policy\n"
+        "crs_policy.pin_search_paths_under_workspace()\n"
+        "from pyproj import Transformer\n"
+        "print(Transformer.from_crs('EPSG:4326', 'EPSG:32633', always_xy=True).transform(15, 0)[0])\n"
+        "from rasterio.warp import transform\n"
+        "print(transform('EPSG:4326', 'EPSG:32633', [15], [0])[0][0])\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True, timeout=30,
+    )
+    assert [float(line) for line in result.stdout.splitlines()] == [
+        pytest.approx(500000.0, abs=1e-6), pytest.approx(500000.0, abs=1e-6),
+    ]
 
 
 @pytest.fixture

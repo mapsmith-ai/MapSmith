@@ -110,10 +110,11 @@ def test_a_continuous_raster_is_not_second_guessed(tmp_path):
 def test_the_method_is_required_and_checked(landcover, tmp_path):
     with pytest.raises(ValueError, match="resampling must be one of"):
         raster.resample(landcover, str(tmp_path / "x.tif"), 10, "nonsense")
-    # q1 exists in rasterio's enum but only works when warping: read() raises
-    # ResamplingAlgorithmError. The refusal must name that, not leak the error.
-    with pytest.raises(ValueError, match="valid only for warping"):
-        raster.resample(landcover, str(tmp_path / "x.tif"), 10, "q1")
+    # q1 is warp-only in rasterio, and this operation really calls warp().
+    out = tmp_path / "q1.tif"
+    raster.resample(landcover, str(out), 10, "q1")
+    with rasterio.open(out) as ds:
+        assert set(np.unique(ds.read(1)).tolist()) <= {1, 3}
     with pytest.raises(ValueError, match="resolution must be positive"):
         raster.resample(landcover, str(tmp_path / "x.tif"), 0, "nearest")
 

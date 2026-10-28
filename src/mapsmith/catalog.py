@@ -3132,13 +3132,125 @@ OPERATIONS: list[dict[str, Any]] = [
     },
     {
         "name": "qgis_processing",
-        "status": "planned",
+        "status": "available",
+        "tool": None,
         "workload": "small_vector",
         "category": "bridge",
         "produces": "dataset:vector",
-        "applicability": {"inputs": ["dataset"], "requires_projected_crs": False, 'dataset_inputs': 1},
-        "summary": "~900 QGIS/GRASS/SAGA algorithms via GPL-isolated subprocess sidecar",
-        "phrasings": "one of the qgis algorithms",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": True, "dataset_inputs": 1},
+        "summary": "QGIS native:buffer on vector layers through a GPL-isolated subprocess",
+        "phrasings": "buffer polygons with QGIS; QGIS buffer around points; fixed distance buffer in QGIS Processing",
+        "distinguishes": "Runs the QGIS native:buffer algorithm rather than MapSmith's buffer_layer. Other QGIS algorithms are not exposed yet.",
+        "description": (
+            "Run QGIS native:buffer in a separate qgis_process with JSON input and no Python or ambient "
+            "plugins. DISTANCE is in the INPUT CRS's units, not necessarily metres; MapSmith does not "
+            "reproject silently. All buffer parameters are pinned. The returned layer is read once by "
+            "MapSmith, written canonically and verified with a manifest naming the actual QGIS version. "
+            "Requires QGIS with qgis_process; other algorithms are refused. Called through run_operation."
+        ),
+        "parameters": [
+            {"name": "algorithm", "type": "str", "required": True, "description": "QGIS algorithm to run; currently only native:buffer"},
+            {"name": "input_path", "type": "str", "required": True, "description": "Input vector layer (must have a CRS)"},
+            {"name": "distance", "type": "float", "required": True, "description": "Finite buffer distance in the input CRS's units"},
+            {"name": "output_path", "type": "str", "required": True, "description": "Output vector path (.parquet or .gpkg)"},
+            {"name": "segments", "type": "int", "required": False, "description": "Segments per quarter circle (default 5, minimum 1)"},
+            {"name": "dissolve", "type": "bool", "required": False, "description": "Dissolve all buffered geometries into one feature (default false)"},
+        ],
+        "examples": [{
+            "goal": "Buffer my wells with QGIS Processing instead of the default engine",
+            "call": {"tool": "run_operation", "arguments": {"operation": "qgis_processing", "arguments": {
+                "algorithm": "native:buffer", "input_path": "wells.gpkg",
+                "distance": 100, "output_path": "wells_qgis.parquet"
+            }}},
+        }, {
+            "goal": "Create one dissolved QGIS buffer around the study parcels",
+            "call": {"tool": "run_operation", "arguments": {"operation": "qgis_processing", "arguments": {
+                "algorithm": "native:buffer", "input_path": "parcels.gpkg",
+                "distance": 50, "dissolve": True, "output_path": "buffered.parquet"
+            }}},
+        }],
+    },
+    {
+        "name": "rasterize_layer",
+        "status": "available",
+        "tool": None,
+        "workload": "raster",
+        "category": "raster",
+        "produces": "dataset:raster",
+        "applicability": {"inputs": ["vector", "raster"], "requires_projected_crs": False, "dataset_inputs": 2},
+        "summary": "Burn vector geometries or a numeric field onto a reference raster's exact grid; requires the [raster] extra",
+        "phrasings": "turn polygons into a grid; convert zones to raster; burn a field into cells; make a mask from my parcels; rasterize the land cover boundaries",
+        "distinguishes": "Changes vector features into raster cells on an existing grid. Not convert_format, which stays vector; not reproject_raster, which starts with a raster.",
+        "description": (
+            "Rasterize a vector layer using the reference raster's CRS, dimensions and affine transform. "
+            "The two CRSs must match; nothing is reprojected silently. With field_name, burn that numeric "
+            "field (null, non-finite and integer values outside ±2^53 are refused); without it burn 1. "
+            "Integer codes are preserved as int32/uint32 when they fit; larger exact integers use "
+            "float64. Pixel-center containment is the default, all_touched includes every touched cell. The "
+            "background is 0 unless nodata is declared, in which case fill and metadata use that same "
+            "value; a presence mask uses uint8 and accepts only integer nodata from 0 to 255. Called "
+            "through run_operation."
+        ),
+        "parameters": [
+            {"name": "input_path", "type": "str", "required": True, "description": "Vector layer to rasterize (must have the reference CRS)"},
+            {"name": "reference_raster_path", "type": "str", "required": True, "description": "Raster supplying the exact output grid and CRS"},
+            {"name": "output_path", "type": "str", "required": True, "description": "Output GeoTIFF path"},
+            {"name": "field_name", "type": "str", "required": False, "description": "Numeric field to burn; omit to burn 1"},
+            {"name": "all_touched", "type": "bool", "required": False, "description": "Burn every touched cell instead of pixel-center containment (default false)"},
+            {"name": "nodata", "type": "float", "required": False, "description": "Optional background/nodata value, exactly representable by the final dtype; also used as fill"},
+        ],
+        "examples": [{
+            "goal": "Turn my zoning polygons into cells on the existing land-use grid",
+            "call": {"tool": "run_operation", "arguments": {"operation": "rasterize_layer", "arguments": {
+                "input_path": "zones.parquet", "reference_raster_path": "land_use.tif",
+                "field_name": "zone_code", "output_path": "zones.tif"
+            }}},
+        }, {
+            "goal": "Burn a presence mask from my habitat polygons",
+            "call": {"tool": "run_operation", "arguments": {"operation": "rasterize_layer", "arguments": {
+                "input_path": "habitat.parquet", "reference_raster_path": "grid.tif",
+                "output_path": "habitat_mask.tif", "all_touched": True
+            }}},
+        }],
+    },
+    {
+        "name": "polygonize_raster",
+        "status": "available",
+        "tool": None,
+        "workload": "raster",
+        "category": "raster",
+        "produces": "dataset:vector",
+        "applicability": {"inputs": ["raster"], "requires_projected_crs": False, "dataset_inputs": 1},
+        "summary": "Convert connected equal-valued raster cells into polygons, excluding nodata; requires the [raster] extra",
+        "phrasings": "turn the class raster into polygons; convert my zones grid to vector; outlines around equal cells; polygonize the land cover map",
+        "distinguishes": "Creates vector polygons from connected raster values. Not rasterize_layer, which goes the other way; not contour_lines, which follows elevation levels.",
+        "description": (
+            "Polygonize connected regions with the same value in one raster band. Nodata is masked out, "
+            "not turned into polygons. Connectivity is 4 (edge neighbours) or 8 (also diagonal). The "
+            "source affine transform places the polygons in the raster CRS, and rows are sorted by value, "
+            "bounds and geometry for reproducibility. float64 and uint64 are refused because rasterio can "
+            "truncate them; int64 outside ±2^53 is refused too. max_features stops an accidental "
+            "polygon-per-pixel explosion before writing. Called through run_operation."
+        ),
+        "parameters": [
+            {"name": "input_path", "type": "str", "required": True, "description": "Input raster (must have a CRS)"},
+            {"name": "output_path", "type": "str", "required": True, "description": "Output vector path (.parquet or .gpkg)"},
+            {"name": "band", "type": "int", "required": False, "description": "One-based band to polygonize (default 1)"},
+            {"name": "connectivity", "type": "int", "required": False, "description": "4 for edges, 8 for edges and diagonals (default 4)"},
+            {"name": "field_name", "type": "str", "required": False, "description": "Output cell-value field (default 'value')"},
+            {"name": "max_features", "type": "int", "required": False, "description": "Maximum polygons allowed (default 100000)"},
+        ],
+        "examples": [{
+            "goal": "Give me polygons for each connected region in my classified raster",
+            "call": {"tool": "run_operation", "arguments": {"operation": "polygonize_raster", "arguments": {
+                "input_path": "classes.tif", "output_path": "classes.parquet", "connectivity": 4
+            }}},
+        }, {
+            "goal": "Join diagonal cells of the same class into polygons",
+            "call": {"tool": "run_operation", "arguments": {"operation": "polygonize_raster", "arguments": {
+                "input_path": "classes.tif", "output_path": "classes_8.parquet", "connectivity": 8
+            }}},
+        }],
     },
     {   'name': 'reproject_raster',
         'status': 'available',
@@ -5024,6 +5136,141 @@ def rank(query: str, limit: int = 10) -> list[tuple[dict[str, Any], float]]:
     return ranked[:limit]
 
 
+PARAMETER_CONTRACTS: dict[tuple[str, str], dict[str, Any]] = {
+    ("overlay_layers", "how"): {"choices": ["intersection", "union", "identity", "symmetric_difference", "difference"]},
+    ("dissolve_layer", "aggfunc"): {"choices": ["first", "last", "sum", "mean", "median", "min", "max", "count"]},
+    ("measure_area", "method"): {"choices": ["geodesic", "planar"]},
+    ("select_features", "by"): {"choices": ["geometry_type", "field_equals", "field_in", "field_between"]},
+    ("spatial_join", "predicate"): {"choices": ["intersects", "within", "contains"]},
+    ("slope", "units"): {"choices": ["degrees", "percent", "radians"]},
+    ("flow_accumulation", "out_type"): {"choices": ["cells", "sca"]},
+    ("resample_raster", "resampling"): {
+        "choices": ["nearest", "mode", "min", "max", "med", "q1", "q3", "bilinear", "cubic",
+                    "cubic_spline", "lanczos", "average", "rms", "gauss", "sum"],
+    },
+    ("resample_raster", "resolution"): {"exclusive_minimum": 0},
+    ("join_table", "how"): {"choices": ["left", "inner"]},
+    ("measure_length", "method"): {"choices": ["geodesic", "planar", "3d"]},
+    ("hull_layer", "kind"): {"choices": ["convex", "envelope", "oriented"]},
+    ("count_in_polygons", "predicate"): {"choices": ["intersects", "within"]},
+    ("summarize_points_in_polygons", "predicate"): {"choices": ["intersects", "within"]},
+    ("summarize_points_in_polygons", "statistics"): {
+        "choices": ["count", "sum", "mean", "median", "min", "max", "stdev", "range"],
+        "min_items": 1,
+    },
+    ("summarize_field", "statistics"): {
+        "choices": ["count", "sum", "mean", "median", "min", "max", "stdev", "range"],
+    },
+    ("focal_statistics", "statistic"): {
+        "choices": ["mean", "median", "maximum", "minimum", "range", "standard_deviation",
+                    "majority", "diversity", "total"],
+    },
+    ("focal_statistics", "window"): {"minimum": 3, "odd": True},
+    ("reproject_raster", "resampling"): {
+        "choices": ["nearest", "mode", "min", "max", "med", "q1", "q3", "bilinear", "cubic",
+                    "cubic_spline", "lanczos", "average", "rms", "gauss", "sum"],
+    },
+    ("curvature", "kind"): {"choices": ["profile", "plan", "tangential", "mean", "gaussian", "total"]},
+    ("flow_direction", "method"): {"choices": ["d8", "rho8", "dinf", "fd8"]},
+    ("flow_direction", "encoding"): {"choices": ["northeast_first", "east_first"]},
+    ("voronoi_polygons", "boundary"): {"choices": ["envelope", "convex_hull"]},
+    ("voronoi_polygons", "margin_fraction"): {"minimum": 0},
+    ("geodetic_distance", "ellipsoid"): {"choices": ["WGS84", "GRS80", "WGS72", "intl", "clrk66", "airy", "bessel"]},
+    ("geodetic_distance", "from_lon"): {"minimum": -180, "maximum": 180},
+    ("geodetic_distance", "to_lon"): {"minimum": -180, "maximum": 180},
+    ("geodetic_distance", "from_lat"): {"minimum": -90, "maximum": 90},
+    ("geodetic_distance", "to_lat"): {"minimum": -90, "maximum": 90},
+    ("sample_raster_at_points", "method"): {"choices": ["nearest", "bilinear"]},
+    ("elevation_profile", "method"): {"choices": ["nearest", "bilinear"]},
+    ("elevation_profile", "spacing"): {"exclusive_minimum": 0},
+    ("points_along_lines", "spacing"): {"exclusive_minimum": 0},
+    ("contour_lines", "interval"): {"exclusive_minimum": 0},
+    ("hot_spots", "weights"): {"choices": ["contiguity", "distance_band"]},
+    ("hot_spots", "distance_band"): {"exclusive_minimum": 0},
+    ("hot_spots", "alpha"): {"exclusive_minimum": 0, "exclusive_maximum": 1},
+    ("spatial_autocorrelation", "weights"): {"choices": ["contiguity", "distance_band"]},
+    ("spatial_autocorrelation", "distance_band"): {"exclusive_minimum": 0},
+    ("transform_by_control_points", "kind"): {"choices": ["similarity", "affine"]},
+    ("spatial_join", "engine"): {"choices": ["auto", "sedonadb", "duckdb", "geopandas"]},
+    ("convert_format", "output_path"): {"extensions": [".parquet", ".gpkg", ".geojson"]},
+    ("zonal_statistics", "stats"): {
+        "choices": ["count", "sum", "mean", "median", "min", "max", "stdev", "variance",
+                    "majority", "minority", "variety", "weighted_mean", "weighted_sum",
+                    "weighted_stdev", "weighted_variance", "weighted_frac"],
+    },
+    ("elevation_profile", "grade_height_unit"): {"choices": ["metre", "foot", "US survey foot"]},
+    ("elevation_profile", "grade_base_length"): {"exclusive_minimum": 0},
+    ("elevation_profile", "grade_threshold_percent"): {"minimum": 0},
+    ("elevation_profile", "band"): {"minimum": 1},
+    ("sample_raster_at_points", "band"): {"minimum": 1},
+    ("band_statistics", "band"): {"minimum": 1},
+    ("extract_band", "band"): {"minimum": 1},
+    ("locate_extreme_cell", "which"): {"choices": ["min", "max"]},
+    ("locate_extreme_cell", "band"): {"minimum": 1},
+    ("line_of_sight", "band"): {"minimum": 1},
+    ("select_features", "values"): {"min_items": 1},
+    ("nearest_join", "max_distance_meters"): {"exclusive_minimum": 0},
+    ("simplify_layer", "tolerance_meters"): {"exclusive_minimum": 0},
+    ("hillshade", "azimuth"): {"minimum": 0, "maximum": 360},
+    ("hillshade", "altitude"): {"minimum": 0, "maximum": 90},
+    ("extract_streams", "threshold"): {"exclusive_minimum": 0},
+    ("idw_interpolation", "cell_size"): {"exclusive_minimum": 0},
+    ("viewshed", "station_height"): {"minimum": 0},
+    ("smooth_rates", "per"): {"exclusive_minimum": 0},
+    ("aggregate_to_threshold", "minimum"): {"exclusive_minimum": 0},
+    ("thin_points", "min_distance"): {"exclusive_minimum": 0},
+    ("cluster_points_by_distance", "max_distance"): {"exclusive_minimum": 0},
+    ("snap_layer", "tolerance"): {"exclusive_minimum": 0},
+    ("service_area", "budget"): {"exclusive_minimum": 0},
+    ("network_shortest_path", "tolerance"): {"minimum": 0},
+    ("service_area", "tolerance"): {"minimum": 0},
+    ("line_of_sight", "samples"): {"minimum": 2},
+    ("contour_lines", "smoothing"): {"minimum": 0},
+    ("merge_layers", "input_paths"): {"min_items": 2},
+    ("run_sql", "output_path"): {"extensions": [".parquet"]},
+    ("polygonize_raster", "band"): {"minimum": 1},
+    ("polygonize_raster", "connectivity"): {"choices": [4, 8]},
+    ("polygonize_raster", "max_features"): {"exclusive_minimum": 0},
+    ("qgis_processing", "algorithm"): {"choices": ["native:buffer"]},
+    ("qgis_processing", "segments"): {"minimum": 1},
+}
+
+for (operation_name, parameter_name), contract in PARAMETER_CONTRACTS.items():
+    operation = next(op for op in OPERATIONS if op["name"] == operation_name)
+    parameter = next(param for param in operation["parameters"] if param["name"] == parameter_name)
+    parameter.update(contract)
+
+
+STEP_CONTRACTS: dict[str, list[dict[str, Any]]] = {
+    "select_features": [
+        {"when": {"by": ["field_equals", "field_in", "field_between"]}, "required": ["field"]},
+        {"when": {"by": "geometry_type"}, "required": ["value"]},
+        {"when": {"by": "field_equals"}, "required": ["value"]},
+        {"when": {"by": "field_in"}, "required": ["values"]},
+        {"when": {"by": "field_between"}, "required_one_present": ["minimum", "maximum"]},
+        {"when": {"by": "field_between"}, "ordered": {"minimum": "maximum"}},
+    ],
+    "hot_spots": [{"when": {"weights": "distance_band"}, "required": ["distance_band"]}],
+    "spatial_autocorrelation": [{"when": {"weights": "distance_band"}, "required": ["distance_band"]}],
+    "flow_direction": [{"when": {"method": ["dinf", "fd8"]}, "forbidden": {"encoding": "east_first"}}],
+    "zonal_statistics": [
+        {
+            "when": {"stats": ["weighted_mean", "weighted_sum", "weighted_stdev", "weighted_variance", "weighted_frac"]},
+            "required": ["weights_path"],
+        },
+        {
+            "when_present": "weights_path",
+            "when_nonempty": "stats",
+            "required_any": {"stats": ["weighted_mean", "weighted_sum", "weighted_stdev", "weighted_variance", "weighted_frac"]},
+        },
+    ],
+    "elevation_profile": [
+        {"when_present": "grade_threshold_percent", "required": ["grade_base_length"]},
+        {"multiple_of": {"grade_base_length": "spacing"}},
+    ],
+}
+
+
 def _compact(op: dict[str, Any]) -> dict[str, Any]:
     entry = {k: op[k] for k in ("name", "status", "category", "summary")}
     # What separates this from its neighbours travels with it, because the
@@ -5431,7 +5678,7 @@ def search(
     ``status: "choose"`` carrying all of them, ordered by relevance and each with
     the text that separates it from its neighbours. Measured over the 118 requests in
     ``tests/data/discovery_queries.json``, written by two other model families:
-    our ranking puts the right operation in the top three 62% of the time; a model handed the same candidates and asked to choose
+    our ranking puts the right operation in the top three 61% of the time; a model handed the same candidates and asked to choose
     gets its FIRST pick right 69%. Over those same 118 requests the two labellers
     who produced the ground truth agree WITH EACH OTHER 70% of the time — both are
     language models, and no GIS analyst has tried it — so 69% is the ceiling of the
@@ -5535,7 +5782,7 @@ def search(
     # THE SHORTLIST IS NOT THE ANSWER when there are few enough to read.
     #
     # Measured over 118 requests written by two other model families: our ranking
-    # puts the right operation in the top three 62% of the time, while a model
+    # puts the right operation in the top three 61% of the time, while a model
     # handed the same candidates and asked to CHOOSE gets its first pick right 69% —
     # and 70% is where the two labellers who wrote the ground truth agree with each
     # OTHER on those same requests, so 69% is the ceiling of the task rather than a

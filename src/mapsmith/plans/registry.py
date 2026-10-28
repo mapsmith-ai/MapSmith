@@ -236,6 +236,24 @@ def _band_math() -> Callable[..., dict[str, Any]]:
     return raster.band_math
 
 
+def _rasterize_layer() -> Callable[..., dict[str, Any]]:
+    from ..engines import conversion
+
+    return conversion.rasterize_layer
+
+
+def _polygonize_raster() -> Callable[..., dict[str, Any]]:
+    from ..engines import conversion
+
+    return conversion.polygonize_raster
+
+
+def _qgis_processing() -> Callable[..., dict[str, Any]]:
+    from ..engines import qgis
+
+    return qgis.process
+
+
 def _join_table() -> Callable[..., dict[str, Any]]:
     from ..engines import vector
 
@@ -668,6 +686,30 @@ BINDINGS: dict[str, Binding] = {
         "exactextract",
         ("same_as", "input_path"),
         "raster",
+    ),
+    "rasterize_layer": Binding(
+        _rasterize_layer,
+        ("input_path", "reference_raster_path"),
+        "output_path",
+        "raster",
+        ("same_as", "reference_raster_path"),
+        "raster",
+    ),
+    "polygonize_raster": Binding(
+        _polygonize_raster,
+        ("input_path",),
+        "output_path",
+        "raster",
+        ("same_as", "input_path"),
+        "vector",
+    ),
+    "qgis_processing": Binding(
+        _qgis_processing,
+        ("input_path",),
+        "output_path",
+        "qgis",
+        ("same_as", "input_path"),
+        "vector",
     ),
     "join_table": Binding(
         _join_table,

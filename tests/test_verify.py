@@ -1370,7 +1370,7 @@ def _spec_fixtures(tmp_path):
         import rasterio
         from rasterio.transform import from_origin
 
-        from mapsmith.engines import raster
+        from mapsmith.engines import conversion, raster
     except ImportError:
         return fixtures
 
@@ -1419,6 +1419,18 @@ def _spec_fixtures(tmp_path):
 
     fixtures["run_sql"] = lambda: duckdb_engine.run_sql(query, out("sql.parquet"))
 
+    from mapsmith import stacks
+    from mapsmith.engines import qgis
+
+    def qgis_fixture():
+        if not stacks.installed()["opensource"]["qgis"]:
+            raise ImportError("QGIS is not installed")
+        return qgis.process(
+            "native:buffer", str(layer), out("qgis.parquet"), 10,
+        )
+
+    fixtures["qgis_processing"] = qgis_fixture
+
     fixtures.update({
         "resample_raster": lambda: raster.resample(
             str(grid), out("res.tif"), 50, "nearest"
@@ -1440,6 +1452,12 @@ def _spec_fixtures(tmp_path):
             str(rome_grid), out("repr.tif"), "EPSG:4326", "nearest"
         ),
         "extract_band": lambda: raster.extract_band(str(grid), out("band2.tif"), 2),
+        "rasterize_layer": lambda: conversion.rasterize_layer(
+            str(layer), str(grid), out("rasterized.tif"), field_name="v", nodata=-1,
+        ),
+        "polygonize_raster": lambda: conversion.polygonize_raster(
+            str(grid), out("polygonized.parquet"),
+        ),
     })
 
     try:

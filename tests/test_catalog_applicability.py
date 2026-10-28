@@ -100,6 +100,8 @@ def test_the_projected_crs_requirement_matches_the_engines_that_refuse():
         # nothing about whether either is right, which is why this list is
         # written by hand and reviewed rather than derived.
         "idw_interpolation",
+        # Buffer distance is in the input CRS's units, never degrees-as-metres.
+        "qgis_processing",
     }
 
 

@@ -32,7 +32,7 @@ rasterio = pytest.importorskip("rasterio")
 from rasterio.transform import from_origin
 
 from mapsmith import grid
-from mapsmith.engines import raster, sampling
+from mapsmith.engines import conversion, raster, sampling
 
 EAST0, NORTH0, SPACING, SIZE = 412000.0, 5108000.0, 30.0, 8
 LOW_ROW, LOW_COLUMN = 2, 3
@@ -346,6 +346,9 @@ RASTER_WRITERS = {
     ),
     "band_math": lambda source, out, tmp_path: raster.band_math(source, out, "b1*2"),
     "extract_band": lambda source, out, tmp_path: raster.extract_band(source, out, 1),
+    "rasterize_layer": lambda source, out, tmp_path: conversion.rasterize_layer(
+        _mask_for(tmp_path), source, out
+    ),
 }
 
 #: The terrain operations, which refused every point-registered DEM until
@@ -492,6 +495,7 @@ RASTER_WRITER_OPERATIONS = {
     "reclassify": "reclassify_raster",
     "band_math": "band_math",
     "extract_band": "extract_band",
+    "rasterize_layer": "rasterize_layer",
 }
 
 #: Takes a vector layer, so there is no input raster whose registration could be

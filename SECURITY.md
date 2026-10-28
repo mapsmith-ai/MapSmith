@@ -56,6 +56,23 @@ below:
   system itself. An adversarial audit of the change before release found no
   way past it, and four defects in it, fixed in the same release.
 
+  On the development branch, pyproj, rasterio and pyogrio also receive explicit
+  PROJ search paths at startup, preserving each runtime's own `proj.db` and any
+  grid-only directories. The process working directory is moved inside the
+  workspace at startup and before DuckDB Spatial loads: PROJ has no setter in
+  that runtime, so this confines its cwd fallback, including grids selected
+  implicitly from EPSG operations. PROJ's configured data, user and installation
+  directories remain operator-trusted resources. Under a workspace `run_sql`
+  additionally refuses external grid
+  files named explicitly, even by a bare filename, both in SQL and in a
+  dataset's declared CRS. `@null` and authority CRS definitions remain
+  available. SQLite SRS catalogues are bounded to 20,000 rows, 512 referenced
+  systems, 64 KiB per definition and 16 MiB overall; every row receives the
+  textual path check, while full PROJ parsing is normally limited to systems
+  referenced by a layer. Reference views disable that selective path and every
+  definition is parsed instead. This avoids parsing an ordinary SpatiaLite EPSG
+  catalogue per input without trusting a view to choose what is safe.
+
   **`run_sql` had the same hole by a route of its own, closed in 0.10.0.**
   DuckDB's spatial extension carries its own PROJ, which opens files
   natively and so never meets the connection sandbox: under a workspace

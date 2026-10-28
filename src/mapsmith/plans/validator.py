@@ -123,6 +123,118 @@ def _is_geographic(crs_value: str) -> bool | None:
         return None
 
 
+def _check_contract(step_id: str, name: str, value: Any, param: dict[str, Any], errors: list[Issue]) -> None:
+    if isinstance(value, str) and REFERENCE.match(value):
+        return  # dataset references are checked by the data-flow validator, not as literal choices
+
+    def refuse(rule: str) -> None:
+        errors.append(Issue(code="INVALID_ARGUMENT_VALUE", step_id=step_id, message=f"{rule}, got {value!r}"))
+
+    choices = param.get("choices")
+    if choices:
+        values = value if isinstance(value, list) else [value]
+        if any(item not in choices for item in values):
+            refuse(f"argument '{name}' must be one of {choices}")
+    if "min_items" in param and len(value) < param["min_items"]:
+        refuse(f"argument '{name}' must contain at least {param['min_items']} items")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        import math
+
+        bounded = any(key in param for key in ("minimum", "maximum", "exclusive_minimum", "exclusive_maximum"))
+        if bounded and not math.isfinite(value):
+            refuse(f"argument '{name}' must be finite")
+            return
+        if "minimum" in param and value < param["minimum"]:
+            refuse(f"argument '{name}' must be >= {param['minimum']}")
+        if "maximum" in param and value > param["maximum"]:
+            refuse(f"argument '{name}' must be <= {param['maximum']}")
+        if "exclusive_minimum" in param and value <= param["exclusive_minimum"]:
+            refuse(f"argument '{name}' must be > {param['exclusive_minimum']}")
+        if "exclusive_maximum" in param and value >= param["exclusive_maximum"]:
+            refuse(f"argument '{name}' must be < {param['exclusive_maximum']}")
+    if param.get("odd") and value % 2 == 0:
+        refuse(f"argument '{name}' must be odd")
+    extensions = param.get("extensions")
+    if extensions and isinstance(value, str) and Path(value).suffix.lower() not in extensions:
+        refuse(f"argument '{name}' must end with one of {extensions}")
+
+
+def _matches(actual: Any, expected: Any) -> bool:
+    if isinstance(expected, list):
+        if isinstance(actual, list):
+            return any(item in expected for item in actual)
+        return actual in expected
+    return actual == expected
+
+
+def _check_step_contracts(step_id: str, operation: str, arguments: dict[str, Any], errors: list[Issue]) -> None:
+    for rule in catalog.STEP_CONTRACTS.get(operation, []):
+        if any(not _matches(arguments.get(name), expected) for name, expected in rule.get("when", {}).items()):
+            continue
+        if "when_present" in rule and arguments.get(rule["when_present"]) is None:
+            continue
+        if "when_nonempty" in rule and not arguments.get(rule["when_nonempty"]):
+            continue
+        for name in rule.get("required", []):
+            if arguments.get(name) is None:
+                errors.append(Issue(
+                    code="MISSING_ARGUMENT", step_id=step_id,
+                    message=f"argument '{name}' is required by this operation's declared rule {rule}",
+                ))
+        for name in rule.get("required_one_present", []):
+            if all(arguments.get(candidate) is None for candidate in rule["required_one_present"]):
+                errors.append(Issue(
+                    code="MISSING_ARGUMENT", step_id=step_id,
+                    message=f"at least one of {rule['required_one_present']} is required",
+                ))
+        for name, expected in rule.get("required_any", {}).items():
+            if not _matches(arguments.get(name), expected):
+                errors.append(Issue(
+                    code="INVALID_ARGUMENT_VALUE", step_id=step_id,
+                    message=f"argument '{name}' must include one of {expected}, got {arguments.get(name)!r}",
+                ))
+        for name, expected in rule.get("forbidden", {}).items():
+            if _matches(arguments.get(name), expected):
+                errors.append(Issue(
+                    code="INVALID_ARGUMENT_VALUE", step_id=step_id,
+                    message=f"argument '{name}' must not be {expected!r} with these arguments",
+                ))
+        for lower_name, upper_name in rule.get("ordered", {}).items():
+            import math
+
+            lower, upper = arguments.get(lower_name), arguments.get(upper_name)
+            numeric = (
+                isinstance(lower, (int, float)) and not isinstance(lower, bool)
+                and isinstance(upper, (int, float)) and not isinstance(upper, bool)
+                and math.isfinite(lower) and math.isfinite(upper)
+            )
+            if numeric and lower > upper:
+                errors.append(Issue(
+                    code="INVALID_ARGUMENT_VALUE", step_id=step_id,
+                    message=f"argument '{lower_name}' must not exceed '{upper_name}', got {lower!r} > {upper!r}",
+                ))
+        for base_name, spacing_name in rule.get("multiple_of", {}).items():
+            if base_name not in arguments:
+                continue
+            import math
+
+            base, spacing = arguments[base_name], arguments.get(spacing_name)
+            if (
+                not isinstance(base, (int, float)) or isinstance(base, bool)
+                or not isinstance(spacing, (int, float)) or isinstance(spacing, bool)
+                or not math.isfinite(base) or not math.isfinite(spacing) or spacing <= 0
+            ):
+                continue  # the parameter validator has already reported the invalid value
+            steps = base / spacing
+            whole = round(steps)
+            if whole < 1 or abs(steps - whole) > 1e-9 * max(1.0, steps):
+                errors.append(Issue(
+                    code="INVALID_ARGUMENT_VALUE", step_id=step_id,
+                    message=f"argument '{base_name}' must be a whole number of '{spacing_name}' steps, "
+                    f"got {base!r} over {spacing!r}",
+                ))
+
+
 def _check_arguments(
     step_id: str, entry: dict[str, Any], arguments: dict[str, Any], errors: list[Issue]
 ) -> None:
@@ -146,7 +258,8 @@ def _check_arguments(
                 )
             )
             continue
-        expected = PARAM_TYPES.get(params[name]["type"])
+        param = params[name]
+        expected = PARAM_TYPES.get(param["type"])
         if expected is None:
             continue
         bad_bool = isinstance(value, bool) and bool not in expected
@@ -155,10 +268,13 @@ def _check_arguments(
                 Issue(
                     code="WRONG_TYPE",
                     step_id=step_id,
-                    message=f"argument '{name}' must be {params[name]['type']}, "
+                    message=f"argument '{name}' must be {param['type']}, "
                     f"got {type(value).__name__}",
                 )
             )
+            continue
+        _check_contract(step_id, name, value, param, errors)
+    _check_step_contracts(step_id, entry["name"], arguments, errors)
 
 
 
@@ -415,6 +531,15 @@ def _resolve_operation(
             )
         )
         return None
+    if binding.engine_flag == "qgis" and not dispatch.available_engines().get("qgis"):
+        errors.append(
+            Issue(
+                code="ENGINE_NOT_AVAILABLE",
+                step_id=step.id,
+                message="qgis_processing needs QGIS with qgis_process installed and discoverable",
+            )
+        )
+        return entry, binding
     if binding.engine_flag and not dispatch.available_engines().get(binding.engine_flag):
         extra = EXTRA_FOR_FLAG.get(binding.engine_flag, binding.engine_flag)
         errors.append(
@@ -708,6 +833,24 @@ def _simulate_crs(
 def _crs_suitability(
     step: Any, input_crs: dict[str, str], errors: list[Issue], notes: list[Issue]
 ) -> None:
+    entry = _catalog_entry(step.operation)
+    binding = BINDINGS[step.operation]
+    if (
+        entry
+        and entry.get("applicability", {}).get("requires_projected_crs")
+        and binding.input_args
+    ):
+        argument = "line_path" if step.operation == "elevation_profile" else binding.input_args[0]
+        crs = input_crs.get(argument, UNKNOWN_CRS)
+        if _is_geographic(crs):
+            errors.append(
+                Issue(
+                    code="CRS_UNSUITABLE",
+                    step_id=step.id,
+                    message=f"'{step.operation}' requires '{argument}' in a projected CRS, "
+                    f"got {crs}; reproject that input before running the plan",
+                )
+            )
     if (
         step.operation == "flow_accumulation"
         and step.arguments.get("out_type") == "sca"

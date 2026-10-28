@@ -526,6 +526,26 @@ def test_execute_two_step_pipeline_closed_form(wells, zone, tmp_path):
     assert (tmp_path / "at_risk.parquet.provenance.json").exists()
 
 
+def test_execute_resolves_step_references_inside_list_inputs(wells, zone, tmp_path):
+    plan = make_plan(
+        {"id": "first", "operation": "buffer_layer", "arguments": {
+            "input_path": wells, "distance_meters": 10,
+            "output_path": str(tmp_path / "first.parquet"),
+        }},
+        {"id": "second", "operation": "clip_layer", "arguments": {
+            "input_path": zone, "mask_path": zone,
+            "output_path": str(tmp_path / "second.parquet"),
+        }},
+        {"id": "merged", "operation": "merge_layers", "arguments": {
+            "input_paths": ["$first", "$second"],
+            "output_path": str(tmp_path / "merged.parquet"),
+        }},
+    )
+    result = execute(plan)
+    assert result["executed"] is True, result
+    assert len(gpd.read_parquet(tmp_path / "merged.parquet")) == 3
+
+
 def test_execute_stops_at_first_failure_keeps_earlier_outputs(wells, tmp_path):
     """Step 2 fails at runtime (bad SQL): step 1 output + manifest must survive."""
     buf = str(tmp_path / "buf.parquet")

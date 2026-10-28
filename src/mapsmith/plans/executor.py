@@ -21,9 +21,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .. import verify
 from ..provenance import redact_secrets
-from .models import REFERENCE, Plan
+from .models import REFERENCE, Plan, RepairRequest
 from .registry import BINDINGS
+from .repair import RepairRefusal, metadata, prepare
 from .validator import validate
 
 # step-result keys worth echoing back to the agent (full details live in provenance)
@@ -34,7 +36,7 @@ _ECHO_KEYS = (
 )
 
 
-def execute(plan: Plan) -> dict[str, Any]:
+def execute(plan: Plan, repair: RepairRequest | None = None) -> dict[str, Any]:
     """Validate, then run the plan. Returns per-step results and the plan manifest."""
     report = validate(plan)
     if not report.valid:
@@ -43,16 +45,33 @@ def execute(plan: Plan) -> dict[str, Any]:
             "reason": "plan failed validation — nothing was run",
             "validation": report.model_dump(),
         }
+    try:
+        repair_context = prepare(repair, plan)
+    except RepairRefusal as exc:
+        return {
+            "executed": False,
+            "reason": str(exc),
+            "error": {"code": exc.code, "message": str(exc)},
+            "repair": exc.repair,
+        }
 
     started = datetime.now(UTC).isoformat()
     outputs: dict[str, str] = {}
     steps: list[dict[str, Any]] = []
     failure: dict[str, Any] | None = None
+    last_produced_output: str | None = None
 
     for step in plan.steps:
         binding = BINDINGS[step.operation]
-        kwargs = _resolve_arguments(step.arguments, outputs, binding.input_args)
+        kwargs = _resolve_arguments(
+            step.arguments, outputs, (*binding.input_args, *binding.list_input_args)
+        )
         record: dict[str, Any] = {"id": step.id, "operation": step.operation}
+        if binding.output_arg:
+            value = kwargs.get(binding.output_arg)
+            if isinstance(value, str) and value:
+                outputs[step.id] = value
+                record["attempted_output"] = value
         clock = time.perf_counter()
         try:
             result = binding.loader()(**kwargs)
@@ -60,8 +79,23 @@ def execute(plan: Plan) -> dict[str, Any]:
             record["status"] = "failed"
             record["error"] = f"{type(exc).__name__}: {exc}"
             record["elapsed_ms"] = round((time.perf_counter() - clock) * 1000, 1)
+            failure = {
+                "step_id": step.id,
+                "error": record["error"],
+                "kind": "verification" if isinstance(exc, verify.VerificationError) else "runtime",
+            }
+            if isinstance(exc, verify.VerificationError):
+                failure["checks"] = [
+                    {
+                        **check.as_dict(),
+                        "observed": check.observed,
+                        "expected": check.expected,
+                    }
+                    for check in exc.failures
+                ]
+                failure["manifest"] = exc.manifest
+            record["failure"] = failure
             steps.append(record)
-            failure = {"step_id": step.id, "error": record["error"]}
             break
         record["status"] = "ok"
         record["elapsed_ms"] = round((time.perf_counter() - clock) * 1000, 1)
@@ -73,14 +107,21 @@ def execute(plan: Plan) -> dict[str, Any]:
             value = kwargs.get(binding.output_arg)
             if isinstance(value, str) and value:
                 outputs[step.id] = value
+                last_produced_output = value
         steps.append(record)
 
-    manifest_path = _write_plan_manifest(plan, report, steps, outputs, started)
+    manifest_path = _write_plan_manifest(
+        plan, report, steps, outputs, started, repair_context, failure, last_produced_output
+    )
     response: dict[str, Any] = {
         "executed": failure is None,
         "plan_sha256": plan.sha256(),
         "steps": steps,
         "plan_manifest": manifest_path,
+        "repair": metadata(
+            repair_context, executed=failure is None, failure=failure,
+            manifest_path=manifest_path,
+        ),
     }
     if failure:
         response["failed_step"] = failure
@@ -110,6 +151,12 @@ def _resolve_arguments(
     """
     resolved: dict[str, Any] = {}
     for key, value in arguments.items():
+        if key in input_args and isinstance(value, list):
+            value = [
+                outputs[match.group(1)]
+                if isinstance(item, str) and (match := REFERENCE.match(item)) else item
+                for item in value
+            ]
         if key in input_args and isinstance(value, str):
             match = REFERENCE.match(value)
             if match:
@@ -124,13 +171,16 @@ def _write_plan_manifest(
     steps: list[dict[str, Any]],
     outputs: dict[str, str],
     started: str,
+    repair_context: dict[str, Any],
+    failure: dict[str, Any] | None,
+    last_produced_output: str | None,
 ) -> str | None:
-    """Write the plan-level manifest next to the last produced output."""
+    """Write beside the last output, or the first attempted output on failure."""
     if not outputs:
         return None
     from .. import __version__
 
-    last_output = list(outputs.values())[-1]
+    last_output = last_produced_output or list(outputs.values())[-1]
     manifest_path = f"{last_output}.plan.json"
     manifest = {
         "mapsmith_version": __version__,
@@ -138,6 +188,13 @@ def _write_plan_manifest(
         "goal": plan.goal,
         "started_at": started,
         "finished_at": datetime.now(UTC).isoformat(),
+        "executed": failure is None,
+        "failure": failure,
+        "failed_step": failure["step_id"] if failure else None,
+        "repair": metadata(
+            repair_context, executed=failure is None, failure=failure,
+            manifest_path=manifest_path,
+        ),
         "steps": [
             {
                 **record,

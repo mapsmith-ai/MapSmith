@@ -350,7 +350,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   </p>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1.5rem;margin:2rem 0 1.5rem">
     <div class="stat"><b>118</b><span>REQUESTS WE DID NOT WRITE</span></div>
-    <div class="stat"><b>62%</b><span>OUR RANKING, FOUND@3</span></div>
+    <div class="stat"><b>61%</b><span>OUR RANKING, FOUND@3</span></div>
     <div class="stat"><b>69%</b><span>A MODEL <em>CHOOSING</em> FROM THE SET</span></div>
     <div class="stat"><b>70%</b><span>WHERE THE TWO MODEL LABELLERS AGREE WITH EACH OTHER<br><em>labels written 2026-08-28, catalogue of 51</em></span></div>
   </div>
@@ -372,7 +372,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   </p>
   <p>
     <strong>It narrows first, deterministically, on facts the caller already has.</strong> What data
-    is in hand, and what should come back. Declaring those two takes the candidates from 78 to 32;
+    is in hand, and what should come back. Declaring those two takes the candidates from 80 to 33;
     how many datasets, and whether they are points, lines or polygons, take them further —
     and at thirty survivors or fewer the search stops choosing for you: it returns
     <code>status: "choose"</code> with every candidate, ordered as a hint that says so, each carrying
@@ -424,9 +424,9 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   <p>
     So the figure to watch is not found@3. A ranker gets worse as a catalogue grows and it is a hint
     either way. It is the <em>average</em> surviving set at the fullest declaration — 9 at fifty-one
-    operations, 14 at sixty-one, 16 at seventy-two, 16 at seventy-four, 16 at seventy-five, 17 at seventy-six, 15 at seventy-seven, 15 at seventy-eight.
+    operations, 14 at sixty-one, 16 at seventy-two, 16 at seventy-four, 16 at seventy-five, 17 at seventy-six, 15 at seventy-seven, 15 at seventy-eight, 15 at eighty.
     (This page said
-    <em>median</em> until 29 August and published the mean; the median at seventy-eight is 13. The
+    <em>median</em> until 29 August and published the mean; the median at eighty is 13. The
     distribution is skewed, so the two say different things, and the mean is the pessimistic one.)
     When that crosses thirty, delivery stops being a
     property and becomes a ranking again, and the answer is another fact the caller already
@@ -494,10 +494,10 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <tr>
       <td>ablation</td>
       <td>Each facet is worth measuring alone, over the 118 independent requests: nothing declared
-      → 78 candidates, 19% found@3 with embeddings and 30% with BM25; what data I have → 52,
-      24% and 35%; + what I want back → 32, 43% and 46%; + how many datasets I have → 17, 53% and
-      58%; + what geometry it holds →
-      <strong>15, 62% ranked and 98% delivered</strong>. Both engines, because this row carried one
+      → 80 candidates, 19% found@3 with embeddings and 30% with BM25; what data I have → 53,
+      24% and 33%; + what I want back → 33, 43% and 46%; + how many datasets I have → 18, 53% and
+      57%; + what geometry it holds →
+      <strong>15, 61% ranked and 98% delivered</strong>. Both engines, because this row carried one
       unnamed column until a CI run met a rate limit from the model host, fell back to BM25 and
       recomputed the first figure as 28% — the published number had been a measurement of what
       the machine could download. The jump in the last column is not the ranker getting better
@@ -599,6 +599,9 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <tr><td>hillshade · slope · aspect · flow_accumulation · watershed</td><td>Terrain and hydrology on Whitebox Workflows</td></tr>
     <tr><td>run_sql</td><td>Spatial SQL on DuckDB, sandboxed to the workspace with external access off</td></tr>
     <tr><td>validate_plan · execute_plan</td><td>A typed DAG checked before anything executes: stable error codes, simulated CRS flow</td></tr>
+    <tr><td>brief_plan · bounded repair</td><td>A project brief derived only from a validated plan, then at most three agent-chosen attempts linked by their manifests</td></tr>
+    <tr><td>rasterize_layer · polygonize_raster</td><td>Deterministic conversion between vectors and rasters, with nodata, precision and geometry repairs verified</td></tr>
+    <tr><td>qgis_processing</td><td>QGIS native:buffer through a GPL-isolated subprocess, with the final output written and verified by MapSmith</td></tr>
     <tr><td>preview_map</td><td>An in-chat map panel that shows the verification status of every layer it draws</td></tr>
   </table>
 
@@ -709,7 +712,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <div><h3>Never keeps a credential</h3><p>SQL that configures one is refused rather than redacted, because redaction is a text scan and an audit walked past it four ways.</p></div>
     <div><h3>Never fetches code on a model's word</h3><p>A statement that says <code>INSTALL</code> or <code>LOAD</code> is refused in both modes since 0.4.0 — an <code>INSTALL</code> is an HTTPS fetch of a native binary run in this process. An audit used the old behaviour to read real cloud credentials back through a tool result, and <a href="https://github.com/mapsmith-ai/MapSmith/blob/main/SECURITY.md">SECURITY.md</a> says so rather than correcting it quietly.</p></div>
     <div><h3>Never swaps an engine in silence</h3><p><code>MAPSMITH_STACK</code> picks the stack once — open source by default, or ArcPy on a machine licensed for it. Where a route exists and cannot run, MapSmith says which of three things is true and records the substitution in the manifest. One operation is routed today and the README says which: a table promising a route nobody takes was this release's own defect.</p></div>
-    <div><h3>Never computes from an ambiguous file</h3><p>A raster and the sidecar beside it can declare different georeferencing, and both readings are the library behaving as documented. <code>describe_dataset</code> reports both; the twelve operations that read a raster's grid directly refuse and say how to choose. The terrain ones do not yet, and the README names them rather than promising all.</p></div>
+    <div><h3>Never computes from an ambiguous file</h3><p>A raster and the sidecar beside it can declare different georeferencing, and both readings are the library behaving as documented. <code>describe_dataset</code> reports both; the fourteen operations that read a raster's grid directly refuse and say how to choose. The terrain ones do not yet, and the README names them rather than promising all.</p></div>
   </div>
   <p style="margin-top:2rem">
     Nine things it will not do is an odd note to end on, so here is the other half: it runs on

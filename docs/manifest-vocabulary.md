@@ -23,7 +23,7 @@ whether this system verified anything at all.
 | `x-mapsmith:operation_completed` | The engine finished. Recorded as a failed check when it did not, so a crash leaves a conforming manifest saying what went wrong instead of a dataset with no record beside it. |
 | `x-mapsmith:verification_present` | Nothing looked at the output. It exists because the specification requires a record for every dataset written and requires at least one check in it; the absence of verification is itself recorded as a failed check rather than papered over. No shipped operation emits it, and a test fails if one starts to. |
 
-## Extension check names (59)
+## Extension check names (63)
 
 Each is a proposition about the dataset that was written. A failed one is
 recorded, never suppressed — the audit trail has to survive the error it
@@ -56,6 +56,7 @@ documents.
 | `x-mapsmith:flat_length_on_3d_geometry` | `vector` |
 | `x-mapsmith:full_shrinkage_reconstructs_the_total` | `spatial_stats` |
 | `x-mapsmith:grades_follow_the_written_profile` | `sampling` |
+| `x-mapsmith:grid_transform_matches_reference` | `conversion` |
 | `x-mapsmith:hull_contains_its_feature` | `vector` |
 | `x-mapsmith:invalid_geometry_explained` | `vector` |
 | `x-mapsmith:network_is_one_connected_piece` | `network` |
@@ -66,13 +67,16 @@ documents.
 | `x-mapsmith:no_two_kept_points_are_closer_than_the_minimum` | `spatial_stats` |
 | `x-mapsmith:no_vertex_moved_further_than_the_tolerance` | `linework` |
 | `x-mapsmith:no_zone_gives_more_than_it_holds` | `vector` |
+| `x-mapsmith:nodata_matches_declaration` | `conversion` |
 | `x-mapsmith:not_larger_than_source` | `raster` |
 | `x-mapsmith:nothing_exceeds_the_budget` | `network` |
 | `x-mapsmith:one_geometry_type_in_the_layer` | `vector` |
 | `x-mapsmith:origin_is_close_to_the_network` | `network` |
 | `x-mapsmith:planar_area_matches_ground` | `vector` |
 | `x-mapsmith:point_lies_on_its_feature` | `vector` |
+| `x-mapsmith:polygon_values_are_finite` | `conversion` |
 | `x-mapsmith:segment_costs_add_up_to_the_route_cost` | `network` |
+| `x-mapsmith:shape_matches_reference` | `conversion` |
 | `x-mapsmith:shape_matches_resolution` | `raster` |
 | `x-mapsmith:snapping_did_not_break_a_geometry` | `linework` |
 | `x-mapsmith:spheroid_axis_order` | `duckdb_engine` |
@@ -171,7 +175,7 @@ changed sides; the rule did not.
 | `x-mapsmith:outside_area_of_use` | Not `is_ballpark`, which says whether a shift was applied: this says how many of the data's vertices lie outside the area of use of every operation published for the pair, installed or not. The two part company -- outside every area PROJ falls back to the ballpark for some pairs and extends a published operation for others -- and either way the stated accuracy was never established for those coordinates. Not evidence that the declared CRS is wrong: a datum counted from another meridian can have its operations published for its Greenwich twin only, and where MapSmith takes that route the twin's operations count as published for the pair. Counted exactly, vertex by vertex. |
 | `x-mapsmith:shift_from_crs_definition` | Not `is_ballpark`, which is false here, and not `accuracy_m`, which is null here: this says why the two go together. The datum shift applied is the relation to WGS 84 that the CRS's own definition declares (`+towgs84`, `+nadgrids`, WKT `TOWGS84[]`), applied as declared -- a Helmert PROJ builds from the parameters, or a grid, or a declared zero -- for which no registry states an accuracy. Written only when one of the two CRSs carries such a declaration: a registry operation with no stated accuracy gets the same null and not this key. PROJ reports -1 for both, the value it also reports for the ballpark, and until 2026-10-23 the record called the CRS's own shift one -- over coordinates that had moved 79 m. |
 
-## Extension fields in the other containers (2)
+## Extension fields in the other containers (3)
 
 The three sections above cover `verification[]`, `crs_decisions` and the
 `transformation` inside it. They are not every object a manifest has, and
@@ -183,4 +187,5 @@ here so that adding a fifth is a change to this table rather than a silence.
 | container | key | why it is not one the format already has |
 |---|---|---|
 | `engine` | `x-mapsmith:geometry_library` | Not `engine.version`, which names the thing that ran: three engines in this package are thin layers over Shapely, and the version that decides the geometry is Shapely's, not theirs. Recording only the wrapper would name a component that cannot explain a change in the answer. |
+| `engine` | `x-mapsmith:qgis_code_revision` | The QGIS source revision returned by qgis_process. Not engine.version, which is the release label and does not distinguish two builds of it. |
 | `repairs[]` | `x-mapsmith:round` | Which pass of the repair loop produced this entry. Not `action`, which says what was done: the same action can be applied twice, and without the round two entries reporting the same fix are indistinguishable from one entry written twice. |

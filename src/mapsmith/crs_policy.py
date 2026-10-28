@@ -21,7 +21,10 @@ drive letters, no ``//`` or ``\\\\``, no URL scheme, no ``.`` segments.
 Networking is switched off under a workspace at startup, whatever ``proj.ini``
 says, for pyproj's PROJ and -- through ``PROJ_NETWORK=OFF`` in the environment
 ``gdal_policy`` installs -- for the PROJ inside GDAL and rasterio, which are
-separate libraries with separate contexts.
+separate libraries with separate contexts. Their resource search paths are
+also made explicit at startup, so a bare name cannot fall back to the server
+cwd. DuckDB Spatial has no search-path setter: its SQL context refuses external
+grid files instead, including bare names.
 
 The check reads TEXT and never asks PROJ whether a grid exists: the second
 audit pass (2026-10-23) measured that ``coordinate_operation.grids`` opens the
@@ -86,7 +89,7 @@ def _unsafe_name(name: str) -> str | None:
     return None
 
 
-def reason_to_refuse_text(text: str) -> str | None:
+def reason_to_refuse_text(text: str, *, allow_bare_files: bool = True) -> str | None:
     """A reason to refuse this CRS text before PROJ parses it, or None."""
     if not isinstance(text, str):
         return None
@@ -102,6 +105,8 @@ def reason_to_refuse_text(text: str) -> str | None:
             why = _unsafe_name(name.strip())
             if why:
                 return f"+{key}: {why}; a grid must be a bare name from PROJ's data directories"
+            if not allow_bare_files and name.strip().strip("\"'").removeprefix("@") not in ("", "null"):
+                return f"+{key}: external grid files are not available in this PROJ context"
     for match in _WKT_FILE.finditer(text):
         groups = [v for v in match.groups() if v is not None]
         value = groups[-1]  # PARAMETERFILE captures the parameter name first, then the file
@@ -109,10 +114,12 @@ def reason_to_refuse_text(text: str) -> str | None:
             why = _unsafe_name(name.strip())
             if why:
                 return f"a parameter file in the CRS: {why}"
+            if not allow_bare_files and name.strip().strip("\"'").removeprefix("@") not in ("", "null"):
+                return "a parameter file in the CRS: external grid files are not available in this PROJ context"
     return None
 
 
-def reason_to_refuse(crs: Any) -> str | None:
+def reason_to_refuse(crs: Any, *, allow_bare_files: bool = True) -> str | None:
     """A reason to refuse this parsed CRS, or None: its grids must be bare names.
 
     Read from the CRS's PROJJSON and WKT as TEXT, never from
@@ -122,7 +129,7 @@ def reason_to_refuse(crs: Any) -> str | None:
     """
     try:
         for text in (crs.to_json(), crs.to_wkt()):
-            why = reason_to_refuse_text(text)
+            why = reason_to_refuse_text(text, allow_bare_files=allow_bare_files)
             if why:
                 return why
     except Exception:  # noqa: BLE001 - a CRS that cannot be serialised is refused elsewhere
@@ -130,7 +137,7 @@ def reason_to_refuse(crs: Any) -> str | None:
     return None
 
 
-def parse(value: Any) -> Any:
+def parse(value: Any, *, allow_bare_files: bool = True) -> Any:
     """``pyproj.CRS`` for a tool argument or a file's declaration, refused if it names a file or a host.
 
     Text first, then pyproj's parser (which opens no grid, measured), then the
@@ -141,18 +148,18 @@ def parse(value: Any) -> Any:
     from pyproj import CRS
 
     if isinstance(value, str):
-        why = reason_to_refuse_text(value)
+        why = reason_to_refuse_text(value, allow_bare_files=allow_bare_files)
         if why:
             raise ValueError(f"the coordinate system is refused: {why}.")
     crs = value if isinstance(value, CRS) else CRS.from_user_input(value)
-    why = reason_to_refuse(crs)
+    why = reason_to_refuse(crs, allow_bare_files=allow_bare_files)
     if why:
         raise ValueError(f"the coordinate system is refused: {why}.")
     return crs
 
 
 def declared_srs_texts(path: str) -> list[str]:
-    """The coordinate systems a file declares, as the text its own catalogue holds (see `declared`)."""
+    """The coordinate systems a layer uses, as text held by its own catalogue."""
     return declared(path).crs_texts
 
 
@@ -187,7 +194,9 @@ def declared(path: str):
     out = srs_sources.Declared(kind)
     lower = p.name.lower()
     if kind in ("sqlite", "parquet"):
-        out.crs_texts.extend(_catalogue_texts(p, kind, path))
+        used, every = _catalogue_texts(p, kind, path)
+        out.crs_texts.extend(used)
+        out.free_texts.extend(every)
     else:
         try:
             out.extend(srs_sources.read(p))
@@ -208,16 +217,69 @@ def declared(path: str):
     return out
 
 
-def _catalogue_texts(p: Path, kind: str, path: str) -> list[str]:
-    """The SRS texts of an SQLite catalogue or a Parquet file's metadata."""
+_MAX_CATALOGUE_ROWS = 20_000
+_MAX_REFERENCED_SRS = 512
+_MAX_CATALOGUE_SRS_BYTES = 16 * 1024 * 1024
+
+
+def _srs_id(value: Any) -> int | str:
+    """One canonical form for SQLite integer ids and their text spellings."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    text = str(value).strip()
+    if re.fullmatch(r"[+-]?\d+", text):
+        return int(text)
+    raise ValueError(f"non-integral spatial reference id {value!r}")
+
+
+def _referenced_srs_ids(db: Any) -> set[int | str] | None:
+    """Referenced SRS ids, or None when an untrusted view requires all rows."""
+    references = (
+        ("gpkg_contents", "srs_id"),
+        ("gpkg_geometry_columns", "srs_id"),
+        ("geometry_columns", "srid"),
+        ("views_geometry_columns", "srid"),
+        ("virts_geometry_columns", "srid"),
+    )
+    objects = {
+        row[0]: (row[1], row[2] or "")
+        for row in db.execute(
+            "SELECT lower(name), type, sql FROM sqlite_master WHERE type IN ('table', 'view') "
+            "AND lower(name) IN ('gpkg_contents', 'gpkg_geometry_columns', 'geometry_columns', "
+            "'views_geometry_columns', 'virts_geometry_columns')"
+        )
+    }
+    found: set[int | str] = set()
+    for table, column in references:
+        if table not in objects:
+            continue
+        table_kind, sql = objects[table]
+        if table_kind != "table" or "VIRTUAL" in sql.upper():
+            return None
+        columns = {row[1].lower() for row in db.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            continue
+        for row in db.execute(f"SELECT DISTINCT {column} FROM {table}"):
+            if row[0] is not None:
+                found.add(_srs_id(row[0]))
+                if len(found) > _MAX_REFERENCED_SRS:
+                    raise ValueError(
+                        f"{_MAX_REFERENCED_SRS + 1} or more referenced coordinate systems, "
+                        f"over the limit of {_MAX_REFERENCED_SRS}"
+                    )
+    return found
+
+
+def _catalogue_texts(p: Path, kind: str, path: str) -> tuple[list[str], list[str]]:
+    """SRS texts used by layers, plus every SQLite catalogue text for its text check."""
     texts: list[str] = []
+    every: list[str] = []
     if kind == "sqlite":
         import sqlite3
         from contextlib import closing
 
-        # `closing`, not the connection's own context manager, which commits
-        # and does NOT close: an open handle kept a GeoPackage locked on
-        # Windows and a later write to it failed (found by the test suite).
+        every_seen: set[str] = set()
+        total_bytes = 0
         try:
             with closing(sqlite3.connect(p.resolve().as_uri() + "?mode=ro", uri=True)) as db:
                 # The catalogue must be a plain table: a VIEW can answer one
@@ -233,23 +295,45 @@ def _catalogue_texts(p: Path, kind: str, path: str) -> list[str]:
                 for name, (table_kind, sql) in kinds.items():
                     if table_kind != "table" or "VIRTUAL" in sql.upper():
                         raise ValueError(f"{name} is a {table_kind}, not a table")
-                if "gpkg_spatial_ref_sys" in kinds:
-                    columns = {row[1] for row in db.execute("PRAGMA table_info(gpkg_spatial_ref_sys)")}
-                    wanted = [c for c in ("definition", "definition_12_063") if c in columns]
-                    if wanted:
-                        # Every row: GDAL treats only 0 and -1 as undefined, and a
-                        # layer bound to srs_id -2 was read by GDAL and skipped by
-                        # a `WHERE srs_id > 0` (fifth audit pass, 2026-10-23). The
-                        # placeholders are skipped by their text, "undefined".
-                        for row in db.execute(f"SELECT {', '.join(wanted)} FROM gpkg_spatial_ref_sys"):
-                            texts.extend(str(v) for v in row if v and str(v).strip().lower() != "undefined")
-                if "spatial_ref_sys" in kinds:
-                    # OGR's own SQLite format, and SpatiaLite: the same catalogue under another name.
-                    columns = {row[1] for row in db.execute("PRAGMA table_info(spatial_ref_sys)")}
-                    wanted = [c for c in ("srtext", "proj4text") if c in columns]
-                    if wanted:
-                        for row in db.execute(f"SELECT {', '.join(wanted)} FROM spatial_ref_sys"):
-                            texts.extend(str(v) for v in row if v and str(v).strip().lower() not in ("undefined", ""))
+                referenced = _referenced_srs_ids(db)
+                for catalogue, id_column, candidates in (
+                    ("gpkg_spatial_ref_sys", "srs_id", ("definition", "definition_12_063")),
+                    ("spatial_ref_sys", "srid", ("srtext", "proj4text")),
+                ):
+                    if catalogue not in kinds:
+                        continue
+                    count = db.execute(f"SELECT count(*) FROM {catalogue}").fetchone()[0]
+                    if count > _MAX_CATALOGUE_ROWS:
+                        raise ValueError(
+                            f"spatial reference catalogue has {count} rows, over the limit of {_MAX_CATALOGUE_ROWS}"
+                        )
+                    columns = {row[1].lower() for row in db.execute(f"PRAGMA table_info({catalogue})")}
+                    wanted = [c for c in candidates if c in columns]
+                    if not wanted or id_column not in columns:
+                        continue
+                    # A reference view is not trusted to choose the fast path:
+                    # in that case every row receives the full PROJ parse.
+                    query = f"SELECT {id_column}, {', '.join(wanted)} FROM {catalogue}"
+                    for row in db.execute(query):
+                        srs_id = _srs_id(row[0])
+                        for value in row[1:]:
+                            if not value or str(value).strip().lower() in ("undefined", ""):
+                                continue
+                            text = str(value)
+                            if len(text) > _MAX_SRS_BYTES:
+                                raise ValueError(
+                                    f"a coordinate system has {len(text)} characters, over {_MAX_SRS_BYTES}"
+                                )
+                            if text not in every_seen:
+                                total_bytes += len(text)
+                                if total_bytes > _MAX_CATALOGUE_SRS_BYTES:
+                                    raise ValueError(
+                                        f"catalogue coordinate systems exceed {_MAX_CATALOGUE_SRS_BYTES} characters"
+                                    )
+                                every_seen.add(text)
+                                every.append(text)
+                            if (referenced is None or srs_id in referenced) and text not in texts:
+                                texts.append(text)
         except Exception as exc:  # an SQLite file whose catalogue cannot be read is refused, not passed on
             raise ValueError(f"{path}: its spatial reference catalogue could not be read ({exc}).") from exc
     elif kind == "parquet":
@@ -259,7 +343,7 @@ def _catalogue_texts(p: Path, kind: str, path: str) -> list[str]:
             parquet = pq.ParquetFile(path)
             meta = parquet.metadata.metadata or {}
         except Exception:  # noqa: BLE001 - not a Parquet file after all: GDAL reads it, and `_checked` follows
-            return texts
+            return texts, every
         import json
 
         try:
@@ -285,7 +369,7 @@ def _catalogue_texts(p: Path, kind: str, path: str) -> list[str]:
                         texts.append(crs)
             elif key.startswith(b"projjson"):
                 texts.append(raw)
-    return texts
+    return texts, every
 
 
 def _native_parquet_crs_texts(parquet: Any, meta: dict[bytes, bytes]) -> list[str]:
@@ -373,7 +457,7 @@ _SHAPEFILE_FAMILY = (".shp", ".shx", ".dbf", ".prj", ".cpg", ".sbn", ".sbx", ".q
 _MAX_SRS_BYTES = 64 * 1024
 
 
-def refuse_declared_in_file(path: str) -> None:
+def refuse_declared_in_file(path: str, *, allow_bare_files: bool = True) -> None:
     """Refuse an input whose declared coordinate system names a file or a host, before anything opens it.
 
     Each declared CRS text goes through `parse`: the text check, pyproj's parser
@@ -395,7 +479,7 @@ def refuse_declared_in_file(path: str) -> None:
     from . import workspace
 
     strict = workspace.root() is not None
-    why = _cached_refusal(_fingerprint(path), strict)
+    why = _cached_refusal(_fingerprint(path), strict, allow_bare_files)
     if why:
         raise ValueError(why)
 
@@ -420,7 +504,7 @@ def _fingerprint(path: str) -> tuple:
 
 
 @functools.lru_cache(maxsize=1024)
-def _cached_refusal(fingerprint: tuple, strict: bool) -> str | None:
+def _cached_refusal(fingerprint: tuple, strict: bool, allow_bare_files: bool) -> str | None:
     from . import srs_sources
 
     path = fingerprint[0]
@@ -440,11 +524,13 @@ def _cached_refusal(fingerprint: tuple, strict: bool) -> str | None:
                 f"{path}: the file's coordinate system is refused: {len(text)} characters is more than a "
                 "coordinate system definition needs."
             )
-        why = _verdict(text)
+        why = _verdict(text, allow_bare_files)
         if why:
             return f"{path}: the file's coordinate system is refused: {why}"
     for text in found.free_texts:
-        why = reason_to_refuse_text(text)
+        if len(text) > _MAX_SRS_BYTES:
+            return f"{path}: a declared coordinate system exceeds {_MAX_SRS_BYTES} characters."
+        why = reason_to_refuse_text(text, allow_bare_files=allow_bare_files)
         if why:
             return f"{path}: the file names a coordinate system that is refused: {why}"
     if strict and found.unreadable:
@@ -461,11 +547,11 @@ def _cached_refusal(fingerprint: tuple, strict: bool) -> str | None:
 
 
 @functools.lru_cache(maxsize=4096)
-def _verdict(text: str) -> str | None:
+def _verdict(text: str, allow_bare_files: bool = True) -> str | None:
     """Why this declared SRS text is refused, or None. Cached by text: fifty
     shapefiles with the same ESRI `.prj` cost one parse, not fifty."""
     try:
-        parse(text)
+        parse(text, allow_bare_files=allow_bare_files)
     except ValueError as exc:
         return str(exc)
     except Exception as exc:  # noqa: BLE001 - whatever pyproj raises: GDAL may still read what PROJ refused
@@ -496,3 +582,62 @@ def network_off_under_workspace() -> bool:
     except Exception:  # noqa: BLE001 - an old pyproj without the switch keeps its default, which is off
         return False
     return True
+
+
+def pin_search_paths_under_workspace() -> dict[str, list[str]]:
+    """Make PROJ resource paths explicit, preserving each runtime's own database.
+
+    PROJ otherwise falls back to the process cwd for a bare grid name. Explicit
+    search paths skip that fallback. DuckDB Spatial has no corresponding setter,
+    so the server cwd is confined to the workspace and SQL refuses explicit grids.
+    """
+    import os
+
+    from . import workspace
+
+    if workspace.root() is None:
+        return {}
+
+    def absolute(paths: list[str], runtime: str) -> list[str]:
+        resolved = [str(Path(path).resolve()) for path in paths if path]
+        if not resolved or not any(Path(path, "proj.db").is_file() for path in resolved):
+            raise RuntimeError(f"{runtime}'s PROJ data directory with proj.db could not be determined")
+        return resolved
+
+    from pyproj import datadir
+
+    pinned: dict[str, list[str]] = {}
+    pyproj_paths = absolute(datadir.get_data_dir().split(os.pathsep), "pyproj")
+    datadir.set_data_dir(os.pathsep.join(pyproj_paths))
+    pinned["pyproj"] = pyproj_paths
+
+    try:
+        from rasterio import _env
+    except ImportError:
+        pass
+    else:
+        raw_paths = _env.get_proj_data_search_paths()
+        if len(raw_paths) > 1 and any(not Path(path).is_absolute() for path in raw_paths):
+            raise RuntimeError("rasterio has multiple relative PROJ paths; configure absolute paths instead")
+        rasterio_paths = absolute(raw_paths, "rasterio")
+        if len(rasterio_paths) == 1:
+            _env.set_proj_data_search_path(rasterio_paths[0])
+        # Multiple absolute paths are already explicit: leave them untouched
+        # because rasterio's setter accepts one and grid-only directories matter.
+        pinned["rasterio"] = rasterio_paths
+
+    try:
+        import pyogrio
+    except ImportError:
+        pass
+    else:
+        configured = pyogrio.get_gdal_config_option("PROJ_DATA") or pyogrio.get_gdal_config_option("PROJ_LIB")
+        if configured:
+            pyogrio_paths = absolute(configured.split(os.pathsep), "pyogrio")
+        else:
+            bundled = Path(pyogrio.__file__).parent / "proj_data"
+            pyogrio_paths = absolute([str(bundled)], "pyogrio")
+        joined = os.pathsep.join(pyogrio_paths)
+        pyogrio.set_gdal_config_options({"PROJ_DATA": joined, "PROJ_LIB": joined})
+        pinned["pyogrio"] = pyogrio_paths
+    return pinned

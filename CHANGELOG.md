@@ -6,6 +6,79 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+### Added
+
+- **An executable agentic pilot and a measured fine-tuning decision.**
+  `examples/agentic_pilot.py` demonstrates typed planning, a validated brief,
+  QGIS execution, overlays and a closed-form 1,300 m² answer with its plan
+  manifest. The current mixed method-choice baseline does not justify
+  proprietary-model fine-tuning; revisit only after a complete baseline shows a
+  real advantage and explicit cost.
+- **QGIS Processing through a GPL-isolated subprocess, starting with
+  `native:buffer`.** `qgis_processing` exchanges JSON with `qgis_process`, never
+  imports QGIS, pins buffer semantics and returns a MapSmith-written,
+  MapSmith-verified output with the actual QGIS version in the manifest.
+  Distances remain explicitly in the input CRS's units. ArcGIS Pro and QGIS
+  integrations are exercised locally, with engine identity recorded in provenance.
+- **Vector/raster conversion chosen from measured gaps in public training
+  exercises.** `rasterize_layer` burns geometries or a numeric field onto a
+  reference raster's exact grid, refusing CRS mismatches and invalid field
+  values. `polygonize_raster` excludes nodata, supports declared 4/8
+  connectivity, bounds feature counts, emits stable row order and records
+  mechanical geometry repairs. Both are available through `run_operation`, with
+  catalog contracts, provenance and closed-form round-trip tests.
+- **Bounded, protocol-level agent repair for verification failures (issue #26).**
+  `execute_plan` returns structured checks with stable names, arguments,
+  observed/expected values and hints. An agent may submit a corrected plan with
+  the previous plan manifest, up to three attempts total; every attempt is
+  linked on disk, reusing an earlier output is refused to preserve provenance,
+  and a fourth attempt is refused before the engine runs. MapSmith does not
+  choose repairs or execute arbitrary repair scripts.
+- **Deterministic project briefs derived only from validated plans (D-063).**
+  `brief_plan` refuses invalid plans before producing project text; every brief
+  statement carries an operation, parameter, validation, engine or installation
+  source. Sixteen executable plan fixtures verify rendering, execution,
+  plan-level manifests and closed-form results on real vector and raster engines.
+- **A multi-step method-choice benchmark with 20 public cases and no change to
+  Argleton's meaning.** `benchmarks/method_choice.py` measures missing and
+  reordered operations, wrong tools, output contracts, required assumptions,
+  planning-silent errors and reproducibility, with defensible alternatives and
+  separate calibration/evaluation splits (10 cases each). Cases come from
+  paraphrased exercises in the QGIS Training Manual (GNU FDL 1.3,
+  docs.qgis.org); repeated-tool exercises that need SQL arguments are outside
+  this first method-only bench. API failures, invalid responses, stale prompts
+  and unattempted cases have separate counts rather than becoming wrong plans.
+- **Machine-checkable argument contracts in the catalog and in plan validation
+  (issue #27).** Choices, numeric bounds, cardinality, extensions and
+  cross-parameter rules are declared once in `catalog.py`, exposed by
+  `list_operations(detail=true)` and enforced before execution with
+  `INVALID_ARGUMENT_VALUE` messages naming the rule and the offending value.
+  `resample_raster` also accepts warp-only methods that its runtime already
+  used, `convert_format` refuses unsupported extensions statically, and
+  `spatial_join` refuses unknown engine names before routing.
+
+### Security
+
+- **PROJ resource resolution is confined at startup, and SQL replacement scans
+  cannot hide dataset paths through CTE scopes.** pyproj, rasterio and pyogrio
+  receive explicit absolute search paths without discarding grid-only
+  directories; the process working directory then moves inside the workspace so
+  DuckDB's PROJ cannot use the old cwd for explicit or EPSG-selected grids.
+  DuckDB has no search-path setter, so `run_sql` also refuses explicitly named
+  external grids. SQL path analysis now follows CTE visibility by scope and by
+  recursive branch, including replacement scans without a file extension.
+- **SQLite SRS catalogues are bounded and read case-insensitively.** A catalogue
+  is limited to 20,000 rows, 512 referenced systems, 64 KiB per definition and
+  16 MiB overall. Reference views disable selective parsing, numeric text ids
+  follow SQLite affinity, and every row gets the textual path check.
+
+### Fixed
+
+- **An ordinary SpatiaLite EPSG catalogue no longer receives thousands of full
+  PROJ parses per input.** Only coordinate systems referenced by layers are
+  parsed fully; an ordinary 5,804-row catalogue needs one in the regression
+  fixture. The file-level cache introduced in 0.10.1 is preserved.
+
 ## [0.10.1] - 2026-10-26
 
 **Update if you run MapSmith under `MAPSMITH_WORKSPACE`.** A dataset in a

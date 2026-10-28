@@ -70,7 +70,7 @@ this page had already published — including the one in the bullet list below.
 ## A whole analysis, start to finish
 
 This is the thing MapSmith is for, and it is not a single tool call. One question — six
-parcels, a river, an elevation grid — becomes a plan of five operations chosen out of 78,
+parcels, a river, an elevation grid — becomes a plan of five operations chosen out of 80,
 validated before anything runs, executed step by step, and recorded: the search that
 narrowed the catalogue, the arguments that mattered, the CRS decision behind each metric
 step, and the checks that ran on every result.
@@ -81,7 +81,7 @@ plan, reads the manifests, and writes what follows; `tests/test_worked_example.p
 page and that script disagree. The position column is BM25's rather than the default engine's,
 because a published figure should not depend on whether a model download succeeded on the machine
 that built the page — the narrowing, which is the point, is identical on both. Two things worth watching: the middle column, where the catalogue
-goes from 78 operations to a handful the caller can read; and the CRS column, where every
+goes from 80 operations to a handful the caller can read; and the CRS column, where every
 metric operation says which coordinate system it moved the data into and why.
 
 <!-- worked-example:start -->
@@ -92,15 +92,15 @@ flowchart TB
   ASK --> PLAN{{"plan validated<br/>before anything runs"}}
   PLAN -. "rejected: FORWARD_REFERENCE" .-> BAD["'mask_path' references '$buffer' which runs later — move step 'buffer' before 'near'"]
   BAD:::bad
-  BUFFER["<b>buffer_layer</b><br/>78 operations &rarr; 27 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
+  BUFFER["<b>buffer_layer</b><br/>80 operations &rarr; 27 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
   PLAN --> BUFFER
-  NEAR["<b>clip_layer</b><br/>78 operations &rarr; 13 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>12/12 checks"]
+  NEAR["<b>clip_layer</b><br/>80 operations &rarr; 13 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>12/12 checks"]
   BUFFER --> NEAR
-  HEIGHT["<b>zonal_statistics</b><br/>78 operations &rarr; 2 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
+  HEIGHT["<b>zonal_statistics</b><br/>80 operations &rarr; 2 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
   NEAR --> HEIGHT
-  AREA["<b>measure_area</b><br/>78 operations &rarr; 24 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>10/10 checks"]
+  AREA["<b>measure_area</b><br/>80 operations &rarr; 24 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>10/10 checks"]
   HEIGHT --> AREA
-  FILTER["<b>select_features</b><br/>78 operations &rarr; 24 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>10/10 checks"]
+  FILTER["<b>select_features</b><br/>80 operations &rarr; 24 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>10/10 checks"]
   AREA --> FILTER
   OUT[["3 parcels, each with elevation and ground area"]]
   FILTER --> OUT
@@ -109,11 +109,11 @@ flowchart TB
 
 | what the agent asks for | it declares | candidates | picked | at position |
 |---|---|---|---|---|
-| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s), line | **27** of 78 | `buffer_layer` | 2 |
-| “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s), polygon | **13** of 78 | `clip_layer` | 1 |
-| “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s), polygon | **2** of 78 | `zonal_statistics` | 2 |
-| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s), polygon | **24** of 78 | `measure_area` | 1 |
-| “drop the ones where the ground is above 120 metres” | vector, dataset:vector, 1 dataset(s), polygon | **24** of 78 | `select_features` | 1 |
+| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s), line | **27** of 80 | `buffer_layer` | 2 |
+| “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s), polygon | **13** of 80 | `clip_layer` | 1 |
+| “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s), polygon | **2** of 80 | `zonal_statistics` | 2 |
+| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s), polygon | **24** of 80 | `measure_area` | 1 |
+| “drop the ones where the ground is above 120 metres” | vector, dataset:vector, 1 dataset(s), polygon | **24** of 80 | `select_features` | 1 |
 
 | step | operation | arguments that mattered | CRS decision, recorded | checks |
 |---|---|---|---|---|
@@ -225,7 +225,9 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 
 This page describes **0.10.1**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **If you run 0.10.0 or earlier under
+have to find out by calling a tool that is not there. **On `main`, not in 0.10.1**: the validated
+project brief, bounded agent repair, vector/raster conversion and QGIS `native:buffer`, taking
+the catalogue to 80 operations behind 29 tools. **If you run 0.10.0 or earlier under
 `MAPSMITH_WORKSPACE`, update**: a coordinate reference system -- a tool argument, or the one a
 file declares -- could make PROJ read a file outside the workspace or open a network share, and
 in `run_sql` DuckDB's own PROJ could do the same; 0.10.0 closed that for tool arguments and for
@@ -381,14 +383,14 @@ For the **analysis** rather than the step, `run_operation` with `get_lineage` ta
   because there is nothing above the single call to put it in.
 - **Real geoprocessing, not map CRUD.** Built on the proven open geospatial stack: GDAL,
   GeoPandas, Shapely, DuckDB Spatial, Whitebox Workflows and exactextract ship today
-  (more to come: QGIS Processing via sidecar).
+  and QGIS Processing's `native:buffer` through a GPL-isolated sidecar.
 - **Provenance by design.** Every layer MapSmith produces ships with a machine-readable
   lineage manifest — source datasets with checksums, tools executed, exact parameters, CRS
   decisions, software versions, timestamps. Everything needed to re-run the analysis
   without the LLM is in there. No AI slop.
 - **The engines compute, the model orchestrates.** Geometry and numbers only ever come
   from deterministic tool executions — never from model output.
-- **78 operations, reached through 28 goal-level tools.** The catalogue is the breadth and
+- **80 operations, reached through 29 goal-level tools.** The catalogue is the breadth and
   the tool list is the choice; it is searchable rather than dumped, because tool-selection
   accuracy degrades once
   a few dozen tools are exposed at once, and fastest when two of them apply to the same
@@ -428,6 +430,7 @@ For the **analysis** rather than the step, `run_operation` with `get_lineage` ta
 | `watershed` | Watershed delineation from a DEM and pour points (`[whitebox]` extra) |
 | `preview_map` | Interactive in-chat map (MCP Apps) of any datasets, with a provenance card and verification status per layer |
 | `validate_plan` | Statically validate a multi-step plan before running anything: operations, arguments, references, input files, simulated CRS flow |
+| `brief_plan` | Render a project brief only after plan validation, with a declared source for every statement |
 | `execute_plan` | Validate then run a plan step by step, with per-step provenance and a plan-level manifest |
 | `get_provenance` | Return the manifest of any MapSmith output: one operation, its inputs and their digests, and what was checked |
 | `list_operations` | Catalog search: narrows on what you declare, then returns the surviving set to choose from (`status: "choose"`) or a ranking by `engine` — BM25, embeddings, or auto; `detail=true` returns parameters and worked examples |
@@ -437,8 +440,8 @@ For the **analysis** rather than the step, `run_operation` with `get_lineage` ta
 ### Finding the right operation
 
 Those are the tools an agent chooses between. Behind them the **catalog** holds every
-operation MapSmith can perform — 78 today, and 53 of them have no tool of their own — and
-it is built to hold thousands. (Two of the 78 are marked `planned` and say so when asked:
+operation MapSmith can perform — 80 today, and 55 of them have no tool of their own — and
+it is built to hold thousands. (One of the 80 is marked `planned` and says so when asked:
 the roadmap is in the catalog on purpose, so an agent can answer "not yet" instead of
 inventing a call.)
 
@@ -457,11 +460,11 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 78 | 30% | 19% | 30% |
-| what data I have | 52 | 35% | 24% | 36% |
-| + what I want back | 32 | 46% | 43% | 57% |
-| + how many datasets I have | 17 | 58% | 53% | 89% |
-| **+ what geometry it holds** | **15** | **62%** | **62%** | **98%** |
+| nothing — words alone | 80 | 30% | 19% | 30% |
+| what data I have | 53 | 33% | 24% | 34% |
+| + what I want back | 33 | 46% | 43% | 57% |
+| + how many datasets I have | 18 | 57% | 53% | 89% |
+| **+ what geometry it holds** | **15** | **61%** | **62%** | **98%** |
 
 **The last row is new on 2026-09-29, and the row above it shows why.** Thirty-one operations
 now take one vector layer to another, one more than the threshold below, so a caller who
@@ -481,22 +484,15 @@ recomputed the first row as 28% where this page said 18%. Not a flaky test: a
 number that had never been reproducible on a machine without the model,
 published under a sentence promising it could be checked.
 
-The two also differ in a way worth seeing, and this page had it backwards
-until 2026-08-30. It said the embedding engine overtakes BM25 once the facets
-have narrowed. It does not overtake it anywhere: BM25 leads or ties at every row of the
-table above, by eleven points on words alone and level at the fullest
-declaration (both 62% since the phrasings added on 2026-10-13), where the entries that survive are told apart by the words that
-distinguish them — which is what `distinguishes` is for, and what an exact term
-either matches or does not. The embedding engine earns its place on the
-phrasings it has never seen, not on the ranking once the set is small. *(This
-paragraph said until 2026-09-25 that the gap was seven to twelve points and
-widest at the fullest declaration. It was the other way round with the figures
-then published — narrowest there, at two — and nothing checked the sentence,
-only the table beside it.)*
+The two also differ in a way worth seeing. The embedding engine only overtakes BM25
+at the fullest declaration, where geometry narrows the set: 62% against 61%.
+BM25 leads or ties at every other row, by eleven points on words alone. The
+embedding engine earns its place on the phrasings it has never seen, not on the
+ranking once the set is small.
 
 The last column is not an accuracy figure — it is a property, and the 98% rather than 100% is
 worth a sentence. The narrowing never drops the right operation: that is asserted per entry and
-holds for all 78. What the column measures is whether the surviving set was small enough to hand
+holds for all 80. What the column measures is whether the surviving set was small enough to hand
 over WHOLE, and for a handful of requests it still is not, so those fall back to a ranked
 shortlist and the answer can be outside the top three. Ranking decides the order; it does not
 decide membership; and the 2% is the gap between "cannot lose the answer" and "can show you all
@@ -535,12 +531,12 @@ of comparison this page exists to refuse.)
 That is the shape of the trade, and it says when the next facet is due. The figure to watch is
 not found@3 — a ranker will always get worse as the catalogue grows, and it is a hint. It is the
 **average** surviving set at the fullest declaration, the fourth column of that table:
-9 at 51 operations, 14 at 61, 16 at 72, 16 at 74, 16 at 75, 17 at 76, 15 at 77, 15 at 78. (The
+9 at 51 operations, 14 at 61, 16 at 72, 16 at 74, 16 at 75, 17 at 76, 15 at 77, 15 at 78, 15 at 80. (The
 point at 77 is the first with the geometry declared; without it the set would be 17.) When that crosses the threshold, delivery stops being a
 property and starts being a ranking again, and the lasting answer is another fact the caller
 already knows. A bigger threshold is an answer only as far as the caller still chooses well
 among more, and that is measured below, not assumed. (It said *median* until 2026-08-29, and published the mean:
-the median at 78 is 13. The distribution is skewed — most requests leave a small set and a few
+the median at 80 is 13. The distribution is skewed — most requests leave a small set and a few
 leave a large one — so the two numbers say different things and the mean is the pessimistic
 one, which is the right one to watch.)
 
@@ -590,7 +586,7 @@ Three measurements say this is the right shape, and the third is the one that se
 
 | | |
 |---|---|
-| our ranking puts the answer in the top three | **62%** |
+| our ranking puts the answer in the top three | **61%** |
 | a model handed the same candidates and asked to *choose* gets its first pick right | **69%** |
 | the two labellers who wrote the ground truth agree **with each other** | **70%** |
 
@@ -610,7 +606,7 @@ adopted wholesale rather than judged one at a time. Two different strengths of e
 the file says which is which.
 
 **The two model figures are dated: the labels were written on 2026-08-28, against a catalogue of
-51 operations.** It now has 78, so for any request whose right answer is one of the 27 added since,
+51 operations.** It now has 80, so for any request whose right answer is one of the 29 added since,
 neither labeller *could* have been right — the answer was not in the catalogue to name. Measured on
 the first four requests a person has answered by hand, two of the four have both labellers wrong,
 and both of those two name operations that did not exist on the 28th. So "both labellers wrong" and
@@ -621,7 +617,7 @@ against a human answer where there is one.
 
 All three are over the same 118 requests, which matters: agreement measured over all 155 requests
 in the file is 68%, and the difference is the 21 pairs where both labellers agreed a request was
-unanswerable — true, and the easy half. Quoting that 68% beside a 62% computed over the 118 would
+unanswerable — true, and the easy half. Quoting that 68% beside a 61% computed over the 118 would
 be comparing two populations, which this table did for half a day.
 
 **The last row is a ceiling, not a baseline**, and the second row sits at it rather than below it.
@@ -678,9 +674,9 @@ catalog grows:
 
 | catalog size | BM25 found@3 | embeddings found@3 |
 |---|---|---|
-| 10 | 72% | 82% |
-| 30 | 65% | 62% |
-| 78 | 55% | 45% |
+| 10 | 77% | 85% |
+| 30 | 63% | 58% |
+| 80 | 45% | 45% |
 
 **This table used to say the opposite, and the reversal is the finding.** Published at 10/30/51
 it read 78/83, 47/65, 40/55 — embeddings ahead at every size — and the sentence under it said
@@ -731,7 +727,7 @@ number of features as the input. Those are structural properties of the operatio
 checkable against the code rather than declared by hand, and they separate the pairs a bag of
 words cannot: `spatial_join` from `overlay_layers`, `flow_accumulation` from `extract_streams`.
 That work is not done, and until it is, the honest claim is the measured one: the guarantee above
-holds at seventy-eight operations, not at eight hundred.
+holds at eighty operations, not at eight hundred.
 
 **How an entry has to be written is a published specification**, not a convention:
 [`docs/catalog-entry-spec.md`](docs/catalog-entry-spec.md), with a normative
@@ -941,7 +937,7 @@ somebody overrides georeferencing they know to be wrong. Both readings are the l
 behaving exactly as written, and on one fixture the same file gives an area four times
 larger and an origin a hundred kilometres away. There is nothing upstream to fix and
 everything to state, so `describe_dataset` reports both sources when a raster has two, and
-**twelve operations that read a raster's grid directly refuse instead** — zonal statistics,
+**fourteen operations that read a raster's grid directly refuse instead** — zonal statistics,
 resampling, clipping, reclassification, band maths, reprojection, band extraction, band
 statistics, locating an extreme cell, sampling at points, the elevation profile and the line
 of sight — naming both readings and saying how to choose.
@@ -1276,8 +1272,8 @@ detects it, converts the input first, and discloses the workaround in the manife
  │  · heavy joins: SedonaDB ([sedona] extra)   │
  │  · zonal stats: exactextract ([raster])     │
  │  · terrain/hydro: Whitebox NG ([whitebox])  │
- │  · qgis_process / GRASS sidecar (roadmap,   │
- │    GPL-isolated via subprocess)             │
+ │  · QGIS native:buffer via subprocess        │
+ │    (GPL-isolated; GRASS sidecar: roadmap)   │
  └─────────────────────────────────────────────┘
 ```
 
@@ -1299,7 +1295,7 @@ detects it, converts the input first, and discloses the workaround in the manife
   workspace — which is what the container runs with by default. DuckDB's own HTTP and S3
   filesystems stay off in every mode, so `read_parquet('s3://…')` does not work even with
   the opt-in: fetch the data down first, or run unconfined with remote reads on.
-- **You want the full breadth of a desktop GIS.** 78 operations, and a catalogue that tells
+- **You want the full breadth of a desktop GIS.** 80 operations, and a catalogue that tells
   the agent what does *not* exist yet rather than letting it improvise. The ~900 QGIS
   Processing algorithms are on the roadmap, not in the box.
 - **You expect plan validation to make a weak model strong.** Our own A/B says advisory
@@ -1328,9 +1324,9 @@ Next, in the order we intend to do it. The linked items carry a written spec —
   under Apache-2.0. What it measures in MapSmith, including the seven defects it has sent back,
   has [a section of its own](#what-the-suite-found-in-mapsmith). #25 is closed against Argleton
   rather than left open here.
-- [ ] [Agent-loop repair](https://github.com/mapsmith-ai/MapSmith/issues/26): hand verification failures back to the agent as structured, actionable errors, with a bounded retry budget recorded in the manifest. Our [own measurements](docs/benchmarks.md) say the runtime error message is the information channel that works
-- [ ] [Tool contracts that carry their own rules](https://github.com/mapsmith-ai/MapSmith/issues/27): argument constraints enforced *and* stated, and errors that name the rule rather than only the violation. The one intervention in our benchmark work that moved a metric past its noise floor
-- [ ] **A project brief for the requests that are a chain, not a call.** A third of real requests
+- [x] [Agent-loop repair](https://github.com/mapsmith-ai/MapSmith/issues/26): hand verification failures back to the agent as structured, actionable errors, with a bounded retry budget recorded in the manifest. Our [own measurements](docs/benchmarks.md) say the runtime error message is the information channel that works
+- [x] [Tool contracts that carry their own rules](https://github.com/mapsmith-ai/MapSmith/issues/27): argument constraints enforced *and* stated, and errors that name the rule rather than only the violation. The one intervention in our benchmark work that moved a metric past its noise floor
+- [x] **A project brief for the requests that are a chain, not a call.** A third of real requests
   are not one operation: on the fifty hardest requests in our own set — the ones two model
   labellers disagreed about, answered by hand on 2026-09-01 — **sixteen** have "this is a
   sequence" as the answer or as a defensible second answer. To those, handing back a set of
@@ -1357,10 +1353,10 @@ Next, in the order we intend to do it. The linked items carry a written spec —
 - [x] Slope and aspect (Whitebox, closed-form tested; geographic-CRS DEMs refused)
 - [x] Stream network extraction (Whitebox, from a flow-accumulation grid; the threshold and its unit recorded in the manifest)
 - [x] More terrain & hydrology: curvature (six kinds, the kind required because profile and plan answer opposite questions), flow direction (d8/rho8/dinf/fd8, with the direction-code **table** written into the manifest — the engine's own manual documents its default table backwards, so a name would not have been enough), Euclidean distance and IDW interpolation
-- [ ] The ambiguous-georeferencing refusal on **every** raster operation rather than the twelve that read the grid directly. The three sampling operations were added on 2026-09-02 — `sample_raster_at_points` was the worst gap in the product, since the same DEM answered 10.0 and 30.0 with no sidecar and 2.0 and 6.0 with a 40 m one, five times out with no warning. What is left is the terrain engine, which stops on the same file for a different reason — its own reading of the grid disagrees with GDAL's — and whose message names neither the sidecar nor the way out
+- [ ] The ambiguous-georeferencing refusal on **every** raster operation rather than the fourteen that read the grid directly. The three sampling operations were added on 2026-09-02 — `sample_raster_at_points` was the worst gap in the product, since the same DEM answered 10.0 and 30.0 with no sidecar and 2.0 and 6.0 with a 40 m one, five times out with no warning. What is left is the terrain engine, which stops on the same file for a different reason — its own reading of the grid disagrees with GDAL's — and whose message names neither the sidecar nor the way out
 - [ ] Map panel: MapLibre vector rendering, and an export of the panel as a self-contained HTML file you host yourself (raster OSM tiles already ship). No hosted viewer — MapSmith runs on your machine and we would rather not own your maps
 - **Not planned**, and [closed as such](https://github.com/mapsmith-ai/MapSmith/issues/7) on 2026-09-01: a sandboxed code-execution tool for the long tail. A typed plan is the same efficiency win in a shape that can be refused for a stated reason before anything runs; a model-authored script keeps the arithmetic in the engines but moves the *composition* — engine, order, units, CRS — into text nobody validated, and then emits a manifest that is true about the library and silent about the part that decided
-- [ ] QGIS Processing sidecar (subprocess-isolated): ~900 algorithms. By far the largest item on this list — parameter mapping and error handling for an external process, not an afternoon
+- [x] QGIS Processing sidecar (subprocess-isolated), with `native:buffer` verified end to end and other algorithms added only through the same allowlist, parameter mapping and provenance
 
 ## License and project
 
@@ -1379,7 +1375,7 @@ and are archived with DOIs; the entries stay in the file marked inactive, so the
 can be read against what came of it.
 
 Release notes are in [CHANGELOG.md](CHANGELOG.md), how to contribute in
-[CONTRIBUTING.md](CONTRIBUTING.md), how to report a vulnerability in
+[CONTRIBUTING.md](CONTRIBUTING.md) (AI assistants start with [AGENTS.md](AGENTS.md)), how to report a vulnerability in
 [SECURITY.md](SECURITY.md). "MapSmith" is a trademark of the MapSmith project — see
 [TRADEMARKS.md](TRADEMARKS.md). Updates:
 [LinkedIn](https://www.linkedin.com/company/mapsmith) ·

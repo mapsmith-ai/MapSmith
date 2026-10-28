@@ -18,6 +18,7 @@ from mcp.types import ToolAnnotations
 from . import __version__, catalog, crs_policy, jobs, stacks, ui, workspace
 from .engines import dispatch, duckdb_engine, vector
 from .plans import Plan
+from .plans.models import RepairRequest
 from .provenance import read_provenance
 
 _HTTP = os.environ.get("MAPSMITH_TRANSPORT", "stdio").lower() in {"http", "streamable-http"}
@@ -710,8 +711,29 @@ def validate_plan(plan: Plan) -> dict[str, Any]:
     return validate(plan).model_dump()
 
 
+@mcp.tool(annotations=_READONLY)
+def brief_plan(plan: Plan) -> dict[str, Any]:
+    """Render a project brief from a plan that has ALREADY passed validation.
+
+    Every statement carries its source: operation declaration, argument rule,
+    validation finding, engine availability or install requirement. Invalid plans
+    return only the validation report and no project text. Installation commands
+    are printed for the person to run; MapSmith never installs an engine.
+    """
+    from .plans import validate
+    from .plans.brief import install_requirements, render
+
+    report = validate(plan)
+    if not report.valid:
+        response = {"valid": False, "validation": report.model_dump()}
+        if any(issue.code in {"MISSING_EXTRA", "ENGINE_NOT_AVAILABLE"} for issue in report.errors):
+            response["install"] = install_requirements(plan)
+        return response
+    return {"valid": True, "brief": render(plan)}
+
+
 @mcp.tool(annotations=_WRITER)
-def execute_plan(plan: Plan) -> dict[str, Any]:
+def execute_plan(plan: Plan, repair: RepairRequest | None = None) -> dict[str, Any]:
     """Validate, then execute a geoprocessing plan step by step.
 
     The plan is re-validated first (an invalid plan runs nothing). Steps run in
@@ -725,6 +747,12 @@ def execute_plan(plan: Plan) -> dict[str, Any]:
     A `step_warnings` key in the response means the plan ran but some step
     produced a suspicious result (an empty output, non-overlapping inputs):
     read it before treating a completed plan as a correct one.
+
+    Verification failures include structured checks and a three-attempt repair
+    budget. To retry, change the plan yourself, choose NEW output paths and pass
+    the previous .plan.json as repair.previous_manifest. MapSmith never chooses
+    or runs the repair for you; every attempt is linked in the manifests and a
+    fourth is refused.
     """
     from .plans import execute
 
@@ -733,6 +761,7 @@ def execute_plan(plan: Plan) -> dict[str, Any]:
         {"goal": plan.goal, "n_steps": len(plan.steps), "plan_sha256": plan.sha256()},
         execute,
         plan,
+        repair,
     )
 
 
@@ -869,7 +898,7 @@ def list_operations(
     the normal case and it is asking you to pick.** It carries every operation
     that survived, in relevance order, each with the sentence saying what it is
     NOT for. The order is a hint and nothing else: our ranking puts the right
-    operation in the top three 62% of the time, while a model reading the same
+    operation in the top three 61% of the time, while a model reading the same
     candidates and choosing gets its first pick right 69% — and 70% is where the two
     model labellers who wrote the ground truth agree with EACH OTHER, so there is
     often no single right answer to rank toward. You have context no ranking has: which
@@ -1040,6 +1069,8 @@ def main() -> None:
     # an agent passes, or a file declares, would be a request to any host
     # (`crs_policy`, 2026-10-23). pyproj's default is off; `PROJ_NETWORK=ON`
     # or `proj.ini` can turn it on underneath, and this turns it back off.
+    crs_policy.pin_search_paths_under_workspace()
+    workspace.confine_working_directory()
     crs_policy.network_off_under_workspace()
     mcp.run(transport="streamable-http" if _HTTP else "stdio")
 

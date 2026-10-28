@@ -86,6 +86,16 @@ def _normalize_numbers(value):
     return value
 
 
+class RepairRequest(BaseModel):
+    """A protocol-level retry linked to the failed plan's durable manifest."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    previous_manifest: ArgString = Field(
+        description="The .plan.json returned by the failed attempt"
+    )
+
+
 class Issue(BaseModel):
     """One machine-actionable validation finding."""
 

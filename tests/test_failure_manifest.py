@@ -68,7 +68,10 @@ def _call_and_find_output(name, fixtures, request):
     call = fixtures.get(name)
     if call is None:
         pytest.skip(f"{name}: no conformance fixture (an extra is missing?)")
-    result = call()
+    try:
+        result = call()
+    except ImportError as exc:
+        pytest.skip(f"{name}: optional engine unavailable: {exc}")
     output = Path(result["output"])
     # Clear the success so that what the sabotaged run leaves is its own, and
     # clear whatever the sabotage leaves, since the inputs are shared.

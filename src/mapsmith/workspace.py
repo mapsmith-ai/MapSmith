@@ -62,6 +62,23 @@ def root() -> Path | None:
     return Path(ws).resolve() if ws else None
 
 
+def confine_working_directory() -> Path | None:
+    """Make the process cwd the workspace, including PROJ's implicit fallback.
+
+    DuckDB Spatial has no search-path setter and PROJ can choose grids from an
+    EPSG operation without naming one in the CRS. A cwd inside the jail makes
+    that fallback safe for explicit and implicit grids alike. Called at server
+    startup and before Spatial loads, not around individual concurrent queries.
+    """
+    ws = root()
+    if ws is not None:
+        # Pin the absolute form before chdir, or a relative workspace would be
+        # resolved again against itself on the next call.
+        os.environ["MAPSMITH_WORKSPACE"] = str(ws)
+        os.chdir(ws)
+    return ws
+
+
 def remote_allowed() -> bool:
     """Whether the operator has switched remote/virtual paths on.
 

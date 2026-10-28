@@ -153,6 +153,47 @@
           "description": {
             "description": "Where a wrong value fails SILENTLY, say so here. A parameter with no safe default should have no default, and this is where the reason lives.",
             "type": "string"
+          },
+          "choices": {
+            "description": "Every value accepted by the engine; any other value is refused before execution, including members of a list.",
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "minimum": {
+            "description": "Inclusive numeric lower bound.",
+            "type": "number"
+          },
+          "maximum": {
+            "description": "Inclusive numeric upper bound.",
+            "type": "number"
+          },
+          "exclusive_minimum": {
+            "description": "Exclusive numeric lower bound.",
+            "type": "number"
+          },
+          "exclusive_maximum": {
+            "description": "Exclusive numeric upper bound.",
+            "type": "number"
+          },
+          "min_items": {
+            "description": "Minimum number of list elements required by the operation.",
+            "type": "integer",
+            "minimum": 1
+          },
+          "odd": {
+            "description": "True only when the numeric value must be odd.",
+            "type": "boolean"
+          },
+          "extensions": {
+            "description": "Case-insensitive filename extensions accepted for this path parameter.",
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^\\."
+            }
           }
         }
       }

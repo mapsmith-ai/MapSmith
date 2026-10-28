@@ -21,11 +21,11 @@ catalogue is written: *"the coastline is 400 000 nodes and the browser dies"*, n
 
 | what the caller declares | candidates left | ranked, found@3 | **in what comes back** |
 |---|---|---|---|
-| nothing — words alone | 78 | 30% | 30% |
-| the input kind | 52 | 35% | 36% |
-| + what it should produce | 32 | 46% | 57% |
-| + how many datasets | 17 | 58% | 89% |
-| **+ what geometry it holds** | **15** | **62%** | **98%** |
+| nothing — words alone | 80 | 30% | 30% |
+| the input kind | 53 | 33% | 34% |
+| + what it should produce | 33 | 46% | 57% |
+| + how many datasets | 18 | 57% | 89% |
+| **+ what geometry it holds** | **15** | **61%** | **98%** |
 
 **Ranking is not the mechanism; narrowing is** — and the last column is why. Once
 the two facts a caller genuinely knows have cut the catalogue to something readable,
@@ -37,7 +37,7 @@ Three more numbers say why the answer is a set rather than a pick:
 
 | | |
 |---|---|
-| the ranker puts the answer in the top three | 62% |
+| the ranker puts the answer in the top three | 61% |
 | a model handed the same candidates and asked to **choose** | **69%** |
 | the two labellers who wrote the ground truth agreeing **with each other** | **70%** |
 
@@ -209,7 +209,7 @@ operation DOES differently, not around a list of names.
 
 1. **It is read at selection time, not at search time — and selection is where the
    accuracy is.** A model handed the surviving candidates and asked to choose gets
-   its first pick right 69% of the time, against 62% for the ranker putting it in the
+   its first pick right 69% of the time, against 61% for the ranker putting it in the
    top three. Entries that all say "one point per polygon" give it nothing to choose
    on. `distinguishes` is the only field written to be read *against its neighbours*,
    and that is the moment it pays. Measured against retrieval it is worth nothing;
@@ -232,6 +232,15 @@ should have no default at all, and the description is where the reason goes.
 `planned` entries have none, and are not required to: an entry that does not run
 yet cannot describe arguments it does not have. The schema requires the full
 description only of `available`.
+
+Simple constraints are machine-checkable declarations, not prose a caller may
+miss: `choices` lists every accepted value, `minimum` and `maximum` are inclusive
+bounds, `exclusive_minimum` and `exclusive_maximum` are exclusive bounds,
+`min_items` is list cardinality, `odd` requires an odd number, and `extensions`
+lists accepted filename extensions case-insensitively. The same declarations are
+validated before execution and exposed by `list_operations(detail=true)`. Rules
+that depend on another argument or on the data stay in the step validator rather
+than being flattened into a parameter description.
 
 ## 3. `examples` — the discoverability contract
 

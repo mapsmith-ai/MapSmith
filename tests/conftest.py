@@ -16,9 +16,17 @@ it as one teaches people to ignore red builds.
 
 from __future__ import annotations
 
+import os
 import re
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def restore_process_cwd():
+    previous = os.getcwd()
+    yield
+    os.chdir(previous)
 
 
 @pytest.fixture(scope="module")

@@ -7,6 +7,69 @@ not exist, arguments that were never declared, values of the wrong type.
 measures that idea on a third-party benchmark, with a deterministic evaluator
 — no LLM judging an LLM.
 
+## Method-choice baseline (27 October 2026)
+
+A different instrument measures the choice of method, not single-step GIS
+correctness: `benchmarks/method_choice.py` gives the planner a goal, declared
+inputs and an output contract, then compares the proposed operation sequence
+with defensible alternatives. Argleton's single-trap meaning is unchanged.
+
+The public set has 20 paraphrased cases from the QGIS Training Manual (GNU FDL
+1.3), split 10 calibration / 10 evaluation, with one to three operations and no
+repeated-tool exercises that would need SQL arguments to compare. Claude
+Sonnet 5 answered every case twice. API failures and invalid responses are not
+counted as wrong plans. One initial HTTP 400 and one invalid response were
+subsequently recovered; the zero error fields in the report count cases left
+without a valid answer, while `api_error_events` and `invalid_response_events`
+record those attempts. These are agreement and disclosure metrics, not a claim
+that the resulting dataset is correct.
+
+| Metric | Calibration | Evaluation |
+|---|---:|---:|
+| Exact accepted sequence | 7/10 | 3/10 |
+| Correct first operation | 9/10 | 6/10 |
+| Every required operation present | 7/10 | 7/10 |
+| Output contract satisfied | 7/10 | 4/10 |
+| Required assumption keys declared | 0/6 | 0/4 |
+| Planning-silent errors | 8/10 | 6/10 |
+| Identical plan, assumptions and warnings on repetition | 0/10 | 0/10 |
+
+The summaries and dataset hash are in `benchmarks/method_choice_baseline.json`.
+Rerun with `python benchmarks/method_choice.py plan --provider anthropic
+--split evaluation --repeat 2`, then `score --provider anthropic --split
+evaluation`. Calibration is run the same way with `--split calibration`.
+This is the baseline before issue #27, not a target presented as a success.
+
+## After issue #27: declared argument contracts
+
+The same dataset, model and two responses per case were rerun after adding
+choices, bounds, cardinality, extensions and cross-parameter rules to the
+catalog, plan validator and compact planner declarations. The result is mixed,
+not a blanket improvement:
+
+| Metric | Baseline | After #27 |
+|---|---:|---:|
+| Exact accepted sequence, calibration | 7/10 | 6/10 |
+| Exact accepted sequence, evaluation | 3/10 | 6/10 |
+| Correct first operation, calibration / evaluation | 9/10 / 6/10 | 8/10 / 8/10 |
+| Every required operation present, calibration / evaluation | 7/10 / 7/10 | 6/10 / 8/10 |
+| Output contract satisfied, calibration / evaluation | 7/10 / 4/10 | 6/10 / 6/10 |
+| Required assumption keys declared, calibration / evaluation | 0/6 / 0/4 | 0/6 / 0/4 |
+| Planning-silent errors, calibration / evaluation | 8/10 / 6/10 | 8/10 / 8/10 |
+| Identical response on repetition, calibration / evaluation | 0/10 / 0/10 | 0/10 / 0/10 |
+
+Evaluation improves on exact sequence and output; calibration regresses on all
+three. Assumptions and reproducibility do not improve. Three invalid responses
+caused by exhausted generation budget were regenerated and are counted as
+events, not wrong plans. Summaries are in
+`benchmarks/method_choice_contracts.json`.
+
+Prior art: [ToolGate](https://arxiv.org/abs/2601.04688) already establishes
+parameter contracts, preconditions and structured constraint errors as a general
+approach. Issue #27 is not presented as inventing that approach; its specific
+contribution is the geospatial, multi-step measurement above, including the
+regressions.
+
 ## Setup
 
 - **Benchmark**: [GABench](https://github.com/GeoX-Lab/GABench) — 57 executable
@@ -633,3 +696,16 @@ wrong answer.
 Fine print: task 55 of arm A was re-run once after a local network drop cut
 the API connection mid-task (infrastructure error, not an agent failure);
 the raw logs keep both timestamps.
+
+## Pilot and fine-tuning decision
+
+`examples/agentic_pilot.py` runs the whole contract: typed plan, validated brief,
+QGIS and overlays, closed-form answer and plan manifest. It returns two suitable
+features, 400 and 900 m², 1,300 m² total. `tests/test_agentic_pilot.py` repeats
+the execution and reads the manifest rather than trusting the printed answer.
+
+No proprietary-model fine-tuning now. The stable post-#27 method-choice bench
+is mixed: calibration exact 6/10 (was 7), evaluation exact 6/10 (was 3), output
+6/10 on both, assumptions and reproducibility still 0/10. More contracts and
+executable cases are justified before training. Revisit only against a complete
+new baseline with a measured advantage and an explicit cost.

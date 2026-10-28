@@ -305,8 +305,7 @@ def refuse_unchecked_crs_and_paths(query: str, con: Any) -> None:
             f"before they run ({tree.get('error_message', 'unreadable')}). Write the query as one or "
             "more SELECTs; to keep a result, pass output_path instead of COPY or CREATE TABLE."
         )
-    ctes = {name.lower() for name in _cte_names(tree)}
-    _walk(tree, ctes, con)
+    _walk(tree, set(), con)
 
 
 def refuse_missing_gdal_layer(query: str, con: Any) -> None:
@@ -402,27 +401,16 @@ def _functions_named(node: Any, wanted: str) -> list[dict[str, Any]]:
     return found
 
 
-def _cte_names(node: Any) -> list[str]:
-    names: list[str] = []
-    if isinstance(node, dict):
-        for entry in (node.get("cte_map") or {}).get("map") or []:
-            names.append(str(entry.get("key", "")))
-        for value in node.values():
-            names.extend(_cte_names(value))
-    elif isinstance(node, list):
-        for item in node:
-            names.extend(_cte_names(item))
-    return names
-
-
 def _walk(node: Any, ctes: set[str], con: Any) -> None:
-    """Visit every node: the checks look at a node, the recursion at what is inside it."""
+    """Visit nodes with the CTE names visible in this exact lexical scope."""
     if isinstance(node, list):
         for item in node:
             _walk(item, ctes, con)
         return
     if not isinstance(node, dict):
         return
+    entries = (node.get("cte_map") or {}).get("map") or []
+    local_ctes = ctes | {str(entry.get("key", "")).lower() for entry in entries}
     if node.get("class") == "FUNCTION":
         name = str(node.get("function_name", "")).lower()
         children = node.get("children") or []
@@ -447,11 +435,11 @@ def _walk(node: Any, ctes: set[str], con: Any) -> None:
                         "without it."
                     )
     if node.get("type") == "BASE_TABLE":
-        # `FROM 'parcels.gpkg'` is a reader too: DuckDB swaps a file name for
-        # `read_parquet` or, with spatial loaded, for GDAL. A CTE of the same
-        # name shadows the file, so it is not a path.
+        # Replacement scans are not limited to names with an extension. Only a
+        # CTE visible in this scope can shadow one; a nested CTE cannot hide a
+        # file read by its parent query.
         table = str(node.get("table_name", ""))
-        if table.lower() not in ctes and any(c in table for c in "./\\"):
+        if table and table.lower() not in local_ctes:
             _check_path(table, con, gdal=not _NATIVE_SCAN.search(table))
     modifiers = node.get("user_type_modifiers")
     if modifiers:
@@ -459,8 +447,29 @@ def _walk(node: Any, ctes: set[str], con: Any) -> None:
         for modifier in modifiers:
             if (modifier.get("type") or {}).get("id") == "VARCHAR" and not modifier.get("is_null"):
                 _check_crs_text("a GEOMETRY type", str(modifier.get("value")))
-    for value in node.values():
-        _walk(value, ctes, con)
+    for key, value in node.items():
+        if key != "cte_map":
+            _walk(value, local_ctes, con)
+            continue
+        visible = set(ctes)
+        for entry in entries:
+            name = str(entry.get("key", "")).lower()
+            value = entry.get("value") or {}
+            query_node = (value.get("query") or {}).get("node") or {}
+            if query_node.get("type") != "RECURSIVE_CTE_NODE":
+                _walk(value, visible, con)
+            else:
+                initial = query_node.get("left")
+                recursive = query_node.get("right")
+                remainder = dict(value)
+                remainder["query"] = dict(value.get("query") or {})
+                remainder["query"]["node"] = {
+                    key: part for key, part in query_node.items() if key not in ("left", "right")
+                }
+                _walk(remainder, visible, con)
+                _walk(initial, visible, con)
+                _walk(recursive, visible | {name}, con)
+            visible.add(name)
 
 
 def _constant(node: Any) -> tuple[str | None, Any] | None:
@@ -500,7 +509,9 @@ def _check_crs_text(where: str, text: str) -> None:
     from . import crs_policy
 
     try:
-        crs_policy.parse(text)
+        # DuckDB Spatial does not expose PROJ search paths: a bare grid name
+        # can fall back to the server cwd, so this context accepts no grid file.
+        crs_policy.parse(text, allow_bare_files=False)
     except ValueError as exc:
         raise ValueError(f"{where}: {exc}") from None
     except Exception as exc:  # noqa: BLE001 - whatever pyproj raises: what MapSmith cannot read is not passed on
@@ -540,6 +551,7 @@ def _check_one_path(path: str, gdal: bool) -> None:
     from . import crs_policy, workspace
 
     workspace.guard(path, "run_sql")
+    crs_policy.refuse_declared_in_file(path, allow_bare_files=False)
     if gdal and not crs_policy.srs_is_read_before_gdal(path):
         raise ValueError(
             f"'run_sql': {path} would be opened by GDAL, which reads its coordinate system -- and a grid "

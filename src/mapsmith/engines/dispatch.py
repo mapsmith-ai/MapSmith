@@ -82,7 +82,13 @@ def available_engines() -> dict[str, bool]:
         status["whitebox"] = True
     except ImportError:
         status["whitebox"] = False
+    from .. import stacks
+
+    status["qgis"] = stacks.installed()["opensource"]["qgis"]
     return status
+
+
+SPATIAL_JOIN_ENGINES = {"auto", "sedonadb", "duckdb", "geopandas"}
 
 
 def pick(workload: Workload, requested: str = "auto") -> str:
@@ -154,6 +160,8 @@ def spatial_join_routed(
     from .. import verify
     from . import duckdb_engine, vector
 
+    if engine not in SPATIAL_JOIN_ENGINES:
+        raise ValueError(f"engine must be one of {sorted(SPATIAL_JOIN_ENGINES)}, got {engine!r}")
     chosen = pick(Workload.HEAVY_JOIN, engine)
     if chosen == "duckdb" and not duckdb_engine.supports_inputs(left_path, right_path):
         chosen = "geopandas"  # the DuckDB fast path is GeoParquet-only

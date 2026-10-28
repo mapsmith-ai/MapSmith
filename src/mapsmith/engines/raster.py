@@ -422,8 +422,8 @@ def _every_valued_cell_has_a_weight(exactextract: Any, ds: Any, weights: Any, zo
 # reason this operation refuses to have a default.
 # Measured against the installed rasterio, not assumed: read() accepts nine of
 # the fifteen Resampling members and raises ResamplingAlgorithmError for
-# min/max/med/q1/q3/sum, which are warp-only. rasterio has three different
-# valid sets (read, warp, overviews) and the intersection is what matters here.
+# min/max/med/q1/q3/sum, which are warp-only. This operation uses warp(), so its
+# valid set includes those methods as well.
 INTERPOLATING_RESAMPLING = {
     "bilinear", "cubic", "cubic_spline", "lanczos", "average", "rms", "gauss",
 }
@@ -462,16 +462,10 @@ def resample(
 
     if resolution <= 0:
         raise ValueError(f"resolution must be positive, got {resolution}")
-    valid = INTERPOLATING_RESAMPLING | CATEGORICAL_RESAMPLING
+    valid = INTERPOLATING_RESAMPLING | CATEGORICAL_RESAMPLING | WARP_ONLY_RESAMPLING
     if resampling not in valid:
-        warp_only = (
-            f" '{resampling}' exists in rasterio's Resampling enum but is valid only "
-            "for warping, not for the read path this operation uses."
-            if resampling in WARP_ONLY_RESAMPLING
-            else ""
-        )
         raise ValueError(
-            f"resampling must be one of {sorted(valid)}, got {resampling!r}.{warp_only} "
+            f"resampling must be one of {sorted(valid)}, got {resampling!r}. "
             "There is no default on purpose: interpolating methods (bilinear, cubic, "
             "average) derive values between the ones present, which is right for a "
             "continuous surface and wrong for class codes — use nearest or mode there."

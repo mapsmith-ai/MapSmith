@@ -101,6 +101,86 @@ def test_reproject_layer_refuses_a_hostile_target(tmp_path):
     assert not (tmp_path / "o.gpkg").exists()
 
 
+def test_proj_search_paths_are_explicit_and_keep_each_runtime_database(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    monkeypatch.setenv("MAPSMITH_WORKSPACE", str(tmp_path))
+    pinned = crs_policy.pin_search_paths_under_workspace()
+    assert pinned["pyproj"]
+    assert pinned["pyogrio"]
+    for runtime, paths in pinned.items():
+        assert any(Path(path, "proj.db").is_file() for path in paths), runtime
+        assert all(Path(path).is_absolute() for path in paths), runtime
+
+
+def test_a_relative_workspace_is_pinned_before_chdir(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    from mapsmith import workspace
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("MAPSMITH_WORKSPACE", "ws")
+    workspace.confine_working_directory()
+    workspace.confine_working_directory()
+    assert Path.cwd() == ws
+    assert workspace.root() == ws
+
+
+def test_rasterio_multiple_absolute_proj_paths_are_preserved(monkeypatch, tmp_path):
+    from rasterio import _env
+
+    database = _env.get_proj_data_search_paths()[0]
+    grid_only = tmp_path / "grids"
+    grid_only.mkdir()
+    paths = [database, str(grid_only)]
+    monkeypatch.setattr(_env, "get_proj_data_search_paths", lambda: paths)
+    monkeypatch.setattr(
+        _env,
+        "set_proj_data_search_path",
+        lambda path: (_ for _ in ()).throw(AssertionError("multi-path configuration was overwritten")),
+    )
+    monkeypatch.setenv("MAPSMITH_WORKSPACE", str(tmp_path))
+    assert crs_policy.pin_search_paths_under_workspace()["rasterio"] == paths
+
+
+def test_rasterio_multiple_relative_proj_paths_are_not_falsely_pinned(monkeypatch, tmp_path):
+    from rasterio import _env
+
+    monkeypatch.setattr(_env, "get_proj_data_search_paths", lambda: ["relative/db", "relative/grids"])
+    monkeypatch.setenv("MAPSMITH_WORKSPACE", str(tmp_path))
+    with pytest.raises(RuntimeError, match="multiple relative PROJ paths"):
+        crs_policy.pin_search_paths_under_workspace()
+
+
+def test_server_startup_pins_proj_then_confines_cwd_before_mcp(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    from mapsmith import server
+
+    ws = tmp_path / "ws"
+    outside = tmp_path / "outside"
+    ws.mkdir()
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+    monkeypatch.setenv("MAPSMITH_WORKSPACE", str(ws))
+    calls = []
+    monkeypatch.setattr(server.crs_policy, "pin_search_paths_under_workspace", lambda: calls.append("pin"))
+    monkeypatch.setattr(server.crs_policy, "network_off_under_workspace", lambda: calls.append("network"))
+    monkeypatch.setattr(server.mcp, "run", lambda **kwargs: calls.append("run"))
+    real_confine = server.workspace.confine_working_directory
+
+    def recording_confine():
+        calls.append("cwd")
+        return real_confine()
+
+    monkeypatch.setattr(server.workspace, "confine_working_directory", recording_confine)
+    server.main()
+    assert Path.cwd() == ws
+    assert calls == ["pin", "cwd", "network", "run"]
+
+
 def test_networking_is_switched_off_under_a_workspace(monkeypatch, tmp_path):
     pyproj = pytest.importorskip("pyproj")
     from pyproj.network import is_network_enabled, set_network_enabled
@@ -438,4 +518,142 @@ def test_a_declared_srs_bigger_than_any_definition_is_refused(tmp_path):
     (tmp_path / "big.prj").write_text('GEOGCS["' + "x" * (70 * 1024) + '"]', encoding="utf-8")
     with pytest.raises(ValueError, match="refused"):
         workspace.guard(str(shp), "input_path")
+
+
+def _spatialite_catalogue(path, rows=20, referenced=1):
+    import sqlite3
+
+    with closing(sqlite3.connect(path)) as db:
+        db.execute("CREATE TABLE spatial_ref_sys (srid INTEGER PRIMARY KEY, srtext TEXT, proj4text TEXT)")
+        db.execute("CREATE TABLE geometry_columns (f_table_name TEXT, f_geometry_column TEXT, srid INTEGER)")
+        for i in range(rows):
+            srid = 4326 if i == 0 else 10000 + i
+            text = (
+                f'GEOGCS["SRS {srid}",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],'
+                'PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]'
+            )
+            db.execute("INSERT INTO spatial_ref_sys VALUES (?, ?, ?)", (srid, text, ""))
+        for i in range(referenced):
+            srid = 4326 if i == 0 else 10000 + i
+            db.execute("INSERT INTO geometry_columns VALUES (?, 'geom', ?)", (f"layer_{i}", srid))
+        db.commit()
+    return path
+
+
+def test_only_spatialite_systems_referenced_by_layers_get_a_full_proj_parse(tmp_path, monkeypatch):
+    path = _spatialite_catalogue(tmp_path / "ordinary.sqlite", rows=5804)
+    parsed = []
+    original = crs_policy._verdict
+
+    def recording_verdict(text, allow_bare_files=True):
+        parsed.append(text)
+        return original(text, allow_bare_files)
+
+    monkeypatch.setattr(crs_policy, "_verdict", recording_verdict)
+    crs_policy.refuse_declared_in_file(str(path))
+    assert len(parsed) == 1
+    assert 'SRS 4326' in parsed[0]
+
+
+def test_an_sqlite_catalogue_has_a_row_limit(tmp_path, monkeypatch):
+    path = _spatialite_catalogue(tmp_path / "too_many.sqlite", rows=3)
+    monkeypatch.setattr(crs_policy, "_MAX_CATALOGUE_ROWS", 2)
+    with pytest.raises(ValueError, match="catalogue.*3.*limit.*2"):
+        crs_policy.refuse_declared_in_file(str(path))
+
+
+def test_the_number_of_referenced_spatialite_systems_is_bounded(tmp_path, monkeypatch):
+    path = _spatialite_catalogue(tmp_path / "too_many_used.sqlite", rows=3, referenced=3)
+    monkeypatch.setattr(crs_policy, "_MAX_REFERENCED_SRS", 2)
+    with pytest.raises(ValueError, match="3.*referenced.*limit.*2"):
+        crs_policy.refuse_declared_in_file(str(path))
+
+
+def test_an_unreferenced_sqlite_row_still_gets_the_text_safety_check(tmp_path):
+    path = _spatialite_catalogue(tmp_path / "hostile_unused.sqlite", rows=2)
+    import sqlite3
+
+    with closing(sqlite3.connect(path)) as db:
+        db.execute("UPDATE spatial_ref_sys SET proj4text = ? WHERE srid = 10001", ("+nadgrids=C:/evil/x.gsb",))
+        db.commit()
+    with pytest.raises(ValueError, match="refused"):
+        crs_policy.refuse_declared_in_file(str(path))
+
+
+def test_sqlite_column_names_are_case_insensitive(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "uppercase.sqlite"
+    with closing(sqlite3.connect(path)) as db:
+        db.execute("CREATE TABLE spatial_ref_sys (SRID INTEGER PRIMARY KEY, SRText TEXT)")
+        db.execute("CREATE TABLE geometry_columns (f_table_name TEXT, SRID TEXT)")
+        db.execute(
+            "INSERT INTO spatial_ref_sys VALUES (-2, ?)",
+            ((
+                'GEOGCS["evil",DATUM["x",SPHEROID["intl",6378388,297]],PRIMEM["Greenwich",0],'
+                'UNIT["degree",0.0174532925199433],EXTENSION["PROJ4_GRIDS","@x"",C:/evil/x.gsb"]]'
+            ),),
+        )
+        db.execute("INSERT INTO geometry_columns VALUES ('layer', '-2')")
+        db.commit()
+    with pytest.raises(ValueError, match="refused"):
+        crs_policy.refuse_declared_in_file(str(path))
+
+
+def test_a_reference_view_disables_the_selective_parse(tmp_path, monkeypatch):
+    import sqlite3
+
+    path = _spatialite_catalogue(tmp_path / "view.sqlite", rows=2)
+    with closing(sqlite3.connect(path)) as db:
+        db.execute("DROP TABLE geometry_columns")
+        db.execute("CREATE VIEW geometry_columns AS SELECT 4326 AS srid")
+        db.commit()
+    parsed = []
+    original = crs_policy._verdict
+    monkeypatch.setattr(
+        crs_policy,
+        "_verdict",
+        lambda text, allow_bare_files=True: parsed.append(text) or original(text, allow_bare_files),
+    )
+    crs_policy.refuse_declared_in_file(str(path))
+    assert len(parsed) == 2
+
+
+def test_text_spelled_srs_ids_follow_sqlite_affinity(tmp_path, monkeypatch):
+    import sqlite3
+
+    path = _spatialite_catalogue(tmp_path / "affinity.sqlite", rows=2)
+    with closing(sqlite3.connect(path)) as db:
+        db.execute("DROP TABLE geometry_columns")
+        db.execute("CREATE TABLE geometry_columns (f_table_name TEXT, srid TEXT)")
+        db.execute("INSERT INTO geometry_columns VALUES ('layer', '04326')")
+        db.commit()
+    parsed = []
+    original = crs_policy._verdict
+    monkeypatch.setattr(
+        crs_policy,
+        "_verdict",
+        lambda text, allow_bare_files=True: parsed.append(text) or original(text, allow_bare_files),
+    )
+    crs_policy.refuse_declared_in_file(str(path))
+    assert len(parsed) == 1
+    assert "SRS 4326" in parsed[0]
+
+
+def test_an_unreferenced_sqlite_srs_has_the_same_size_limit(tmp_path):
+    path = _spatialite_catalogue(tmp_path / "large_unused.sqlite", rows=2)
+    import sqlite3
+
+    with closing(sqlite3.connect(path)) as db:
+        db.execute("UPDATE spatial_ref_sys SET srtext = ? WHERE srid = 10001", ("x" * (70 * 1024),))
+        db.commit()
+    with pytest.raises(ValueError, match="coordinate system.*65536"):
+        crs_policy.refuse_declared_in_file(str(path))
+
+
+def test_the_total_sqlite_srs_text_is_bounded(tmp_path, monkeypatch):
+    path = _spatialite_catalogue(tmp_path / "large_total.sqlite", rows=2)
+    monkeypatch.setattr(crs_policy, "_MAX_CATALOGUE_SRS_BYTES", 10)
+    with pytest.raises(ValueError, match="exceed 10 characters"):
+        crs_policy.refuse_declared_in_file(str(path))
 

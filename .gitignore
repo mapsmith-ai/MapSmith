@@ -67,3 +67,4 @@ site/generated/
 # both hold the queries somebody typed, so they stay out of the repository.
 dashboard.html
 *.jsonl
+.method_choice/

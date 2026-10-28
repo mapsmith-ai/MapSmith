@@ -54,6 +54,7 @@ def _connect() -> duckdb.DuckDBPyConnection:
     # command for a filename ending in '|') or autoload httpfs and exfiltrate
     # results in a URL. SQL written by an LLM from whatever reached its context
     # is untrusted SQL, so DuckDB's own hardening guidance applies.
+    workspace.confine_working_directory()
     con = duckdb.connect(
         config={
             "autoinstall_known_extensions": "false",

@@ -20,7 +20,20 @@ from . import readers
 
 
 class VerificationError(RuntimeError):
-    """An output failed a critical deterministic check. The manifest still records it."""
+    """A critical check failed; its structured diagnosis survives the exception."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        operation: str,
+        failures: tuple[Check, ...],
+        manifest: str | None = None,
+    ):
+        super().__init__(message)
+        self.operation = operation
+        self.failures = failures
+        self.manifest = manifest
 
 
 UNKNOWN_CRS = "unknown"
@@ -220,9 +233,14 @@ class Check:
     # which argument the check is about: without it two inputs produce two
     # identically named entries that a consumer indexing by name would collapse
     argument: str | None = None
+    observed: Any = None
+    expected: Any = None
 
     def as_dict(self) -> dict:
-        return asdict(self)
+        record = asdict(self)
+        record.pop("observed")
+        record.pop("expected")
+        return record
 
 
 MAX_REPAIR_ROUNDS = 2
@@ -264,6 +282,8 @@ def verify_loaded_inputs(operation: str, **frames: Any) -> list[Check]:
                 + (f"{reason[0].upper() + reason[1:]} " if reason else "")
                 + "Assign the correct CRS to the source dataset (reproject_layer "
                 "cannot invent one).",
+                observed=crs_label(gdf.crs) if has_crs else None,
+                expected="a declared CRS",
             )
         )
         empty = len(gdf) == 0
@@ -383,6 +403,9 @@ def verify_vector_output(
                 "The operation ran but matched nothing. A file exists and is valid, "
                 "so downstream steps would silently work on an empty layer: check the "
                 "inputs' extents and coordinate systems before trusting this result.",
+                argument="output_path",
+                observed=len(gdf),
+                expected="> 0 features",
             )
         )
 
@@ -391,6 +414,13 @@ def verify_vector_output(
             "crs_present",
             gdf.crs is not None,
             crs_label(gdf.crs) if gdf.crs else "output has no CRS",
+            observed=crs_label(gdf.crs) if gdf.crs else None,
+            expected="a declared CRS",
+            argument="output_path",
+            hint=(
+                "Choose an operation and inputs with a declared CRS; MapSmith cannot "
+                "invent the missing coordinate system after writing the output."
+            ) if gdf.crs is None else None,
         )
     )
     if expect_crs is not None and gdf.crs is not None:
@@ -399,6 +429,13 @@ def verify_vector_output(
                 "crs_matches",
                 same_crs(gdf.crs, expect_crs),
                 f"expected {crs_label(expect_crs)}, got {crs_label(gdf.crs)}",
+                observed=crs_label(gdf.crs),
+                expected=crs_label(expect_crs),
+                argument="output_path",
+                hint=(
+                    "Reproject the input to the intended CRS or correct the plan's "
+                    "CRS argument; do not merely relabel the output."
+                ) if not same_crs(gdf.crs, expect_crs) else None,
             )
         )
 
@@ -409,6 +446,13 @@ def verify_vector_output(
                 "geometry_valid",
                 invalid == 0,
                 f"{invalid}/{len(gdf)} invalid geometries" if invalid else "all valid",
+                argument="output_path",
+                observed=invalid,
+                expected=0,
+                hint=(
+                    "Repair the invalid geometries or correct the operation that "
+                    "produced them before using the output."
+                ) if invalid else None,
             )
         )
         empty = int(gdf.geometry.is_empty.sum())
@@ -439,6 +483,13 @@ def verify_vector_output(
                 "feature_count_exact",
                 len(gdf) == expect_count,
                 f"expected {expect_count}, got {len(gdf)}",
+                observed=len(gdf),
+                expected=expect_count,
+                argument="output_path",
+                hint=(
+                    "Check the input and operation parameters against the expected "
+                    "feature count before retrying with a new output path."
+                ) if len(gdf) != expect_count else None,
             )
         )
     if max_count is not None:
@@ -447,6 +498,13 @@ def verify_vector_output(
                 "feature_count_bounded",
                 len(gdf) <= max_count,
                 f"expected <= {max_count}, got {len(gdf)}",
+                observed=len(gdf),
+                expected=f"<= {max_count}",
+                argument="output_path",
+                hint=(
+                    "Reduce the result through the operation's declared parameters "
+                    "or correct the expected upper bound before retrying."
+                ) if len(gdf) > max_count else None,
             )
         )
 
@@ -457,6 +515,13 @@ def verify_vector_output(
                 "geometry_types",
                 found.issubset(expect_geometry),
                 f"expected subset of {sorted(expect_geometry)}, got {sorted(found)}",
+                argument="output_path",
+                observed=sorted(found),
+                expected=f"subset of {sorted(expect_geometry)}",
+                hint=(
+                    "Choose an operation suited to these geometry types or correct "
+                    "the input before retrying."
+                ) if not found.issubset(expect_geometry) else None,
             )
         )
 
@@ -816,7 +881,7 @@ def audited(
     if repairs:
         record.add_repairs(repairs)
     manifest = record.finish().write_for(output_path)
-    enforce(all_checks, operation, repairs)
+    enforce(all_checks, operation, repairs, record=manifest)
     return str(manifest), result_extras(all_checks, repairs)
 
 
@@ -854,7 +919,10 @@ def enforce(
             raise VerificationError(
                 f"{operation} verified nothing about its output ({details}). "
                 + (f"{hints} " if hints else "")
-                + "The provenance manifest records exactly that, and nothing more."
+                + "The provenance manifest records exactly that, and nothing more.",
+                operation=operation,
+                failures=tuple(failed),
+                manifest=str(record) if record is not None else None,
             )
         repaired = ""
         if repairs:
@@ -878,5 +946,8 @@ def enforce(
                 "check list; the record beside the output describes an earlier run."
                 if record is not None and str(record).endswith(".failed.provenance.json")
                 else "The provenance manifest records the full check list."
-            )
+            ),
+            operation=operation,
+            failures=tuple(failed),
+            manifest=str(record) if record is not None else None,
         )

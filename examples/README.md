@@ -12,8 +12,9 @@ can verify**, with provenance manifests and deterministic checks on disk.
 | [02 — Terrain and hydrology](02_terrain_hydrology.ipynb) | Hillshade, D8 flow accumulation, six delineated catchments and zonal statistics on a real DEM of **Mount St. Helens** | `mapsmith[raster,whitebox]` |
 | [03 — Validated plans](03_validated_plans.ipynb) | A deliberately wrong multi-step plan rejected with machine-actionable errors, then fixed, validated and executed with a plan-level manifest | `mapsmith` |
 | [04 — Copernicus: terrain and vegetation](04_copernicus_terrain_vegetation.ipynb) | A **Copernicus DEM** in degrees refused for slope, then reprojected; **Sentinel-2** NDVI with a reflectance offset the catalogue declares and the pixels already contain; the treeline on **Monte Baldo**, read off both | `mapsmith[raster,whitebox]` 0.7.0 or later (terrain on point-registered DEMs) |
+| [05 — Agentic pilot](agentic-pilot.md) | Typed plan, validated brief, QGIS and overlays, closed-form answer and plan manifest; plus the measured decision not to fine-tune | `mapsmith` and QGIS |
 
-These notebooks call the Python engines directly so you can run them anywhere;
+The notebooks call the Python engines directly so you can run them anywhere; the pilot goes through the full plan/brief/execution contract.
 in an MCP client (Claude, ChatGPT, VS Code, …) the same operations are exposed
 as tools, and `preview_map` renders the results on an interactive in-chat map.
 

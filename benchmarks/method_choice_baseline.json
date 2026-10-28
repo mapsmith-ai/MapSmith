@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "measured_at": "2026-10-27",
+  "model": "claude-sonnet-5",
+  "dataset_sha256": "8d14148d8561a13c3d9f50c1ee3a32a037343ea8261231a276e5aba798ca4c18",
+  "responses_per_case": 2,
+  "reports": {
+    "calibration": {
+      "cases": 10,
+      "attempted": 10,
+      "answered": 10,
+      "api_errors": 0,
+      "invalid_response_cases": 0,
+      "not_attempted": 0,
+      "complete": true,
+      "verdicts": {"exact": 7, "missing_and_wrong": 3},
+      "exact_rate": 0.7,
+      "first_step_right": 9,
+      "every_required_step_present": 7,
+      "output_contract": 7,
+      "assumptions_applicable": 6,
+      "assumptions_declared": 0,
+      "silent_planning_errors": 8,
+      "repeated_cases": 10,
+      "reproducible_cases": 0
+    },
+    "evaluation": {
+      "cases": 10,
+      "attempted": 10,
+      "answered": 10,
+      "api_errors": 0,
+      "invalid_response_cases": 0,
+      "not_attempted": 0,
+      "api_error_events": 1,
+      "invalid_response_events": 1,
+      "complete": true,
+      "verdicts": {"exact": 3, "extra_or_wrong_tool": 4, "missing_and_wrong": 3},
+      "exact_rate": 0.3,
+      "first_step_right": 6,
+      "every_required_step_present": 7,
+      "output_contract": 4,
+      "assumptions_applicable": 4,
+      "assumptions_declared": 0,
+      "silent_planning_errors": 6,
+      "repeated_cases": 10,
+      "reproducible_cases": 0
+    }
+  }
+}

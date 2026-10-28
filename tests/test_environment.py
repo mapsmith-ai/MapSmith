@@ -25,7 +25,7 @@ from rasterio.transform import Affine
 
 from conftest import _spec_problems
 from mapsmith import grid
-from mapsmith.engines import raster, sampling
+from mapsmith.engines import conversion, raster, sampling
 from mapsmith.provenance import REDACTED, InputRecord, ProvenanceRecord
 
 CRS = "EPSG:32632"
@@ -364,6 +364,12 @@ COMPUTES_FROM_THE_GEOREFERENCING = {
     ),
     "clip_raster": lambda path, out: raster.clip_raster(
         path, _zones_beside(path), out
+    ),
+    "rasterize_layer": lambda path, out: conversion.rasterize_layer(
+        _zones_beside(path), path, out
+    ),
+    "polygonize_raster": lambda path, out: conversion.polygonize_raster(
+        path, out.replace(".tif", ".parquet")
     ),
     # The three that read the grid to place a coordinate, and had no guard at
     # all until 2026-09-02. `sample_raster_at_points` is the operation most
