@@ -387,7 +387,7 @@ def test_baseline_artifact_is_complete_and_the_public_page_agrees():
 
     artifact = json.loads((ROOT / "benchmarks" / "method_choice_baseline.json").read_text(encoding="utf-8"))
     assert artifact["dataset_sha256"] == hashlib.sha256(
-        (ROOT / "benchmarks" / "method_choice_cases.json").read_bytes()
+        (ROOT / "benchmarks" / "method_choice_cases.json").read_bytes().replace(b"\r\n", b"\n")
     ).hexdigest()
     assert artifact["responses_per_case"] == 2
     for split in ("calibration", "evaluation"):
@@ -407,7 +407,7 @@ def test_contracts_artifact_is_complete_and_the_comparison_agrees():
 
     artifact = json.loads((ROOT / "benchmarks" / "method_choice_contracts.json").read_text(encoding="utf-8"))
     assert artifact["dataset_sha256"] == hashlib.sha256(
-        (ROOT / "benchmarks" / "method_choice_cases.json").read_bytes()
+        (ROOT / "benchmarks" / "method_choice_cases.json").read_bytes().replace(b"\r\n", b"\n")
     ).hexdigest()
     for split in ("calibration", "evaluation"):
         report = artifact["reports"][split]
