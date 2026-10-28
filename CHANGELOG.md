@@ -90,7 +90,8 @@ All notable changes to MapSmith are documented here, in the format of
   is absent.** Readers and CRS probes now use a native declaration when one
   exists; an unresolved declaration stays unknown with its reason, while no
   declaration at all keeps the GeoParquet default. Explicit `geo.crs` values,
-  including null, retain their meaning.
+  including null, retain their meaning, and multi-geometry files arbitrate by
+  `primary_column` rather than the first geometry in schema order.
 - **The agent-facing discovery guidance no longer quotes a stale 51-operation
   table.** `list_operations` now explains the delivery mechanism without
   duplicating measurements maintained in the published benchmark. Unused CRS

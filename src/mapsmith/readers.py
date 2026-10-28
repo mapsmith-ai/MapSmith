@@ -241,11 +241,11 @@ def refuse_ambiguous_container(path: str) -> None:
     )
 
 
-def _native_columns_when_geo_crs_is_absent(path: str) -> list[tuple[str, str]]:
-    """Native geometry columns whose declaration must win over the CRS84 default."""
+def _native_columns_when_geo_crs_is_absent(path: str) -> tuple[list[tuple[str, str]], str]:
+    """Native geometry columns whose declaration must win over the CRS84 default, and their primary column."""
     columns = native_geometry_columns(path)
     if not columns:
-        return []
+        return [], ""
     import pyarrow.parquet as pq
 
     raw_geo = (pq.read_schema(path).metadata or {}).get(b"geo")
@@ -255,9 +255,9 @@ def _native_columns_when_geo_crs_is_absent(path: str) -> list[tuple[str, str]]:
         primary = geo.get("primary_column", "geometry")
         spec = geo.get("columns", {}).get(primary, {})
         if "crs" in spec:
-            return []  # an explicit value, including null, keeps the 1.x meaning
+            return [], primary  # an explicit value, including null, keeps the 1.x meaning
     declaration = next((value for name, value in columns if name == primary), "")
-    return columns if declaration.strip() else []
+    return (columns, primary) if declaration.strip() else ([], primary)
 
 
 def _read_geoparquet(path: str, *, allow_no_geometry: bool) -> gpd.GeoDataFrame:
@@ -277,8 +277,9 @@ def _read_geoparquet(path: str, *, allow_no_geometry: bool) -> gpd.GeoDataFrame:
             raise
         original = exc
         columns = native_geometry_columns(path)
+        primary = columns[0][0] if columns else ""
     else:
-        columns = _native_columns_when_geo_crs_is_absent(path)
+        columns, primary = _native_columns_when_geo_crs_is_absent(path)
         if not columns:
             return frame
     if not columns:
@@ -304,12 +305,12 @@ def _read_geoparquet(path: str, *, allow_no_geometry: bool) -> gpd.GeoDataFrame:
         # then rewrites the user's file under that name, defeating the care
         # `verify._repair_invalid_geometry` takes never to assume it.
         frame[name] = gpd.GeoSeries.from_wkb(frame[name], crs=crs).rename(name)
-        if name == columns[0][0]:
+        if name == primary:
             reason = why
     # Every native geometry column is read as geometry, not only the active one:
     # one left as raw bytes survives a round-trip as an opaque binary field and
     # loses both its logical type and its CRS.
-    gdf = gpd.GeoDataFrame(frame, geometry=columns[0][0])
+    gdf = gpd.GeoDataFrame(frame, geometry=primary)
     if reason:
         gdf.attrs[CRS_REASON] = reason
     return gdf

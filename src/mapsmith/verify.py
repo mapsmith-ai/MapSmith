@@ -48,9 +48,11 @@ VERIFICATION_ABSENT = "x-mapsmith:verification_present"
 def probe_crs(path: str) -> str:
     """CRS of an existing dataset from metadata only (no data scan, never raises).
 
-    GeoParquet via the pyarrow ``geo`` schema metadata (missing/null crs means
-    OGC:CRS84 per spec), rasters via rasterio when installed, everything else
-    via pyogrio. Returns ``"unknown"`` whenever the CRS cannot be determined.
+    GeoParquet via the pyarrow ``geo`` schema metadata and native logical types
+    (missing ``geo.crs`` uses a native declaration when present, otherwise
+    OGC:CRS84; explicit null is unknown), rasters via rasterio when installed,
+    everything else via pyogrio. Returns ``"unknown"`` whenever the CRS cannot
+    be determined.
     """
     lower = str(path).lower()
     # Defence in depth behind `workspace.guard`: a file whose declared SRS
@@ -199,7 +201,10 @@ def _probe_geoparquet_crs(path: str) -> str:
     # worst possible failure for a provenance product, and it defeated the
     # CRS precondition in the canonical format.
     if "crs" not in spec:
-        native = native_geometry_column(path)
+        native = next(
+            ((name, declaration) for name, declaration in readers.native_geometry_columns(path) if name == column),
+            None,
+        )
         if native and native[1].strip():
             return native_crs_declaration(path, native[1])
         crs = "OGC:CRS84"

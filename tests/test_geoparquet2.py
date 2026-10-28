@@ -75,7 +75,8 @@ def test_describe_reads_a_native_file(tmp_path):
 
 def test_both_layers_are_read_the_old_way(tmp_path):
     """`geoparquet_version 'BOTH'` carries native types *and* `geo` metadata.
-    The 1.x path must keep winning there, so the two layers cannot disagree."""
+    An explicit `geo.crs` keeps its 1.x meaning, while a missing one uses the
+    native declaration when present."""
     import pyarrow.parquet as pq
 
     target = _write(tmp_path / "both.parquet", "SELECT ST_Point(9, 45) AS geom", "BOTH")

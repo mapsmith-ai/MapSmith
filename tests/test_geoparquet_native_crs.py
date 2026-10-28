@@ -83,3 +83,20 @@ def test_no_crs_declaration_anywhere_keeps_the_spec_default(tmp_path):
     frame = readers.read_vector(str(target))
     assert frame.crs is not None and frame.crs.equals(__import__("pyproj").CRS("OGC:CRS84"))
     assert verify.probe_crs(str(target)) == "OGC:CRS84"
+
+
+def test_primary_geometry_column_controls_native_crs_arbitration(tmp_path):
+    target = _write_v2(
+        tmp_path / "multi-v2.parquet",
+        "SELECT ST_Point(0, 0) AS first, ST_SetCRS(ST_Point(9, 45), 'srid:5070') AS other",
+    )
+    raw = target.read_bytes()
+    assert raw.count(b'"primary_column":"first"') == 1, "fixture must change only the primary column"
+    target.write_bytes(raw.replace(b'"primary_column":"first"', b'"primary_column":"other"'))
+    _geo_spec(target)
+
+    frame = readers.read_vector(str(target))
+    assert frame.geometry.name == "other"
+    assert frame.crs is None
+    assert "srid:5070" in readers.crs_reason(frame)
+    assert verify.probe_crs(str(target)) == verify.UNKNOWN_CRS
