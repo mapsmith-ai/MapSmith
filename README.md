@@ -45,7 +45,7 @@ MapSmith's private output: JSON Schema, a toolchain-free validator, a conformanc
 hundred-line emitter that never imports MapSmith. Records carry `spec_version`, and CI validates
 real MapSmith output against the spec's own validator. The specification is archived and citable
 as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213), a concept DOI that
-resolves to the latest *archived* draft. Records written by 0.8.0 to 0.10.0 declare `1.0.0-draft.10`, and
+resolves to the latest *archived* draft. Records written by 0.8.0 to 0.10.1 declare `1.0.0-draft.10`, and
 0.7.x's declare `1.0.0-draft.8`; if the DOI shows an earlier one, the archive has not caught up, and the
 [repository](https://github.com/mapsmith-ai/manifest-spec) holds the text they are written against. The names MapSmith puts
 in a record beyond the ones the specification defines — every extension check name, and every
@@ -1172,8 +1172,8 @@ This section is the one a reader should be most suspicious of, so it is a headin
 rather than a line inside the roadmap, where it used to be. Everything in it is
 somebody grading us, and the grader is ours.
 
-[**Argleton**](https://argleton.org) is a correctness suite for the failure every
-existing benchmark misses — a result that is wrong and reported as successful. It is
+[**Argleton**](https://argleton.org) is a correctness suite for a result that is wrong
+and reported as successful, with the right answer known by construction. It is
 ours, and it lives in [its own organisation](https://github.com/argleton/argleton)
 under Apache-2.0 rather than in this repository, because an evaluation that lives
 inside the thing it evaluates is easy to dismiss in one line. Closed-form truth, no
@@ -1321,8 +1321,8 @@ detects it, converts the input first, and discloses the workaround in the manife
 
 Next, in the order we intend to do it. The linked items carry a written spec — a roadmap line without one is a wish, so the rest get theirs before work starts on them:
 
-- [x] **A suite for the failure every existing benchmark misses** — a result that is wrong and
-  reported as successful. It exists, it is not here, and it is not ours to grade:
+- [x] **A suite for plausible results reported as successful when they are wrong** — with the
+  right answer known by construction. It exists, it is not here, and it is not ours to grade:
   [**Argleton**](https://argleton.org) lives in [its own organisation](https://github.com/argleton/argleton)
   under Apache-2.0. What it measures in MapSmith, including the seven defects it has sent back,
   has [a section of its own](#what-the-suite-found-in-mapsmith). #25 is closed against Argleton
