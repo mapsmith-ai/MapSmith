@@ -37,9 +37,9 @@ from pathlib import Path
 SHAPEFILE_FAMILY = (".shp", ".shx", ".dbf", ".prj", ".cpg", ".sbn", ".sbx", ".qix", ".shp.xml")
 
 #: Above this, a text or JSON file is not read whole to look for its SRS: the
-#: caller treats it as unchecked. 512 MiB of GeoJSON is already more than the
-#: vector tools load comfortably.
-MAX_PARSE_BYTES = 512 * 1024 * 1024
+#: caller treats it as unchecked. A partial document is never accepted: under a
+#: workspace an oversized input is refused rather than scanned for a safe-looking prefix.
+MAX_PARSE_BYTES = 32 * 1024 * 1024
 #: A zip with more members than this, or members larger in total, is not
 #: walked: an archive is an input an attacker sizes.
 MAX_ZIP_MEMBERS = 10_000
@@ -458,6 +458,11 @@ def read_zip(path: Path) -> Declared:
         if len(members) > MAX_ZIP_MEMBERS or sum(m.file_size for m in members) > MAX_ZIP_BYTES:
             raise ValueError(f"{path}: a zip of {len(members)} members is larger than MapSmith walks to check it.")
         for member in members:
+            if member.file_size > MAX_PARSE_BYTES:
+                raise ValueError(
+                    f"{path}!{member.filename}: a zip member of {member.file_size} bytes is larger than "
+                    "MapSmith reads to check its coordinate system."
+                )
             data = archive.read(member)
             kind = sniff_bytes(data[:4096], member.filename)
             where = f"{path}!{member.filename}"

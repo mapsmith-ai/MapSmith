@@ -1032,7 +1032,8 @@ Set `MAPSMITH_WORKSPACE=/data` to confine the server to one directory:
 - the coordinate system an input declares is read from its bytes before GDAL opens it, because
   GDAL would open any grid file it names, for every format MapSmith accepts, and a format it
   does not recognise is refused -- netCDF, HDF, JPEG 2000, ERDAS IMG and GRIB rasters among
-  them, until MapSmith reads their coordinate system itself (since 0.10.1);
+  them, until MapSmith reads their coordinate system itself (since 0.10.1). JSON, text
+  and individual ZIP members over 32 MiB are refused before a whole-file read;
 - the `run_sql` DuckDB connection is sandboxed in the engine itself, because SQL text is
   out of reach of a textual path check: filesystem whitelisted to the workspace
   (`allowed_directories` + external access off, which also covers GDAL-backed `ST_Read`),

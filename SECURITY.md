@@ -54,7 +54,10 @@ below:
   workspace refuses a format it does not recognise: netCDF, HDF, JPEG 2000,
   ERDAS IMG and GRIB rasters among them, until MapSmith reads their coordinate
   system itself. An adversarial audit of the change before release found no
-  way past it, and four defects in it, fixed in the same release.
+  way past it, and four defects in it, fixed in the same release. JSON and text
+  inputs, and individual ZIP members, are bounded to 32 MiB before any whole-file
+  read; an oversized input is refused under a workspace rather than accepted from
+  a safe-looking prefix.
 
   On the development branch, pyproj, rasterio and pyogrio also receive explicit
   PROJ search paths at startup, preserving each runtime's own `proj.db` and any
