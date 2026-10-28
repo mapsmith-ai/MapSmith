@@ -33,7 +33,8 @@ def test_only_the_whitelisted_algorithm_is_accepted(tmp_path):
         qgis.process("native:centroids", "in.gpkg", "out.parquet", 10)
 
 
-def test_geographic_crs_is_refused_before_buffering(tmp_path):
+def test_geographic_crs_is_refused_before_buffering(tmp_path, monkeypatch):
+    monkeypatch.setattr(stacks, "_qgis_process", lambda: "qgis")
     source = tmp_path / "geographic.gpkg"
     gpd.GeoDataFrame({"id": [1]}, geometry=[shapely.Point(9, 45)], crs="EPSG:4326").to_file(source)
     with pytest.raises(ValueError, match="projected CRS"):

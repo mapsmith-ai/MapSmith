@@ -225,8 +225,9 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 
 This page describes **0.10.1**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **On `main`, not in 0.10.1**: the validated
-project brief, bounded agent repair, vector/raster conversion and QGIS `native:buffer`, taking
+have to find out by calling a tool that is not there. **On `main`, not in 0.10.1**
+([unreleased changes](CHANGELOG.md#unreleased)): the validated project brief, bounded agent
+repair, vector/raster conversion and QGIS `native:buffer`, taking
 the catalogue to 80 operations behind 29 tools. **If you run 0.10.0 or earlier under
 `MAPSMITH_WORKSPACE`, update**: a coordinate reference system -- a tool argument, or the one a
 file declares -- could make PROJ read a file outside the workspace or open a network share, and
