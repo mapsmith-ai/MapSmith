@@ -75,7 +75,9 @@ below:
   textual path check, while full PROJ parsing is normally limited to systems
   referenced by a layer. Reference views disable that selective path and every
   definition is parsed instead. This avoids parsing an ordinary SpatiaLite EPSG
-  catalogue per input without trusting a view to choose what is safe.
+  catalogue per input without trusting a view to choose what is safe. The
+  file-level cache stores refusals only: an allowed input is checked again, so a
+  same-size, same-mtime content replacement cannot reuse a stale permission.
 
   **`run_sql` had the same hole by a route of its own, closed in 0.10.0.**
   DuckDB's spatial extension carries its own PROJ, which opens files

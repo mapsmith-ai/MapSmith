@@ -75,13 +75,17 @@ All notable changes to MapSmith are documented here, in the format of
 - **JSON, text and ZIP-member parsing is bounded before whole-file reads.** Inputs
   over 32 MiB are refused under a workspace instead of being materialised and
   parsed to find a coordinate system; a safe-looking prefix is never accepted.
+- **Only CRS refusals, never permissions, are cached by file metadata.** An
+  allowed input is checked again, so replacing its bytes while preserving size
+  and modification time cannot reuse a stale permission. Per-text CRS verdicts
+  remain cached.
 
 ### Fixed
 
 - **An ordinary SpatiaLite EPSG catalogue no longer receives thousands of full
   PROJ parses per input.** Only coordinate systems referenced by layers are
   parsed fully; an ordinary 5,804-row catalogue needs one in the regression
-  fixture. The file-level cache introduced in 0.10.1 is preserved.
+  fixture. Per-text CRS verdicts and refusal caching remain in place.
 - **A native Parquet CRS no longer becomes OGC:CRS84 merely because `geo.crs`
   is absent.** Readers and CRS probes now use a native declaration when one
   exists; an unresolved declaration stays unknown with its reason, while no

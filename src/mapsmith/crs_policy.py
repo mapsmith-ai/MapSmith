@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import functools
 import re
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -473,9 +474,9 @@ def refuse_declared_in_file(path: str, *, allow_bare_files: bool = True) -> None
     workspace, file access is unconfined by design and both pass; a CRS found
     to name a file or a host is refused in either mode.
 
-    The verdict is cached by the input's name, size and modification time and
-    those of its sidecars: one input reaches this from the path gate, the probe
-    and the reader, and a SpatiaLite catalogue took 13 s a call.
+    Only refusals are cached by the input's name, size and modification time:
+    an allowed file is checked again, because identical metadata can hide changed
+    bytes. The per-text CRS verdicts remain cached in both directions.
     """
     from . import workspace
 
@@ -504,8 +505,26 @@ def _fingerprint(path: str) -> tuple:
     return (str(p), tuple(stats))
 
 
-@functools.lru_cache(maxsize=1024)
+_REFUSAL_CACHE: dict[tuple, str] = {}
+_REFUSAL_CACHE_LOCK = threading.Lock()
+
+
 def _cached_refusal(fingerprint: tuple, strict: bool, allow_bare_files: bool) -> str | None:
+    key = (fingerprint, strict, allow_bare_files)
+    with _REFUSAL_CACHE_LOCK:
+        cached = _REFUSAL_CACHE.get(key)
+    if cached is not None:
+        return cached
+    why = _refusal(fingerprint, strict, allow_bare_files)
+    if why is not None:
+        with _REFUSAL_CACHE_LOCK:
+            if len(_REFUSAL_CACHE) >= 1024:
+                _REFUSAL_CACHE.pop(next(iter(_REFUSAL_CACHE)))
+            _REFUSAL_CACHE[key] = why
+    return why
+
+
+def _refusal(fingerprint: tuple, strict: bool, allow_bare_files: bool) -> str | None:
     from . import srs_sources
 
     path = fingerprint[0]

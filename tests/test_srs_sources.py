@@ -309,11 +309,11 @@ def test_the_verdict_follows_the_file_when_it_changes(ws):
         workspace.guard(str(path), "input_path")
 
 
-def test_a_cached_verdict_does_not_read_the_file_again(ws, monkeypatch):
+def test_an_allowed_verdict_is_recomputed(ws, monkeypatch):
     path = _write_json(ws / "a.geojson", _feature_collection())
     crs_policy.refuse_declared_in_file(str(path))
     calls = []
     monkeypatch.setattr(srs_sources, "read_json", lambda raw: calls.append(1) or srs_sources.Declared("json"))
     crs_policy.refuse_declared_in_file(str(path))
     crs_policy.refuse_declared_in_file(str(path))
-    assert calls == []
+    assert calls == [1, 1]
