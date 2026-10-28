@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 
 import pytest
-from examples import agentic_pilot
 
 from mapsmith import stacks
 from mapsmith.plans.brief import assert_traced
+
+pilot_path = Path(__file__).resolve().parents[1] / "examples" / "agentic_pilot.py"
+pilot_spec = importlib.util.spec_from_file_location("agentic_pilot", pilot_path)
+agentic_pilot = importlib.util.module_from_spec(pilot_spec)
+pilot_spec.loader.exec_module(agentic_pilot)
 
 
 @pytest.mark.skipif(
