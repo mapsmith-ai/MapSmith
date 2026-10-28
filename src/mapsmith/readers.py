@@ -296,10 +296,19 @@ def _read_geoparquet(path: str, *, allow_no_geometry: bool) -> gpd.GeoDataFrame:
             raise original
         return gpd.GeoDataFrame(table, geometry=gpd.GeoSeries([], dtype="geometry"))
 
+    raw_geo = (pq.read_schema(path).metadata or {}).get(b"geo")
+    geo_columns = json.loads(raw_geo).get("columns", {}) if raw_geo else {}
     frame = pq.read_table(path).to_pandas()
     reason = None
     for name, declaration in columns:
-        crs, why = native_crs(path, declaration)
+        spec = geo_columns.get(name, {})
+        if "crs" in spec and spec["crs"] is None:
+            crs, why = None, "the file declares its coordinate system as null (undefined or unknown)."
+        elif "crs" in spec:
+            explicit = spec["crs"] if isinstance(spec["crs"], str) else json.dumps(spec["crs"])
+            crs, why = native_crs(path, explicit)
+        else:
+            crs, why = native_crs(path, declaration)
         # `.rename(name)` is load-bearing: `from_wkb` drops the Series name, so
         # the geometry silently became "geometry" — and the mechanical repair
         # then rewrites the user's file under that name, defeating the care

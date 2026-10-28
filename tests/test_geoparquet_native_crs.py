@@ -100,3 +100,25 @@ def test_primary_geometry_column_controls_native_crs_arbitration(tmp_path):
     assert frame.crs is None
     assert "srid:5070" in readers.crs_reason(frame)
     assert verify.probe_crs(str(target)) == verify.UNKNOWN_CRS
+
+
+def test_explicit_geo_crs_keeps_precedence_on_a_secondary_column(tmp_path):
+    target = _write_v2(
+        tmp_path / "secondary-v2.parquet",
+        "SELECT ST_SetCRS(ST_Point(0, 0), 'EPSG:3857') AS first, "
+        "ST_SetCRS(ST_Point(9, 45), 'srid:5070') AS other",
+    )
+    raw = target.read_bytes()
+    assert raw.count(b'"primary_column":"first"') == 1
+    raw = raw.replace(b'"primary_column":"first"', b'"primary_column":"other"')
+    assert raw.count(b'"code":3857') == 2, "fixture must change only the native declaration"
+    raw = raw.replace(b'"code":3857', b'"code":4326', 1)
+    raw = raw.replace(b'"name":"WGS 84 / Pseudo-Mercator"', b'"name":"XXXXXXXXXXXXXXXXXXXXXXXX"', 1)
+    raw = raw.replace(b'"name":"Popular Visualisation Pseudo Mercator"', b'"name":"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"', 1)
+    raw = raw.replace(b'"code":1024', b'"code":9999', 1)
+    target.write_bytes(raw)
+    _geo_spec(target)
+
+    frame = readers.read_vector(str(target))
+    assert frame["first"].crs is not None and frame["first"].crs.to_epsg() == 3857
+    assert frame.geometry.name == "other" and frame.crs is None
