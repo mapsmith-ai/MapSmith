@@ -209,7 +209,9 @@ def declared(path: str):
         # its bytes say: the `.prj` is read for a family name in any case.
         for candidate in (p.with_suffix(".prj"), p.with_suffix(".PRJ")):
             if candidate.is_file():
-                out.crs_texts.append(candidate.read_text(encoding="utf-8", errors="replace"))
+                out.crs_texts.append(
+                    srs_sources.read_bounded(candidate, _MAX_SRS_BYTES, ".prj").decode("utf-8", errors="replace")
+                )
                 break
     # GDAL's persistent auxiliary metadata beside a raster carries an SRS of
     # its own, read on open (`reproject_raster`, `describe_dataset`: 31 opens).
@@ -440,9 +442,9 @@ def _aux_srs_texts(aux: Path, path: str) -> list[str]:
     """
     from xml.etree import ElementTree
 
-    raw = aux.read_bytes()
-    if len(raw) > _MAX_SRS_BYTES:
-        raise ValueError(f"{path}: its .aux.xml is {len(raw)} bytes, more than a sidecar with an SRS needs.")
+    from . import srs_sources
+
+    raw = srs_sources.read_bounded(aux, _MAX_SRS_BYTES, ".aux.xml")
     if b"<!DOCTYPE" in raw.upper() or b"<!ENTITY" in raw.upper():
         raise ValueError(f"{path}: its .aux.xml carries a DOCTYPE, which MapSmith does not read.")
     try:

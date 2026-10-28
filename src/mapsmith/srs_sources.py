@@ -58,6 +58,10 @@ class Unreadable(ValueError):
     """
 
 
+class Oversized(ValueError):
+    """A declared coordinate system over the parsing budget: refused in both modes."""
+
+
 @dataclass
 class Declared:
     """What a dataset declares, by how it must be checked."""
@@ -255,6 +259,8 @@ def read_xml(source, where: str) -> Declared:
     def chars(data):
         if in_srs_element[0]:
             text.append(data)
+            if sum(map(len, text)) > MAX_SRS_TEXT_BYTES:
+                raise ValueError(f"{where}: an SRSName element is larger than MapSmith reads.")
 
     parser = expat.ParserCreate(namespace_separator="}")
     parser.StartDoctypeDeclHandler = refuse_doctype
@@ -427,15 +433,30 @@ def _decodings(raw: bytes) -> list[str]:
 # --- the dispatcher ------------------------------------------------------------------------
 
 
+MAX_SRS_TEXT_BYTES = 64 * 1024
+
+
+def read_bounded(path: Path, limit: int, kind: str) -> bytes:
+    """Read at most limit + 1 bytes, refusing an oversized input before allocation."""
+    with path.open("rb") as handle:
+        raw = handle.read(limit + 1)
+    if len(raw) > limit:
+        raise Oversized(
+            f"{path}: its coordinate system is refused: a {kind} file is larger than MapSmith reads."
+        )
+    return raw
+
+
 def _sidecars(path: Path) -> Declared:
     """What GDAL reads beside a dataset whatever its format: a `.prj` and an `.aux.xml`."""
     out = Declared("sidecar")
     # A `.prj` passed as the input is its own sidecar: it is checked like any other.
     for prj in {path.with_suffix(".prj"), path.with_suffix(".PRJ"), Path(str(path) + ".prj")}:
         if prj.is_file():
-            out.crs_texts.append(prj.read_text(encoding="utf-8", errors="replace"))
+            out.crs_texts.append(read_bounded(prj, MAX_SRS_TEXT_BYTES, ".prj").decode("utf-8", errors="replace"))
     gfs = path.with_suffix(".gfs")
     if gfs.is_file():
+        _check_size(gfs, "XML")
         with gfs.open("rb") as handle:
             _refuse_doctype(handle.read(4096), str(gfs))
         out.extend(read_xml(str(gfs), str(gfs)))
@@ -504,6 +525,8 @@ def read(path: Path) -> Declared:
     """
     try:
         return _read(path)
+    except Oversized:
+        raise
     except Unreadable:
         raise
     except RecursionError:
@@ -536,6 +559,7 @@ def _read(path: Path) -> Declared:
         _check_size(path, "JSON")
         out.extend(read_json(path.read_bytes()))
     elif kind == "xml":
+        _check_size(path, "XML")
         with path.open("rb") as handle:
             _refuse_doctype(handle.read(4096), str(path))
         out.extend(read_xml(str(path), str(path)))

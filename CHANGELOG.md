@@ -72,9 +72,11 @@ All notable changes to MapSmith are documented here, in the format of
   16 MiB overall. Reference views disable selective parsing, numeric text ids
   follow SQLite affinity, and every row gets the textual path check. Legacy
   SpatiaLite `srs_wkt` is read alongside `srtext` and `proj4text`.
-- **JSON, text and ZIP-member parsing is bounded before whole-file reads.** Inputs
-  over 32 MiB are refused under a workspace instead of being materialised and
-  parsed to find a coordinate system; a safe-looking prefix is never accepted.
+- **JSON, text, XML, sidecar and ZIP-member parsing is bounded before whole-file
+  reads.** Inputs over 32 MiB are refused under a workspace instead of being
+  materialised and parsed to find a coordinate system; a safe-looking prefix is
+  never accepted. `.prj`, `.aux.xml` and `SRSName` text is bounded to 64 KiB,
+  with oversized declarations refused in both modes.
 - **Only CRS refusals, never permissions, are cached by file metadata.** An
   allowed input is checked again, so replacing its bytes while preserving size
   and modification time cannot reuse a stale permission. Per-text CRS verdicts

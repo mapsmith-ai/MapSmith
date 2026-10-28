@@ -58,7 +58,9 @@ below:
   way past it, and four defects in it, fixed in the same release. JSON and text
   inputs, and individual ZIP members, are bounded to 32 MiB before any whole-file
   read; an oversized input is refused under a workspace rather than accepted from
-  a safe-looking prefix.
+  a safe-looking prefix. `.prj` and `.aux.xml` sidecars are read at most 64 KiB,
+  and `SRSName` accumulation stops at the same budget, with oversized coordinate
+  declarations refused in both modes.
 
   On the development branch, pyproj, rasterio and pyogrio also receive explicit
   PROJ search paths at startup, preserving each runtime's own `proj.db` and any
