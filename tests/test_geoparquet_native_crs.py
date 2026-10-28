@@ -122,3 +122,28 @@ def test_explicit_geo_crs_keeps_precedence_on_a_secondary_column(tmp_path):
     frame = readers.read_vector(str(target))
     assert frame["first"].crs is not None and frame["first"].crs.to_epsg() == 3857
     assert frame.geometry.name == "other" and frame.crs is None
+
+
+def test_explicit_null_geo_crs_on_a_secondary_column_stays_unknown(tmp_path):
+    target = _write_v2(
+        tmp_path / "null-secondary-v2.parquet",
+        "SELECT ST_SetCRS(ST_Point(0, 0), 'EPSG:3857') AS first, "
+        "ST_SetCRS(ST_Point(9, 45), 'srid:5070') AS other",
+    )
+    raw = target.read_bytes()
+    assert raw.count(b'"primary_column":"first"') == 1
+    raw = raw.replace(b'"primary_column":"first"', b'"primary_column":"other"')
+    start = raw.find(b'"crs":', raw.find(b'"first"'))
+    end = raw.find(b'},"other"', start)
+    assert start > 0 and end > start, "fixture must locate the explicit CRS value"
+    segment = raw[start:end]
+    replacement = b'"crs":null' + b" " * (len(segment) - len(b'"crs":null'))
+    target.write_bytes(raw[:start] + replacement + raw[end:])
+    _geo_spec(target)
+    metadata = pq.read_schema(target).metadata or {}
+    geo = json.loads(metadata[b"geo"])
+    assert "crs" in geo["columns"]["first"] and geo["columns"]["first"]["crs"] is None
+
+    frame = readers.read_vector(str(target))
+    assert frame["first"].crs is None
+    assert frame.geometry.name == "other" and frame.crs is None
