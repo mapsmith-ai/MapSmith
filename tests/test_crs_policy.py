@@ -229,7 +229,7 @@ def test_a_geopackage_declaring_a_hostile_srs_is_refused_before_gdal_opens_it(tm
             ),
         )
         db.commit()
-    texts = readers._declared_srs_texts(str(path))
+    texts = crs_policy.declared_srs_texts(str(path))
     assert any("PROJ4_GRIDS" in t for t in texts)
     with pytest.raises(ValueError, match="refused"):
         readers.read_vector(str(path))

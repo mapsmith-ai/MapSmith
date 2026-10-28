@@ -75,7 +75,7 @@ _SHIFT_STEP = re.compile(
 SHIFT_FROM_CRS = "x-mapsmith:shift_from_crs_definition"
 
 
-def _unshifted(accuracy: Any, pipeline: Any, description: Any = None, bound: Any = ()) -> bool:
+def _unshifted(accuracy: Any, pipeline: Any, description: Any = None) -> bool:
     """Did this operation leave the datum alone? Only when nothing in it moves one.
 
     An unknown accuracy is not the test: PROJ reports -1 both for the ballpark
@@ -87,35 +87,12 @@ def _unshifted(accuracy: Any, pipeline: Any, description: Any = None, bound: Any
     a Helmert chained with a ballpark leg still reads as one; pyproj's own
     tests look for the word. Without a name, the pipeline string is what PROJ
     ran, and a shift step in it is a shift.
-
-    `bound`: the names of the shifts the two CRSs declare themselves (WKT2
-    `BOUNDCRS`, PROJJSON, `+towgs84`). Those names are WRITTEN IN THE FILE, by
-    whoever wrote it, and a Helmert called "Ballpark geocentric translation"
-    recorded `is_ballpark: true` over coordinates it had moved 73 m (security
-    audit, 2026-10-23). They are cut out of the description before the word
-    is looked for; what remains is PROJ's own -- a ballpark leg PROJ adds to
-    reach a third datum is invisible in the pipeline and visible only there.
     """
     if accuracy is not None and accuracy >= _STATED:
         return False
     if description is not None:
-        # `_accuracies` hands in PROJ's own description, the declared steps
-        # already removed as objects (`_projs_own_description`); `bound` is kept
-        # for callers that still pass names, and is ignored.
-        del bound
         return "ballpark" in str(description).lower()
     return not (pipeline and _SHIFT_STEP.search(pipeline))
-
-
-def _declared_names(*crss: Any) -> tuple[str, ...]:
-    """The names of the shifts these CRSs carry themselves (BoundCRS): data, not PROJ."""
-    names = []
-    for crs in crss:
-        if getattr(crs, "is_bound", False):
-            operation = getattr(crs, "coordinate_operation", None)
-            if operation is not None and getattr(operation, "name", None):
-                names.append(str(operation.name))
-    return tuple(names)
 
 
 def shares_a_datum(source_crs: Any, target_crs: Any) -> bool:
@@ -357,9 +334,8 @@ def accuracy_of(transformer: Any, source_crs: Any, points: Any = None, target_cr
     point got a shift nobody has stated an accuracy for.
     """
     found = _accuracies(transformer, source_crs, target_crs, points)
-    bound = _declared_names(_as_crs(source_crs), _as_crs(target_crs) if target_crs is not None else None)
-    if any(_unshifted(*item, bound=bound) for item in found):
-        return next((item[0] for item in found if _unshifted(*item, bound=bound)), None)
+    if any(_unshifted(*item) for item in found):
+        return next((item[0] for item in found if _unshifted(*item)), None)
     stated = [item[0] for item in found if item[0] is not None and item[0] >= _STATED]
     return max(stated) if stated else None
 
@@ -425,9 +401,6 @@ class _Survey:
         self.from_data = points is not None and len(points) > 0
         if not self.from_data:
             points = np.array([_probe_point(source_crs, target_crs)], dtype=float)
-        #: The names of the shifts the CRSs declare themselves: they come from
-        #: the file, and are cut out of PROJ's description before it is read.
-        self.bound = _declared_names(source_crs, target_crs)
         # Longitude from GREENWICH, which is what every area of use is stated
         # in: the source's own geodetic CRS can count from Rome or Paris
         # (EPSG:4806 does), and its degrees then sat 12 degrees off every area
@@ -592,14 +565,14 @@ class _Survey:
     def _ballpark(self, found: list[Any]) -> bool:
         # Items are (accuracy, pipeline[, description]): a test may hand over
         # the two-field form, which is the pipeline rule alone.
-        return any(_unshifted(*item, bound=self.bound) for item in found)
+        return any(_unshifted(*item) for item in found)
 
     @property
     def shift_from_crs(self) -> bool:
         """Every operation PROJ used was a shift with no stated accuracy: the CRS's own."""
         asked = self.asked_inside + self.asked_outside
         return bool(asked) and all(
-            (item[0] is None or item[0] < _STATED) and not _unshifted(*item, bound=self.bound) for item in asked
+            (item[0] is None or item[0] < _STATED) and not _unshifted(*item) for item in asked
         )
 
     @property

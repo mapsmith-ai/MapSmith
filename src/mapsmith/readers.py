@@ -76,11 +76,6 @@ def native_geometry_column(path: str) -> tuple[str, str] | None:
     return found[0] if found else None
 
 
-def _declared_srs_texts(path: str) -> list[str]:
-    """The SRS text a file declares: `crs_policy.declared_srs_texts`."""
-    return crs_policy.declared_srs_texts(path)
-
-
 def _refuse_declared(path: str) -> None:
     """Refuse a file whose declared coordinate system names a file or a host, before opening it."""
     crs_policy.refuse_declared_in_file(path)

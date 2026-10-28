@@ -91,6 +91,11 @@ All notable changes to MapSmith are documented here, in the format of
   exists; an unresolved declaration stays unknown with its reason, while no
   declaration at all keeps the GeoParquet default. Explicit `geo.crs` values,
   including null, retain their meaning.
+- **The agent-facing discovery guidance no longer quotes a stale 51-operation
+  table.** `list_operations` now explains the delivery mechanism without
+  duplicating measurements maintained in the published benchmark. Unused CRS
+  and scalar-transform helpers were removed after moving their remaining test
+  references onto the real public paths.
 
 ## [0.10.1] - 2026-10-26
 

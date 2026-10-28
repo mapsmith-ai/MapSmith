@@ -24,6 +24,16 @@ import pytest
 
 from mapsmith import datum
 
+
+def _transformed(geometry, transformer):
+    """Reference scalar transform used to check the vectorised production path."""
+    from shapely.ops import transform
+
+    if geometry is None or geometry.is_empty:
+        return geometry
+    return transform(transformer.transform, geometry)
+
+
 ROOT = Path(__file__).resolve().parent.parent
 ENGINES = ROOT / "src" / "mapsmith" / "engines"
 
@@ -680,7 +690,7 @@ def test_a_reprojection_that_raised_does_not_claim_the_coordinates_moved(
     round-trip fix, by asking the question that fix left open: is any other key
     assigned before the fact it asserts? One was. `target_crs` and
     `transformation` were written before the `with audit_on_failure`, while the
-    coordinates only move inside it -- so a `_transformed` that raised left a
+    coordinates only move inside it -- so a `_transformed_all` that raised left a
     manifest reporting `target_crs: EPSG:4326` and a seven-metre transformation
     beside geometry that had not gone anywhere.
 
@@ -708,9 +718,7 @@ def test_a_reprojection_that_raised_does_not_claim_the_coordinates_moved(
     def transform_that_fails(geometry, transformer):
         raise RuntimeError("the transform failed")
 
-    # Both paths: reproject moved to the vectorised one on 2026-10-23, and a
-    # sabotage aimed at the other would prove nothing.
-    monkeypatch.setattr(vector, "_transformed", transform_that_fails)
+    # Reproject uses the vectorised path: sabotage the function it really calls.
     monkeypatch.setattr(vector, "_transformed_all", transform_that_fails)
 
     out = tmp_path / "out.gpkg"
@@ -1540,12 +1548,12 @@ def test_the_vectorised_transform_matches_the_per_geometry_one():
     geoms = np.array([_box_around(*STATION_ROME, 0.01), Point(*STATION_ROME), None], dtype=object)
     fast = vector._transformed_all(geoms, transformer)
     assert fast[2] is None
-    assert fast[0].equals_exact(vector._transformed(geoms[0], transformer), 0)
-    assert fast[1].equals_exact(vector._transformed(geoms[1], transformer), 0)
+    assert fast[0].equals_exact(_transformed(geoms[0], transformer), 0)
+    assert fast[1].equals_exact(_transformed(geoms[1], transformer), 0)
 
 
 def test_the_vectorised_transform_keeps_and_moves_z():
-    """shapely.transform flattens by default; `to_crs` and `_transformed` did not."""
+    """shapely.transform flattens by default; `to_crs` and the scalar reference do not."""
     import numpy as np
     from pyproj import Transformer
     from shapely.geometry import Point, Polygon
@@ -1560,7 +1568,7 @@ def test_the_vectorised_transform_keeps_and_moves_z():
     fast = vector._transformed_all(geoms, transformer)
     assert [g.has_z for g in fast] == [True, True, False]
     for got, one in zip(fast, geoms, strict=True):
-        assert got.equals_exact(vector._transformed(one, transformer), 1e-6)
+        assert got.equals_exact(_transformed(one, transformer), 1e-6)
 
 
 

@@ -329,19 +329,6 @@ def _datum_transformation(source_crs, target_crs, points=None) -> tuple[Any, dic
     return datum.best_operation(source_crs, target_crs, points)
 
 
-def _transformed(geometry, transformer):
-    """Apply a chosen transformer to one geometry.
-
-    `to_crs` cannot be used here: it picks its own transformation, which is the
-    thing being avoided. `shapely.ops.transform` applies the one we selected.
-    """
-    from shapely.ops import transform as shapely_transform
-
-    if geometry is None or geometry.is_empty:
-        return geometry
-    return shapely_transform(transformer.transform, geometry)
-
-
 def _transformed_all(geometries, transformer):
     """Apply a chosen transformer to an array of geometries at once: `datum.transformed_all`."""
     return datum.transformed_all(geometries, transformer)
@@ -399,7 +386,7 @@ def reproject(input_path: str, target_crs: str, output_path: str) -> dict[str, A
     # Split in two, on 2026-09-23, for the reason `record_round_trip` exists.
     # What is true before anything moves goes here; what only becomes true once
     # the coordinates have actually moved goes after the transform. Until then
-    # all of it was written up front, so a `_transformed` that raised left a
+    # all of it was written up front, so a `_transformed_all` that raised left a
     # manifest saying `target_crs: EPSG:4326` and a seven-metre transformation
     # beside coordinates that had not gone anywhere -- and section 3.7 defines
     # `target_crs` as "the coordinate system they WERE PUT INTO".

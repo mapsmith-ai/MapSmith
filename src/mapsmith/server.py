@@ -848,20 +848,11 @@ def list_operations(
 ) -> list[dict[str, Any]]:
     """Find the operation you need. **Say what you have and what you want** — it matters more than the words you search with.
 
-    Ranking alone does not scale, and this is measured rather than assumed. Over
-    118 requests written by other models against this catalog, searching by words
-    alone finds the right operation in the top 3 a quarter of the time. Declaring
-    what you already know does not make the ranking better — it makes the ranking
-    unnecessary, because few enough operations survive that you get all of them:
-
-        facets you declare              candidates left   ranked@3   in the answer
-        (none)                                       51        25%             25%
-        input_kind                                   33        29%             43%
-        input_kind + produces                        21        48%            100%
-
-    That last column is not an accuracy figure. It is what happens when nothing is
-    dropped: the right operation was in the answer for all 118 requests, by
-    construction rather than by ranking.
+    Ranking alone does not scale, and this is measured rather than assumed on
+    independently written requests. Declaring what you already know makes ranking
+    less important: when few enough operations survive, the whole set is handed
+    over rather than a ranked shortlist. Delivery is not an accuracy figure: it
+    depends on the surviving set staying small enough to return whole.
 
     So fill these in whenever you know them, and you usually do:
 
