@@ -557,8 +557,9 @@ def _check_one_path(path: str, gdal: bool) -> None:
             f"'run_sql': {path} would be opened by GDAL, which reads its coordinate system -- and a grid "
             "file it names, wherever that is -- before MapSmith can check it. Under MAPSMITH_WORKSPACE "
             "run_sql reads through GDAL only the formats whose coordinate system MapSmith reads first, "
-            "recognised by their bytes (GeoPackage, shapefile, GeoParquet, GeoJSON, GML, FlatGeobuf, GeoTIFF, "
-            "CSV and other text with a .prj, file geodatabases, zips of these). Convert it to one of those first."
+            "recognised by their bytes (GeoPackage, OGR SQLite and SpatiaLite with MapSmith-read SRS catalogues, "
+            "shapefile, GeoParquet, GeoJSON, GML, FlatGeobuf, GeoTIFF, CSV and other text with a .prj, file "
+            "geodatabases, zips of these). Convert it to one of those first."
         )
 
 

@@ -504,7 +504,8 @@ def run_sql(query: str, output_path: str = "") -> dict[str, Any]:
     (ST_Transform, ST_SetCRS) and dataset paths (ST_Read, read_parquet) must be
     string literals, so they can be checked before anything opens them; ST_Read
     takes there the formats whose coordinate system MapSmith reads first
-    (GeoPackage, shapefile, GeoParquet, GeoJSON, GML, FlatGeobuf, GeoTIFF, CSV...).
+    (GeoPackage, OGR SQLite and SpatiaLite with MapSmith-read SRS catalogues,
+    shapefile, GeoParquet, GeoJSON, GML, FlatGeobuf, GeoTIFF, CSV...).
     """
     out = output_path or None
     if out:

@@ -168,9 +168,10 @@ def declared(path: str):
 
     Both open a grid file named in the SRS while parsing it (second audit pass,
     2026-10-23: 20 opens from `pyogrio.read_info` on one GeoPackage). The format
-    is recognised by its first bytes, not its extension: GeoPackage and OGR
-    SQLite through their catalogue (an SQLite file this cannot read is refused
-    rather than passed on), a shapefile by the ``.prj`` beside it, GeoParquet by
+    is recognised by its first bytes, not its extension: GeoPackage, OGR
+    SQLite and SpatiaLite through their catalogue, including legacy `srs_wkt`
+    (an SQLite file this cannot read is refused rather than passed on), a
+    shapefile by the ``.prj`` beside it, GeoParquet by
     the ``geo`` metadata and the native type, and since 2026-10-26 every other
     format `srs_sources` reads -- GeoJSON, GML, FlatGeobuf, GeoTIFF tags, file
     geodatabases, folders, zips, text with a ``.prj``. Returns a
@@ -298,7 +299,7 @@ def _catalogue_texts(p: Path, kind: str, path: str) -> tuple[list[str], list[str
                 referenced = _referenced_srs_ids(db)
                 for catalogue, id_column, candidates in (
                     ("gpkg_spatial_ref_sys", "srs_id", ("definition", "definition_12_063")),
-                    ("spatial_ref_sys", "srid", ("srtext", "proj4text")),
+                    ("spatial_ref_sys", "srid", ("srtext", "srs_wkt", "proj4text")),
                 ):
                     if catalogue not in kinds:
                         continue

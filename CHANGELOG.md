@@ -70,7 +70,8 @@ All notable changes to MapSmith are documented here, in the format of
 - **SQLite SRS catalogues are bounded and read case-insensitively.** A catalogue
   is limited to 20,000 rows, 512 referenced systems, 64 KiB per definition and
   16 MiB overall. Reference views disable selective parsing, numeric text ids
-  follow SQLite affinity, and every row gets the textual path check.
+  follow SQLite affinity, and every row gets the textual path check. Legacy
+  SpatiaLite `srs_wkt` is read alongside `srtext` and `proj4text`.
 - **JSON, text and ZIP-member parsing is bounded before whole-file reads.** Inputs
   over 32 MiB are refused under a workspace instead of being materialised and
   parsed to find a coordinate system; a safe-looking prefix is never accepted.

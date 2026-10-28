@@ -29,8 +29,9 @@ below:
   grid was opened over SMB. From 0.10.0 `crs_policy` refuses, wherever a CRS
   enters MapSmith's own code (and in `run_sql`, below), any grid, init or
   model name that is not a bare name from PROJ's own data directories, and
-  reads the declared SRS as text from the file's own catalogue -- GeoPackage
-  and OGR SQLite through sqlite, shapefile `.prj` through any member of the
+  reads the declared SRS as text from the file's own catalogue -- GeoPackage,
+  OGR SQLite and SpatiaLite through sqlite, including legacy `srs_wkt` and
+  case-insensitive column names, shapefile `.prj` through any member of the
   family, GeoParquet `geo` metadata and the native Parquet `GEOMETRY` type's
   CRS, a raster's `.aux.xml` through an XML
   parser -- before GDAL or PROJ parse it, because both open a grid named

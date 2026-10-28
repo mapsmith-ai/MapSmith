@@ -1043,7 +1043,8 @@ Set `MAPSMITH_WORKSPACE=/data` to confine the server to one directory:
   also read with DuckDB's parser before it runs: only `SELECT`, and every coordinate system
   (`ST_Transform`, `ST_SetCRS`) and dataset path (`ST_Read`, `read_parquet`) as a literal
   that passes the same checks as a tool argument, and through GDAL only GeoPackage,
-  shapefile and GeoParquet, whose coordinate system MapSmith reads first (since 0.10.0;
+  OGR SQLite and SpatiaLite with MapSmith-read SRS catalogues, shapefile and
+  GeoParquet, whose coordinate system MapSmith reads first (since 0.10.0;
   SECURITY.md has the hole it closes).
 
 `MAPSMITH_DISCOVERY_LOG` is one of three paths MapSmith writes to that no tool argument
