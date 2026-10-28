@@ -246,6 +246,25 @@ def refuse_ambiguous_container(path: str) -> None:
     )
 
 
+def _native_columns_when_geo_crs_is_absent(path: str) -> list[tuple[str, str]]:
+    """Native geometry columns whose declaration must win over the CRS84 default."""
+    columns = native_geometry_columns(path)
+    if not columns:
+        return []
+    import pyarrow.parquet as pq
+
+    raw_geo = (pq.read_schema(path).metadata or {}).get(b"geo")
+    primary = columns[0][0]
+    if raw_geo:
+        geo = json.loads(raw_geo)
+        primary = geo.get("primary_column", "geometry")
+        spec = geo.get("columns", {}).get(primary, {})
+        if "crs" in spec:
+            return []  # an explicit value, including null, keeps the 1.x meaning
+    declaration = next((value for name, value in columns if name == primary), "")
+    return columns if declaration.strip() else []
+
+
 def _read_geoparquet(path: str, *, allow_no_geometry: bool) -> gpd.GeoDataFrame:
     """GeoParquet 1.x through GeoPandas, 2.0-native through pyarrow.
 
@@ -257,13 +276,16 @@ def _read_geoparquet(path: str, *, allow_no_geometry: bool) -> gpd.GeoDataFrame:
     import pyarrow.parquet as pq
 
     try:
-        return gpd.read_parquet(path)
+        frame = gpd.read_parquet(path)
     except ValueError as exc:
         if "geo metadata" not in str(exc).lower():
             raise
         original = exc
-
-    columns = native_geometry_columns(path)
+        columns = native_geometry_columns(path)
+    else:
+        columns = _native_columns_when_geo_crs_is_absent(path)
+        if not columns:
+            return frame
     if not columns:
         if not allow_no_geometry:
             raise original  # genuinely no geometry anywhere: keep the original error

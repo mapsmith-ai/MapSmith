@@ -81,6 +81,11 @@ All notable changes to MapSmith are documented here, in the format of
   PROJ parses per input.** Only coordinate systems referenced by layers are
   parsed fully; an ordinary 5,804-row catalogue needs one in the regression
   fixture. The file-level cache introduced in 0.10.1 is preserved.
+- **A native Parquet CRS no longer becomes OGC:CRS84 merely because `geo.crs`
+  is absent.** Readers and CRS probes now use a native declaration when one
+  exists; an unresolved declaration stays unknown with its reason, while no
+  declaration at all keeps the GeoParquet default. Explicit `geo.crs` values,
+  including null, retain their meaning.
 
 ## [0.10.1] - 2026-10-26
 

@@ -199,6 +199,9 @@ def _probe_geoparquet_crs(path: str) -> str:
     # worst possible failure for a provenance product, and it defeated the
     # CRS precondition in the canonical format.
     if "crs" not in spec:
+        native = native_geometry_column(path)
+        if native and native[1].strip():
+            return native_crs_declaration(path, native[1])
         crs = "OGC:CRS84"
     elif spec["crs"] is None:
         return UNKNOWN_CRS
