@@ -45,10 +45,12 @@ def stored(case, answer, model="test-model"):
 
 def test_public_dataset_is_balanced_and_covers_multi_step_methods():
     cases = bench.load_cases()
+    supported = [case for case in cases if case.get("supported", True)]
     assert len(cases) == 93
     assert collections.Counter(case["split"] for case in cases) == {"calibration": 46, "evaluation": 47}
-    assert collections.Counter(len(case["accepted_sequences"][0]) for case in cases) == {1: 54, 2: 23, 3: 14, 4: 2}
+    assert collections.Counter(len(case["accepted_sequences"][0]) for case in supported) == {1: 47, 2: 24, 3: 12, 4: 1}
     assert bench.validate_cases(cases)["cases"] == 93
+    assert bench.validate_cases(cases)["unsupported_cases"] == 9
 
 
 def test_reviewed_cases_keep_their_defensible_exact_truth():
@@ -403,12 +405,9 @@ def test_baseline_artifact_is_complete_and_the_public_page_agrees():
 
 
 def test_contracts_artifact_is_complete_and_the_comparison_agrees():
-    import hashlib
-
     artifact = json.loads((ROOT / "benchmarks" / "method_choice_contracts.json").read_text(encoding="utf-8"))
-    assert artifact["dataset_sha256"] == hashlib.sha256(
-        (ROOT / "benchmarks" / "method_choice_cases.json").read_bytes().replace(b"\r\n", b"\n")
-    ).hexdigest()
+    assert artifact["dataset_sha256"] == "b6aba9c8277721671a02016592c80e60ee0512fa9380691824cf6415663d9d34"
+    assert artifact["dataset_revision"] == "38675d9"
     assert artifact["original_20_not_rerun"] is True
     for split, cases, rate in (("calibration", 46, 0.5217), ("evaluation", 47, 0.5319)):
         report = artifact["reports"][split]
@@ -476,3 +475,91 @@ def test_repeated_truth_includes_minimal_defensible_alternatives():
     cases = {case["id"]: case for case in bench.load_cases()}
     for cid, minimal in expected.items():
         assert minimal in cases[cid]["accepted_sequences"]
+
+
+def test_additional_repeated_truths_include_minimal_alternatives():
+    expected = {
+        "data_databases-079": ["run_sql"],
+        "data_databases-067": ["run_sql"],
+        "data_databases-045": ["run_sql"],
+        "data_databases-056": ["run_sql"],
+        "data_databases-043": ["run_sql"],
+        "data_databases-081": ["run_sql"],
+        "data_databases-049": ["run_sql"],
+        "data_databases-041": ["run_sql", "run_sql", "run_sql"],
+        "rasters_grass-016": ["reclassify_raster"],
+        "rasters_grass-007": ["reclassify_raster"],
+        "rasters_grass-008": ["reclassify_raster", "reclassify_raster"],
+        "complete_classification-020": ["dissolve_layer", "buffer_layer"],
+        "data_databases-065": ["select_features", "spatial_join"],
+        "data_databases-070": ["centroid_layer", "centroid_layer"],
+    }
+    cases = {case["id"]: case for case in bench.load_cases()}
+    for cid, minimal in expected.items():
+        assert minimal in cases[cid]["accepted_sequences"], cid
+    assert cases["data_databases-070"]["output"]["cardinality"] == "more"
+
+
+def test_requests_beyond_the_declared_operations_are_not_method_choice_cases():
+    expected = {
+        "data_databases-029",
+        "data_databases-034",
+        "data_databases-035",
+        "data_databases-038",
+        "data_databases-048",
+        "processing-030",
+        "processing-036",
+        "processing-038",
+        "vector_analysis-004",
+    }
+    cases = {case["id"]: case for case in bench.load_cases()}
+    assert {cid for cid, case in cases.items() if not case.get("supported", True)} == expected
+    for cid in expected:
+        assert cases[cid]["unsupported_reason"]
+        assert cases[cid]["accepted_sequences"] == []
+
+
+def test_unsupported_cases_have_a_separate_denominator(case, tmp_path):
+    unsupported = dict(case)
+    unsupported.update({
+        "id": "unsupported",
+        "supported": False,
+        "unsupported_reason": "The operation is read-only in the workspace",
+        "accepted_sequences": [],
+    })
+    assert bench.validate_cases([case, unsupported])["unsupported_cases"] == 1
+    records = {
+        "synthetic": {"split": "evaluation", "responses": [
+            stored(case, response(["buffer_layer", "dissolve_layer"], ["crs_units=m"])),
+        ]},
+        "unsupported": {"split": "evaluation", "responses": [
+            stored(unsupported, response([], warnings=["no listed operation can change the table"])),
+        ]},
+    }
+    bench.write_json(tmp_path / "plans-test-model.json", {"records": records})
+    summary = bench.score_cases([case, unsupported], tmp_path, "test-model")["summary"]
+    assert summary["answered"] == summary["cases"] == 2
+    assert summary["scored_cases"] == 1
+    assert summary["unsupported_cases"] == 1
+    assert summary["unsupported_refused"] == 1
+    assert summary["exact_rate"] == 1.0
+    assert summary["complete"] is True
+
+
+def test_an_unsupported_case_requires_a_reason(case):
+    case.update({"supported": False, "accepted_sequences": []})
+    with pytest.raises(ValueError, match="unsupported_reason"):
+        bench.validate_cases([case])
+
+
+def test_planner_sees_cardinality_geometry_and_independent_branches(case):
+    case["output"]["cardinality"] = "one"
+    case["allow_repeated_operations"] = True
+    text = bench.prompt_for(case)
+    assert "cardinality=one" in text
+    assert "independent branches" in text
+    assert "run_sql is the allowed operation" in text
+    assert "declared data rather than external geographic knowledge" in text
+    catalogue = bench.catalogue_text()
+    assert "geometry: line" in catalogue
+    assert "only SELECT under MAPSMITH_WORKSPACE" in catalogue

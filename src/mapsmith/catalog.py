@@ -1202,7 +1202,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "produces": "dataset:vector",
         "applicability": {"inputs": ["dataset"], "requires_projected_crs": False, 'dataset_inputs': None},
         "summary": "Spatial SQL (DuckDB dialect, ST_* functions) over GeoParquet and GDAL "
-        "formats; materializes GeoParquet outputs with provenance",
+        "formats; only SELECT under MAPSMITH_WORKSPACE; materializes GeoParquet outputs with provenance",
         "phrasings": "query it like a database; a select with a spatial predicate; join and filter in one go; split a text column into two; names containing a letter in any case; count per group showing the name from another table; regions within 100 m of a given one; unique names among features inside a region; shortest straight connection between two features; connect GPS points into a track in time order; rows in one table missing from the other",
         "description": (
             "Run spatial SQL in the DuckDB dialect: read_parquet('file.parquet') for "

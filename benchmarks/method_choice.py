@@ -69,25 +69,34 @@ def validate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
         if not case.get("goal") or not case.get("output"):
             errors.append(f"{cid}: goal and output are required")
         sequences = case.get("accepted_sequences") or []
-        if not sequences:
-            errors.append(f"{cid}: no accepted sequence")
-        for sequence in sequences:
-            if not sequence:
-                errors.append(f"{cid}: empty accepted sequence")
-            if len(sequence) != len(set(sequence)) and not case.get("allow_repeated_operations"):
-                errors.append(f"{cid}: repeated operations need arguments this bench does not model")
-            unknown = set(sequence) - names.keys()
-            if unknown:
-                errors.append(f"{cid}: unavailable operations {sorted(unknown)}")
+        supported = case.get("supported", True)
+        if not supported:
+            if not case.get("unsupported_reason"):
+                errors.append(f"{cid}: unsupported cases need an unsupported_reason")
+            if sequences:
+                errors.append(f"{cid}: unsupported cases must not have accepted sequences")
+        else:
+            if not sequences:
+                errors.append(f"{cid}: no accepted sequence")
+            for sequence in sequences:
+                if not sequence:
+                    errors.append(f"{cid}: empty accepted sequence")
+                if len(sequence) != len(set(sequence)) and not case.get("allow_repeated_operations"):
+                    errors.append(f"{cid}: repeated operations need arguments this bench does not model")
+                unknown = set(sequence) - names.keys()
+                if unknown:
+                    errors.append(f"{cid}: unavailable operations {sorted(unknown)}")
         if not isinstance(case.get("required_assumption_keys"), list):
             errors.append(f"{cid}: required_assumption_keys must be a list")
     if errors:
         raise ValueError("\n".join(errors))
+    supported_cases = [case for case in cases if case.get("supported", True)]
     return {
         "cases": len(cases),
+        "unsupported_cases": len(cases) - len(supported_cases),
         "splits": dict(collections.Counter(case["split"] for case in cases)),
-        "steps": dict(collections.Counter(str(len(case["accepted_sequences"][0])) for case in cases)),
-        "cases_with_required_assumptions": sum(bool(case["required_assumption_keys"]) for case in cases),
+        "steps": dict(collections.Counter(str(len(case["accepted_sequences"][0])) for case in supported_cases)),
+        "cases_with_required_assumptions": sum(bool(case["required_assumption_keys"]) for case in supported_cases),
     }
 
 
@@ -120,9 +129,11 @@ def catalogue_text() -> str:
     for op in available_operations().values():
         applicability = op.get("applicability", {})
         rules = parameter_rules(op)
+        geometry = applicability.get("geometry") or []
+        constraints = f"; geometry: {', '.join(geometry)}" if geometry else ""
         lines.append(
             f"- {op['name']}: {op['summary'].strip().rstrip('.')}. "
-            f"[takes: {', '.join(applicability.get('inputs', []))}; produces: {op.get('produces')}]"
+            f"[takes: {', '.join(applicability.get('inputs', []))}{constraints}; produces: {op.get('produces')}]"
             + (f" [rules: {rules}]" if rules else "")
         )
     return "\n".join(lines)
@@ -141,13 +152,20 @@ def describe_inputs(inputs: list[dict[str, Any]]) -> str:
 
 def prompt_for(case: dict[str, Any]) -> str:
     output = case["output"]
-    shape = f"a {output.get('kind')}" + (f" of {output['geometry']}s" if output.get("geometry") else "")
+    shape = (
+        f"a {output.get('kind')}"
+        + (f" of {output['geometry']}s" if output.get("geometry") else "")
+        + f", cardinality={output.get('cardinality', 'unknown')}"
+    )
     repetition = (
-        "repeating an operation only when the task requires distinct arguments"
+        "repeating an operation only for distinct arguments; independent branches are allowed "
+        "when the task requests multiple results"
         if case.get("allow_repeated_operations") else "each at most once"
     )
-    return f"""You are planning a GIS analysis with a fixed set of operations. You cannot write code or SQL;
-you can only chain the operations listed below, {repetition}, output feeding the next.
+    return f"""You are planning a GIS analysis with a fixed set of operations. You cannot write code or SQL
+directly; run_sql is the allowed operation when a request needs SQL and no dedicated operation applies.
+You can only chain the operations listed below, {repetition}. Connect an output to a later step
+only when the later step actually depends on it.
 
 THE REQUEST:
 {case['goal']}
@@ -161,10 +179,12 @@ THE OPERATIONS AVAILABLE (name: what it does [what it takes; what it produces]):
 Write the shortest plan that answers the request. Return ONLY a JSON object, no markdown fence:
 {{"plan": [{{"operation": "<name from the list>", "why": "<one short clause>"}}, ...],
  "assumptions": ["<key>=<value>", ...], "warnings": ["<material uncertainty", ...]}}
-Use only names from the list. Declare CRS, units, selection scope, boundary rules and other
-material assumptions as short key=value strings when the request does not settle them.
-Do not add reading or saving steps. Do not invent a result when no listed operation applies;
-return an empty plan with a warning instead."""
+Use only names from the list. For a repeated operation, use why to name its input and distinguishing
+arguments. Use the declared data rather than external geographic knowledge. Declare CRS, units,
+selection scope, boundary rules and other material assumptions as short key=value strings when the
+request does not settle them.
+Do not add reading, saving, plan-validation or plan-execution steps. Do not invent a result when no
+listed operation or declared parameter applies; return an empty plan with a warning instead."""
 
 
 def parse_response(text: str) -> dict[str, Any]:
@@ -472,6 +492,7 @@ def score_cases(cases: list[dict[str, Any]], out: Path, model: str) -> dict[str,
     rows = []
     api_errors = invalid_cases = not_attempted = 0
     repeated = reproducible = 0
+    answered = unsupported_refused = unsupported_with_plan = 0
     for case in cases:
         record = records.get(case["id"], {})
         responses = current_responses(record, case, model)
@@ -483,6 +504,13 @@ def score_cases(cases: list[dict[str, Any]], out: Path, model: str) -> dict[str,
             else:
                 not_attempted += 1
             continue
+        answered += 1
+        if not case.get("supported", True):
+            if responses[0].get("plan"):
+                unsupported_with_plan += 1
+            elif any(item.strip() for item in responses[0].get("warnings", [])):
+                unsupported_refused += 1
+            continue
         row = score_response(case, responses[0])
         if len(responses) > 1:
             repeated += 1
@@ -492,7 +520,6 @@ def score_cases(cases: list[dict[str, Any]], out: Path, model: str) -> dict[str,
             reproducible += same
         rows.append(row)
     verdicts = collections.Counter(row["verdict"] for row in rows)
-    answered = len(rows)
     answered_ids = {row["id"] for row in rows}
     applicable = sum(bool(case["required_assumption_keys"]) for case in cases if case["id"] in answered_ids)
     assumptions_declared = sum(
@@ -503,6 +530,10 @@ def score_cases(cases: list[dict[str, Any]], out: Path, model: str) -> dict[str,
         "model": model,
         "split": cases[0]["split"] if cases and all(case["split"] == cases[0]["split"] for case in cases) else "all",
         "cases": len(cases),
+        "scored_cases": len(rows),
+        "unsupported_cases": sum(not case.get("supported", True) for case in cases),
+        "unsupported_refused": unsupported_refused,
+        "unsupported_with_plan": unsupported_with_plan,
         "attempted": answered + api_errors + invalid_cases,
         "answered": answered,
         "api_errors": api_errors,
@@ -516,7 +547,7 @@ def score_cases(cases: list[dict[str, Any]], out: Path, model: str) -> dict[str,
         ),
         "complete": answered == len(cases),
         "verdicts": dict(verdicts),
-        "exact_rate": round(verdicts["exact"] / answered, 4) if answered else None,
+        "exact_rate": round(verdicts["exact"] / len(rows), 4) if rows else None,
         "first_step_right": sum(row["first_step_right"] for row in rows),
         "every_required_step_present": sum(row["every_required_step_present"] for row in rows),
         "output_contract": sum(row["output_contract"] for row in rows),

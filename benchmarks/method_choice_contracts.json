@@ -3,6 +3,7 @@
   "measured_at": "2026-10-29",
   "model": "claude-sonnet-5",
   "dataset_sha256": "b6aba9c8277721671a02016592c80e60ee0512fa9380691824cf6415663d9d34",
+  "dataset_revision": "38675d9",
   "responses_per_case": 2,
   "original_20_not_rerun": true,
   "legacy_20": {

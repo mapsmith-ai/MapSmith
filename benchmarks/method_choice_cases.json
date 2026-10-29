@@ -265,11 +265,9 @@
     "geometry": null,
     "cardinality": "fewer"
    },
-   "accepted_sequences": [
-    [
-     "run_sql"
-    ]
-   ],
+   "supported": false,
+   "unsupported_reason": "Workspace run_sql is read-only; deleting table rows is outside the declared operations.",
+   "accepted_sequences": [],
    "required_assumption_keys": [],
    "cautions": [],
    "source_section": "",
@@ -320,11 +318,9 @@
     "geometry": null,
     "cardinality": "more"
    },
-   "accepted_sequences": [
-    [
-     "run_sql"
-    ]
-   ],
+   "supported": false,
+   "unsupported_reason": "Workspace run_sql is read-only; inserting related table rows is outside the declared operations.",
+   "accepted_sequences": [],
    "required_assumption_keys": [],
    "cautions": [],
    "source_section": "",
@@ -524,11 +520,9 @@
     "geometry": null,
     "cardinality": "unknown"
    },
-   "accepted_sequences": [
-    [
-     "run_sql"
-    ]
-   ],
+   "supported": false,
+   "unsupported_reason": "Workspace run_sql is read-only; creating a table with constraints is outside the declared operations.",
+   "accepted_sequences": [],
    "required_assumption_keys": [],
    "cautions": [],
    "source_section": "",
@@ -552,16 +546,18 @@
    "output": {
     "kind": "vector",
     "geometry": "point",
-    "cardinality": "one"
+    "cardinality": "more"
    },
    "accepted_sequences": [
     [
+     "centroid_layer",
      "centroid_layer"
     ]
    ],
    "required_assumption_keys": [],
    "cautions": [],
    "source_section": "",
+   "allow_repeated_operations": true,
    "split": "evaluation"
   },
   {
@@ -912,11 +908,9 @@
     "geometry": null,
     "cardinality": "more"
    },
-   "accepted_sequences": [
-    [
-     "run_sql"
-    ]
-   ],
+   "supported": false,
+   "unsupported_reason": "Workspace run_sql is read-only; inserting a table row is outside the declared operations.",
+   "accepted_sequences": [],
    "required_assumption_keys": [],
    "cautions": [],
    "source_section": "",
@@ -1045,6 +1039,10 @@
    "accepted_sequences": [
     [
      "run_sql"
+    ],
+    [
+     "select_features",
+     "spatial_join"
     ]
    ],
    "required_assumption_keys": [],
@@ -1092,11 +1090,9 @@
     "geometry": null,
     "cardinality": "unknown"
    },
-   "accepted_sequences": [
-    [
-     "run_sql"
-    ]
-   ],
+   "supported": false,
+   "unsupported_reason": "The declared operations cannot create triggers or persistent audit tables.",
+   "accepted_sequences": [],
    "required_assumption_keys": [],
    "cautions": [],
    "source_section": "",
@@ -1262,11 +1258,9 @@
     "geometry": null,
     "cardinality": "same_as_input"
    },
-   "accepted_sequences": [
-    [
-     "reproject_layer"
-    ]
-   ],
+   "supported": false,
+   "unsupported_reason": "The declared writers cannot preserve five themed inputs as separate layers in one new GeoPackage.",
+   "accepted_sequences": [],
    "required_assumption_keys": [],
    "cautions": [],
    "source_section": "",
@@ -1506,6 +1500,9 @@
     [
      "run_sql",
      "run_sql"
+    ],
+    [
+     "run_sql"
     ]
    ],
    "required_assumption_keys": [],
@@ -1532,6 +1529,9 @@
    "accepted_sequences": [
     [
      "run_sql",
+     "run_sql"
+    ],
+    [
      "run_sql"
     ]
    ],
@@ -1591,6 +1591,9 @@
    "accepted_sequences": [
     [
      "run_sql",
+     "run_sql"
+    ],
+    [
      "run_sql"
     ]
    ],
@@ -1653,6 +1656,9 @@
    "accepted_sequences": [
     [
      "run_sql",
+     "run_sql"
+    ],
+    [
      "run_sql"
     ]
    ],
@@ -1751,6 +1757,10 @@
     [
      "buffer_layer",
      "dissolve_layer"
+    ],
+    [
+     "dissolve_layer",
+     "buffer_layer"
     ]
    ],
    "required_assumption_keys": [],
@@ -1781,6 +1791,9 @@
    "accepted_sequences": [
     [
      "run_sql",
+     "run_sql"
+    ],
+    [
      "run_sql"
     ]
    ],
@@ -2121,6 +2134,9 @@
     [
      "describe_dataset",
      "reclassify_raster"
+    ],
+    [
+     "reclassify_raster"
     ]
    ],
    "required_assumption_keys": [],
@@ -2173,6 +2189,9 @@
    "accepted_sequences": [
     [
      "aspect",
+     "reclassify_raster"
+    ],
+    [
      "reclassify_raster"
     ]
    ],
@@ -2260,6 +2279,9 @@
     [
      "run_sql",
      "run_sql",
+     "run_sql"
+    ],
+    [
      "run_sql"
     ]
    ],
@@ -2387,13 +2409,9 @@
     "geometry": "line",
     "cardinality": "unknown"
    },
-   "accepted_sequences": [
-    [
-     "contour_lines",
-     "contour_lines",
-     "contour_lines"
-    ]
-   ],
+   "supported": false,
+   "unsupported_reason": "contour_lines has no engine-selection parameter; the declared operations cannot run it through several engines.",
+   "accepted_sequences": [],
    "required_assumption_keys": [],
    "cautions": [],
    "source_section": "",
@@ -2418,6 +2436,10 @@
    "accepted_sequences": [
     [
      "slope",
+     "reclassify_raster",
+     "reclassify_raster"
+    ],
+    [
      "reclassify_raster",
      "reclassify_raster"
     ]
@@ -2575,13 +2597,9 @@
     "geometry": null,
     "cardinality": "more"
    },
-   "accepted_sequences": [
-    [
-     "select_features",
-     "clip_raster",
-     "execute_plan"
-    ]
-   ],
+   "supported": false,
+   "unsupported_reason": "The declared plan has no per-feature iteration; clip_raster cannot produce one output per watershed polygon.",
+   "accepted_sequences": [],
    "required_assumption_keys": [],
    "cautions": [],
    "source_section": "",
@@ -2600,6 +2618,9 @@
     [
      "run_sql",
      "run_sql",
+     "run_sql"
+    ],
+    [
      "run_sql"
     ]
    ],
@@ -2630,6 +2651,11 @@
      "run_sql",
      "run_sql",
      "run_sql"
+    ],
+    [
+     "run_sql",
+     "run_sql",
+     "run_sql"
     ]
    ],
    "required_assumption_keys": [],
@@ -2653,14 +2679,9 @@
     "geometry": "polygon",
     "cardinality": "fewer"
    },
-   "accepted_sequences": [
-    [
-     "dissolve_layer",
-     "dissolve_layer",
-     "dissolve_layer",
-     "dissolve_layer"
-    ]
-   ],
+   "supported": false,
+   "unsupported_reason": "dissolve_layer has no engine-selection parameter, so the requested multi-engine comparison is not executable as declared.",
+   "accepted_sequences": [],
    "required_assumption_keys": [],
    "cautions": [],
    "source_section": "",
