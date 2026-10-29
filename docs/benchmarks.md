@@ -563,25 +563,24 @@ organisation on purpose: an evaluation that lives inside the thing it
 evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
-What it says about MapSmith 0.10.1 (all twenty-nine families, engine tier, `spec_commit`
-[`85287cd`](https://github.com/argleton/argleton/tree/main/results/2026-10-26-mapsmith-v0-10-1)):
+What it says about MapSmith 0.11.0 (all thirty families, engine tier, `spec_commit`
+[`8bd3133`](https://github.com/argleton/argleton/tree/main/results/2026-10-29-declared-datum-shift)):
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
-| MapSmith | **0.00** | 1.00 | 31 | 0 |
-| naive composition (read file, take statistic) | 0.9032 | 1.00 | 31 | 0 |
+| MapSmith | **0.00** | 1.00 | 32 | 0 |
+| naive composition (read file, take statistic) | 0.875 | 1.00 | 32 | 0 |
 
-The fifth run scored against trap 024's corrected truth, measuring the 0.10.1 release; every
-verdict, MapSmith's and the other eight systems', matches the runs of 2026-10-25 and 2026-10-09, the first to
-name the MapSmith release and commit it measured (the two before it, 2026-09-26 and 2026-09-27,
-said "main"; no MapSmith verdict moved between any of them). The runs from 2026-08-30 to 2026-09-15
-scored that trap against a wrong truth in MapSmith's favour: the [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) recounts them,
+The current run measures the 0.11.0 release and adds the thirtieth family: a CRS that declares
+its own datum shift. MapSmith's verdicts on the preceding 31 traps are unchanged. The runs from
+2026-08-30 to 2026-09-15 scored trap 024 against a wrong truth in MapSmith's favour: the
+[erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) recounts them,
 and the section below the next one says what the trap was and why the fix made it worse.
 
 **The family list closed on 2026-08-30**, at twenty-seven of twenty-seven, and reopened the next
 morning with a twenty-eighth — one raster carrying two georeferencings, which is why a manifest
-can now record its `environment`. For three days the published run stayed one trap behind the
-suite; the run above covers all twenty-nine. The last four of the
+can now record its `environment`. The twenty-ninth followed on 2026-09-02, and the thirtieth on
+2026-10-29; the run above covers all thirty. The last four of the
 twenty-seven cost this project two defects. A DEM whose rows run south to north — legal, and
 what a NetCDF or GRIB conversion produces — made a 5.7 degree slope come back as 45 with the output raster written at
 the origin, and **all five verification checks passed**: the coordinate system had survived and

@@ -54,9 +54,9 @@ already has — are listed in [`docs/manifest-vocabulary.md`](docs/manifest-voca
 generated from the source rather than maintained by hand.
 
 Evidence before promises. A correctness suite in its own organisation,
-[**Argleton**](https://argleton.org), grades MapSmith on thirty-one traps whose answers are
+[**Argleton**](https://argleton.org), grades MapSmith on thirty-two traps whose answers are
 computed on paper before any system runs: **0.00 silent errors, nothing skipped**, against
-0.9032 for the obvious way of writing the same code. The runs from 2026-08-30 to 2026-09-15 said
+0.875 for the obvious way of writing the same code. The runs from 2026-08-30 to 2026-09-15 said
 0.00 too, and on one trap they were wrong: its truth was wrong in MapSmith's favour for 26 days, the error was ours
 twice over, and the [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) says so. Every run since 2026-09-26, the current one
 included, is scored against the corrected truth. Getting here cost seven defects the suite sent back, and they are listed. Alongside it: an [A/B on GABench](docs/benchmarks.md) whose
@@ -1179,14 +1179,14 @@ under Apache-2.0 rather than in this repository, because an evaluation that live
 inside the thing it evaluates is easy to dismiss in one line. Closed-form truth, no
 model in the evaluator, fixtures rebuilt rather than vendored.
 
-**The score.** On the current run — all twenty-nine families — MapSmith answers every
-trap correctly: **0.00 silent errors over 31 traps, nothing skipped**, against 0.9032
+**The score.** On the current run — all thirty families — MapSmith answers every
+trap correctly: **0.00 silent errors over 32 traps, nothing skipped**, against 0.875
 for a careless composition of the same libraries. The runs from 2026-08-30 to 2026-09-15 said
 0.00 as well and were wrong on one trap, a point-registered DEM: its truth was derived from a
 premise about GDAL that GDAL documents the other way, MapSmith had been built to that premise,
 and both corrected half a cell that was already corrected. Found on 2026-09-25 by a Copernicus
 DEM whose samples fall on whole arc-seconds by its own documentation; the
-[erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) rescores every run it touched, and the fix shipped in 0.7.0; every run since measures it. One of the thirty-one is not an answer
+[erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) rescores every run it touched, and the fix shipped in 0.7.0; every run since measures it. One of the thirty-two is not an answer
 at all but a refusal: a raster and the sidecar beside it declare different georeferencing,
 both readings are GDAL behaving as documented, and the right move is to stop and say so
 rather than pick one. That family arrived on 2026-08-31, the morning after the list of
@@ -1199,6 +1199,11 @@ shapefile carries no nesting, so which ring is a hole is decided by the winding 
 nothing else — the easement comes back as a second shell and its area is **added**,
 flattering the owner by 6.9% with a correct bounding box, a correct CRS and no warning.
 MapSmith repairs it and records the repair, which is the only reason the number is right.
+
+The thirtieth family arrived on 2026-10-29: a CRS declares its own datum shift, with accuracy
+unknown rather than a ballpark transformation. Treating that unknown as a reason to refuse would
+discard an explicit Helmert transformation and produce no answer where a shifted coordinate is
+available.
 
 **The finding that matters more than the score**, and it is about us: on the first run
 that 0 and MapSmith's verification had nothing to do with each other — seven checks
