@@ -8,8 +8,8 @@ All notable changes to MapSmith are documented here, in the format of
 
 ### Fixed
 
-- Declare the workspace's SELECT-only behavior in the `run_sql` catalog summary.
-- Correct the multi-step method-choice benchmark: expose output cardinality and
+- **Declare the workspace's SELECT-only behavior in the `run_sql` catalog summary.**
+- **Correct the multi-step method-choice benchmark.** Expose output cardinality and
   geometry constraints, permit independent repeated-operation branches, separate
   unsupported requests from method-choice scoring, and accept minimal defensible
   sequences. Unsupported outcomes now have exhaustive, explicitly disclosed classes.

@@ -1153,6 +1153,17 @@ def test_the_site_names_what_main_has_that_the_release_does_not():
         build.unreleased_html("# Changelog\n", "1.0.0")
 
 
+def test_method_choice_unreleased_entries_are_rendered_on_the_site():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("site_build", ROOT / "site" / "build.py")
+    build = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(build)
+    rendered = build.unreleased_html((ROOT / "CHANGELOG.md").read_text(encoding="utf-8"), "0.11.0")
+    assert "SELECT-only" in rendered
+    assert "method-choice" in rendered
+
+
 def test_the_readme_does_not_say_the_product_is_unchanged_while_it_is_not():
     """The pointer to `[Unreleased]` is checked above; what the paragraph SAYS
     about the difference was not, and on 2026-09-25 it was false.

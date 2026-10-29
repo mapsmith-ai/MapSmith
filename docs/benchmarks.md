@@ -114,8 +114,8 @@ touching the original 20. That fresh pre-change run scored **38/73**, against th
 37/73 in the published baseline above; the one-case difference is part of the
 model's measured variability, not a silent correction.
 
-An audit of the 44 originally non-exact cases then found both planner defects and
-wrong reference truth. Eight requests are outside the declared operations:
+An audit of the 44 non-exact cases in the combined 93-case baseline then found both
+planner defects and wrong reference truth. Eight requests are outside the declared operations:
 read-only workspace DDL/DML and triggers, multi-engine contouring, per-feature
 raster iteration, and preservation of five themed inputs as layers in one new
 GeoPackage. They are now reported separately instead of inflating the
