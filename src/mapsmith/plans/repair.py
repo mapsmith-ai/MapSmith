@@ -116,11 +116,12 @@ def prepare(request: RepairRequest | None, plan: Plan) -> dict[str, Any]:
         )
 
     candidates = {
-        _canon(step.arguments[binding.output_arg])
+        _canon(f"{step.arguments[binding.output_arg]}{suffix}")
         for step in plan.steps
         if (binding := BINDINGS.get(step.operation))
         and binding.output_arg
         and isinstance(step.arguments.get(binding.output_arg), str)
+        for suffix in ("", *workspace.AUDIT_SIDECAR_SUFFIXES)
     }
     root = workspace.root()
     for _, document in linked:
@@ -134,7 +135,12 @@ def prepare(request: RepairRequest | None, plan: Plan) -> dict[str, Any]:
                 reason = workspace.nonlocal_reason(path)
                 if reason or (root and workspace.is_outside(path, root)):
                     raise _invalid(raw, ValueError(f"unsafe previous output path: {path}"))
-            if candidates.intersection(_canon(path) for path in previous_outputs):
+            previous_artifacts = {
+                _canon(f"{path}{suffix}")
+                for path in previous_outputs
+                for suffix in ("", *workspace.AUDIT_SIDECAR_SUFFIXES)
+            }
+            if candidates.intersection(previous_artifacts):
                 raise RepairRefusal(
                     "REPAIR_OUTPUT_COLLISION",
                     "a repair must use new output paths; reusing an earlier output "

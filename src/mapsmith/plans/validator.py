@@ -27,6 +27,7 @@ from .models import REFERENCE, Issue, Plan, SimulatedOutput, ValidationReport
 from .registry import BINDINGS, PARAM_TYPES, Binding
 
 UNKNOWN_CRS = verify.UNKNOWN_CRS
+AUDIT_SIDECAR_SUFFIXES = workspace.AUDIT_SIDECAR_SUFFIXES
 EXTRA_FOR_FLAG = {"exactextract": "raster", "whitebox": "whitebox"}
 VECTOR_EXTENSIONS = {".parquet", ".gpkg"}
 RASTER_EXTENSIONS = {".tif", ".tiff"}
@@ -762,16 +763,21 @@ def _check_output(
         )
         return
     key = _canon(value)
-    if key in seen_outputs:
+    artifacts = {
+        _canon(f"{value}{suffix}") for suffix in ("", *AUDIT_SIDECAR_SUFFIXES)
+    }
+    collisions = sorted(artifacts.intersection(seen_outputs))
+    if collisions:
+        collided = collisions[0]
         errors.append(
             Issue(
                 code="OUTPUT_COLLISION",
                 step_id=step.id,
-                message=f"output '{value}' is already written by step "
-                f"'{seen_outputs[key]}'",
+                message=f"output '{value}' or one of its audit sidecars is already "
+                f"written by step '{seen_outputs[collided]}'",
             )
         )
-    seen_outputs[key] = step.id
+    seen_outputs.update({artifact: step.id for artifact in artifacts})
     if key in external_inputs:
         errors.append(
             Issue(

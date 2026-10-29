@@ -290,3 +290,19 @@ def test_plan_manifest_write_does_not_follow_an_external_link(tmp_path, monkeypa
     with pytest.raises(ValueError, match="sidecar|workspace"):
         execute(make_plan(tmp_path))
     assert outside.read_text(encoding="utf-8") == "original"
+
+
+def test_retry_cannot_overwrite_the_previous_plan_manifest(tmp_path, monkeypatch):
+    binding(monkeypatch, fail_verification)
+    first = execute(make_plan(tmp_path))
+    previous = Path(first["plan_manifest"]).read_bytes()
+    binding(monkeypatch, succeed)
+
+    result = execute(
+        make_plan(tmp_path, "out.parquet.plan.json"),
+        RepairRequest(previous_manifest=first["plan_manifest"]),
+    )
+
+    assert result["executed"] is False
+    assert result["error"]["code"] == "REPAIR_OUTPUT_COLLISION"
+    assert Path(first["plan_manifest"]).read_bytes() == previous

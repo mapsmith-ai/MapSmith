@@ -642,3 +642,28 @@ def test_no_operation_that_reads_a_raster_is_declared_core():
         f"these read a raster and declare no engine: {core_but_reads_a_raster}. "
         "Nothing but the import error will tell a caller what is missing."
     )
+
+
+@pytest.mark.parametrize("suffix", [".plan.json", ".provenance.json", ".failed.provenance.json"])
+def test_an_output_cannot_collide_with_an_audit_sidecar(wells, tmp_path, suffix):
+    first = tmp_path / f"final.parquet{suffix}"
+    plan = make_plan(
+        {
+            "id": "first", "operation": "buffer_layer",
+            "arguments": {
+                "input_path": wells, "distance_meters": 10, "output_path": str(first),
+            },
+        },
+        {
+            "id": "second", "operation": "buffer_layer",
+            "arguments": {
+                "input_path": "$first", "distance_meters": 5,
+                "output_path": str(tmp_path / "final.parquet"),
+            },
+        },
+    )
+    result = execute(plan)
+
+    assert result["executed"] is False
+    assert result["validation"]["errors"][0]["code"] == "OUTPUT_COLLISION"
+    assert not first.exists()
