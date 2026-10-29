@@ -410,20 +410,20 @@ def test_contracts_artifact_is_complete_and_the_comparison_agrees():
         (ROOT / "benchmarks" / "method_choice_cases.json").read_bytes().replace(b"\r\n", b"\n")
     ).hexdigest()
     assert artifact["original_20_not_rerun"] is True
-    for split, cases, rate in (("calibration", 46, 0.5), ("evaluation", 47, 0.4894)):
+    for split, cases, rate in (("calibration", 46, 0.5217), ("evaluation", 47, 0.5319)):
         report = artifact["reports"][split]
         assert report["complete"] is True
         assert report["cases"] == report["attempted"] == report["answered"] == cases
         assert report["api_errors"] == report["invalid_response_cases"] == 0
         assert report["exact_rate"] == rate
-    assert artifact["new_73"]["reports"]["calibration"]["exact_rate"] == 0.4722
-    assert artifact["new_73"]["reports"]["evaluation"]["exact_rate"] == 0.4595
+    assert artifact["new_73"]["reports"]["calibration"]["exact_rate"] == 0.5
+    assert artifact["new_73"]["reports"]["evaluation"]["exact_rate"] == 0.5135
     analysis = artifact["failure_analysis"]
-    assert analysis["new_73_by_steps"]["3"]["exact"] == 0
+    assert analysis["new_73_by_steps"]["3"]["exact"] == 2
     assert analysis["new_73_by_steps"]["4"]["exact"] == 0
-    assert analysis["new_73_repeated_operations"] == {"cases": 21, "exact": 5, "exact_rate": 0.2381}
+    assert analysis["new_73_repeated_operations"] == {"cases": 21, "exact": 8, "exact_rate": 0.381}
     page = (ROOT / "docs" / "benchmarks.md").read_text(encoding="utf-8")
-    for text in ("23/46", "23/47", "34/73 (46.6%)", "5/21 (23.8%)", "0/10"):
+    for text in ("24/46", "25/47", "37/73 (50.7%)", "8/21 (38.1%)", "2/10 (20.0%)"):
         assert text in page
 
 
@@ -448,3 +448,31 @@ def test_literal_only_cases_do_not_require_an_input_dataset(case):
 
     assert bench.validate_cases([case])["cases"] == 1
     assert "no files; all values are literal in the request" in bench.prompt_for(case)
+
+
+def test_every_required_step_present_counts_multiplicity(case):
+    case["accepted_sequences"] = [["run_sql", "run_sql"]]
+    case["allow_repeated_operations"] = True
+
+    assert bench.score_response(case, response(["run_sql"]))["every_required_step_present"] is False
+    assert bench.score_response(case, response(["run_sql", "run_sql"]))["every_required_step_present"] is True
+
+
+def test_inputs_must_be_a_present_list(case):
+    del case["inputs"]
+    with pytest.raises(ValueError, match="inputs"):
+        bench.validate_cases([case])
+    case["inputs"] = {}
+    with pytest.raises(ValueError, match="inputs"):
+        bench.validate_cases([case])
+
+
+def test_repeated_truth_includes_minimal_defensible_alternatives():
+    expected = {
+        "complete_classification-028": ["describe_dataset"],
+        "data_databases-080": ["clip_layer"],
+        "vector_analysis-005": ["buffer_layer", "dissolve_layer"],
+    }
+    cases = {case["id"]: case for case in bench.load_cases()}
+    for cid, minimal in expected.items():
+        assert minimal in cases[cid]["accepted_sequences"]

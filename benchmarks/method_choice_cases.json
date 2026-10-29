@@ -2064,6 +2064,9 @@
     [
      "describe_dataset",
      "describe_dataset"
+    ],
+    [
+     "describe_dataset"
     ]
    ],
    "required_assumption_keys": [],
@@ -2358,6 +2361,9 @@
      "clip_layer",
      "clip_layer",
      "clip_layer"
+    ],
+    [
+     "clip_layer"
     ]
    ],
    "required_assumption_keys": [],
@@ -2535,6 +2541,10 @@
    "accepted_sequences": [
     [
      "buffer_layer",
+     "buffer_layer",
+     "dissolve_layer"
+    ],
+    [
      "buffer_layer",
      "dissolve_layer"
     ]

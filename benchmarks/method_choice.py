@@ -64,6 +64,8 @@ def validate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
         cid = case.get("id", "<missing>")
         if case.get("split") not in ("calibration", "evaluation"):
             errors.append(f"{cid}: invalid split")
+        if not isinstance(case.get("inputs"), list):
+            errors.append(f"{cid}: inputs must be a list (empty for literal-only cases)")
         if not case.get("goal") or not case.get("output"):
             errors.append(f"{cid}: goal and output are required")
         sequences = case.get("accepted_sequences") or []
@@ -444,7 +446,9 @@ def score_response(case: dict[str, Any], response: dict[str, Any]) -> dict[str, 
         "verdict": verdict,
         "unknown_names": unknown,
         "first_step_right": bool(got) and any(got[0] == sequence[0] for sequence in accepted),
-        "every_required_step_present": bool(got) and any(all(op in got for op in sequence) for sequence in accepted),
+        "every_required_step_present": bool(got) and any(
+            not (collections.Counter(sequence) - collections.Counter(got)) for sequence in accepted
+        ),
         "output_contract": output_ok,
         "missing_assumption_keys": missing_keys,
         "assumptions_declared": not missing_keys,

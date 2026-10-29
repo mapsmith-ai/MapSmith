@@ -2,7 +2,7 @@
   "schema_version": 2,
   "measured_at": "2026-10-29",
   "model": "claude-sonnet-5",
-  "dataset_sha256": "41a558926c37caf54704827c574ba190a10654e754fbe11d5bb398ba0f018bd8",
+  "dataset_sha256": "b6aba9c8277721671a02016592c80e60ee0512fa9380691824cf6415663d9d34",
   "responses_per_case": 2,
   "original_20_not_rerun": true,
   "legacy_20": {
@@ -77,18 +77,18 @@
         "verdicts": {
           "no_plan": 4,
           "extra_or_wrong_tool": 5,
-          "exact": 17,
+          "exact": 18,
           "missing_and_wrong": 5,
-          "missing_operation": 4,
+          "missing_operation": 3,
           "reordered": 1
         },
-        "exact_rate": 0.4722,
+        "exact_rate": 0.5,
         "first_step_right": 23,
-        "every_required_step_present": 26,
+        "every_required_step_present": 24,
         "output_contract": 22,
         "assumptions_applicable": 0,
         "assumptions_declared": 0,
-        "silent_planning_errors": 8,
+        "silent_planning_errors": 7,
         "repeated_cases": 36,
         "reproducible_cases": 2
       },
@@ -107,17 +107,17 @@
         "verdicts": {
           "extra_or_wrong_tool": 5,
           "no_plan": 3,
-          "exact": 17,
+          "exact": 19,
           "missing_and_wrong": 6,
-          "missing_operation": 6
+          "missing_operation": 4
         },
-        "exact_rate": 0.4595,
+        "exact_rate": 0.5135,
         "first_step_right": 21,
-        "every_required_step_present": 26,
+        "every_required_step_present": 24,
         "output_contract": 25,
         "assumptions_applicable": 0,
         "assumptions_declared": 0,
-        "silent_planning_errors": 10,
+        "silent_planning_errors": 8,
         "repeated_cases": 37,
         "reproducible_cases": 1
       }
@@ -134,14 +134,14 @@
       "api_error_events": 0,
       "invalid_response_events": 0,
       "complete": true,
-      "exact": 23,
-      "exact_rate": 0.5,
+      "exact": 24,
+      "exact_rate": 0.5217,
       "first_step_right": 31,
-      "every_required_step_present": 32,
+      "every_required_step_present": 30,
       "output_contract": 28,
       "assumptions_applicable": 6,
       "assumptions_declared": 0,
-      "silent_planning_errors": 16,
+      "silent_planning_errors": 15,
       "repeated_cases": 46,
       "reproducible_cases": 2
     },
@@ -155,14 +155,14 @@
       "api_error_events": 0,
       "invalid_response_events": 3,
       "complete": true,
-      "exact": 23,
-      "exact_rate": 0.4894,
+      "exact": 25,
+      "exact_rate": 0.5319,
       "first_step_right": 29,
-      "every_required_step_present": 34,
+      "every_required_step_present": 32,
       "output_contract": 31,
       "assumptions_applicable": 4,
       "assumptions_declared": 0,
-      "silent_planning_errors": 18,
+      "silent_planning_errors": 16,
       "repeated_cases": 47,
       "reproducible_cases": 1
     }
@@ -176,13 +176,13 @@
       },
       "2": {
         "cases": 17,
-        "exact": 7,
-        "exact_rate": 0.4118
+        "exact": 8,
+        "exact_rate": 0.4706
       },
       "3": {
         "cases": 10,
-        "exact": 0,
-        "exact_rate": 0.0
+        "exact": 2,
+        "exact_rate": 0.2
       },
       "4": {
         "cases": 2,
@@ -192,8 +192,8 @@
     },
     "new_73_repeated_operations": {
       "cases": 21,
-      "exact": 5,
-      "exact_rate": 0.2381
+      "exact": 8,
+      "exact_rate": 0.381
     },
     "new_73_no_plan_ids": [
       "data_databases-035",

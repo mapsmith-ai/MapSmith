@@ -82,26 +82,26 @@ that distinction explicit instead of hiding it behind one number.
 
 | Metric, combined 20 + 73 | Calibration | Evaluation |
 |---|---:|---:|
-| Exact accepted sequence | 23/46 | 23/47 |
+| Exact accepted sequence | 24/46 | 25/47 |
 | Correct first operation | 31/46 | 29/47 |
-| Every required operation present | 32/46 | 34/47 |
+| Every required operation present | 30/46 | 32/47 |
 | Output contract satisfied | 28/46 | 31/47 |
 | Required assumption keys declared | 0/6 | 0/4 |
-| Planning-silent errors | 16/46 | 18/47 |
+| Planning-silent errors | 15/46 | 16/47 |
 | Identical plan, assumptions and warnings on repetition | 2/46 | 1/47 |
 
 All 73 new cases completed with two valid answers and no API or invalid-response
-case. Their exact rate is **34/73 (46.6%)**, below the 0.60 measured on the
-original 20; the combined exact rate is **46/93 (49.5%)**. The failure is not
+case. Their exact rate is **37/73 (50.7%)**, below the 0.60 measured on the
+original 20; the combined exact rate is **49/93 (52.7%)**. The failure is not
 uniform:
 
 | New cases | Exact accepted sequence |
 |---|---:|
 | One operation (44 cases) | 27/44 (61.4%) |
-| Two operations (17 cases) | 7/17 (41.2%) |
-| Three operations (10 cases) | 0/10 |
+| Two operations (17 cases) | 8/17 (47.1%) |
+| Three operations (10 cases) | 2/10 (20.0%) |
 | Four operations (2 cases) | 0/2 |
-| Repeated operations allowed (21 cases) | 5/21 (23.8%) |
+| Repeated operations allowed (21 cases) | 8/21 (38.1%) |
 
 The next work is therefore on multi-step sequencing, repeated-tool arguments and
 output contracts, not more fine-tuning claims. Seven new cases returned an empty
