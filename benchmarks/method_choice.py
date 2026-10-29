@@ -70,6 +70,9 @@ def validate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
             errors.append(f"{cid}: goal and output are required")
         sequences = case.get("accepted_sequences") or []
         supported = case.get("supported", True)
+        if not isinstance(supported, bool):
+            errors.append(f"{cid}: supported must be a boolean")
+            continue
         if not supported:
             if not case.get("unsupported_reason"):
                 errors.append(f"{cid}: unsupported cases need an unsupported_reason")
@@ -164,6 +167,7 @@ def prompt_for(case: dict[str, Any]) -> str:
     )
     return f"""You are planning a GIS analysis with a fixed set of operations. You cannot write code or SQL
 directly; run_sql is the allowed operation when a request needs SQL and no dedicated operation applies.
+MAPSMITH_WORKSPACE is enabled for every case, so run_sql is SELECT-only.
 You can only chain the operations listed below, {repetition}. Connect an output to a later step
 only when the later step actually depends on it.
 
@@ -492,7 +496,9 @@ def score_cases(cases: list[dict[str, Any]], out: Path, model: str) -> dict[str,
     rows = []
     api_errors = invalid_cases = not_attempted = 0
     repeated = reproducible = 0
-    answered = unsupported_refused = unsupported_with_plan = 0
+    answered = unsupported_answered = 0
+    unsupported_refused = unsupported_warned = unsupported_with_plan = 0
+    unsupported_empty = unsupported_irrelevant = 0
     for case in cases:
         record = records.get(case["id"], {})
         responses = current_responses(record, case, model)
@@ -506,10 +512,24 @@ def score_cases(cases: list[dict[str, Any]], out: Path, model: str) -> dict[str,
             continue
         answered += 1
         if not case.get("supported", True):
+            unsupported_answered += 1
             if responses[0].get("plan"):
                 unsupported_with_plan += 1
-            elif any(item.strip() for item in responses[0].get("warnings", [])):
-                unsupported_refused += 1
+                continue
+            unsupported_refused += 1
+            warnings = [item.strip() for item in responses[0].get("warnings", []) if item.strip()]
+            if not warnings:
+                unsupported_empty += 1
+                continue
+            text = " ".join(warnings).lower()
+            terms = (
+                "no operation", "no available", "no listed", "cannot", "can't",
+                "not support", "read-only", "outside the declared", "not executable", "unable",
+            )
+            if any(term in text for term in terms):
+                unsupported_warned += 1
+            else:
+                unsupported_irrelevant += 1
             continue
         row = score_response(case, responses[0])
         if len(responses) > 1:
@@ -532,7 +552,11 @@ def score_cases(cases: list[dict[str, Any]], out: Path, model: str) -> dict[str,
         "cases": len(cases),
         "scored_cases": len(rows),
         "unsupported_cases": sum(not case.get("supported", True) for case in cases),
+        "unsupported_answered": unsupported_answered,
         "unsupported_refused": unsupported_refused,
+        "unsupported_warned": unsupported_warned,
+        "unsupported_empty_without_warning": unsupported_empty,
+        "unsupported_irrelevant_warning": unsupported_irrelevant,
         "unsupported_with_plan": unsupported_with_plan,
         "attempted": answered + api_errors + invalid_cases,
         "answered": answered,

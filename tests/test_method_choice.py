@@ -426,6 +426,29 @@ def test_contracts_artifact_is_complete_and_the_comparison_agrees():
         assert text in page
 
 
+def test_multistep_artifact_separates_truth_audit_from_planner_change():
+    import hashlib
+
+    artifact = json.loads((ROOT / "benchmarks" / "method_choice_multistep.json").read_text(encoding="utf-8"))
+    assert artifact["original_20_not_rerun"] is True
+    assert artifact["responses_per_case"] == 2
+    assert artifact["dataset_sha256"] == hashlib.sha256(
+        (ROOT / "benchmarks" / "method_choice_cases.json").read_bytes().replace(b"\r\n", b"\n")
+    ).hexdigest()
+    baseline = artifact["before"]["original_truth"]["reports"]["all"]
+    audited = artifact["before"]["audited_truth"]["reports"]["all"]
+    assert baseline["answered"] == baseline["cases"] == 73
+    assert baseline["exact_rate"] == 0.5205
+    assert audited["scored_cases"] == 64
+    assert audited["unsupported_cases"] == 9
+    assert audited["exact_rate"] == 0.6875
+    after = artifact["after"]["reports"]["all"]
+    assert after["complete"] is True
+    assert after["answered"] == 73
+    assert after["api_errors"] == after["invalid_response_cases"] == 0
+    assert after["scored_cases"] == 64
+
+
 def test_repeated_operations_are_an_explicit_case_scoped_opt_in(case):
     original_prompt = bench.prompt_for(case)
     case["accepted_sequences"] = [["run_sql", "run_sql"]]
@@ -527,7 +550,11 @@ def test_unsupported_cases_have_a_separate_denominator(case, tmp_path):
         "unsupported_reason": "The operation is read-only in the workspace",
         "accepted_sequences": [],
     })
-    assert bench.validate_cases([case, unsupported])["unsupported_cases"] == 1
+    planned = dict(unsupported, id="unsupported-with-plan")
+    empty = dict(unsupported, id="unsupported-empty")
+    irrelevant = dict(unsupported, id="unsupported-irrelevant")
+    cases = [case, unsupported, planned, empty, irrelevant]
+    assert bench.validate_cases(cases)["unsupported_cases"] == 4
     records = {
         "synthetic": {"split": "evaluation", "responses": [
             stored(case, response(["buffer_layer", "dissolve_layer"], ["crs_units=m"])),
@@ -535,13 +562,25 @@ def test_unsupported_cases_have_a_separate_denominator(case, tmp_path):
         "unsupported": {"split": "evaluation", "responses": [
             stored(unsupported, response([], warnings=["no listed operation can change the table"])),
         ]},
+        "unsupported-with-plan": {"split": "evaluation", "responses": [
+            stored(planned, response(["select_features"])),
+        ]},
+        "unsupported-empty": {"split": "evaluation", "responses": [stored(empty, response([]))]},
+        "unsupported-irrelevant": {"split": "evaluation", "responses": [
+            stored(irrelevant, response([], warnings=["weather is nice"])),
+        ]},
     }
     bench.write_json(tmp_path / "plans-test-model.json", {"records": records})
-    summary = bench.score_cases([case, unsupported], tmp_path, "test-model")["summary"]
-    assert summary["answered"] == summary["cases"] == 2
+    summary = bench.score_cases(cases, tmp_path, "test-model")["summary"]
+    assert summary["answered"] == summary["cases"] == 5
     assert summary["scored_cases"] == 1
-    assert summary["unsupported_cases"] == 1
-    assert summary["unsupported_refused"] == 1
+    assert summary["unsupported_answered"] == 4
+    assert summary["unsupported_cases"] == 4
+    assert summary["unsupported_refused"] == 3
+    assert summary["unsupported_warned"] == 1
+    assert summary["unsupported_empty_without_warning"] == 1
+    assert summary["unsupported_irrelevant_warning"] == 1
+    assert summary["unsupported_with_plan"] == 1
     assert summary["exact_rate"] == 1.0
     assert summary["complete"] is True
 
@@ -552,6 +591,13 @@ def test_an_unsupported_case_requires_a_reason(case):
         bench.validate_cases([case])
 
 
+@pytest.mark.parametrize("value", [0, None, "", "false", 1])
+def test_supported_flag_must_be_a_boolean(case, value):
+    case["supported"] = value
+    with pytest.raises(ValueError, match="supported must be a boolean"):
+        bench.validate_cases([case])
+
+
 def test_planner_sees_cardinality_geometry_and_independent_branches(case):
     case["output"]["cardinality"] = "one"
     case["allow_repeated_operations"] = True
@@ -559,6 +605,8 @@ def test_planner_sees_cardinality_geometry_and_independent_branches(case):
     assert "cardinality=one" in text
     assert "independent branches" in text
     assert "run_sql is the allowed operation" in text
+    assert "MAPSMITH_WORKSPACE is enabled for every case" in text
+    assert "run_sql is SELECT-only" in text
     assert "declared data rather than external geographic knowledge" in text
     catalogue = bench.catalogue_text()
     assert "geometry: line" in catalogue
