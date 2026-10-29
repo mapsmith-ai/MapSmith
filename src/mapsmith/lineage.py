@@ -670,10 +670,12 @@ def _plan_beside(output_path: Path) -> dict[str, Any] | None:
     step the plan says failed is exactly the history a caller must not read as
     provenance.
     """
-    plan_path = Path(f"{output_path}{PLAN_SUFFIX}")
-    if not plan_path.exists():
-        return None
+    from . import workspace
+
     try:
+        plan_path = workspace.derived_path(output_path, PLAN_SUFFIX)
+        if not plan_path.exists():
+            return None
         plan = json.loads(plan_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
@@ -799,9 +801,10 @@ def _sentence(walk: _Walk, root_state: str) -> str:
 def _beside(target: Path, layer: str | None) -> Path:
     """Where the record of `target` sits: beside the file, or for a layer of a
     directory container beside the container, `<container>.<layer>` (spec 3.1)."""
-    if layer:
-        return target.with_name(f"{target.name}.{layer.replace('/', '.')}{MANIFEST_SUFFIX}")
-    return Path(f"{target}{MANIFEST_SUFFIX}")
+    from . import workspace
+
+    suffix = f".{layer.replace('/', '.')}{MANIFEST_SUFFIX}" if layer else MANIFEST_SUFFIX
+    return workspace.derived_path(target, suffix)
 
 
 def _root_manifest(
@@ -815,10 +818,10 @@ def _root_manifest(
     `output` RECOMMENDED, not required -- printed as the first line a person
     reads.
     """
-    beside = _beside(target, layer)
-    if not beside.exists():
-        return "no_manifest_beside", None
     try:
+        beside = _beside(target, layer)
+        if not beside.exists():
+            return "no_manifest_beside", None
         record = json.loads(beside.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return "unreadable", None

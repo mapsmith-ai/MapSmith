@@ -647,3 +647,49 @@ def test_the_walk_does_not_descend_through_a_directory_junction(tmp_path):
 
     assert "operation_from_outside_the_jail" not in {s["operation"] for s in result["steps"]}
     assert [stop["reason"] for stop in result["stopped_at"]] == ["original"]
+
+
+def _link_or_skip(link: Path, target: Path):
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"file symlinks are unavailable: {exc}")
+
+
+def test_lineage_does_not_read_a_plan_linked_outside_the_workspace(tmp_path, monkeypatch):
+    root = tmp_path / "ws"
+    root.mkdir()
+    source = write(root, "source.gpkg", b"a")
+    final = write(root, "final.parquet", b"abc")
+    manifest(final, "clip_layer", [source])
+    outside = tmp_path / "outside-plan.json"
+    outside.write_text(json.dumps({"goal": "outside", "steps": []}), encoding="utf-8")
+    _link_or_skip(Path(f"{final}.plan.json"), outside)
+    monkeypatch.setenv("MAPSMITH_WORKSPACE", str(root))
+
+    result = lineage(final, scan_root=root)
+
+    assert result["analysis"] is None
+
+
+def test_lineage_does_not_read_a_root_manifest_linked_outside_the_workspace(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "ws"
+    root.mkdir()
+    write(root, "source.gpkg", b"a")
+    final = write(root, "final.parquet", b"abc")
+    outside = tmp_path / "outside.provenance.json"
+    outside.write_text(json.dumps({
+        "operation": "outside",
+        "inputs": [],
+        "output": {"path": final.name, "sha256": digest_of(final)},
+        "verification": PASSED,
+    }), encoding="utf-8")
+    _link_or_skip(Path(f"{final}.provenance.json"), outside)
+    monkeypatch.setenv("MAPSMITH_WORKSPACE", str(root))
+
+    result = lineage(final, scan_root=root)
+
+    assert result["steps"] == []
+    assert result["stopped_at"][0]["reason"] == "original"
