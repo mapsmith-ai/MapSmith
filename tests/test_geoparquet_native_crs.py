@@ -133,11 +133,12 @@ def test_explicit_null_geo_crs_on_a_secondary_column_stays_unknown(tmp_path):
     raw = target.read_bytes()
     assert raw.count(b'"primary_column":"first"') == 1
     raw = raw.replace(b'"primary_column":"first"', b'"primary_column":"other"')
-    start = raw.find(b'"crs":', raw.find(b'"first"'))
-    end = raw.rfind(b'}', start, raw.find(b'"other"', start))
-    assert start > 0 and end > start, "fixture must locate the explicit CRS value"
+    start = raw.find(b'"crs":', raw.find(b'"first"')) + len(b'"crs":')
+    tail = raw[start:].decode()
+    _, end = json.JSONDecoder().raw_decode(tail)
+    end = start + len(tail[:end].encode())
     segment = raw[start:end]
-    replacement = b'"crs":null' + b" " * (len(segment) - len(b'"crs":null'))
+    replacement = b"null" + b" " * (len(segment) - len(b"null"))
     target.write_bytes(raw[:start] + replacement + raw[end:])
     _geo_spec(target)
     metadata = pq.read_schema(target).metadata or {}
