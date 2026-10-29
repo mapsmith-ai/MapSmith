@@ -189,3 +189,23 @@ def test_map_preview_merges_bounds(points_layer, tmp_path):
 def test_map_preview_rejects_empty_list():
     with pytest.raises(ValueError, match="at least one"):
         preview.map_preview([])
+
+
+def test_provenance_summary_ignores_a_sidecar_linked_outside_the_workspace(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "ws"
+    root.mkdir()
+    output = root / "out.parquet"
+    output.write_bytes(b"dataset")
+    outside = tmp_path / "outside.json"
+    outside.write_text('{"operation": "outside", "verification": []}', encoding="utf-8")
+    sidecar = output.with_name(f"{output.name}.provenance.json")
+    try:
+        sidecar.symlink_to(outside)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"file symlinks are unavailable: {exc}")
+    monkeypatch.setenv("MAPSMITH_WORKSPACE", str(root))
+
+    assert preview.provenance_summary(str(output)) is None
+    assert outside.read_text(encoding="utf-8") == '{"operation": "outside", "verification": []}'

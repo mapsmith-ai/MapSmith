@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePath
 from typing import Any
 
-from . import __version__
+from . import __version__, workspace
 
 # The manifest specification this record targets. MapSmith is one
 # implementation of that format, not its definition: the spec, its schema, a
@@ -1181,7 +1181,7 @@ class ProvenanceRecord:
         # left them with no record claiming them, a dataset MapSmith described
         # and then orphaned (review, 2026-10-08). It goes beside, under another
         # name, and the trail of the failure survives all the same.
-        manifest_path = Path(f"{output_path}.provenance.json")
+        manifest_path = workspace.derived_path(output_path, ".provenance.json", for_write=True)
         if stale:
             with_output_digest = False
             note = (
@@ -1190,7 +1190,9 @@ class ProvenanceRecord:
                 "program, and this record does not describe them"
             )
             if _describes(manifest_path, output_path):
-                manifest_path = Path(f"{output_path}.failed.provenance.json")
+                manifest_path = workspace.derived_path(
+                    output_path, ".failed.provenance.json", for_write=True
+                )
                 note += (
                     f"; the record that does, {Path(f'{output_path}.provenance.json').name}, "
                     "is left in place"
@@ -1262,15 +1264,15 @@ class ProvenanceRecord:
         for entry in record["inputs"]:
             if entry.get("argument") is None:
                 entry.pop("argument", None)
-        manifest_path.write_text(
-            json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8"
+        workspace.write_text_atomic(
+            manifest_path, json.dumps(record, indent=2, ensure_ascii=False)
         )
         return manifest_path
 
 
 def read_provenance(output_path: str | Path) -> dict[str, Any]:
     """Read the lineage manifest of a MapSmith output, if present."""
-    manifest_path = Path(f"{output_path}.provenance.json")
+    manifest_path = workspace.derived_path(output_path, ".provenance.json")
     if not manifest_path.exists():
         raise FileNotFoundError(
             f"No provenance manifest found for {output_path}. "

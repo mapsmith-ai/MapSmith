@@ -18,7 +18,6 @@ from __future__ import annotations
 import json
 import time
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 from .. import verify
@@ -219,8 +218,10 @@ def _write_plan_manifest(
     # here rather than on the three fields is deliberate — a field added later
     # is covered without anyone having to remember. `<output>.plan.json` is a
     # manifest like the others, and manifests are meant to be shared.
-    Path(manifest_path).write_text(
+    from .. import workspace
+
+    workspace.write_text_atomic(
+        workspace.derived_path(last_output, ".plan.json", for_write=True),
         json.dumps(redact_secrets(manifest), indent=2, ensure_ascii=False),
-        encoding="utf-8",
     )
     return manifest_path

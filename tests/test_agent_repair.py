@@ -274,3 +274,19 @@ def test_real_missing_crs_failure_returns_actionable_checks(tmp_path):
     assert result["plan_manifest"]
     manifest = json.loads((tmp_path / "out.parquet.plan.json").read_text(encoding="utf-8"))
     assert manifest["failure"]["kind"] == "verification"
+
+
+def test_plan_manifest_write_does_not_follow_an_external_link(tmp_path, monkeypatch):
+    monkeypatch.setenv("MAPSMITH_WORKSPACE", str(tmp_path))
+    binding(monkeypatch, succeed)
+    outside = tmp_path.parent / "outside-plan.json"
+    outside.write_text("original", encoding="utf-8")
+    sidecar = tmp_path / "out.parquet.plan.json"
+    try:
+        sidecar.symlink_to(outside)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"file symlinks are unavailable: {exc}")
+
+    with pytest.raises(ValueError, match="sidecar|workspace"):
+        execute(make_plan(tmp_path))
+    assert outside.read_text(encoding="utf-8") == "original"

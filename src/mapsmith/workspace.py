@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
 from pathlib import Path
 
 _URI_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
@@ -271,3 +272,42 @@ def guard(path: str, arg: str) -> str:
 
         crs_policy.refuse_declared_in_file(path)
     return path
+
+
+AUDIT_SIDECAR_SUFFIXES = (".provenance.json", ".failed.provenance.json", ".plan.json")
+
+
+def derived_path(output_path: str | Path, suffix: str, *, for_write: bool = False) -> Path:
+    """Return a contained, non-linked sidecar path for a dataset."""
+    raw = f"{output_path}{suffix}"
+    reason = hard_refusal_reason(raw) or remote_reason(raw)
+    if reason:
+        raise ValueError(f"derived sidecar is not allowed: {reason}: {raw}")
+    path = Path(raw)
+    ws = root()
+    if ws is not None and is_outside(raw, ws):
+        raise ValueError(f"derived sidecar resolves outside MAPSMITH_WORKSPACE ({ws}): {raw}")
+    if path.is_symlink():
+        action = "writing" if for_write else "reading"
+        raise ValueError(f"derived sidecar symbolic links are not allowed for {action}: {raw}")
+    return path
+
+
+def write_text_atomic(path: Path, text: str) -> None:
+    """Replace a validated text sidecar without following its destination link."""
+    ws = root()
+    if path.is_symlink() or (ws is not None and is_outside(str(path), ws)):
+        raise ValueError(f"refusing to write an unsafe derived sidecar: {path}")
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent,
+            prefix=f".{path.name}.", delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(text)
+        os.replace(temporary, path)
+        temporary = None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)

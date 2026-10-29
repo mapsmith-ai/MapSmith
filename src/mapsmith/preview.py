@@ -35,12 +35,11 @@ _read_vector_capped = readers.read_vector_capped
 
 def provenance_summary(path: str) -> dict[str, Any] | None:
     """Compact manifest summary for the panel; None when no manifest exists."""
-    manifest_path = Path(f"{path}.provenance.json")
-    if not manifest_path.exists():
-        return None
+    from . import provenance
+
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        manifest = provenance.read_provenance(path)
+    except (OSError, ValueError, json.JSONDecodeError):
         return None
     checks = manifest.get("verification")
     if not isinstance(checks, list):

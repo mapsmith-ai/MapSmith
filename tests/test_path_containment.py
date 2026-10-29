@@ -492,3 +492,41 @@ def test_no_subprocess_inherits_the_working_directory():
         "— outside the workspace SECURITY.md promises nothing writes outside of. "
         "Pass `cwd=` pointing at a scratch directory inside the workspace."
     )
+
+
+def _external_provenance_link(tmp_path, monkeypatch):
+    root = tmp_path / "ws"
+    root.mkdir()
+    output = root / "out.parquet"
+    output.write_bytes(b"dataset")
+    outside = tmp_path / "outside.json"
+    outside.write_text('{"operation": "outside"}', encoding="utf-8")
+    sidecar = Path(f"{output}.provenance.json")
+    try:
+        sidecar.symlink_to(outside)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"file symlinks are unavailable: {exc}")
+    monkeypatch.setenv("MAPSMITH_WORKSPACE", str(root))
+    return output, outside
+
+
+def test_read_provenance_refuses_a_sidecar_linked_outside_the_workspace(
+    tmp_path, monkeypatch
+):
+    from mapsmith import provenance
+
+    output, _ = _external_provenance_link(tmp_path, monkeypatch)
+    with pytest.raises(ValueError, match="sidecar|workspace"):
+        provenance.read_provenance(str(output))
+
+
+def test_manifest_write_does_not_follow_a_sidecar_linked_outside_the_workspace(
+    tmp_path, monkeypatch
+):
+    from mapsmith import provenance
+
+    output, outside = _external_provenance_link(tmp_path, monkeypatch)
+    record = provenance.ProvenanceRecord(operation="test", parameters={}, inputs=[])
+    with pytest.raises(ValueError, match="sidecar|workspace"):
+        record.write_for(str(output), with_output_digest=False)
+    assert outside.read_text(encoding="utf-8") == '{"operation": "outside"}'
