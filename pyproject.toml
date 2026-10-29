@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mapsmith"
-version = "0.10.1"
+version = "0.11.0"
 description = "Professional-grade GIS geoprocessing over MCP, with verifiable provenance"
 dynamic = ["readme"]
 requires-python = ">=3.12"
@@ -25,14 +25,12 @@ classifiers = [
 ]
 dependencies = [
   # 1.26 is the floor for resource `meta` (the MCP Apps map panel needs it);
-  # 1.28.1 is the floor for three High advisories in the SDK, none of them
+  # 1.30.0 is the floor for the October 2026 SDK advisories, none of them
   # exploitable here — MapSmith uses stdio and stateless Streamable HTTP with
   # no authentication, never the websocket transport, never task handlers.
-  # Raised anyway: a fresh install could resolve to 1.26 and every dependency
-  # scanner would flag the package, which is a bad look for a project that
-  # sells the discipline. v2 renamed FastMCP->MCPServer; migration is planned
-  # with MCP Tasks.
-  "mcp>=1.28.1,<2",
+  # Raised anyway so fresh installs do not resolve an advisory-affected SDK.
+  # v2 renamed FastMCP->MCPServer; migration is planned with MCP Tasks.
+  "mcp>=1.30.0,<2",
   "geopandas>=1.1.2",  # security floor: CVE-2025-69662 (to_postgis)
   "shapely>=2.1",
   "pyproj>=3.6",

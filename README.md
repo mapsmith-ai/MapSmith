@@ -45,7 +45,7 @@ MapSmith's private output: JSON Schema, a toolchain-free validator, a conformanc
 hundred-line emitter that never imports MapSmith. Records carry `spec_version`, and CI validates
 real MapSmith output against the spec's own validator. The specification is archived and citable
 as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213), a concept DOI that
-resolves to the latest *archived* draft. Records written by 0.8.0 to 0.10.1 declare `1.0.0-draft.10`, and
+resolves to the latest *archived* draft. Records written by 0.8.0 to 0.11.0 declare `1.0.0-draft.10`, and
 0.7.x's declare `1.0.0-draft.8`; if the DOI shows an earlier one, the archive has not caught up, and the
 [repository](https://github.com/mapsmith-ai/manifest-spec) holds the text they are written against. The names MapSmith puts
 in a record beyond the ones the specification defines — every extension check name, and every
@@ -223,10 +223,10 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.10.1**, which is what that command installs. When `main` runs ahead of
+This page describes **0.11.0**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **On `main`, not in 0.10.1**
-([unreleased changes](CHANGELOG.md#unreleased)): the validated project brief, bounded agent
+have to find out by calling a tool that is not there. **New in 0.11.0**
+([release notes](CHANGELOG.md#0110---2026-10-29)): the validated project brief, bounded agent
 repair, vector/raster conversion and QGIS `native:buffer`, taking
 the catalogue to 80 operations behind 29 tools. **If you run 0.10.0 or earlier under
 `MAPSMITH_WORKSPACE`, update**: a coordinate reference system -- a tool argument, or the one a
@@ -310,7 +310,7 @@ for it:
 ```json
 {
   "spec_version": "1.0.0-draft.10",
-  "producer": {"name": "mapsmith", "version": "0.10.1"},
+  "producer": {"name": "mapsmith", "version": "0.11.0"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{
@@ -1244,14 +1244,15 @@ suite outside:
   whatever the tag says, and the terrain engine, which really does misread the tag, gets
   an area copy instead of a refusal.
 
-## Notebook gallery
+## Example gallery
 
-Four executable walkthroughs in [`examples/`](examples/): verified buffer+clip with
+Five executable walkthroughs in [`examples/`](examples/): verified buffer+clip with
 provenance manifests, terrain and hydrology on a real 520×520 USGS DEM of **Mount St.
-Helens**, a deliberately wrong plan rejected before execution and then repaired, and
+Helens**, a deliberately wrong plan rejected before execution and then repaired,
 **Copernicus** data on Monte Baldo — a DEM in degrees refused for slope and then reprojected,
 and a Sentinel-2 NDVI whose reflectance offset the catalogue declares and the pixels already
-contain. The
+contain — and an [agentic pilot](examples/agentic-pilot.md) that turns a question into a
+validated plan, a QGIS execution and a verified 1,300 m² answer. The
 terrain notebook also shows what happens when reality bites: that DEM is stored with the
 standard TIFF predictor, which Whitebox Workflows 2.x does not undo when reading
 ([upstream report](https://github.com/jblindsay/whitebox_next_gen/issues/32)), so MapSmith

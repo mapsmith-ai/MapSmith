@@ -6,6 +6,11 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-29
+
+Records continue to declare `spec_version` `1.0.0-draft.10`; no manifest key is
+new or renamed in this release.
+
 ### Added
 
 - **An executable agentic pilot and a measured fine-tuning decision.**
@@ -81,6 +86,12 @@ All notable changes to MapSmith are documented here, in the format of
   allowed input is checked again, so replacing its bytes while preserving size
   and modification time cannot reuse a stale permission. Per-text CRS verdicts
   remain cached.
+- **Audit sidecars stay inside the workspace and cannot replace one another.**
+  Provenance, failure and plan manifests reject external symbolic links and are
+  replaced atomically. Plan validation and bounded repair reserve every output
+  together with its three audit sidecars before an engine runs, so a step cannot
+  overwrite another step's dataset or audit trail. Lineage reads use the same
+  containment rule.
 
 ### Fixed
 
@@ -100,6 +111,13 @@ All notable changes to MapSmith are documented here, in the format of
   duplicating measurements maintained in the published benchmark. Unused CRS
   and scalar-transform helpers were removed after moving their remaining test
   references onto the real public paths.
+- **Rasterizing disjoint or empty geometries no longer returns silent success.**
+  The background raster is still written, but a non-critical warning in the
+  result and provenance says that no cells contain an input geometry.
+- **Malformed repair manifests and unknown engines fail structurally.** Invalid
+  previous-plan sections produce `INVALID_REPAIR_CHAIN` instead of Python
+  attribute errors, and an unknown spatial-join engine no longer generates an
+  install command for an invented package extra.
 
 ## [0.10.1] - 2026-10-26
 

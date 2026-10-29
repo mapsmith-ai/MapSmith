@@ -23,7 +23,7 @@ whether this system verified anything at all.
 | `x-mapsmith:operation_completed` | The engine finished. Recorded as a failed check when it did not, so a crash leaves a conforming manifest saying what went wrong instead of a dataset with no record beside it. |
 | `x-mapsmith:verification_present` | Nothing looked at the output. It exists because the specification requires a record for every dataset written and requires at least one check in it; the absence of verification is itself recorded as a failed check rather than papered over. No shipped operation emits it, and a test fails if one starts to. |
 
-## Extension check names (63)
+## Extension check names (64)
 
 Each is a proposition about the dataset that was written. A failed one is
 recorded, never suppressed — the audit trail has to survive the error it
@@ -75,6 +75,7 @@ documents.
 | `x-mapsmith:planar_area_matches_ground` | `vector` |
 | `x-mapsmith:point_lies_on_its_feature` | `vector` |
 | `x-mapsmith:polygon_values_are_finite` | `conversion` |
+| `x-mapsmith:rasterized_cells_present` | `conversion` |
 | `x-mapsmith:segment_costs_add_up_to_the_route_cost` | `network` |
 | `x-mapsmith:shape_matches_reference` | `conversion` |
 | `x-mapsmith:shape_matches_resolution` | `raster` |
@@ -175,7 +176,7 @@ changed sides; the rule did not.
 | `x-mapsmith:outside_area_of_use` | Not `is_ballpark`, which says whether a shift was applied: this says how many of the data's vertices lie outside the area of use of every operation published for the pair, installed or not. The two part company -- outside every area PROJ falls back to the ballpark for some pairs and extends a published operation for others -- and either way the stated accuracy was never established for those coordinates. Not evidence that the declared CRS is wrong: a datum counted from another meridian can have its operations published for its Greenwich twin only, and where MapSmith takes that route the twin's operations count as published for the pair. Counted exactly, vertex by vertex. |
 | `x-mapsmith:shift_from_crs_definition` | Not `is_ballpark`, which is false here, and not `accuracy_m`, which is null here: this says why the two go together. The datum shift applied is the relation to WGS 84 that the CRS's own definition declares (`+towgs84`, `+nadgrids`, WKT `TOWGS84[]`), applied as declared -- a Helmert PROJ builds from the parameters, or a grid, or a declared zero -- for which no registry states an accuracy. Written only when one of the two CRSs carries such a declaration: a registry operation with no stated accuracy gets the same null and not this key. PROJ reports -1 for both, the value it also reports for the ballpark, and until 2026-10-23 the record called the CRS's own shift one -- over coordinates that had moved 79 m. |
 
-## Extension fields in the other containers (3)
+## Extension fields in the other containers (4)
 
 The three sections above cover `verification[]`, `crs_decisions` and the
 `transformation` inside it. They are not every object a manifest has, and
@@ -189,3 +190,4 @@ here so that adding a fifth is a change to this table rather than a silence.
 | `engine` | `x-mapsmith:geometry_library` | Not `engine.version`, which names the thing that ran: three engines in this package are thin layers over Shapely, and the version that decides the geometry is Shapely's, not theirs. Recording only the wrapper would name a component that cannot explain a change in the answer. |
 | `engine` | `x-mapsmith:qgis_code_revision` | The QGIS source revision returned by qgis_process. Not engine.version, which is the release label and does not distinguish two builds of it. |
 | `repairs[]` | `x-mapsmith:round` | Which pass of the repair loop produced this entry. Not `action`, which says what was done: the same action can be applied twice, and without the round two entries reporting the same fix are indistinguishable from one entry written twice. |
+| `verification[]` | `x-mapsmith:rasterized_cells_present` | Not `result_not_empty`, which counts output rows: rasterization can write a full grid of background cells even when no geometry reaches the reference extent. This check measures the burned-cell mask, so a value equal to the fill still counts as present. |

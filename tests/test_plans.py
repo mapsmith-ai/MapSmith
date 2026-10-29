@@ -1,6 +1,7 @@
 """Typed plan DAG: every error code has a closed-form trigger; execution is exact."""
 
 import json
+from pathlib import Path
 
 import geopandas as gpd
 import pytest
@@ -667,3 +668,21 @@ def test_an_output_cannot_collide_with_an_audit_sidecar(wells, tmp_path, suffix)
     assert result["executed"] is False
     assert result["validation"]["errors"][0]["code"] == "OUTPUT_COLLISION"
     assert not first.exists()
+
+
+@pytest.mark.parametrize("suffix", [".plan.json", ".provenance.json", ".failed.provenance.json"])
+def test_an_output_cannot_overwrite_an_input_audit_sidecar(wells, tmp_path, suffix):
+    sidecar = Path(f"{wells}{suffix}")
+    sidecar.write_text("ORIGINAL INPUT AUDIT", encoding="utf-8")
+    plan = make_plan({
+        "id": "step", "operation": "buffer_layer",
+        "arguments": {
+            "input_path": wells, "distance_meters": 10, "output_path": str(sidecar),
+        },
+    })
+
+    result = execute(plan)
+
+    assert result["executed"] is False
+    assert "OUTPUT_OVERWRITES_INPUT" in [item["code"] for item in result["validation"]["errors"]]
+    assert sidecar.read_text(encoding="utf-8") == "ORIGINAL INPUT AUDIT"

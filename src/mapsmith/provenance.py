@@ -214,6 +214,14 @@ CONTAINER_EXTENSIONS: dict[str, dict[str, str]] = {
             "indistinguishable from one entry written twice."
         ),
     },
+    "verification[]": {
+        "x-mapsmith:rasterized_cells_present": (
+            "Not `result_not_empty`, which counts output rows: rasterization can "
+            "write a full grid of background cells even when no geometry reaches "
+            "the reference extent. This check measures the burned-cell mask, so "
+            "a value equal to the fill still counts as present."
+        ),
+    },
 }
 
 

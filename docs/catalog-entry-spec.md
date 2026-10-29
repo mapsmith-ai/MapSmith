@@ -29,8 +29,8 @@ catalogue is written: *"the coastline is 400 000 nodes and the browser dies"*, n
 
 **Ranking is not the mechanism; narrowing is** — and the last column is why. Once
 the two facts a caller genuinely knows have cut the catalogue to something readable,
-every survivor is handed over, so the right operation is in the answer for all 118
-requests *by construction*. That is not an accuracy figure. Ranking decides the
+every survivor is handed over, so the right operation is in the answer for 116 of the 118
+requests. That is not an accuracy figure. Ranking decides the
 order; it does not decide membership.
 
 Three more numbers say why the answer is a set rather than a pick:
@@ -116,7 +116,7 @@ when a catalogue of your own outgrows its facets:
 
 `dataset:vector`, `dataset:raster`, `answer`, `description`, `plan_result`.
 
-Worth 18 points of *in what comes back* on top of the input kind (35% to 53%, table above), and it is a facet the caller
+Worth 23 points of *in what comes back* on top of the input kind (34% to 57%, table above), and it is a facet the caller
 always knows: they know whether they want a file, a number, or an account of
 something they already have. Check it against what the code actually writes — a
 declaration that disagrees makes the operation unreachable for the caller who

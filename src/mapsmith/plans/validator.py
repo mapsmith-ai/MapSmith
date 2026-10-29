@@ -320,7 +320,10 @@ def _collect_external_inputs(plan: Plan, literal_outputs: dict[str, tuple[int, s
             key = _canon(value)
             dependency = literal_outputs.get(key)
             if dependency is None or (dependency[0] >= index and Path(value).exists()):
-                externals.add(key)
+                externals.update(
+                    _canon(f"{value}{suffix}")
+                    for suffix in ("", *AUDIT_SIDECAR_SUFFIXES)
+                )
     return externals
 
 
