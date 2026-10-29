@@ -1,0 +1,404 @@
+{
+  "schema_version": 1,
+  "measured_at": "2026-10-29",
+  "model": "claude-sonnet-5",
+  "dataset_sha256": "269b9fa2e48942b21bfbe9c62b13799b01480f2e1e28b359ac759c44aa7f1041",
+  "catalogue_sha256": "707e68eb8c7bf0c4827240afbc78dd6e87a08551bf2dac2668444a472b630e8b",
+  "responses_per_case": 2,
+  "original_20_not_rerun": true,
+  "published_baseline": {
+    "new_73_exact": 37,
+    "new_73_cases": 73,
+    "source": "benchmarks/method_choice_contracts.json"
+  },
+  "before": {
+    "original_truth": {
+      "catalogue_sha256": "cb64f9fb3f3f1d3fb6fedd6dd44caf7dbd6d99339109949144e8c853196acc00",
+      "reports": {
+        "calibration": {
+          "model": "claude-sonnet-5",
+          "split": "calibration",
+          "cases": 36,
+          "attempted": 36,
+          "answered": 36,
+          "api_errors": 0,
+          "invalid_response_cases": 0,
+          "not_attempted": 0,
+          "api_error_events": 0,
+          "invalid_response_events": 0,
+          "complete": true,
+          "verdicts": {
+            "no_plan": 5,
+            "extra_or_wrong_tool": 5,
+            "exact": 18,
+            "missing_and_wrong": 4,
+            "missing_operation": 3,
+            "reordered": 1
+          },
+          "exact_rate": 0.5,
+          "first_step_right": 23,
+          "every_required_step_present": 24,
+          "output_contract": 22,
+          "assumptions_applicable": 0,
+          "assumptions_declared": 0,
+          "silent_planning_errors": 9,
+          "repeated_cases": 36,
+          "reproducible_cases": 2
+        },
+        "evaluation": {
+          "model": "claude-sonnet-5",
+          "split": "evaluation",
+          "cases": 37,
+          "attempted": 37,
+          "answered": 37,
+          "api_errors": 0,
+          "invalid_response_cases": 0,
+          "not_attempted": 0,
+          "api_error_events": 0,
+          "invalid_response_events": 0,
+          "complete": true,
+          "verdicts": {
+            "exact": 20,
+            "missing_and_wrong": 5,
+            "extra_or_wrong_tool": 5,
+            "no_plan": 2,
+            "missing_operation": 5
+          },
+          "exact_rate": 0.5405,
+          "first_step_right": 24,
+          "every_required_step_present": 25,
+          "output_contract": 27,
+          "assumptions_applicable": 0,
+          "assumptions_declared": 0,
+          "silent_planning_errors": 10,
+          "repeated_cases": 37,
+          "reproducible_cases": 1
+        },
+        "all": {
+          "model": "claude-sonnet-5",
+          "split": "all",
+          "cases": 73,
+          "attempted": 73,
+          "answered": 73,
+          "api_errors": 0,
+          "invalid_response_cases": 0,
+          "not_attempted": 0,
+          "api_error_events": 0,
+          "invalid_response_events": 0,
+          "complete": true,
+          "verdicts": {
+            "exact": 38,
+            "missing_and_wrong": 9,
+            "no_plan": 7,
+            "extra_or_wrong_tool": 10,
+            "missing_operation": 8,
+            "reordered": 1
+          },
+          "exact_rate": 0.5205,
+          "first_step_right": 47,
+          "every_required_step_present": 49,
+          "output_contract": 49,
+          "assumptions_applicable": 0,
+          "assumptions_declared": 0,
+          "silent_planning_errors": 19,
+          "repeated_cases": 73,
+          "reproducible_cases": 3
+        }
+      }
+    },
+    "audited_truth": {
+      "catalogue_sha256": "707e68eb8c7bf0c4827240afbc78dd6e87a08551bf2dac2668444a472b630e8b",
+      "same_responses": true,
+      "reports": {
+        "calibration": {
+          "model": "claude-sonnet-5",
+          "split": "calibration",
+          "cases": 36,
+          "scored_cases": 31,
+          "unsupported_cases": 5,
+          "unsupported_answered": 5,
+          "unsupported_refused": 3,
+          "unsupported_warned": 3,
+          "unsupported_empty_without_warning": 0,
+          "unsupported_irrelevant_warning": 0,
+          "unsupported_with_plan": 2,
+          "attempted": 36,
+          "answered": 36,
+          "api_errors": 0,
+          "invalid_response_cases": 0,
+          "not_attempted": 0,
+          "api_error_events": 0,
+          "invalid_response_events": 0,
+          "complete": true,
+          "verdicts": {
+            "extra_or_wrong_tool": 4,
+            "exact": 20,
+            "missing_and_wrong": 3,
+            "missing_operation": 2,
+            "no_plan": 2
+          },
+          "exact_rate": 0.6452,
+          "first_step_right": 24,
+          "every_required_step_present": 24,
+          "output_contract": 22,
+          "assumptions_applicable": 0,
+          "assumptions_declared": 0,
+          "silent_planning_errors": 7,
+          "repeated_cases": 31,
+          "reproducible_cases": 2
+        },
+        "evaluation": {
+          "model": "claude-sonnet-5",
+          "split": "evaluation",
+          "cases": 37,
+          "scored_cases": 34,
+          "unsupported_cases": 3,
+          "unsupported_answered": 3,
+          "unsupported_refused": 1,
+          "unsupported_warned": 1,
+          "unsupported_empty_without_warning": 0,
+          "unsupported_irrelevant_warning": 0,
+          "unsupported_with_plan": 2,
+          "attempted": 37,
+          "answered": 37,
+          "api_errors": 0,
+          "invalid_response_cases": 0,
+          "not_attempted": 0,
+          "api_error_events": 0,
+          "invalid_response_events": 0,
+          "complete": true,
+          "verdicts": {
+            "missing_operation": 2,
+            "exact": 21,
+            "extra_or_wrong_tool": 5,
+            "missing_and_wrong": 5,
+            "no_plan": 1
+          },
+          "exact_rate": 0.6176,
+          "first_step_right": 26,
+          "every_required_step_present": 26,
+          "output_contract": 26,
+          "assumptions_applicable": 0,
+          "assumptions_declared": 0,
+          "silent_planning_errors": 7,
+          "repeated_cases": 34,
+          "reproducible_cases": 1
+        },
+        "all": {
+          "model": "claude-sonnet-5",
+          "split": "all",
+          "cases": 73,
+          "scored_cases": 65,
+          "unsupported_cases": 8,
+          "unsupported_answered": 8,
+          "unsupported_refused": 4,
+          "unsupported_warned": 4,
+          "unsupported_empty_without_warning": 0,
+          "unsupported_irrelevant_warning": 0,
+          "unsupported_with_plan": 4,
+          "attempted": 73,
+          "answered": 73,
+          "api_errors": 0,
+          "invalid_response_cases": 0,
+          "not_attempted": 0,
+          "api_error_events": 0,
+          "invalid_response_events": 0,
+          "complete": true,
+          "verdicts": {
+            "missing_operation": 4,
+            "exact": 41,
+            "extra_or_wrong_tool": 9,
+            "missing_and_wrong": 8,
+            "no_plan": 3
+          },
+          "exact_rate": 0.6308,
+          "first_step_right": 50,
+          "every_required_step_present": 50,
+          "output_contract": 48,
+          "assumptions_applicable": 0,
+          "assumptions_declared": 0,
+          "silent_planning_errors": 14,
+          "repeated_cases": 65,
+          "reproducible_cases": 3
+        }
+      }
+    }
+  },
+  "after": {
+    "reports": {
+      "calibration": {
+        "model": "claude-sonnet-5",
+        "split": "calibration",
+        "cases": 36,
+        "scored_cases": 31,
+        "unsupported_cases": 5,
+        "unsupported_answered": 5,
+        "unsupported_refused": 2,
+        "unsupported_warned": 2,
+        "unsupported_empty_without_warning": 0,
+        "unsupported_irrelevant_warning": 0,
+        "unsupported_with_plan": 3,
+        "attempted": 36,
+        "answered": 36,
+        "api_errors": 0,
+        "invalid_response_cases": 0,
+        "not_attempted": 0,
+        "api_error_events": 0,
+        "invalid_response_events": 0,
+        "complete": true,
+        "verdicts": {
+          "exact": 25,
+          "missing_and_wrong": 5,
+          "missing_operation": 1
+        },
+        "exact_rate": 0.8065,
+        "first_step_right": 26,
+        "every_required_step_present": 25,
+        "output_contract": 25,
+        "assumptions_applicable": 0,
+        "assumptions_declared": 0,
+        "silent_planning_errors": 6,
+        "repeated_cases": 31,
+        "reproducible_cases": 0
+      },
+      "evaluation": {
+        "model": "claude-sonnet-5",
+        "split": "evaluation",
+        "cases": 37,
+        "scored_cases": 34,
+        "unsupported_cases": 3,
+        "unsupported_answered": 3,
+        "unsupported_refused": 1,
+        "unsupported_warned": 1,
+        "unsupported_empty_without_warning": 0,
+        "unsupported_irrelevant_warning": 0,
+        "unsupported_with_plan": 2,
+        "attempted": 37,
+        "answered": 37,
+        "api_errors": 0,
+        "invalid_response_cases": 0,
+        "not_attempted": 0,
+        "api_error_events": 0,
+        "invalid_response_events": 0,
+        "complete": true,
+        "verdicts": {
+          "extra_or_wrong_tool": 5,
+          "exact": 27,
+          "missing_operation": 1,
+          "missing_and_wrong": 1
+        },
+        "exact_rate": 0.7941,
+        "first_step_right": 30,
+        "every_required_step_present": 32,
+        "output_contract": 31,
+        "assumptions_applicable": 0,
+        "assumptions_declared": 0,
+        "silent_planning_errors": 4,
+        "repeated_cases": 34,
+        "reproducible_cases": 1
+      },
+      "all": {
+        "model": "claude-sonnet-5",
+        "split": "all",
+        "cases": 73,
+        "scored_cases": 65,
+        "unsupported_cases": 8,
+        "unsupported_answered": 8,
+        "unsupported_refused": 3,
+        "unsupported_warned": 3,
+        "unsupported_empty_without_warning": 0,
+        "unsupported_irrelevant_warning": 0,
+        "unsupported_with_plan": 5,
+        "attempted": 73,
+        "answered": 73,
+        "api_errors": 0,
+        "invalid_response_cases": 0,
+        "not_attempted": 0,
+        "api_error_events": 0,
+        "invalid_response_events": 0,
+        "complete": true,
+        "verdicts": {
+          "extra_or_wrong_tool": 5,
+          "exact": 52,
+          "missing_and_wrong": 6,
+          "missing_operation": 2
+        },
+        "exact_rate": 0.8,
+        "first_step_right": 56,
+        "every_required_step_present": 57,
+        "output_contract": 56,
+        "assumptions_applicable": 0,
+        "assumptions_declared": 0,
+        "silent_planning_errors": 10,
+        "repeated_cases": 65,
+        "reproducible_cases": 1
+      }
+    }
+  },
+  "comparison": {
+    "improved_ids": [
+      "data_databases-041",
+      "data_databases-043",
+      "data_databases-047",
+      "data_databases-056",
+      "data_databases-065",
+      "data_databases-079",
+      "data_databases-081",
+      "forestry-007",
+      "processing-036",
+      "vector_analysis-006",
+      "vector_analysis-020"
+    ],
+    "regressed_ids": [],
+    "before_by_steps": {
+      "1": {
+        "cases": 36,
+        "exact": 27
+      },
+      "2": {
+        "cases": 18,
+        "exact": 11
+      },
+      "3": {
+        "cases": 10,
+        "exact": 3
+      },
+      "4": {
+        "cases": 1,
+        "exact": 0
+      }
+    },
+    "after_by_steps": {
+      "1": {
+        "cases": 36,
+        "exact": 31
+      },
+      "2": {
+        "cases": 18,
+        "exact": 15
+      },
+      "3": {
+        "cases": 10,
+        "exact": 5
+      },
+      "4": {
+        "cases": 1,
+        "exact": 1
+      }
+    },
+    "before_repeated_operations": {
+      "cases": 22,
+      "exact": 10
+    },
+    "after_repeated_operations": {
+      "cases": 22,
+      "exact": 16
+    },
+    "before_no_plan_ids": [
+      "data_databases-079",
+      "data_databases-081",
+      "processing-036"
+    ],
+    "after_no_plan_ids": []
+  }
+}

@@ -447,6 +447,14 @@ def test_multistep_artifact_separates_truth_audit_from_planner_change():
     assert after["answered"] == 73
     assert after["api_errors"] == after["invalid_response_cases"] == 0
     assert after["scored_cases"] == 65
+    assert after["exact_rate"] == 0.8
+    comparison = artifact["comparison"]
+    assert len(comparison["improved_ids"]) == 11
+    assert comparison["regressed_ids"] == []
+    assert comparison["after_no_plan_ids"] == []
+    page = (ROOT / "docs" / "benchmarks.md").read_text(encoding="utf-8")
+    for text in ("41/65 (63.1%)", "52/65 (80.0%)", "4 refusals before versus 3 after"):
+        assert text in page
 
 
 def test_repeated_operations_are_an_explicit_case_scoped_opt_in(case):

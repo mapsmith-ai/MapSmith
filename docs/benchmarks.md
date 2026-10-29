@@ -107,6 +107,56 @@ The next work is therefore on multi-step sequencing, repeated-tool arguments and
 output contracts, not more fine-tuning claims. Seven new cases returned an empty
 plan and none used an unknown operation name.
 
+## Multi-step contract audit and after-run (29 October 2026)
+
+The 73 newer cases were run again before the changes, twice per case and without
+touching the original 20. That fresh pre-change run scored **38/73**, against the
+37/73 in the published baseline above; the one-case difference is part of the
+model's measured variability, not a silent correction.
+
+An audit of the 44 originally non-exact cases then found both planner defects and
+wrong reference truth. Eight requests are outside the declared operations:
+read-only workspace DDL/DML and triggers, multi-engine contouring, per-feature
+raster iteration, and preservation of five themed inputs as layers in one new
+GeoPackage. They are now reported separately instead of inflating the
+method-choice denominator. Other accepted sequences were made minimal or were
+corrected: redundant inspection, aspect and slope steps were removed, independent
+outputs were allowed where required, and a spatial self-match can no longer count
+as a neighbour.
+
+Scoring the **same pre-change responses** against that audited truth gives
+**41/65 exact**. This is the like-for-like baseline for the planner change. The
+new prompt declares output cardinality and geometry constraints, permits
+independent repeated-operation branches, prefers dedicated operations, forbids
+`extract_layer` as mere reading, states that the workspace makes SQL SELECT-only,
+and asks for declared data rather than external geographic knowledge.
+
+The final run again completed all 73 cases twice with no API or invalid-response
+case:
+
+| Metric, 65 supported cases | Audited truth, same responses | After planner changes |
+|---|---:|---:|
+| Exact accepted sequence | 41/65 (63.1%) | **52/65 (80.0%)** |
+| Correct first operation | 50/65 | 56/65 |
+| Every required operation present | 50/65 | 57/65 |
+| Output contract satisfied | 48/65 | 56/65 |
+| Exact, repeated operations allowed | 10/22 | 16/22 |
+| Empty plans | 3 | 0 |
+| Planning-silent errors | 14 | 10 |
+| Identical response on repetition | 3 | **1 (regression)** |
+
+Eleven cases moved from non-exact to exact and **none moved from exact to
+non-exact**. Every step-count band improved: 27/36→31/36 for one operation,
+11/18→15/18 for two, 3/10→5/10 for three, and 0/1→1/1 for four. The two no-plan
+SQL cases were answered; the four-step multi-engine comparison also became exact.
+Reproducibility regressed, as shown above. The separate unsupported outcomes also
+worsened: 4 refusals before versus 3 after, with 5 requests answered by a plan
+instead. These are not hidden inside the 80.0%.
+
+All summaries, case ids, per-step counts and the original/audited/final distinction
+are in `benchmarks/method_choice_multistep.json`. No GIS operation was added and no
+fine-tuning was performed.
+
 ## Setup
 
 - **Benchmark**: [GABench](https://github.com/GeoX-Lab/GABench) — 57 executable
