@@ -7,14 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from mapsmith import catalog
-from mapsmith.plans import Plan, validate
-from mapsmith.plans.validator import _check_contract
-
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "benchmarks"))
 
 import method_choice as bench
+
+from mapsmith import catalog
+from mapsmith.plans import Plan, validate
+from mapsmith.plans.validator import _check_contract
 
 
 def codes(report):
