@@ -306,3 +306,31 @@ def test_retry_cannot_overwrite_the_previous_plan_manifest(tmp_path, monkeypatch
     assert result["executed"] is False
     assert result["error"]["code"] == "REPAIR_OUTPUT_COLLISION"
     assert Path(first["plan_manifest"]).read_bytes() == previous
+
+
+@pytest.mark.parametrize("section,value", [
+    ("failure", []),
+    ("steps", {}),
+    ("attempted_output", []),
+])
+def test_malformed_previous_manifest_sections_are_a_structured_refusal(
+    section, value, tmp_path, monkeypatch
+):
+    binding(monkeypatch, fail_verification)
+    first = execute(make_plan(tmp_path))
+    manifest_path = Path(first["plan_manifest"])
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if section in {"failure", "steps"}:
+        manifest[section] = value
+    else:
+        manifest["steps"][0][section] = value
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    binding(monkeypatch, succeed)
+
+    result = execute(
+        make_plan(tmp_path, "repaired.parquet"),
+        RepairRequest(previous_manifest=first["plan_manifest"]),
+    )
+
+    assert result["executed"] is False
+    assert result["error"]["code"] == "INVALID_REPAIR_CHAIN"

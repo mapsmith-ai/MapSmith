@@ -104,7 +104,8 @@ def engine_requirements(plan: Plan) -> list[dict[str, Any]]:
         if flag in seen:
             continue
         seen.add(flag)
-        extra = None if flag in {"core", "duckdb", "geopandas", "qgis"} else (
+        known_engine = step.operation != "spatial_join" or requested in dispatch.SPATIAL_JOIN_ENGINES
+        extra = None if not known_engine or flag in {"core", "duckdb", "geopandas", "qgis"} else (
             "sedona" if flag == "sedonadb" else EXTRA_FOR_FLAG.get(flag, flag)
         )
         required.append({

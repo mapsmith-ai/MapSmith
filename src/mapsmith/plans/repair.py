@@ -90,11 +90,14 @@ def prepare(request: RepairRequest | None, plan: Plan) -> dict[str, Any]:
     history: list[dict[str, Any]] = []
     for attempt, (path, document) in enumerate(reversed(linked), start=1):
         repair = document["repair"]
+        failure = document.get("failure")
+        if not isinstance(failure, dict):
+            raise _invalid(raw, TypeError("failure metadata is not an object"))
         if (
             repair.get("attempt") != attempt
             or repair.get("history") != history
             or document.get("executed") is not False
-            or document.get("failure", {}).get("kind") != "verification"
+            or failure.get("kind") != "verification"
             or (attempt < MAX_REPAIR_ATTEMPTS and repair.get("can_retry") is not True)
         ):
             raise _invalid(raw, ValueError(f"inconsistent attempt {attempt}"))
@@ -125,11 +128,14 @@ def prepare(request: RepairRequest | None, plan: Plan) -> dict[str, Any]:
     }
     root = workspace.root()
     for _, document in linked:
-        for step in document.get("steps", []):
-            previous_outputs = {
-                step.get("attempted_output"), step.get("output")
-            } - {None}
+        steps = document.get("steps")
+        if not isinstance(steps, list) or any(not isinstance(step, dict) for step in steps):
+            raise _invalid(raw, TypeError("plan steps are not a list of objects"))
+        for step in steps:
+            previous_outputs = [step.get("attempted_output"), step.get("output")]
             for path in previous_outputs:
+                if path is None:
+                    continue
                 if not isinstance(path, str):
                     raise _invalid(raw, TypeError("a previous output is not a string"))
                 reason = workspace.nonlocal_reason(path)
@@ -137,7 +143,7 @@ def prepare(request: RepairRequest | None, plan: Plan) -> dict[str, Any]:
                     raise _invalid(raw, ValueError(f"unsafe previous output path: {path}"))
             previous_artifacts = {
                 _canon(f"{path}{suffix}")
-                for path in previous_outputs
+                for path in previous_outputs if path is not None
                 for suffix in ("", *workspace.AUDIT_SIDECAR_SUFFIXES)
             }
             if candidates.intersection(previous_artifacts):

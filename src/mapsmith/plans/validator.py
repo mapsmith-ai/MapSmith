@@ -667,6 +667,7 @@ def _check_step_extras(
         requested = step.arguments.get("engine", "auto")
         if (
             isinstance(requested, str)
+            and requested in dispatch.SPATIAL_JOIN_ENGINES
             and requested not in ("auto", "")
             and not dispatch.available_engines().get(requested, False)
         ):

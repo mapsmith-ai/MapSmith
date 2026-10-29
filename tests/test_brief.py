@@ -160,3 +160,24 @@ def test_d063_population_is_exactly_sixteen():
     found = execute_plan_requests()
     assert len(found) == 16
     assert [index for index, _ in found] == [19, 21, 24, 43, 47, 93, 99, 107, 109, 111, 112, 122, 140, 141, 142, 147]
+
+
+def test_unknown_spatial_join_engine_has_no_invented_install_extra(tmp_path):
+    from mapsmith.plans.brief import engine_requirements
+
+    wells = tmp_path / "wells.gpkg"
+    gpd.GeoDataFrame({"id": [1]}, geometry=[Point(9.19, 45.46)], crs="EPSG:4326").to_file(wells)
+    current = Plan.model_validate({"steps": [{
+        "id": "step", "operation": "spatial_join", "arguments": {
+            "left_path": str(wells), "right_path": str(wells),
+            "output_path": str(tmp_path / "joined.parquet"), "engine": "invented",
+        },
+    }]})
+
+    response = server.brief_plan(current)
+
+    assert [item["code"] for item in response["validation"]["errors"]] == [
+        "INVALID_ARGUMENT_VALUE"
+    ]
+    assert "install" not in response
+    assert engine_requirements(current)[0]["extra"] is None
