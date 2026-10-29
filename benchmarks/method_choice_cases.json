@@ -1045,10 +1045,6 @@
     ],
     [
      "select_features",
-     "spatial_join"
-    ],
-    [
-     "select_features",
      "spatial_join",
      "run_sql"
     ]

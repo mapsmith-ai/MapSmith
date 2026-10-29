@@ -439,14 +439,14 @@ def test_multistep_artifact_separates_truth_audit_from_planner_change():
     audited = artifact["before"]["audited_truth"]["reports"]["all"]
     assert baseline["answered"] == baseline["cases"] == 73
     assert baseline["exact_rate"] == 0.5205
-    assert audited["scored_cases"] == 64
-    assert audited["unsupported_cases"] == 9
-    assert audited["exact_rate"] == 0.6875
+    assert audited["scored_cases"] == 65
+    assert audited["unsupported_cases"] == 8
+    assert audited["exact_rate"] == 0.6308
     after = artifact["after"]["reports"]["all"]
     assert after["complete"] is True
     assert after["answered"] == 73
     assert after["api_errors"] == after["invalid_response_cases"] == 0
-    assert after["scored_cases"] == 64
+    assert after["scored_cases"] == 65
 
 
 def test_repeated_operations_are_an_explicit_case_scoped_opt_in(case):
@@ -527,6 +527,7 @@ def test_additional_repeated_truths_include_minimal_alternatives():
     assert cases["data_databases-070"]["output"]["cardinality"] == "more"
     assert cases["data_databases-028"]["allow_repeated_operations"] is True
     assert cases["vector_analysis-020"]["accepted_sequences"] == [["run_sql"]]
+    assert ["select_features", "spatial_join"] not in cases["data_databases-065"]["accepted_sequences"]
     assert cases["processing-036"]["output"]["kind"] == "table"
 
 
