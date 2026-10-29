@@ -97,12 +97,18 @@ def rasterize_layer(
                 f"nodata {nodata} is not exactly representable by the output dtype "
                 f"{profile['dtype']}"
             )
-    shapes = [
-        (geometry.__geo_interface__, value) if values is not None else geometry.__geo_interface__
+    valid = [
+        (geometry, value)
         for geometry, value in zip(
             layer.geometry, values or [None] * len(layer), strict=True
         )
+        if geometry is not None and not geometry.is_empty
     ]
+    shapes = [
+        (geometry.__geo_interface__, value) if values is not None else geometry.__geo_interface__
+        for geometry, value in valid
+    ]
+    geometry_shapes = [geometry.__geo_interface__ for geometry, _ in valid]
     pre = verify.verify_loaded_inputs("rasterize_layer", input_path=layer)
     record = ProvenanceRecord(
         operation="rasterize_layer",
@@ -141,7 +147,20 @@ def rasterize_layer(
 
     def checks():
         with rasterio.open(output_path) as output:
+            mask = features.rasterize(
+                geometry_shapes, out_shape=(height, width), transform=transform,
+                fill=0, all_touched=all_touched, dtype="uint8", skip_invalid=False,
+            )
+            cells = int(np.count_nonzero(mask))
             return [
+                verify.Check(
+                    "x-mapsmith:rasterized_cells_present",
+                    cells > 0,
+                    f"{cells} cells contain an input geometry",
+                    critical=False,
+                    argument="input_path",
+                    hint="check that the input geometries intersect the reference raster extent",
+                ),
                 verify.Check(
                     "x-mapsmith:shape_matches_reference",
                     (output.height, output.width) == (height, width),

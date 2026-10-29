@@ -187,3 +187,45 @@ def test_round_trip_rasterize_then_polygonize_in_a_validated_plan(tmp_path):
     assert frame["value"].tolist() == [3, 7]
     assert frame.area.tolist() == pytest.approx([200, 200])
     assert result["plan_manifest"]
+
+
+def test_rasterize_warns_when_the_layer_misses_the_reference_grid(tmp_path):
+    grid = reference(tmp_path / "reference.tif")
+    layer = tmp_path / "disjoint.gpkg"
+    gpd.GeoDataFrame(
+        geometry=[box(1000, 1000, 1010, 1010)], crs=CRS,
+    ).to_file(layer)
+    output = tmp_path / "empty.tif"
+
+    result = conversion.rasterize_layer(str(layer), grid, str(output))
+
+    with rasterio.open(output) as dataset:
+        assert dataset.read(1).tolist() == [[0, 0], [0, 0]]
+    warning = next(
+        item for item in result["warnings"]
+        if item["check"] == "x-mapsmith:rasterized_cells_present"
+    )
+    assert warning["detail"] == "0 cells contain an input geometry"
+    record = json.loads((tmp_path / "empty.tif.provenance.json").read_text(encoding="utf-8"))
+    check = next(
+        item for item in record["verification"]
+        if item["name"] == "x-mapsmith:rasterized_cells_present"
+    )
+    assert check["passed"] is False and check["critical"] is False
+
+
+def test_rasterize_warns_when_every_input_geometry_is_empty(tmp_path):
+    from shapely.geometry import Polygon
+
+    grid = reference(tmp_path / "reference.tif")
+    layer = tmp_path / "empty-geometries.gpkg"
+    gpd.GeoDataFrame(geometry=[Polygon()], crs=CRS).to_file(layer)
+
+    result = conversion.rasterize_layer(
+        str(layer), grid, str(tmp_path / "empty-geometries.tif")
+    )
+
+    assert any(
+        item["check"] == "x-mapsmith:rasterized_cells_present"
+        for item in result["warnings"]
+    )
