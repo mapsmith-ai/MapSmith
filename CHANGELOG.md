@@ -6,6 +6,14 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+### Fixed
+
+- Declare the workspace's SELECT-only behavior in the `run_sql` catalog summary.
+- Correct the multi-step method-choice benchmark: expose output cardinality and
+  geometry constraints, permit independent repeated-operation branches, separate
+  unsupported requests from method-choice scoring, and accept minimal defensible
+  sequences. Unsupported outcomes now have exhaustive, explicitly disclosed classes.
+
 ## [0.11.0] - 2026-10-29
 
 Records continue to declare `spec_version` `1.0.0-draft.10`; no manifest key is

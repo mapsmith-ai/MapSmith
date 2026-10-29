@@ -225,7 +225,9 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 
 This page describes **0.11.0**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **New in 0.11.0**
+have to find out by calling a tool that is not there. On `main`, the method-choice benchmark has
+corrected multi-step contracts and the `run_sql` catalog declares the workspace's SELECT-only
+behavior ([Unreleased](CHANGELOG.md#unreleased)). **New in 0.11.0**
 ([release notes](CHANGELOG.md#0110---2026-10-29)): the validated project brief, bounded agent
 repair, vector/raster conversion and QGIS `native:buffer`, taking
 the catalogue to 80 operations behind 29 tools. **If you run 0.10.0 or earlier under
