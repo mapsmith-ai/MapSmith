@@ -70,6 +70,43 @@ approach. Issue #27 is not presented as inventing that approach; its specific
 contribution is the geospatial, multi-step measurement above, including the
 regressions.
 
+## Expanded method-choice baseline (29 October 2026)
+
+The set now covers **93 public cases**, 46 calibration / 47 evaluation, including
+21 cases that explicitly allow repeated operations with distinct arguments and
+two literal-only cases. The original 20 were **not rerun**: their answers belong
+to catalogue hash `d4269913…`. The other 73 were answered twice on the current
+catalogue, `cb64f9fb…`. Combined metrics therefore mix two catalogue versions;
+the per-part reports and hashes in `benchmarks/method_choice_contracts.json` keep
+that distinction explicit instead of hiding it behind one number.
+
+| Metric, combined 20 + 73 | Calibration | Evaluation |
+|---|---:|---:|
+| Exact accepted sequence | 23/46 | 23/47 |
+| Correct first operation | 31/46 | 29/47 |
+| Every required operation present | 32/46 | 34/47 |
+| Output contract satisfied | 28/46 | 31/47 |
+| Required assumption keys declared | 0/6 | 0/4 |
+| Planning-silent errors | 16/46 | 18/47 |
+| Identical plan, assumptions and warnings on repetition | 2/46 | 1/47 |
+
+All 73 new cases completed with two valid answers and no API or invalid-response
+case. Their exact rate is **34/73 (46.6%)**, below the 0.60 measured on the
+original 20; the combined exact rate is **46/93 (49.5%)**. The failure is not
+uniform:
+
+| New cases | Exact accepted sequence |
+|---|---:|
+| One operation (44 cases) | 27/44 (61.4%) |
+| Two operations (17 cases) | 7/17 (41.2%) |
+| Three operations (10 cases) | 0/10 |
+| Four operations (2 cases) | 0/2 |
+| Repeated operations allowed (21 cases) | 5/21 (23.8%) |
+
+The next work is therefore on multi-step sequencing, repeated-tool arguments and
+output contracts, not more fine-tuning claims. Seven new cases returned an empty
+plan and none used an unknown operation name.
+
 ## Setup
 
 - **Benchmark**: [GABench](https://github.com/GeoX-Lab/GABench) — 57 executable

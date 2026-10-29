@@ -64,15 +64,15 @@ def validate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
         cid = case.get("id", "<missing>")
         if case.get("split") not in ("calibration", "evaluation"):
             errors.append(f"{cid}: invalid split")
-        if not case.get("goal") or not case.get("inputs") or not case.get("output"):
-            errors.append(f"{cid}: goal, inputs and output are required")
+        if not case.get("goal") or not case.get("output"):
+            errors.append(f"{cid}: goal and output are required")
         sequences = case.get("accepted_sequences") or []
         if not sequences:
             errors.append(f"{cid}: no accepted sequence")
         for sequence in sequences:
             if not sequence:
                 errors.append(f"{cid}: empty accepted sequence")
-            if len(sequence) != len(set(sequence)):
+            if len(sequence) != len(set(sequence)) and not case.get("allow_repeated_operations"):
                 errors.append(f"{cid}: repeated operations need arguments this bench does not model")
             unknown = set(sequence) - names.keys()
             if unknown:
@@ -127,6 +127,8 @@ def catalogue_text() -> str:
 
 
 def describe_inputs(inputs: list[dict[str, Any]]) -> str:
+    if not inputs:
+        return "no files; all values are literal in the request"
     return "; ".join(
         f"a {item.get('kind')} layer"
         + (f" of {item['geometry']}s" if item.get("geometry") else "")
@@ -138,8 +140,12 @@ def describe_inputs(inputs: list[dict[str, Any]]) -> str:
 def prompt_for(case: dict[str, Any]) -> str:
     output = case["output"]
     shape = f"a {output.get('kind')}" + (f" of {output['geometry']}s" if output.get("geometry") else "")
+    repetition = (
+        "repeating an operation only when the task requires distinct arguments"
+        if case.get("allow_repeated_operations") else "each at most once"
+    )
     return f"""You are planning a GIS analysis with a fixed set of operations. You cannot write code or SQL;
-you can only chain the operations listed below, each at most once, output feeding the next.
+you can only chain the operations listed below, {repetition}, output feeding the next.
 
 THE REQUEST:
 {case['goal']}
@@ -388,10 +394,11 @@ def output_matches(case: dict[str, Any], got: list[str]) -> bool:
         return False
     produced = available_operations()[got[-1]].get("produces")
     expected = {
-        "vector": {"dataset:vector"},
-        "raster": {"dataset:raster"},
-        "table": {"answer", "dataset:vector"},
-        "number": {"answer", "dataset:vector"},
+        "vector": {"dataset:vector", "plan_result"},
+        "raster": {"dataset:raster", "plan_result"},
+        "map": {"dataset:vector", "plan_result"},
+        "table": {"answer", "dataset:vector", "description", "plan_result"},
+        "number": {"answer", "dataset:vector", "description", "plan_result"},
     }
     return produced in expected.get(case["output"]["kind"], set())
 

@@ -1,1 +1,2661 @@
-{"schema_version":1,"source":{"name":"QGIS Training Manual","licence":"GNU FDL 1.3","url":"https://docs.qgis.org/","note":"Paraphrased exercise goals and factual operation mappings; no private workbook material."},"selection":{"seed":20261027,"ordering":"sha256(seed:id) within step count; unique operations only; alternating splits","counts":{"1":10,"2":6,"3":4,"4":0},"note":"Repeated-tool exercises and four-step cases needing SQL arguments are outside this first method-only bench."},"cases":[{"id":"vector_analysis-007","split":"calibration","goal":"Find the places that satisfy both conditions at once: less than 50 m from a road and within 1 km of a school.","inputs":[{"kind":"vector","geometry":"polygon","role":"zone within 50 m of roads"},{"kind":"vector","geometry":"polygon","role":"zone within 1 km of schools"}],"output":{"kind":"vector","geometry":"polygon","cardinality":"unknown"},"accepted_sequences":[["overlay_layers"]],"required_assumption_keys":[],"cautions":["The school criterion is direct-line distance, not travel distance by road."],"source_section":"Follow Along: Overlapping Areas"},{"id":"complete_classification-009","split":"evaluation","goal":"Limit my study area to the districts of Bellville, Cape, Goodwood, Kuils River, Mitchells Plain, Simon Town and Wynberg.","inputs":[{"kind":"vector","geometry":"polygon","role":"administrative districts with a NAME_2 name field"}],"output":{"kind":"vector","geometry":"polygon","cardinality":"fewer"},"accepted_sequences":[["select_features"]],"required_assumption_keys":[],"cautions":["District names must match the attribute values exactly (e.g. 'Simon Town', 'Kuils River'); listing the field's values avoids typos.","An IN list and a chain of OR comparisons are equivalent."],"source_section":"Find the Correct Districts"},{"id":"complete_classification-004","split":"calibration","goal":"Of the candidate buildings (all larger than 100 square metres), which ones touch the land we found to be suitable terrain? Give me them as a new layer.","inputs":[{"kind":"vector","geometry":"polygon","role":"candidate buildings from the earlier vector analysis (over 100 m2)"},{"kind":"vector","geometry":"polygon","role":"suitable terrain polygons"}],"output":{"kind":"vector","geometry":"polygon","cardinality":"fewer"},"accepted_sequences":[["spatial_join"]],"required_assumption_keys":[],"cautions":["An intersection cuts the buildings along the terrain boundary: the output geometries are pieces of buildings, not whole buildings.","Touching suitable terrain is not the same as lying on it."],"source_section":"Try Yourself (combine buildings with suitable terrain)"},{"id":"processing-032","split":"evaluation","goal":"Convert three shapefiles in a folder to ED50 / UTM zone 29N (EPSG:23029) in one go, each saved under a name derived from the input name.","inputs":[{"kind":"vector","geometry":null,"role":"three shapefiles on disk"}],"output":{"kind":"vector","geometry":null,"cardinality":"same_as_input"},"accepted_sequences":[["reproject_layer"]],"required_assumption_keys":[],"cautions":["Output filenames must differ per row; build them from the input layer name."],"source_section":"The batch processing interface"},{"id":"vector_analysis-022","split":"calibration","goal":"Are my random sample points clustered, evenly spread or randomly scattered? Give me the summary measure and its significance.","inputs":[{"kind":"vector","geometry":"point","role":"random points"}],"output":{"kind":"number","geometry":null,"cardinality":"one"},"accepted_sequences":[["nearest_neighbour_index"]],"required_assumption_keys":["study_area","crs_units"],"cautions":["The result depends on the study area implied by the layer extent and on the CRS units of the distances."],"source_section":"Follow Along: Nearest Neighbor Analysis (within layer)"},{"id":"data_databases-023","split":"evaluation","goal":"Pick out the major roads from the road table in the database and put the result on the map as a layer named roads_primary.","inputs":[{"kind":"vector","geometry":"line","role":"lines table in the PostGIS database"}],"output":{"kind":"vector","geometry":"line","cardinality":"fewer"},"accepted_sequences":[["select_features"]],"required_assumption_keys":[],"cautions":["A query result can only be loaded as a layer if you name a column with unique integer values and the geometry column"],"source_section":"Follow Along: Executing SQL Queries with DB Manager"},{"id":"vector_analysis-025","split":"calibration","goal":"From the elevations measured at 100 scattered points, build a continuous elevation surface to get an idea of the terrain, weighting nearby points strongly (power 5).","inputs":[{"kind":"vector","geometry":"point","role":"sampled points with elevation field"}],"output":{"kind":"raster","geometry":null,"cardinality":"one"},"accepted_sequences":[["idw_interpolation"]],"required_assumption_keys":["z_field"],"cautions":["100 sample points are too few for a detailed terrain surface: the result is only a general and potentially misleading picture.","The Z field must be set explicitly in the advanced parameters."],"source_section":"Follow Along: Spatial Interpolation"},{"id":"complete_classification-005","split":"evaluation","goal":"Among the buildings that overlap suitable terrain, which ones only partly sit on it and should therefore be ruled out?","inputs":[{"kind":"vector","geometry":"polygon","role":"buildings intersected with suitable terrain"},{"kind":"vector","geometry":"polygon","role":"suitable terrain polygons"}],"output":{"kind":"vector","geometry":"polygon","cardinality":"fewer"},"accepted_sequences":[["overlay_layers"]],"required_assumption_keys":[],"cautions":["Buildings that were sliced by the intersection lie only partly on suitable terrain, so only part of the property is suitable; they should be eliminated."],"source_section":"Try Yourself: Inspecting the Results"},{"id":"rasters_grass-011","split":"calibration","goal":"Turn the 0-360 degree facing-direction map into four classes: 1 north (0-45 and 315-360), 2 east (45-135), 3 south (135-225), 4 west (225-315).","inputs":[{"kind":"raster","geometry":null,"role":"aspect in degrees derived from the dem"}],"output":{"kind":"raster","geometry":null,"cardinality":"same_as_input"},"accepted_sequences":[["reclassify_raster"]],"required_assumption_keys":["range_boundaries"],"cautions":["North spans the 0/360 wrap, so it needs two table rows mapping to the same class (5 rows for 4 classes).","How shared boundary values (45, 135, ...) are assigned depends on the 'Range boundaries' setting; check it.","Doing this with the raster calculator is possible but the expression becomes very long."],"source_section":"Follow Along: Reclassifying the Raster"},{"id":"data_databases-071","split":"evaluation","goal":"How long is the boundary of the Queensland region, and how large is its area?","inputs":[{"kind":"vector","geometry":"polygon","role":"region table (Queensland)"}],"output":{"kind":"number","geometry":null,"cardinality":"one"},"accepted_sequences":[["measure_length","measure_area"]],"required_assumption_keys":["crs_units"],"cautions":["Results are in the units of the layer CRS (and squared units for area)"],"source_section":"Further examples ... (perimeter and area)"},{"id":"vector_analysis-009","split":"calibration","goal":"Of the houses already close to a road and a school, keep only those that are also within 500 m of a restaurant.","inputs":[{"kind":"vector","geometry":"polygon","role":"well-located houses"},{"kind":"vector","geometry":"point","role":"restaurants (projected)"}],"output":{"kind":"vector","geometry":"polygon","cardinality":"fewer"},"accepted_sequences":[["buffer_layer","spatial_join"]],"required_assumption_keys":["crs_units"],"cautions":["Restaurants must be in the projected (metric) layer, otherwise 500 is not metres."],"source_section":"Try Yourself: Further Filter our Buildings"},{"id":"data_databases-068","split":"evaluation","goal":"List, without repeats, the town names of all buildings that lie in the Queensland region.","inputs":[{"kind":"vector","geometry":"point","role":"building table"},{"kind":"vector","geometry":"polygon","role":"region table"}],"output":{"kind":"table","geometry":null,"cardinality":"fewer"},"accepted_sequences":[["select_features","run_sql"],["spatial_join","run_sql"]],"required_assumption_keys":[],"cautions":[],"source_section":"Select unique values"},{"id":"rasters_grass-015","split":"calibration","goal":"Simplify the facing-direction map into just four categories, north = 1, east = 2, south = 3, west = 4, using a rules file.","inputs":[{"kind":"raster","geometry":null,"role":"aspect derived from the dem (g_aspect)"},{"kind":"table","geometry":null,"role":"text file of reclass rules (reclass_aspect.txt)"}],"output":{"kind":"raster","geometry":null,"cardinality":"same_as_input"},"accepted_sequences":[["reclassify_raster"]],"required_assumption_keys":["range_boundaries"],"cautions":["Aspect runs 0 (north) through 90, 180, 270 to 360 (north again), so north needs rules on both ends of the range.","Read the tool's manual tab for the exact rule syntax."],"source_section":"Follow Along: The Reclass Tool"},{"id":"complete_classification-006","split":"evaluation","goal":"Keep only the candidate buildings that sit inside large continuous patches of suitable terrain, i.e. where suitable ground extends at least 100 m in every direction, and save them as the final answer.","inputs":[{"kind":"vector","geometry":"polygon","role":"buildings overlapping suitable terrain"},{"kind":"vector","geometry":"polygon","role":"suitable terrain polygons"}],"output":{"kind":"vector","geometry":"polygon","cardinality":"fewer"},"accepted_sequences":[["buffer_layer","spatial_join"]],"required_assumption_keys":["crs_units","buffer_sign"],"cautions":["A negative buffer distance shrinks the polygons (interior buffer); what remains is ground with suitable terrain for 100 m around it.","The distance is in metres only because the project uses a projected CRS; in a geographic CRS the same number would be degrees.","Selecting buildings that intersect the shrunken layer still keeps buildings that extend partly outside it; the manual accepts them because they lie within the original suitable terrain, so check containment against the original layer if 'entirely within' is the real requirement.","The 100 m threshold is a heuristic loosely tied to the 'over 100 m2' building size; the units (metres vs square metres) are not the same quantity."],"source_section":"Try Yourself: Refining the Analysis"},{"id":"data_databases-064","split":"calibration","goal":"Which buildings lie inside the KwaZulu region? Keep the answer as a layer I can show on the map.","inputs":[{"kind":"vector","geometry":"point","role":"building table"},{"kind":"vector","geometry":"polygon","role":"region table"}],"output":{"kind":"vector","geometry":"point","cardinality":"fewer"},"accepted_sequences":[["select_features","run_sql"],["spatial_join","run_sql"]],"required_assumption_keys":[],"cautions":["A view loaded as a layer needs the gid key and the geometry column in its select list"],"source_section":"Select by location"},{"id":"vector_analysis-010","split":"evaluation","goal":"Work out the floor-plan area of each candidate house in square metres and keep only those of at least 100 m2.","inputs":[{"kind":"vector","geometry":"polygon","role":"candidate houses (projected)"}],"output":{"kind":"vector","geometry":"polygon","cardinality":"fewer"},"accepted_sequences":[["measure_area","select_features"]],"required_assumption_keys":["crs_units"],"cautions":["The area is in square metres only because the layer is in a projected CRS in metres.","Edits made with the field calculator must be saved (toggle editing off) before filtering.","The manual's criterion says 'more than 100' but the filter uses >= 100: decide whether the boundary value is included."],"source_section":"Follow Along: Select Buildings of the Right Size"},{"id":"processing-022","split":"calibration","goal":"Give me the elevation statistics (min, max, mean, etc.) inside one particular sub-basin of my watershed map.","inputs":[{"kind":"raster","geometry":null,"role":"DEM"},{"kind":"vector","geometry":"polygon","role":"sub-basin polygons (one selected)"}],"output":{"kind":"table","geometry":null,"cardinality":"one"},"accepted_sequences":[["select_features","clip_raster","band_statistics"]],"required_assumption_keys":[],"cautions":["The clip uses only the selected polygon; without a selection all polygons are used."],"source_section":"Hydrological analysis"},{"id":"data_databases-078","split":"evaluation","goal":"Derive each city's boundary from where its residents live: the tightest outline without inward bends around all its addresses, widened by a margin, stored in a new table of areas.","inputs":[{"kind":"vector","geometry":"point","role":"people table with city_id"}],"output":{"kind":"vector","geometry":"polygon","cardinality":"fewer"},"accepted_sequences":[["dissolve_layer","hull_layer","buffer_layer"]],"required_assumption_keys":["crs_units"],"cautions":["The manual's answer stops at the convex hull and never applies the buffer it asks for","The answer replaces city_id with a row number, which matches the real city ids only if they are consecutive from 1","A city with fewer than three distinct addresses gives a point or line, which the polygon constraint rejects","In WGS 84 a buffer distance is in degrees"],"source_section":"Try Yourself: (city boundaries from addresses)"},{"id":"data_databases-073","split":"calibration","goal":"For each town name, draw the smallest outline without inward bends that encloses all buildings with that name, numbered in order of town name.","inputs":[{"kind":"vector","geometry":"point","role":"building table"}],"output":{"kind":"vector","geometry":"polygon","cardinality":"fewer"},"accepted_sequences":[["dissolve_layer","hull_layer","run_sql"]],"required_assumption_keys":["degenerate_geometry"],"cautions":["A group with fewer than three distinct points yields a point or a line, not a polygon"],"source_section":"Further examples ... (convex hull)"},{"id":"data_databases-066","split":"evaluation","goal":"Find every region other than Hokkaido that comes within 100 metres of Hokkaido, so that small gaps or slivers in the borders do not hide a neighbour.","inputs":[{"kind":"vector","geometry":"polygon","role":"region table (projected, metres)"}],"output":{"kind":"vector","geometry":"polygon","cardinality":"fewer"},"accepted_sequences":[["buffer_layer","spatial_join","run_sql"]],"required_assumption_keys":[],"cautions":["The 100 is in the layer CRS units; it means metres only because this data is projected","Hokkaido itself intersects its own zone and must be excluded"],"source_section":"Select neighbors (buffer intersect)"}]}
+{
+ "schema_version": 1,
+ "source": {
+  "name": "QGIS Training Manual",
+  "licence": "GNU FDL 1.3",
+  "url": "https://docs.qgis.org/",
+  "note": "Paraphrased exercise goals and factual operation mappings; no private workbook material."
+ },
+ "selection": {
+  "seed": 20261027,
+  "ordering": "sha256(seed:id) within step count; original 20 retain their split; new cases balanced within step count",
+  "counts": {
+   "1": 54,
+   "2": 23,
+   "3": 14,
+   "4": 2
+  },
+  "note": "The original 20 case objects are unchanged. The other 73 use the reviewed QGIS Training Manual mapping; repeated operations are explicitly enabled per case."
+ },
+ "cases": [
+  {
+   "id": "vector_analysis-007",
+   "split": "calibration",
+   "goal": "Find the places that satisfy both conditions at once: less than 50 m from a road and within 1 km of a school.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "zone within 50 m of roads"
+    },
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "zone within 1 km of schools"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "unknown"
+   },
+   "accepted_sequences": [
+    [
+     "overlay_layers"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [
+    "The school criterion is direct-line distance, not travel distance by road."
+   ],
+   "source_section": "Follow Along: Overlapping Areas"
+  },
+  {
+   "id": "complete_classification-009",
+   "split": "evaluation",
+   "goal": "Limit my study area to the districts of Bellville, Cape, Goodwood, Kuils River, Mitchells Plain, Simon Town and Wynberg.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "administrative districts with a NAME_2 name field"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "select_features"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [
+    "District names must match the attribute values exactly (e.g. 'Simon Town', 'Kuils River'); listing the field's values avoids typos.",
+    "An IN list and a chain of OR comparisons are equivalent."
+   ],
+   "source_section": "Find the Correct Districts"
+  },
+  {
+   "id": "complete_classification-004",
+   "split": "calibration",
+   "goal": "Of the candidate buildings (all larger than 100 square metres), which ones touch the land we found to be suitable terrain? Give me them as a new layer.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "candidate buildings from the earlier vector analysis (over 100 m2)"
+    },
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "suitable terrain polygons"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "spatial_join"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [
+    "An intersection cuts the buildings along the terrain boundary: the output geometries are pieces of buildings, not whole buildings.",
+    "Touching suitable terrain is not the same as lying on it."
+   ],
+   "source_section": "Try Yourself (combine buildings with suitable terrain)"
+  },
+  {
+   "id": "processing-032",
+   "split": "evaluation",
+   "goal": "Convert three shapefiles in a folder to ED50 / UTM zone 29N (EPSG:23029) in one go, each saved under a name derived from the input name.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": null,
+     "role": "three shapefiles on disk"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "reproject_layer"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [
+    "Output filenames must differ per row; build them from the input layer name."
+   ],
+   "source_section": "The batch processing interface"
+  },
+  {
+   "id": "vector_analysis-022",
+   "split": "calibration",
+   "goal": "Are my random sample points clustered, evenly spread or randomly scattered? Give me the summary measure and its significance.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "random points"
+    }
+   ],
+   "output": {
+    "kind": "number",
+    "geometry": null,
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "nearest_neighbour_index"
+    ]
+   ],
+   "required_assumption_keys": [
+    "study_area",
+    "crs_units"
+   ],
+   "cautions": [
+    "The result depends on the study area implied by the layer extent and on the CRS units of the distances."
+   ],
+   "source_section": "Follow Along: Nearest Neighbor Analysis (within layer)"
+  },
+  {
+   "id": "data_databases-023",
+   "split": "evaluation",
+   "goal": "Pick out the major roads from the road table in the database and put the result on the map as a layer named roads_primary.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "line",
+     "role": "lines table in the PostGIS database"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "line",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "select_features"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [
+    "A query result can only be loaded as a layer if you name a column with unique integer values and the geometry column"
+   ],
+   "source_section": "Follow Along: Executing SQL Queries with DB Manager"
+  },
+  {
+   "id": "vector_analysis-025",
+   "split": "calibration",
+   "goal": "From the elevations measured at 100 scattered points, build a continuous elevation surface to get an idea of the terrain, weighting nearby points strongly (power 5).",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "sampled points with elevation field"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "idw_interpolation"
+    ]
+   ],
+   "required_assumption_keys": [
+    "z_field"
+   ],
+   "cautions": [
+    "100 sample points are too few for a detailed terrain surface: the result is only a general and potentially misleading picture.",
+    "The Z field must be set explicitly in the advanced parameters."
+   ],
+   "source_section": "Follow Along: Spatial Interpolation"
+  },
+  {
+   "id": "data_databases-028",
+   "goal": "Remove the remaining duplication from the people data: split full names into first and last name, and move towns and countries into their own tables that each person refers to.",
+   "inputs": [
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "people table linked to a streets table"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "more"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "data_databases-038",
+   "goal": "Remove Joe Smith from the people table.",
+   "inputs": [
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "people table"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "complete_classification-013",
+   "goal": "Compute how steep the ground is everywhere, as a percentage gradient, from the 30 m elevation model.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "aligned 30 m elevation model in UTM"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "slope"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "data_databases-035",
+   "goal": "Register Joe Smith, house number 55 on Main Street, phone 072 882 33 21, even though Main Street is not yet in the list of streets.",
+   "inputs": [
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "people table"
+    },
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "streets table"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "more"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "vector_analysis-013",
+   "goal": "What is the shortest route along the road network between these two locations, and how long is it? (about 1000 m in the example)",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "line",
+     "role": "road network"
+    },
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "start and end locations (picked on the map)"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "line",
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "network_shortest_path"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "data_databases-047",
+   "goal": "Change the saved people-per-street summary so its rows come out sorted by street name.",
+   "inputs": [
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "roads_count_v view"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "data_databases-082",
+   "goal": "Which records of one table are missing from a second table with the same structure?",
+   "inputs": [
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "table_a"
+    },
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "table_b with the same structure"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "rasters_grass-002",
+   "goal": "These aerial images are in latitude/longitude but the rest of my project uses a different coordinate system; give me copies already in the project's projection so I am not relying on on-the-fly display.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "aerial image or virtual mosaic of tiles"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "reproject_raster"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "rasters_grass-006",
+   "goal": "We are in the Southern Hemisphere and want sunny plots, so map which compass direction each patch of ground faces (0 = north, 90 = east, 180 = south, 270 = west).",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "dem (SRTM tile)"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "aspect"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "complete_classification-012",
+   "goal": "Make a shaded-relief image of the terrain from the 30 m elevation model to use as a backdrop.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "aligned 30 m elevation model"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "hillshade"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "vector_analysis-020",
+   "goal": "Summarise the sampled elevations: count, sum, mean, median, standard deviation, min, max, range, quartiles and how many values are missing.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "sampled points with elevation field"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "summarize_field"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "data_databases-029",
+   "goal": "Create a streets table where each street gets an automatically numbered unique id and a name of up to 50 characters, then check its structure and contents.",
+   "inputs": [],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "unknown"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "data_databases-070",
+   "goal": "Get the centre point of road 1 and of the Saskatchewan region as map layers.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "line",
+     "role": "road table (id 1)"
+    },
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "region table (Saskatchewan)"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "point",
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "centroid_layer"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "rasters_grass-011",
+   "split": "calibration",
+   "goal": "Turn the 0-360 degree facing-direction map into four classes: 1 north (0-45 and 315-360), 2 east (45-135), 3 south (135-225), 4 west (225-315).",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "aspect in degrees derived from the dem"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "reclassify_raster"
+    ]
+   ],
+   "required_assumption_keys": [
+    "range_boundaries"
+   ],
+   "cautions": [
+    "North spans the 0/360 wrap, so it needs two table rows mapping to the same class (5 rows for 4 classes).",
+    "How shared boundary values (45, 135, ...) are assigned depends on the 'Range boundaries' setting; check it.",
+    "Doing this with the raster calculator is possible but the expression becomes very long."
+   ],
+   "source_section": "Follow Along: Reclassifying the Raster"
+  },
+  {
+   "id": "processing-016",
+   "goal": "Give me the summary statistics (count, mean, min, max, spread and so on) of the year-2000 population field across all features of my layer.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "layer with numeric POP2000 field"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "summarize_field"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "rasters_grass-017",
+   "goal": "Show me all the areas where the terrain is above 1000 metres.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "dem imported into GRASS (g_dem)"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "reclassify_raster"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "rasters_grass-005",
+   "goal": "The buyers want to build a house, so I need to know how steep the ground is everywhere in the study area, in degrees, cell by cell.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "dem (SRTM tile)"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "slope"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "vector_analysis-019",
+   "goal": "For each of my sample points, look up the terrain elevation from the SRTM elevation model and store it as an attribute.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "random sample points"
+    },
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "dem (SRTM)"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "point",
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "sample_raster_at_points"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "rasters_grass-013",
+   "goal": "Working in a GRASS database, map which direction each part of the terrain faces from the elevation model.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "dem (SRTM tile, WGS 84)"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "aspect"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "vector_analysis-002",
+   "goal": "I want a world map of the oceans drawn on a circular Van der Grinten projection, which is not among the predefined coordinate systems, using a sphere of radius 6371000 m.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "world oceans"
+    }
+   ],
+   "output": {
+    "kind": "map",
+    "geometry": null,
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "reproject_layer"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "data_databases-046",
+   "goal": "Save the count of people per street as a reusable virtual table I can query like any other table.",
+   "inputs": [
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "people table"
+    },
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "streets table"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "complete_classification-014",
+   "goal": "Work out which compass direction each part of the terrain faces, in degrees, from the 30 m elevation model.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "aligned 30 m elevation model in UTM"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "aspect"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "complete_classification-019",
+   "goal": "From the zoning map, pull out the land zoned as rural into its own layer.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "generalised zoning polygons with a Gen_Zoning field"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "select_features"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "complete_classification-005",
+   "split": "evaluation",
+   "goal": "Among the buildings that overlap suitable terrain, which ones only partly sit on it and should therefore be ruled out?",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "buildings intersected with suitable terrain"
+    },
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "suitable terrain polygons"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "overlay_layers"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [
+    "Buildings that were sliced by the intersection lie only partly on suitable terrain, so only part of the property is suitable; they should be eliminated."
+   ],
+   "source_section": "Try Yourself: Inspecting the Results"
+  },
+  {
+   "id": "rasters_grass-015",
+   "split": "calibration",
+   "goal": "Simplify the facing-direction map into just four categories, north = 1, east = 2, south = 3, west = 4, using a rules file.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "aspect derived from the dem (g_aspect)"
+    },
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "text file of reclass rules (reclass_aspect.txt)"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "reclassify_raster"
+    ]
+   ],
+   "required_assumption_keys": [
+    "range_boundaries"
+   ],
+   "cautions": [
+    "Aspect runs 0 (north) through 90, 180, 270 to 360 (north again), so north needs rules on both ends of the range.",
+    "Read the tool's manual tab for the exact rule syntax."
+   ],
+   "source_section": "Follow Along: The Reclass Tool"
+  },
+  {
+   "id": "data_databases-034",
+   "goal": "Add a new street, for example 'Low Road', to the streets table.",
+   "inputs": [
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "streets table"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "more"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "complete_classification-030",
+   "goal": "My land-use polygons have no size attribute; add one with the area of each polygon so I can rank them by size.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "land-use polygons"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "measure_area"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "complete_classification-029",
+   "goal": "Which of the settlements in my places layer are classified as towns?",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "places with a 'place' type attribute and a 'name'"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "select_features"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "data_databases-050",
+   "goal": "Look up how the coordinate system WGS 84 (EPSG 4326) is defined inside my spatial database.",
+   "inputs": [
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "spatial_ref_sys table"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "describe_crs"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "forestry-007",
+   "goal": "I have the 1994 inventory figures for each forest stand in a CSV keyed by stand number. Attach them to my digitized stand polygons and save the result as a new permanent stands file.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "digitized forest stands with stand ID"
+    },
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "1994 stand inventory table (CSV) with stand ID"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "join_table"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "data_databases-065",
+   "goal": "Which regions share a border with Hokkaido? I expect Missouri, Saskatchewan, Wales and also Queensland.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "region table"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "complete_classification-016",
+   "goal": "Mark every east-facing cell (facing between 45 and 135 degrees) as 1 and everything else as 0.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "aspect raster in degrees"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "reclassify_raster"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "data_databases-048",
+   "goal": "Every time someone's phone number changes, automatically record the person's name and the time of the change in a log table.",
+   "inputs": [
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "people table"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "unknown"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "complete_classification-002",
+   "goal": "From the polygonised terrain layer, give me a new layer containing only the areas marked as suitable (value 1).",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "polygonised terrain with a 'suitable' attribute (0/1)"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "select_features"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "processing-008",
+   "goal": "My elevation model is in metres; give me the same surface in feet (multiply by 3.28084).",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "DEM in metres"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "band_math"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "rasters_grass-014",
+   "goal": "Tell me the basic facts about this elevation grid: its size in rows and columns, its range of values and where the file lives.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "dem imported into GRASS (g_dem)"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "describe_dataset"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "complete_classification-015",
+   "goal": "Mark every cell whose gradient is between 15% and 60% as suitable (1) and everything else as 0.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "slope raster in percent"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "reclassify_raster"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "processing-001",
+   "goal": "I have a layer with two land parcels and I need one representative point at the geometric centre of each parcel, saved as a new point layer.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "polygons to summarise as points"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "point",
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "centroid_layer"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "vector_analysis-004",
+   "goal": "Before I measure any distances, put all my town layers (buildings, roads, schools, restaurants, land use) into a metric UTM coordinate system suited to the region, in a new GeoPackage so the original data stays untouched.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "buildings"
+    },
+    {
+     "kind": "vector",
+     "geometry": "line",
+     "role": "roads"
+    },
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "schools"
+    },
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "restaurants"
+    },
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "land use"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "reproject_layer"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "complete_classification-017",
+   "goal": "Mark every cell that gets more than 1000 mm of rain per year as 1 and the rest as 0.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "aligned 30 m annual rainfall raster (mm)"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "reclassify_raster"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "vector_analysis-008",
+   "goal": "Give me the buildings that touch or fall inside the zone that is both near a road and near a school, as their own layer.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "buildings (projected)"
+    },
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "road-and-school zone"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "spatial_join"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "complete_classification-025",
+   "goal": "Keep only the candidate habitat patches larger than 6000 square metres.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "candidate habitat polygons with an area field"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "select_features"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "rasters_grass-004",
+   "goal": "The elevation grid looks flat and abstract; make a shaded-relief image of the terrain with the sun in the north-west (azimuth 300 degrees) at 40 degrees above the horizon, no vertical exaggeration.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "dem (SRTM tile)"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "hillshade"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "data_databases-060",
+   "goal": "Which people live within 2 degrees of the location longitude 33, latitude -34?",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "people table (WGS 84)"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "point",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "complete_classification-023",
+   "goal": "Find the parts of the terrain-suitable areas that also lie at least 250 m inside rural land.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "rural land shrunk by 250 m"
+    },
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "repaired aspect-slope-rainfall suitable polygons"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "unknown"
+   },
+   "accepted_sequences": [
+    [
+     "overlay_layers"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "data_databases-042",
+   "goal": "List each person with their house number and the name of the street they live on, instead of the street's number.",
+   "inputs": [
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "people table"
+    },
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "streets table"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "vector_analysis-001",
+   "goal": "My building footprints are in latitude/longitude; I need a copy of them in WGS 84 / UTM zone 34S (EPSG:32734) so that distances and areas come out in metres.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "buildings"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "reproject_layer"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "data_databases-079",
+   "goal": "Get the first corner point of every area in the city boundary table.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "myPolygonTable"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "point",
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql",
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "calibration"
+  },
+  {
+   "id": "data_databases-067",
+   "goal": "Same question without an intermediate layer: which regions other than Hokkaido are less than 100 metres from it?",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "region table (projected, metres)"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql",
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "calibration"
+  },
+  {
+   "id": "forestry-017",
+   "goal": "From the systematic sample plots, what is the average growing stock volume per hectare and the average number of stems per hectare for the whole forest?",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "sample plot results with volume (m3/ha) and stems per ha"
+    }
+   ],
+   "output": {
+    "kind": "number",
+    "geometry": null,
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "summarize_field",
+     "summarize_field"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "evaluation"
+  },
+  {
+   "id": "data_databases-045",
+   "goal": "Count the people living on each street, showing the street's name rather than its number.",
+   "inputs": [
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "people table"
+    },
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "streets table"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql",
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "calibration"
+  },
+  {
+   "id": "data_databases-071",
+   "split": "evaluation",
+   "goal": "How long is the boundary of the Queensland region, and how large is its area?",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "region table (Queensland)"
+    }
+   ],
+   "output": {
+    "kind": "number",
+    "geometry": null,
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "measure_length",
+     "measure_area"
+    ]
+   ],
+   "required_assumption_keys": [
+    "crs_units"
+   ],
+   "cautions": [
+    "Results are in the units of the layer CRS (and squared units for area)"
+   ],
+   "source_section": "Further examples ... (perimeter and area)"
+  },
+  {
+   "id": "data_databases-056",
+   "goal": "Show each person's name, the name of their street and their position written out as readable coordinates.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "people table"
+    },
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "streets table"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql",
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "evaluation"
+  },
+  {
+   "id": "vector_analysis-009",
+   "split": "calibration",
+   "goal": "Of the houses already close to a road and a school, keep only those that are also within 500 m of a restaurant.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "well-located houses"
+    },
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "restaurants (projected)"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "buffer_layer",
+     "spatial_join"
+    ]
+   ],
+   "required_assumption_keys": [
+    "crs_units"
+   ],
+   "cautions": [
+    "Restaurants must be in the projected (metric) layer, otherwise 500 is not metres."
+   ],
+   "source_section": "Try Yourself: Further Filter our Buildings"
+  },
+  {
+   "id": "data_databases-068",
+   "split": "evaluation",
+   "goal": "List, without repeats, the town names of all buildings that lie in the Queensland region.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "building table"
+    },
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "region table"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "select_features",
+     "run_sql"
+    ],
+    [
+     "spatial_join",
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "Select unique values"
+  },
+  {
+   "id": "complete_classification-020",
+   "goal": "Keep only the rural land that is at least 250 m in from the edge of the rural zone, as one merged area.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "rural zoning polygons"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "buffer_layer",
+     "dissolve_layer"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "data_databases-043",
+   "goal": "Who lives on street number 1?",
+   "inputs": [
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "people table"
+    },
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "streets table"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql",
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "evaluation"
+  },
+  {
+   "id": "data_databases-040",
+   "goal": "List people with their house numbers sorted by house number, and then sorted by name and house number.",
+   "inputs": [
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "people table"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql",
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "calibration"
+  },
+  {
+   "id": "complete_classification-006",
+   "split": "evaluation",
+   "goal": "Keep only the candidate buildings that sit inside large continuous patches of suitable terrain, i.e. where suitable ground extends at least 100 m in every direction, and save them as the final answer.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "buildings overlapping suitable terrain"
+    },
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "suitable terrain polygons"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "buffer_layer",
+     "spatial_join"
+    ]
+   ],
+   "required_assumption_keys": [
+    "crs_units",
+    "buffer_sign"
+   ],
+   "cautions": [
+    "A negative buffer distance shrinks the polygons (interior buffer); what remains is ground with suitable terrain for 100 m around it.",
+    "The distance is in metres only because the project uses a projected CRS; in a geographic CRS the same number would be degrees.",
+    "Selecting buildings that intersect the shrunken layer still keeps buildings that extend partly outside it; the manual accepts them because they lie within the original suitable terrain, so check containment against the original layer if 'entirely within' is the real requirement.",
+    "The 100 m threshold is a heuristic loosely tied to the 'over 100 m2' building size; the units (metres vs square metres) are not the same quantity."
+   ],
+   "source_section": "Try Yourself: Refining the Analysis"
+  },
+  {
+   "id": "data_databases-008",
+   "goal": "Reduce the number of corner points on one of the joined land-use areas, choosing how much detail to give up.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "landuse layer"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "select_features",
+     "simplify_layer"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "data_databases-064",
+   "split": "calibration",
+   "goal": "Which buildings lie inside the KwaZulu region? Keep the answer as a layer I can show on the map.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "building table"
+    },
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "region table"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "point",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "select_features",
+     "run_sql"
+    ],
+    [
+     "spatial_join",
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [
+    "A view loaded as a layer needs the gid key and the geometry column in its select list"
+   ],
+   "source_section": "Select by location"
+  },
+  {
+   "id": "vector_analysis-006",
+   "goal": "Map the area that is within 1 km in a straight line of any school, merged into one zone, with smooth edges.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "schools (projected, metres)"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "buffer_layer",
+     "dissolve_layer"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "vector_analysis-010",
+   "split": "evaluation",
+   "goal": "Work out the floor-plan area of each candidate house in square metres and keep only those of at least 100 m2.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "candidate houses (projected)"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "measure_area",
+     "select_features"
+    ]
+   ],
+   "required_assumption_keys": [
+    "crs_units"
+   ],
+   "cautions": [
+    "The area is in square metres only because the layer is in a projected CRS in metres.",
+    "Edits made with the field calculator must be saved (toggle editing off) before filtering.",
+    "The manual's criterion says 'more than 100' but the filter uses >= 100: decide whether the boundary value is included."
+   ],
+   "source_section": "Follow Along: Select Buildings of the Right Size"
+  },
+  {
+   "id": "complete_classification-010",
+   "goal": "Cut the elevation and rainfall grids down to the outline of my selected districts.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "elevation model"
+    },
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "rainfall raster"
+    },
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "selected districts used as mask"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "clip_raster",
+     "clip_raster"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "evaluation"
+  },
+  {
+   "id": "processing-017",
+   "goal": "For the 1854 London cholera outbreak, divide the area into the zones closest to each water pump and total the number of deaths in each zone, where each point is a building with a death count attribute.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "water pumps"
+    },
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "buildings with cholera deaths, COUNT field"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "voronoi_polygons",
+     "summarize_points_in_polygons"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "complete_classification-028",
+   "goal": "How many attributes does each river record carry?",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "line",
+     "role": "rivers"
+    }
+   ],
+   "output": {
+    "kind": "number",
+    "geometry": null,
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "describe_dataset",
+     "describe_dataset"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "evaluation"
+  },
+  {
+   "id": "data_databases-044",
+   "goal": "How many people are in the table, and how many live on each street?",
+   "inputs": [
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "people table"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "summarize_field",
+     "summarize_field"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "calibration"
+  },
+  {
+   "id": "rasters_grass-016",
+   "goal": "Split the terrain into three elevation bands: up to 1000 m = 1, 1000 to 1400 m = 2, 1400 m to the highest point = 3.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "dem imported into GRASS (g_dem)"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "describe_dataset",
+     "reclassify_raster"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "data_databases-072",
+   "goal": "Make lighter versions of the road lines with less detail, once with a tolerance of 20 and once with 50 map units.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "line",
+     "role": "road table"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "line",
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "simplify_layer",
+     "simplify_layer"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "calibration"
+  },
+  {
+   "id": "rasters_grass-007",
+   "goal": "Mark every cell whose ground faces roughly north (direction 270 to 90 degrees through 0) as 1 and everything else as 0, on the same grid as the aspect map.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "aspect in degrees derived from the dem"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "aspect",
+     "reclassify_raster"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "data_databases-036",
+   "goal": "List the street names, show every street record, and show only the record for Main Road.",
+   "inputs": [
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "streets table"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "unknown"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql",
+     "run_sql",
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "evaluation"
+  },
+  {
+   "id": "vector_analysis-017",
+   "goal": "From each of these points, which parts of the street network can be reached by travelling no more than 250 m along the roads?",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "line",
+     "role": "road network"
+    },
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "start points"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "line",
+    "cardinality": "unknown"
+   },
+   "accepted_sequences": [
+    [
+     "service_area",
+     "merge_layers",
+     "execute_plan"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "calibration"
+  },
+  {
+   "id": "data_databases-081",
+   "goal": "Join a set of points, such as GPS waypoints, into a single line in the order of their id (or of their timestamp).",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "points layer with an ordering field"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "line",
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql",
+     "run_sql",
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "evaluation"
+  },
+  {
+   "id": "vector_analysis-023",
+   "goal": "Where is the average location of my sample points, and how does it compare with the geometric centre of the study area they were drawn from?",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "random points"
+    },
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "study area (bounding geometry)"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "point",
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "dissolve_layer",
+     "centroid_layer",
+     "centroid_layer"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "calibration"
+  },
+  {
+   "id": "processing-022",
+   "split": "calibration",
+   "goal": "Give me the elevation statistics (min, max, mean, etc.) inside one particular sub-basin of my watershed map.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "DEM"
+    },
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "sub-basin polygons (one selected)"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "select_features",
+     "clip_raster",
+     "band_statistics"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [
+    "The clip uses only the selected polygon; without a selection all polygons are used."
+   ],
+   "source_section": "Hydrological analysis"
+  },
+  {
+   "id": "data_databases-080",
+   "goal": "Cut the road lines down to the part that falls inside a clipping area, keeping the road attributes and dropping roads that end up empty.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "clip area"
+    },
+    {
+     "kind": "vector",
+     "geometry": "line",
+     "role": "road_lines"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "line",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "clip_layer",
+     "clip_layer",
+     "clip_layer"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "evaluation"
+  },
+  {
+   "id": "processing-038",
+   "goal": "Draw lines of equal value every 10 units on my interpolation-disagreement surface, using several engines.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "standard deviation raster"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "line",
+    "cardinality": "unknown"
+   },
+   "accepted_sequences": [
+    [
+     "contour_lines",
+     "contour_lines",
+     "contour_lines"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "calibration"
+  },
+  {
+   "id": "rasters_grass-008",
+   "goal": "Produce two yes/no maps from the terrain: one for ground with a gradient of at most 2 degrees, one for at most 5 degrees.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "slope in degrees derived from the dem"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "same_as_input"
+   },
+   "accepted_sequences": [
+    [
+     "slope",
+     "reclassify_raster",
+     "reclassify_raster"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "evaluation"
+  },
+  {
+   "id": "data_databases-078",
+   "split": "evaluation",
+   "goal": "Derive each city's boundary from where its residents live: the tightest outline without inward bends around all its addresses, widened by a margin, stored in a new table of areas.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "people table with city_id"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "dissolve_layer",
+     "hull_layer",
+     "buffer_layer"
+    ]
+   ],
+   "required_assumption_keys": [
+    "crs_units"
+   ],
+   "cautions": [
+    "The manual's answer stops at the convex hull and never applies the buffer it asks for",
+    "The answer replaces city_id with a row number, which matches the real city ids only if they are consecutive from 1",
+    "A city with fewer than three distinct addresses gives a point or line, which the polygon constraint rejects",
+    "In WGS 84 a buffer distance is in degrees"
+   ],
+   "source_section": "Try Yourself: (city boundaries from addresses)"
+  },
+  {
+   "id": "data_databases-073",
+   "split": "calibration",
+   "goal": "For each town name, draw the smallest outline without inward bends that encloses all buildings with that name, numbered in order of town name.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "point",
+     "role": "building table"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "dissolve_layer",
+     "hull_layer",
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [
+    "degenerate_geometry"
+   ],
+   "cautions": [
+    "A group with fewer than three distinct points yields a point or a line, not a polygon"
+   ],
+   "source_section": "Further examples ... (convex hull)"
+  },
+  {
+   "id": "data_databases-066",
+   "split": "evaluation",
+   "goal": "Find every region other than Hokkaido that comes within 100 metres of Hokkaido, so that small gaps or slivers in the borders do not hide a neighbour.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "region table (projected, metres)"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "buffer_layer",
+     "spatial_join",
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [
+    "The 100 is in the layer CRS units; it means metres only because this data is projected",
+    "Hokkaido itself intersects its own zone and must be excluded"
+   ],
+   "source_section": "Select neighbors (buffer intersect)"
+  },
+  {
+   "id": "vector_analysis-005",
+   "goal": "Show me all the land that lies within 50 m of a road, as a single merged zone rather than one overlapping strip per road.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "line",
+     "role": "roads (projected, metres)"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "buffer_layer",
+     "buffer_layer",
+     "dissolve_layer"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "calibration"
+  },
+  {
+   "id": "processing-030",
+   "goal": "Cut my elevation model into separate rasters, one per watershed polygon, so each contains only the elevations of its own watershed.",
+   "inputs": [
+    {
+     "kind": "raster",
+     "geometry": null,
+     "role": "DEM"
+    },
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "watershed polygons"
+    }
+   ],
+   "output": {
+    "kind": "raster",
+    "geometry": null,
+    "cardinality": "more"
+   },
+   "accepted_sequences": [
+    [
+     "select_features",
+     "clip_raster",
+     "execute_plan"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "split": "evaluation"
+  },
+  {
+   "id": "data_databases-049",
+   "goal": "Turn the coordinate pair (1, 1) into a point, read it back as readable text, and get the area within 1 unit around it.",
+   "inputs": [],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "one"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql",
+     "run_sql",
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "calibration"
+  },
+  {
+   "id": "data_databases-041",
+   "goal": "Show only people whose house number is below 50, sorted by house number; then find people whose name contains an 's', and those whose name contains an 'r' in any case.",
+   "inputs": [
+    {
+     "kind": "table",
+     "geometry": null,
+     "role": "people table"
+    }
+   ],
+   "output": {
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "run_sql",
+     "run_sql",
+     "run_sql",
+     "run_sql"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "evaluation"
+  },
+  {
+   "id": "processing-036",
+   "goal": "Merge my municipalities into one shape per province (PROVINCIA attribute) with several engines and find the differences in geometry and attributes between the results.",
+   "inputs": [
+    {
+     "kind": "vector",
+     "geometry": "polygon",
+     "role": "municipalities with PROVINCIA field"
+    }
+   ],
+   "output": {
+    "kind": "vector",
+    "geometry": "polygon",
+    "cardinality": "fewer"
+   },
+   "accepted_sequences": [
+    [
+     "dissolve_layer",
+     "dissolve_layer",
+     "dissolve_layer",
+     "dissolve_layer"
+    ]
+   ],
+   "required_assumption_keys": [],
+   "cautions": [],
+   "source_section": "",
+   "allow_repeated_operations": true,
+   "split": "calibration"
+  }
+ ]
+}
