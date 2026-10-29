@@ -1,49 +1,209 @@
 {
-  "schema_version": 1,
-  "measured_at": "2026-10-27",
+  "schema_version": 2,
+  "measured_at": "2026-10-29",
   "model": "claude-sonnet-5",
-  "dataset_sha256": "8d14148d8561a13c3d9f50c1ee3a32a037343ea8261231a276e5aba798ca4c18",
+  "dataset_sha256": "b6aba9c8277721671a02016592c80e60ee0512fa9380691824cf6415663d9d34",
   "responses_per_case": 2,
+  "original_20_not_rerun": true,
+  "legacy_20": {
+    "catalogue_sha256": "d4269913b673d19c8c7f8112178f99b40bdba55131890cc5c3279fa41ce46b1b",
+    "dataset_sha256": "8d14148d8561a13c3d9f50c1ee3a32a037343ea8261231a276e5aba798ca4c18",
+    "reports": {
+      "calibration": {
+        "cases": 10,
+        "attempted": 10,
+        "answered": 10,
+        "api_errors": 0,
+        "invalid_response_cases": 0,
+        "not_attempted": 0,
+        "complete": true,
+        "verdicts": {
+          "exact": 6,
+          "missing_and_wrong": 3,
+          "missing_operation": 1
+        },
+        "exact_rate": 0.6,
+        "first_step_right": 8,
+        "every_required_step_present": 6,
+        "output_contract": 6,
+        "assumptions_applicable": 6,
+        "assumptions_declared": 0,
+        "silent_planning_errors": 8,
+        "repeated_cases": 10,
+        "reproducible_cases": 0
+      },
+      "evaluation": {
+        "cases": 10,
+        "attempted": 10,
+        "answered": 10,
+        "api_errors": 0,
+        "invalid_response_cases": 0,
+        "not_attempted": 0,
+        "api_error_events": 0,
+        "invalid_response_events": 3,
+        "complete": true,
+        "verdicts": {
+          "exact": 6,
+          "extra_or_wrong_tool": 2,
+          "missing_and_wrong": 2
+        },
+        "exact_rate": 0.6,
+        "first_step_right": 8,
+        "every_required_step_present": 8,
+        "output_contract": 6,
+        "assumptions_applicable": 4,
+        "assumptions_declared": 0,
+        "silent_planning_errors": 8,
+        "repeated_cases": 10,
+        "reproducible_cases": 0
+      }
+    }
+  },
+  "new_73": {
+    "catalogue_sha256": "cb64f9fb3f3f1d3fb6fedd6dd44caf7dbd6d99339109949144e8c853196acc00",
+    "reports": {
+      "calibration": {
+        "model": "claude-sonnet-5",
+        "split": "calibration",
+        "cases": 36,
+        "attempted": 36,
+        "answered": 36,
+        "api_errors": 0,
+        "invalid_response_cases": 0,
+        "not_attempted": 0,
+        "api_error_events": 0,
+        "invalid_response_events": 0,
+        "complete": true,
+        "verdicts": {
+          "no_plan": 4,
+          "extra_or_wrong_tool": 5,
+          "exact": 18,
+          "missing_and_wrong": 5,
+          "missing_operation": 3,
+          "reordered": 1
+        },
+        "exact_rate": 0.5,
+        "first_step_right": 23,
+        "every_required_step_present": 24,
+        "output_contract": 22,
+        "assumptions_applicable": 0,
+        "assumptions_declared": 0,
+        "silent_planning_errors": 7,
+        "repeated_cases": 36,
+        "reproducible_cases": 2
+      },
+      "evaluation": {
+        "model": "claude-sonnet-5",
+        "split": "evaluation",
+        "cases": 37,
+        "attempted": 37,
+        "answered": 37,
+        "api_errors": 0,
+        "invalid_response_cases": 0,
+        "not_attempted": 0,
+        "api_error_events": 0,
+        "invalid_response_events": 0,
+        "complete": true,
+        "verdicts": {
+          "extra_or_wrong_tool": 5,
+          "no_plan": 3,
+          "exact": 19,
+          "missing_and_wrong": 6,
+          "missing_operation": 4
+        },
+        "exact_rate": 0.5135,
+        "first_step_right": 21,
+        "every_required_step_present": 24,
+        "output_contract": 25,
+        "assumptions_applicable": 0,
+        "assumptions_declared": 0,
+        "silent_planning_errors": 8,
+        "repeated_cases": 37,
+        "reproducible_cases": 1
+      }
+    }
+  },
   "reports": {
     "calibration": {
-      "cases": 10,
-      "attempted": 10,
-      "answered": 10,
+      "cases": 46,
+      "attempted": 46,
+      "answered": 46,
       "api_errors": 0,
       "invalid_response_cases": 0,
       "not_attempted": 0,
+      "api_error_events": 0,
+      "invalid_response_events": 0,
       "complete": true,
-      "verdicts": {"exact": 6, "missing_and_wrong": 3, "missing_operation": 1},
-      "exact_rate": 0.6,
-      "first_step_right": 8,
-      "every_required_step_present": 6,
-      "output_contract": 6,
+      "exact": 24,
+      "exact_rate": 0.5217,
+      "first_step_right": 31,
+      "every_required_step_present": 30,
+      "output_contract": 28,
       "assumptions_applicable": 6,
       "assumptions_declared": 0,
-      "silent_planning_errors": 8,
-      "repeated_cases": 10,
-      "reproducible_cases": 0
+      "silent_planning_errors": 15,
+      "repeated_cases": 46,
+      "reproducible_cases": 2
     },
     "evaluation": {
-      "cases": 10,
-      "attempted": 10,
-      "answered": 10,
+      "cases": 47,
+      "attempted": 47,
+      "answered": 47,
       "api_errors": 0,
       "invalid_response_cases": 0,
       "not_attempted": 0,
       "api_error_events": 0,
       "invalid_response_events": 3,
       "complete": true,
-      "verdicts": {"exact": 6, "extra_or_wrong_tool": 2, "missing_and_wrong": 2},
-      "exact_rate": 0.6,
-      "first_step_right": 8,
-      "every_required_step_present": 8,
-      "output_contract": 6,
+      "exact": 25,
+      "exact_rate": 0.5319,
+      "first_step_right": 29,
+      "every_required_step_present": 32,
+      "output_contract": 31,
       "assumptions_applicable": 4,
       "assumptions_declared": 0,
-      "silent_planning_errors": 8,
-      "repeated_cases": 10,
-      "reproducible_cases": 0
+      "silent_planning_errors": 16,
+      "repeated_cases": 47,
+      "reproducible_cases": 1
     }
+  },
+  "failure_analysis": {
+    "new_73_by_steps": {
+      "1": {
+        "cases": 44,
+        "exact": 27,
+        "exact_rate": 0.6136
+      },
+      "2": {
+        "cases": 17,
+        "exact": 8,
+        "exact_rate": 0.4706
+      },
+      "3": {
+        "cases": 10,
+        "exact": 2,
+        "exact_rate": 0.2
+      },
+      "4": {
+        "cases": 2,
+        "exact": 0,
+        "exact_rate": 0.0
+      }
+    },
+    "new_73_repeated_operations": {
+      "cases": 21,
+      "exact": 8,
+      "exact_rate": 0.381
+    },
+    "new_73_no_plan_ids": [
+      "data_databases-035",
+      "data_databases-029",
+      "data_databases-048",
+      "processing-036",
+      "data_databases-038",
+      "data_databases-034",
+      "data_databases-081"
+    ],
+    "new_73_unknown_operation_cases": 0
   }
 }
