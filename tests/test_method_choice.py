@@ -48,9 +48,9 @@ def test_public_dataset_is_balanced_and_covers_multi_step_methods():
     supported = [case for case in cases if case.get("supported", True)]
     assert len(cases) == 93
     assert collections.Counter(case["split"] for case in cases) == {"calibration": 46, "evaluation": 47}
-    assert collections.Counter(len(case["accepted_sequences"][0]) for case in supported) == {1: 47, 2: 24, 3: 12, 4: 1}
+    assert collections.Counter(len(case["accepted_sequences"][0]) for case in supported) == {1: 46, 2: 24, 3: 14, 4: 1}
     assert bench.validate_cases(cases)["cases"] == 93
-    assert bench.validate_cases(cases)["unsupported_cases"] == 9
+    assert bench.validate_cases(cases)["unsupported_cases"] == 8
 
 
 def test_reviewed_cases_keep_their_defensible_exact_truth():
@@ -514,13 +514,20 @@ def test_additional_repeated_truths_include_minimal_alternatives():
         "rasters_grass-007": ["reclassify_raster"],
         "rasters_grass-008": ["reclassify_raster", "reclassify_raster"],
         "complete_classification-020": ["dissolve_layer", "buffer_layer"],
-        "data_databases-065": ["select_features", "spatial_join"],
+        "data_databases-065": ["select_features", "spatial_join", "run_sql"],
         "data_databases-070": ["centroid_layer", "centroid_layer"],
+        "data_databases-044": ["run_sql"],
+        "data_databases-028": ["run_sql", "run_sql", "run_sql"],
+        "vector_analysis-020": ["run_sql"],
+        "processing-036": ["dissolve_layer", "run_sql", "compare_layers"],
     }
     cases = {case["id"]: case for case in bench.load_cases()}
     for cid, minimal in expected.items():
         assert minimal in cases[cid]["accepted_sequences"], cid
     assert cases["data_databases-070"]["output"]["cardinality"] == "more"
+    assert cases["data_databases-028"]["allow_repeated_operations"] is True
+    assert cases["vector_analysis-020"]["accepted_sequences"] == [["run_sql"]]
+    assert cases["processing-036"]["output"]["kind"] == "table"
 
 
 def test_requests_beyond_the_declared_operations_are_not_method_choice_cases():
@@ -531,7 +538,6 @@ def test_requests_beyond_the_declared_operations_are_not_method_choice_cases():
         "data_databases-038",
         "data_databases-048",
         "processing-030",
-        "processing-036",
         "processing-038",
         "vector_analysis-004",
     }
@@ -607,6 +613,8 @@ def test_planner_sees_cardinality_geometry_and_independent_branches(case):
     assert "run_sql is the allowed operation" in text
     assert "MAPSMITH_WORKSPACE is enabled for every case" in text
     assert "run_sql is SELECT-only" in text
+    assert "Prefer dedicated operations over run_sql" in text
+    assert "Do not add extract_layer" in text
     assert "declared data rather than external geographic knowledge" in text
     catalogue = bench.catalogue_text()
     assert "geometry: line" in catalogue

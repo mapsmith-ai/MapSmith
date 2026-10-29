@@ -242,12 +242,15 @@
    },
    "accepted_sequences": [
     [
+     "run_sql",
+     "run_sql",
      "run_sql"
     ]
    ],
    "required_assumption_keys": [],
    "cautions": [],
    "source_section": "",
+   "allow_repeated_operations": true,
    "split": "evaluation"
   },
   {
@@ -503,7 +506,7 @@
    },
    "accepted_sequences": [
     [
-     "summarize_field"
+     "run_sql"
     ]
    ],
    "required_assumption_keys": [],
@@ -1043,6 +1046,11 @@
     [
      "select_features",
      "spatial_join"
+    ],
+    [
+     "select_features",
+     "spatial_join",
+     "run_sql"
     ]
    ],
    "required_assumption_keys": [],
@@ -2107,6 +2115,9 @@
     [
      "summarize_field",
      "summarize_field"
+    ],
+    [
+     "run_sql"
     ]
    ],
    "required_assumption_keys": [],
@@ -2675,13 +2686,17 @@
     }
    ],
    "output": {
-    "kind": "vector",
-    "geometry": "polygon",
-    "cardinality": "fewer"
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "unknown"
    },
-   "supported": false,
-   "unsupported_reason": "dissolve_layer has no engine-selection parameter, so the requested multi-engine comparison is not executable as declared.",
-   "accepted_sequences": [],
+   "accepted_sequences": [
+    [
+     "dissolve_layer",
+     "run_sql",
+     "compare_layers"
+    ]
+   ],
    "required_assumption_keys": [],
    "cautions": [],
    "source_section": "",

@@ -183,12 +183,15 @@ THE OPERATIONS AVAILABLE (name: what it does [what it takes; what it produces]):
 Write the shortest plan that answers the request. Return ONLY a JSON object, no markdown fence:
 {{"plan": [{{"operation": "<name from the list>", "why": "<one short clause>"}}, ...],
  "assumptions": ["<key>=<value>", ...], "warnings": ["<material uncertainty", ...]}}
-Use only names from the list. For a repeated operation, use why to name its input and distinguishing
-arguments. Use the declared data rather than external geographic knowledge. Declare CRS, units,
-selection scope, boundary rules and other material assumptions as short key=value strings when the
-request does not settle them.
-Do not add reading, saving, plan-validation or plan-execution steps. Do not invent a result when no
-listed operation or declared parameter applies; return an empty plan with a warning instead."""
+Use only names from the list. Prefer dedicated operations over run_sql whenever they answer the
+whole request. For a repeated operation, use why to name its input and distinguishing arguments.
+Use the declared data rather than external geographic knowledge. Declare CRS, units, selection
+scope, boundary rules and other material assumptions as short key=value strings when the request
+does not settle them.
+Do not add reading, saving, plan-validation or plan-execution steps. Do not add extract_layer merely
+to read an input; it is only for choosing a named layer in a multi-layer container. Do not invent
+a result when no listed operation or declared parameter applies; return an empty plan with a warning
+instead."""
 
 
 def parse_response(text: str) -> dict[str, Any]:
