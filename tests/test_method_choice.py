@@ -628,3 +628,12 @@ def test_planner_sees_cardinality_geometry_and_independent_branches(case):
     catalogue = bench.catalogue_text()
     assert "geometry: line" in catalogue
     assert "only SELECT under MAPSMITH_WORKSPACE" in catalogue
+
+
+def test_preview_contract_does_not_preserve_a_custom_projection():
+    assert "preview_map renders every layer in EPSG:4326" in bench.catalogue_text()
+
+
+def test_unsupported_work_is_not_replaced_by_a_read_only_approximation(case):
+    text = bench.prompt_for(case)
+    assert "read-only approximation" in text

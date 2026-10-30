@@ -189,9 +189,10 @@ Use the declared data rather than external geographic knowledge. Declare CRS, un
 scope, boundary rules and other material assumptions as short key=value strings when the request
 does not settle them.
 Do not add reading, saving, plan-validation or plan-execution steps. Do not add extract_layer merely
-to read an input; it is only for choosing a named layer in a multi-layer container. Do not invent
-a result when no listed operation or declared parameter applies; return an empty plan with a warning
-instead."""
+to read an input; it is only for choosing a named layer in a multi-layer container. Do not substitute
+a read-only approximation for a write, iteration or multi-engine request you cannot fulfill as asked.
+Do not invent a result when no listed operation or declared parameter applies; return an empty plan
+with a warning instead."""
 
 
 def parse_response(text: str) -> dict[str, Any]:

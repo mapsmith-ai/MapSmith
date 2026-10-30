@@ -1992,8 +1992,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "visualization",
         "produces": "description",
         "applicability": {"inputs": ["dataset"], "requires_projected_crs": False, 'dataset_inputs': 1},
-        "summary": "Interactive in-chat map of one or more datasets (MCP Apps panel) "
-        "with per-layer provenance and verification status",
+        "summary": "preview_map renders every layer in EPSG:4326, with per-layer provenance and verification status",
         "phrasings": "let me see it; show me the layer; a quick look at the result",
         "description": (
             "Show vector datasets and GeoTIFFs on the interactive map panel rendered "
