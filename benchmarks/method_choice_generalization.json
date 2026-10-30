@@ -1,0 +1,182 @@
+{
+  "schema_version": 1,
+  "measured_at": "2026-10-30",
+  "model": "claude-sonnet-5",
+  "dataset_sha256": "269b9fa2e48942b21bfbe9c62b13799b01480f2e1e28b359ac759c44aa7f1041",
+  "catalogue_sha256": "4e53ec78e64580a6244edce17ca89506d1784ed91ccf16836f4798e18afa7d8e",
+  "responses_per_case": 2,
+  "original_20_not_rerun": true,
+  "truth_unchanged": true,
+  "runs": [
+    {
+      "name": "multi-step",
+      "summary": {
+        "model": "claude-sonnet-5",
+        "split": "all",
+        "cases": 73,
+        "scored_cases": 65,
+        "unsupported_cases": 8,
+        "unsupported_answered": 8,
+        "unsupported_refused": 3,
+        "unsupported_warned": 3,
+        "unsupported_empty_without_warning": 0,
+        "unsupported_irrelevant_warning": 0,
+        "unsupported_with_plan": 5,
+        "attempted": 73,
+        "answered": 73,
+        "api_errors": 0,
+        "invalid_response_cases": 0,
+        "not_attempted": 0,
+        "api_error_events": 0,
+        "invalid_response_events": 0,
+        "complete": true,
+        "verdicts": {
+          "extra_or_wrong_tool": 5,
+          "exact": 52,
+          "missing_and_wrong": 6,
+          "missing_operation": 2
+        },
+        "exact_rate": 0.8,
+        "first_step_right": 56,
+        "every_required_step_present": 57,
+        "output_contract": 56,
+        "assumptions_applicable": 0,
+        "assumptions_declared": 0,
+        "silent_planning_errors": 10,
+        "repeated_cases": 65,
+        "reproducible_cases": 1
+      }
+    },
+    {
+      "name": "independent",
+      "summary": {
+        "model": "claude-sonnet-5",
+        "split": "all",
+        "cases": 73,
+        "scored_cases": 65,
+        "unsupported_cases": 8,
+        "unsupported_answered": 8,
+        "unsupported_refused": 3,
+        "unsupported_warned": 3,
+        "unsupported_empty_without_warning": 0,
+        "unsupported_irrelevant_warning": 0,
+        "unsupported_with_plan": 5,
+        "attempted": 73,
+        "answered": 73,
+        "api_errors": 0,
+        "invalid_response_cases": 0,
+        "not_attempted": 0,
+        "api_error_events": 0,
+        "invalid_response_events": 0,
+        "complete": true,
+        "verdicts": {
+          "extra_or_wrong_tool": 6,
+          "exact": 53,
+          "missing_and_wrong": 4,
+          "missing_operation": 2
+        },
+        "exact_rate": 0.8154,
+        "first_step_right": 60,
+        "every_required_step_present": 59,
+        "output_contract": 55,
+        "assumptions_applicable": 0,
+        "assumptions_declared": 0,
+        "silent_planning_errors": 10,
+        "repeated_cases": 65,
+        "reproducible_cases": 2
+      }
+    },
+    {
+      "name": "post-contract",
+      "summary": {
+        "model": "claude-sonnet-5",
+        "split": "all",
+        "cases": 73,
+        "scored_cases": 65,
+        "unsupported_cases": 8,
+        "unsupported_answered": 8,
+        "unsupported_refused": 6,
+        "unsupported_warned": 5,
+        "unsupported_empty_without_warning": 0,
+        "unsupported_irrelevant_warning": 1,
+        "unsupported_with_plan": 2,
+        "attempted": 73,
+        "answered": 73,
+        "api_errors": 0,
+        "invalid_response_cases": 0,
+        "not_attempted": 0,
+        "api_error_events": 0,
+        "invalid_response_events": 0,
+        "complete": true,
+        "verdicts": {
+          "extra_or_wrong_tool": 7,
+          "exact": 53,
+          "missing_and_wrong": 2,
+          "missing_operation": 2,
+          "no_plan": 1
+        },
+        "exact_rate": 0.8154,
+        "first_step_right": 59,
+        "every_required_step_present": 60,
+        "output_contract": 56,
+        "assumptions_applicable": 0,
+        "assumptions_declared": 0,
+        "silent_planning_errors": 11,
+        "repeated_cases": 65,
+        "reproducible_cases": 1
+      }
+    }
+  ],
+  "independent_vs_multistep": {
+    "improved_ids": [
+      "data_databases-046",
+      "data_databases-060"
+    ],
+    "regressed_ids": [
+      "data_databases-065"
+    ]
+  },
+  "final_vs_independent": {
+    "improved_ids": [
+      "data_databases-065"
+    ],
+    "regressed_ids": [
+      "processing-036"
+    ]
+  },
+  "final_residual_ids": [
+    "data_databases-008",
+    "data_databases-028",
+    "data_databases-036",
+    "data_databases-049",
+    "data_databases-050",
+    "data_databases-067",
+    "data_databases-070",
+    "processing-036",
+    "vector_analysis-002",
+    "vector_analysis-013",
+    "vector_analysis-017",
+    "vector_analysis-023"
+  ],
+  "reproducibility": {
+    "multi_step": {
+      "plan_only": 60,
+      "full_signature": 1
+    },
+    "independent": {
+      "plan_only": 59,
+      "full_signature": 2
+    },
+    "post_contract": {
+      "plan_only": 58,
+      "full_signature": 1
+    },
+    "independent_vs_multistep_same_first_plan": 65,
+    "final_vs_independent_same_first_plan": 63,
+    "final_vs_independent_same_both_plans": 60
+  },
+  "validation": {
+    "passed": 2473,
+    "skipped": 9
+  }
+}

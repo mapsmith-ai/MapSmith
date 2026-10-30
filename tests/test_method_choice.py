@@ -637,3 +637,25 @@ def test_preview_contract_does_not_preserve_a_custom_projection():
 def test_unsupported_work_is_not_replaced_by_a_read_only_approximation(case):
     text = bench.prompt_for(case)
     assert "read-only approximation" in text
+
+
+def test_generalization_artifact_reports_variance_and_no_truth_changes():
+    import hashlib
+
+    artifact = json.loads((ROOT / "benchmarks" / "method_choice_generalization.json").read_text(encoding="utf-8"))
+    assert artifact["original_20_not_rerun"] is True
+    assert artifact["truth_unchanged"] is True
+    assert artifact["dataset_sha256"] == hashlib.sha256(
+        (ROOT / "benchmarks" / "method_choice_cases.json").read_bytes().replace(b"\r\n", b"\n")
+    ).hexdigest()
+    runs = artifact["runs"]
+    assert [run["summary"]["verdicts"]["exact"] for run in runs] == [52, 53, 53]
+    assert [run["summary"]["exact_rate"] for run in runs] == [0.8, 0.8154, 0.8154]
+    assert artifact["final_vs_independent"]["improved_ids"] == ["data_databases-065"]
+    assert artifact["final_vs_independent"]["regressed_ids"] == ["processing-036"]
+    final = runs[-1]["summary"]
+    assert final["unsupported_refused"] == 6
+    assert final["unsupported_with_plan"] == 2
+    page = (ROOT / "docs" / "benchmarks.md").read_text(encoding="utf-8")
+    assert "53/65 (81.5%)" in page
+    assert "refusals double from 3/8 to 6/8" in page

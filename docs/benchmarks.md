@@ -157,6 +157,54 @@ All summaries, case ids, per-step counts and the original/audited/final distinct
 are in `benchmarks/method_choice_multistep.json`. No GIS operation was added and no
 fine-tuning was performed.
 
+## Generalization and variance (30 October 2026)
+
+An independent run of the same 73 cases, twice per case, tested whether the 52/65
+result generalized. It scored **53/65 (81.5%)**: two cases improved and one
+regressed. A final run then measured only two repeated contract defects:
+`preview_map` explicitly renders in EPSG:4326, and read-only approximations of
+writes, per-feature iteration and multi-engine requests are forbidden. It also
+scored **53/65 (81.5%)**, with one improvement and one regression. No accepted
+truth was changed for any of these runs.
+
+| Metric, 65 supported cases | Multi-step | Independent | Post-contract |
+|---|---:|---:|---:|
+| Exact accepted sequence | 52/65 | 53/65 | 53/65 |
+| Correct first operation | 56/65 | 60/65 | 59/65 |
+| Every required operation present | 57/65 | 59/65 | 60/65 |
+| Output contract satisfied | 56/65 | 55/65 | 56/65 |
+| Exact, repeated operations allowed | 16/22 | 16/22 | 15/22 |
+| Empty plans | 0 | 0 | 1 |
+| Planning-silent errors | 10 | 10 | 11 |
+| Identical plan on repetition | 60/65 | 59/65 | 58/65 |
+| Identical full response on repetition | 1/65 | 2/65 | 1/65 |
+| Unsupported requests refused | 3/8 | 3/8 | **6/8** |
+| Unsupported requests answered by a plan | 5/8 | 5/8 | **2/8** |
+
+The independent run improved `data_databases-046` and `data_databases-060` but
+regressed `data_databases-065`. The final run recovered `data_databases-065` and
+regressed `processing-036`, which returned no plan. These movements are reported,
+not averaged away. Twelve cases remain non-exact, with eleven already failing in
+the preceding run. The two no-plan cases from the multi-step run no longer occur;
+the final no-plan is the multi-engine comparison.
+
+Plan-only reproducibility is 60→59→58, while full-response reproducibility is
+1→2→1. Across runs, 65/73 first plans match between multi-step and independent;
+63/73 match between independent and post-contract. Sixty pairs of responses have
+identical plans in both runs of the last comparison. The repeated-operation rate
+also falls from 16/22 to 15/22. These are the reasons not to present 81.5% as a
+deterministic property of the model.
+
+The clearer effect is on unsupported work: refusals double from 3/8 to 6/8, while
+unsupported requests answered by a plan fall from 5/8 to 2/8. Five refusals have a
+relevant warning and one has an irrelevant warning. The separate scoring keeps
+these cases outside the exact-rate denominator.
+
+All three summaries, transitions and residual ids are in
+`benchmarks/method_choice_generalization.json`. The final validation suite passed
+**2473 tests with 9 skipped**. No new GIS operation, release or fine-tuning was
+introduced.
+
 ## Setup
 
 - **Benchmark**: [GABench](https://github.com/GeoX-Lab/GABench) — 57 executable
