@@ -205,6 +205,32 @@ All three summaries, transitions and residual ids are in
 **2473 tests with 9 skipped**. No new GIS operation, release or fine-tuning was
 introduced.
 
+## Typed DAG validation (30 October 2026)
+
+The planner benchmark now requires a typed DAG rather than accepting a sequence of
+operation names. Every branch has explicit arguments and an output contract;
+terminal leaves are identified through scalar and list references. Structural
+scoring rejects missing or unknown arguments, invalid references, incompatible
+input/output types and contradictions with declared geometry or cardinality
+guarantees. Legacy plans remain valid and retain their previous plan fingerprint.
+
+A complete run of the 73 newer cases, twice per case, scored **38/65 exact**. It
+also found 21 structurally invalid plans: 16 unknown references, three
+unguaranteed cardinalities, two missing arguments, two output-kind mismatches and
+one unknown operation. Only 3/8 unsupported requests were refused. Operation
+sequences repeated in 57/65 pairs, but **no pair** repeated the full typed
+signature including arguments, references, comments and contracts.
+
+The previous 53/65 and this 38/65 are not a prompt-only before/after comparison:
+the second measurement rejects plans that the first did not inspect. The full
+summary and residual ids are in `benchmarks/method_choice_typed_dag.json`.
+
+A separate temperature-zero arm could not be measured on the current Anthropic
+workspace: both `claude-sonnet-5` and `claude-sonnet-4-6` reject the parameter
+with HTTP 400 (`temperature: Extra inputs are not permitted`). No score or
+variance is claimed for that arm; see
+`benchmarks/method_choice_temperature_zero.json`.
+
 ## Setup
 
 - **Benchmark**: [GABench](https://github.com/GeoX-Lab/GABench) — 57 executable
