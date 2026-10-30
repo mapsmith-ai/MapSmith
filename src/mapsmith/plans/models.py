@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
@@ -28,6 +28,16 @@ ArgKey = Annotated[str, StringConstraints(min_length=1, max_length=64)]
 ArgString = Annotated[str, StringConstraints(max_length=4096)]
 ArgList = Annotated[list[ArgString], Field(max_length=256)]
 ArgValue = ArgString | bool | int | float | ArgList
+
+
+class OutputContract(BaseModel):
+    """What a branch promises to return, independently of its operation name."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["vector", "raster", "table", "number", "map", "description"]
+    geometry: Literal["point", "line", "polygon"] | None = None
+    cardinality: Literal["one", "fewer", "more", "same_as_input", "unknown"] = "unknown"
 
 
 class PlanStep(BaseModel):
@@ -47,6 +57,10 @@ class PlanStep(BaseModel):
     )
     comment: Annotated[str, StringConstraints(max_length=2000)] = Field(
         default="", description="Optional rationale; recorded in the plan manifest"
+    )
+    output: OutputContract | None = Field(
+        default=None,
+        description="Expected branch output: kind, optional geometry and cardinality",
     )
 
 

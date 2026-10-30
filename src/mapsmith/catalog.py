@@ -701,6 +701,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "vector",
         "produces": "dataset:vector",
+        "output_geometry": "point",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "One point per feature: geometric centroids computed in a "
         "metric CRS, never on degrees",
@@ -4082,6 +4083,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'small_vector',
         'category': 'network',
         "produces": "dataset:vector",
+        "output_geometry": "line",
         'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1, 'geometry': ['line']},
         'summary': 'Cheapest route between two positions over a line network, with the '
                    'connectivity of that network reported',
@@ -4149,6 +4151,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'workload': 'small_vector',
         'category': 'network',
         "produces": "dataset:vector",
+        "output_geometry": "line",
         'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1, 'geometry': ['line']},
         'summary': 'Every stretch of network reachable within a cost budget, with the '
                    'last segment cut where the budget runs out',

@@ -73,6 +73,40 @@ def _catalog_entry(name: str) -> dict[str, Any] | None:
     return None
 
 
+def _check_output_contract(step: Any, entry: dict[str, Any], errors: list[Issue]) -> None:
+    contract = step.output
+    if contract is None:
+        return
+    allowed = {
+        "vector": {"dataset:vector", "plan_result"},
+        "raster": {"dataset:raster", "plan_result"},
+        "map": {"dataset:vector", "plan_result"},
+        "table": {"answer", "dataset:vector", "description", "plan_result"},
+        "number": {"answer", "dataset:vector", "description", "plan_result"},
+        "description": {"description", "answer"},
+    }
+    produced = entry.get("produces")
+    if produced not in allowed[contract.kind]:
+        errors.append(Issue(
+            code="OUTPUT_KIND_MISMATCH",
+            step_id=step.id,
+            message=f"step declares output kind '{contract.kind}' but operation produces '{produced}'",
+        ))
+    geometry = entry.get("output_geometry")
+    if geometry and contract.geometry and contract.geometry != geometry:
+        errors.append(Issue(
+            code="OUTPUT_GEOMETRY_MISMATCH",
+            step_id=step.id,
+            message=f"step declares geometry '{contract.geometry}' but operation produces '{geometry}'",
+        ))
+    if contract.cardinality == "one" and step.operation == "dissolve_layer" and step.arguments.get("by"):
+        errors.append(Issue(
+            code="OUTPUT_CARDINALITY_UNGUARANTEED",
+            step_id=step.id,
+            message="cardinality 'one' cannot be guaranteed when dissolving by a group key",
+        ))
+
+
 # Path-safety rules are shared with the runtime jail at the MCP boundary:
 # one definition of "local path" and "inside the workspace" for plans & tools.
 _workspace = workspace.root
@@ -588,6 +622,7 @@ def validate(plan: Plan) -> ValidationReport:
         entry, binding = resolved
 
         _check_arguments(step.id, entry, step.arguments, errors)
+        _check_output_contract(step, entry, errors)
         _check_step_extras(step, binding, workspace, errors, warnings)
 
         context = _StepContext(

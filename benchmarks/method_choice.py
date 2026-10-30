@@ -36,6 +36,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from mapsmith import catalog
+from mapsmith.plans import Plan
+from mapsmith.plans.validator import _check_output_contract
 
 DATA = ROOT / "benchmarks" / "method_choice_cases.json"
 OUT = ROOT / ".method_choice"
@@ -181,10 +183,16 @@ THE OPERATIONS AVAILABLE (name: what it does [what it takes; what it produces]):
 {catalogue_text()}
 
 Write the shortest plan that answers the request. Return ONLY a JSON object, no markdown fence:
-{{"plan": [{{"operation": "<name from the list>", "why": "<one short clause>"}}, ...],
+{{"steps": [{{"id": "<short unique name>", "operation": "<name from the list>",
+   "arguments": {{"<declared argument>": "<literal value or $step_id>"}},
+   "output": {{"kind": "<vector|raster|table|number|map|description>",
+               "geometry": "<point|line|polygon|optional>",
+               "cardinality": "<one|fewer|more|same_as_input|unknown>"}}}}}}],
  "assumptions": ["<key>=<value>", ...], "warnings": ["<material uncertainty", ...]}}
+Every final branch must declare its output kind, geometry and cardinality. Arguments must name
+inputs and parameters explicitly; use $step_id when a step consumes an earlier output.
 Use only names from the list. Prefer dedicated operations over run_sql whenever they answer the
-whole request. For a repeated operation, use why to name its input and distinguishing arguments.
+whole request. For a repeated operation, use comment to name its input and distinguishing arguments.
 Use the declared data rather than external geographic knowledge. Declare CRS, units, selection
 scope, boundary rules and other material assumptions as short key=value strings when the request
 does not settle them.
@@ -203,10 +211,20 @@ def parse_response(text: str) -> dict[str, Any]:
     if start < 0 or end < start:
         raise ValueError("planner returned no JSON object")
     answer = json.loads(stripped[start:end + 1])
-    if not isinstance(answer.get("plan"), list):
-        raise TypeError("planner JSON has no plan list")
-    if not all(isinstance(step, dict) and isinstance(step.get("operation"), str) for step in answer["plan"]):
-        raise TypeError("every plan step needs an operation string")
+    if "steps" in answer:
+        if not isinstance(answer["steps"], list):
+            raise TypeError("planner JSON has no steps list")
+        if answer["steps"]:
+            typed = Plan.model_validate({"goal": answer.get("goal", ""), "steps": answer["steps"]})
+            answer["plan"] = [step.operation for step in typed.steps]
+        else:
+            answer["plan"] = []
+    else:
+        if not isinstance(answer.get("plan"), list):
+            raise TypeError("planner JSON has no plan list")
+        if not all(isinstance(step, dict) and isinstance(step.get("operation"), str) for step in answer["plan"]):
+            raise TypeError("every plan step needs an operation string")
+        answer["plan"] = [step["operation"] for step in answer["plan"]]
     for key in ("assumptions", "warnings"):
         value = answer.setdefault(key, [])
         if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
@@ -382,7 +400,8 @@ def plan_cases(
                 "catalogue_sha256": prompt_hash,
                 "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
                 "raw": raw,
-                "plan": [step["operation"] for step in answer["plan"]],
+                "plan": answer["plan"],
+                "steps": answer.get("steps", []),
                 "assumptions": answer["assumptions"],
                 "warnings": answer["warnings"],
             })
@@ -417,7 +436,37 @@ def verdict_for(got: list[str], accepted: list[list[str]]) -> str:
     return min(candidates, key=VERDICTS.index)
 
 
-def output_matches(case: dict[str, Any], got: list[str]) -> bool:
+def output_matches(case: dict[str, Any], got: list[str], steps: list[dict[str, Any]] | None = None) -> bool:
+    if steps:
+        typed = Plan.model_validate({"goal": case["goal"], "steps": steps})
+        contracts = [step.output for step in typed.steps if step.output is not None]
+        if not contracts:
+            return False
+        operations = available_operations()
+        for step in typed.steps:
+            if step.operation not in operations:
+                return False
+            errors = []
+            _check_output_contract(step, operations[step.operation], errors)
+            if errors:
+                return False
+        expected = case["output"]
+        compatible = {
+            "vector": {"vector"},
+            "raster": {"raster"},
+            "map": {"map", "vector"},
+            "table": {"table", "description"},
+            "number": {"number", "table"},
+            "description": {"description"},
+        }
+        for contract in contracts:
+            if contract.kind not in compatible.get(expected["kind"], set()):
+                return False
+            if expected.get("geometry") and contract.geometry != expected["geometry"]:
+                return False
+            if expected.get("cardinality", "unknown") != "unknown" and contract.cardinality != expected["cardinality"]:
+                return False
+        return True
     if not got or got[-1] not in available_operations():
         return False
     if got[-1] not in {sequence[-1] for sequence in case["accepted_sequences"]}:
@@ -464,7 +513,7 @@ def score_response(case: dict[str, Any], response: dict[str, Any]) -> dict[str, 
     accepted = case["accepted_sequences"]
     unknown = sorted(set(got) - available_operations().keys())
     verdict = verdict_for(got, accepted)
-    output_ok = output_matches(case, got)
+    output_ok = output_matches(case, got, response.get("steps"))
     missing_keys = sorted(set(case["required_assumption_keys"]) - declared_keys(response))
     disclosed = relevant_warnings(response, unknown, output_ok, missing_keys, verdict)
     return {

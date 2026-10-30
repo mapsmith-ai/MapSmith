@@ -163,9 +163,100 @@ def test_planner_sees_the_declared_argument_rules():
     assert "output_path ends with ['.parquet']" in text
 
 
+def test_parser_accepts_typed_dag_with_output_contracts():
+    answer = bench.parse_response(json.dumps({
+        "steps": [
+            {"id": "names", "operation": "run_sql", "arguments": {}, "output": {"kind": "table"}},
+            {"id": "main", "operation": "run_sql", "arguments": {}, "output": {"kind": "table"}},
+        ],
+        "warnings": [],
+    }))
+    assert answer["plan"] == ["run_sql", "run_sql"]
+    assert [step["output"]["kind"] for step in answer["steps"]] == ["table", "table"]
+
+
+def test_typed_dag_output_contract_does_not_require_a_linear_final_step(case):
+    case["output"] = {"kind": "table", "geometry": None, "cardinality": "unknown"}
+    answer = response(
+        ["run_sql", "run_sql", "run_sql"],
+        warnings=["three independent results"],
+    )
+    answer["steps"] = [
+        {"id": "names", "operation": "run_sql", "arguments": {}, "output": {"kind": "table"}},
+        {"id": "all", "operation": "run_sql", "arguments": {}, "output": {"kind": "table"}},
+        {"id": "main", "operation": "run_sql", "arguments": {}, "output": {"kind": "table"}},
+    ]
+    row = bench.score_response(case, answer)
+    assert row["output_contract"] is True
+
+
+def test_typed_dag_rejects_an_incompatible_output_kind(case):
+    answer = response(["run_sql"])
+    answer["steps"] = [
+        {"id": "wrong", "operation": "run_sql", "arguments": {}, "output": {"kind": "raster"}},
+    ]
+    assert bench.score_response(case, answer)["output_contract"] is False
+
+
+def test_typed_dag_requires_declared_geometry_when_the_output_demands_it(case):
+    answer = response(["run_sql"])
+    answer["steps"] = [
+        {"id": "missing_geometry", "operation": "run_sql", "arguments": {}, "output": {"kind": "vector"}},
+    ]
+    assert bench.score_response(case, answer)["output_contract"] is False
+
+
+RESIDUAL_BRANCHES = {
+    "data_databases-028": [("run_sql", "table", None)] * 3,
+    "vector_analysis-013": [("network_shortest_path", "vector", "line")],
+    "data_databases-070": [("centroid_layer", "vector", "point")] * 2,
+    "vector_analysis-002": [("reproject_layer", "map", "polygon")],
+    "data_databases-046": [("run_sql", "table", None)],
+    "data_databases-050": [("describe_crs", "description", None)],
+    "data_databases-060": [("run_sql", "vector", "point")],
+    "data_databases-067": [("run_sql", "vector", "polygon")],
+    "data_databases-008": [("select_features", "vector", "polygon"), ("simplify_layer", "vector", "polygon")],
+    "data_databases-036": [("run_sql", "table", None)] * 3,
+    "vector_analysis-017": [
+        ("service_area", "vector", "line"),
+        ("merge_layers", "vector", "line"),
+        ("execute_plan", "vector", "line"),
+    ],
+    "vector_analysis-023": [
+        ("dissolve_layer", "vector", "point"),
+        ("centroid_layer", "vector", "point"),
+        ("centroid_layer", "vector", "point"),
+    ],
+    "data_databases-049": [("run_sql", "vector", "polygon")],
+}
+
+
+@pytest.mark.parametrize(("case_id", "branches"), RESIDUAL_BRANCHES.items())
+def test_residual_cases_have_explicit_branch_contracts(case_id, branches):
+    steps = []
+    for index, (operation, kind, geometry) in enumerate(branches):
+        output = {"kind": kind}
+        if geometry:
+            output["geometry"] = geometry
+        steps.append({
+            "id": f"branch_{index}",
+            "operation": operation,
+            "arguments": {},
+            "output": output,
+        })
+    typed = bench.Plan.model_validate({"goal": case_id, "steps": steps})
+    for step in typed.steps:
+        errors = []
+        entry = bench.available_operations()[step.operation]
+        bench._check_output_contract(step, entry, errors)
+        assert not errors, (case_id, step.operation, errors)
+        if step.operation in {"network_shortest_path", "service_area", "centroid_layer"}:
+            assert entry["output_geometry"] == step.output.geometry
+
+
 def test_parser_accepts_a_fenced_answer_and_rejects_a_non_plan():
     answer = bench.parse_response('```json\n{"plan": [{"operation": "clip_layer"}]}\n```')
-    assert answer["plan"] == [{"operation": "clip_layer"}]
+    assert answer["plan"] == ["clip_layer"]
     assert answer["warnings"] == []
     with pytest.raises(ValueError, match="no JSON"):
         bench.parse_response("not json")

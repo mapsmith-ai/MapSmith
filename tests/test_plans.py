@@ -73,6 +73,99 @@ def test_schema_rejects_bad_step_id_and_extra_fields():
         Plan.model_validate({"steps": []})  # empty plans are meaningless
 
 
+# --- output contracts on DAG branches --------------------------------------------
+
+
+def test_independent_branches_have_explicit_output_contracts(tmp_path):
+    steps = [
+        {
+            "id": "names",
+            "operation": "run_sql",
+            "arguments": {
+                "query": "SELECT name FROM streets",
+                "output_path": str(tmp_path / "names.parquet"),
+            },
+            "output": {"kind": "table"},
+        },
+        {
+            "id": "all_records",
+            "operation": "run_sql",
+            "arguments": {
+                "query": "SELECT * FROM streets",
+                "output_path": str(tmp_path / "all.parquet"),
+            },
+            "output": {"kind": "table"},
+        },
+        {
+            "id": "main_road",
+            "operation": "run_sql",
+            "arguments": {
+                "query": "SELECT * FROM streets WHERE name = 'Main Road'",
+                "output_path": str(tmp_path / "main.parquet"),
+            },
+            "output": {"kind": "table"},
+        },
+    ]
+    report = validate(make_plan(*steps))
+    assert report.valid, codes(report)
+    assert [step.output.kind for step in report_steps(steps)] == ["table", "table", "table"]
+
+
+def report_steps(steps):
+    return [make_plan(step).steps[0] for step in steps]
+
+
+def test_output_kind_mismatch_is_refused(tmp_path):
+    step = {
+        "id": "wrong_kind",
+        "operation": "run_sql",
+        "arguments": {"query": "SELECT 1", "output_path": str(tmp_path / "out.parquet")},
+        "output": {"kind": "raster"},
+    }
+    assert codes(validate(make_plan(step))) == ["OUTPUT_KIND_MISMATCH"]
+
+
+def test_output_geometry_mismatch_is_refused(wells, tmp_path):
+    step = {
+        "id": "route",
+        "operation": "network_shortest_path",
+        "arguments": {
+            "network_path": wells,
+            "output_path": str(tmp_path / "route.parquet"),
+            "from_x": 9.19,
+            "from_y": 45.46,
+            "to_x": 9.30,
+            "to_y": 45.60,
+            "tolerance": 0.001,
+        },
+        "output": {"kind": "vector", "geometry": "point"},
+    }
+    assert codes(validate(make_plan(step))) == ["OUTPUT_GEOMETRY_MISMATCH"]
+
+
+def test_output_cardinality_is_not_guaranteed_by_grouping(wells, tmp_path):
+    step = {
+        "id": "dissolve",
+        "operation": "dissolve_layer",
+        "arguments": {
+            "input_path": wells,
+            "output_path": str(tmp_path / "dissolve.parquet"),
+            "by": "name",
+        },
+        "output": {"kind": "vector", "cardinality": "one"},
+    }
+    assert codes(validate(make_plan(step))) == ["OUTPUT_CARDINALITY_UNGUARANTEED"]
+
+
+def test_legacy_plan_without_output_contract_is_still_valid(tmp_path):
+    step = {
+        "id": "legacy",
+        "operation": "run_sql",
+        "arguments": {"query": "SELECT 1", "output_path": str(tmp_path / "legacy.parquet")},
+    }
+    assert validate(make_plan(step)).valid
+
+
 # --- one closed-form trigger per error code ---------------------------------------
 
 
