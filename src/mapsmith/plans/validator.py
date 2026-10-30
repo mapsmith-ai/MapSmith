@@ -77,16 +77,22 @@ def _check_output_contract(step: Any, entry: dict[str, Any], errors: list[Issue]
     contract = step.output
     if contract is None:
         return
+    produced = entry.get("produces")
+    dynamic = step.operation in {"run_sql", "execute_plan"} or produced == "plan_result"
+    dynamic_kinds = (
+        {"vector", "table", "number", "description"}
+        if step.operation == "run_sql"
+        else {"vector", "raster", "table", "number", "map", "description"}
+    )
     allowed = {
-        "vector": {"dataset:vector", "plan_result"},
-        "raster": {"dataset:raster", "plan_result"},
-        "map": {"dataset:vector", "plan_result"},
-        "table": {"answer", "dataset:vector", "description", "plan_result"},
-        "number": {"answer", "dataset:vector", "description", "plan_result"},
+        "vector": {"dataset:vector"},
+        "raster": {"dataset:raster"},
+        "map": {"dataset:vector"},
+        "table": {"answer"},
+        "number": {"answer"},
         "description": {"description", "answer"},
     }
-    produced = entry.get("produces")
-    if produced not in allowed[contract.kind]:
+    if contract.kind not in dynamic_kinds or (not dynamic and produced not in allowed[contract.kind]):
         errors.append(Issue(
             code="OUTPUT_KIND_MISMATCH",
             step_id=step.id,
@@ -99,11 +105,21 @@ def _check_output_contract(step: Any, entry: dict[str, Any], errors: list[Issue]
             step_id=step.id,
             message=f"step declares geometry '{contract.geometry}' but operation produces '{geometry}'",
         ))
-    if contract.cardinality == "one" and step.operation == "dissolve_layer" and step.arguments.get("by"):
+    cardinality = entry.get("output_cardinality")
+    unguaranteed = (
+        contract.cardinality == "one"
+        and step.operation == "dissolve_layer"
+        and step.arguments.get("by")
+    )
+    if unguaranteed or (
+        cardinality
+        and contract.cardinality not in {"unknown", cardinality}
+    ):
         errors.append(Issue(
             code="OUTPUT_CARDINALITY_UNGUARANTEED",
             step_id=step.id,
-            message="cardinality 'one' cannot be guaranteed when dissolving by a group key",
+            message=f"cardinality '{contract.cardinality}' contradicts the operation guarantee "
+            f"'{cardinality or 'one only without a group key'}'",
         ))
 
 
@@ -375,8 +391,8 @@ class _StepContext:
 
 def _check_reference(
     step_id: str, arg: str, target: str, context: _StepContext, errors: list[Issue]
-) -> str | None:
-    """Validate a '$target' reference; return the referenced CRS when sound."""
+) -> SimulatedOutput | None:
+    """Validate a '$target' reference; return the referenced output when sound."""
     if target not in context.order:
         errors.append(
             Issue(
@@ -403,8 +419,33 @@ def _check_reference(
             )
         )
     else:
-        return context.simulated[target].crs
+        return context.simulated[target]
     return None
+
+
+def _check_reference_contract(
+    step: Any, arg: str, entry: dict[str, Any], referenced: SimulatedOutput, errors: list[Issue]
+) -> None:
+    contract = referenced.contract
+    if contract is None:
+        return
+    accepted = set(entry.get("applicability", {}).get("inputs", []))
+    input_kind = "vector" if contract.kind == "map" else contract.kind
+    if not accepted.intersection({input_kind, "dataset"}):
+        errors.append(Issue(
+            code="INPUT_KIND_MISMATCH",
+            step_id=step.id,
+            message=f"'{arg}' receives {contract.kind} from '${referenced.output}' "
+            f"but '{step.operation}' accepts {sorted(accepted)}",
+        ))
+    geometry = set(entry.get("applicability", {}).get("geometry", []))
+    if geometry and contract.geometry and contract.geometry not in geometry:
+        errors.append(Issue(
+            code="INPUT_GEOMETRY_MISMATCH",
+            step_id=step.id,
+            message=f"'{arg}' receives {contract.geometry} but '{step.operation}' "
+            f"accepts {sorted(geometry)}",
+        ))
 
 
 def _check_literal_input(
@@ -472,7 +513,7 @@ def _check_literal_input(
             )
         )
         simulated = context.simulated.get(dep_id)
-        return simulated.crs if simulated else None
+        return simulated if simulated else None
     if not Path(value).exists():
         errors.append(
             Issue(
@@ -503,7 +544,7 @@ def _check_one_input(
     errors: list[Issue],
     warnings: list[Issue],
     notes: list[Issue],
-) -> str | None:
+) -> str | SimulatedOutput | None:
     match = REFERENCE.match(value)
     if match:
         return _check_reference(step_id, arg, match.group(1), context, errors)
@@ -591,6 +632,60 @@ def _resolve_operation(
     return entry, binding
 
 
+def validate_structure(plan: Plan) -> ValidationReport:
+    """Validate arguments and typed dataflow without touching the filesystem."""
+    errors: list[Issue] = []
+    simulated: dict[str, SimulatedOutput] = {}
+    order: dict[str, int] = {}
+    for index, step in enumerate(plan.steps):
+        if step.id in order:
+            errors.append(Issue(
+                code="DUPLICATE_STEP_ID", step_id=step.id,
+                message=f"step id '{step.id}' is used more than once",
+            ))
+        order.setdefault(step.id, index)
+
+    for index, step in enumerate(plan.steps):
+        entry = _catalog_entry(step.operation)
+        binding = BINDINGS.get(step.operation)
+        if entry is None or binding is None:
+            errors.append(Issue(
+                code="UNKNOWN_OPERATION", step_id=step.id,
+                message=f"operation '{step.operation}' has no executable binding",
+            ))
+            continue
+        _check_arguments(step.id, entry, step.arguments, errors)
+        _check_output_contract(step, entry, errors)
+        context = _StepContext(
+            index=index, order=order, simulated=simulated,
+            literal_outputs={}, workspace=None, crs_matters=False,
+        )
+        for arg, value in step.arguments.items():
+            values = value if isinstance(value, list) else [value]
+            for item in values:
+                if not isinstance(item, str) or not REFERENCE.match(item):
+                    continue
+                if arg not in binding.input_args and arg not in binding.list_input_args:
+                    errors.append(Issue(
+                        code="REFERENCE_NOT_ALLOWED", step_id=step.id,
+                        message=f"'{arg}' cannot take a '$step' reference",
+                    ))
+                    continue
+                referenced = _check_reference(
+                    step.id, arg, REFERENCE.match(item).group(1), context, errors
+                )
+                if referenced is not None:
+                    _check_reference_contract(step, arg, entry, referenced, errors)
+        output_path = step.arguments.get(binding.output_arg) if binding.output_arg else None
+        if isinstance(output_path, str) and output_path:
+            simulated[step.id] = SimulatedOutput(
+                output=step.id, crs=UNKNOWN_CRS, contract=step.output
+            )
+    return ValidationReport(
+        valid=not errors, errors=errors, simulated_outputs=simulated
+    )
+
+
 def validate(plan: Plan) -> ValidationReport:
     """Statically validate a plan against the operation registry and real inputs."""
     errors: list[Issue] = []
@@ -638,36 +733,37 @@ def validate(plan: Plan) -> ValidationReport:
         for arg in binding.input_args:
             value = step.arguments.get(arg)
             if isinstance(value, str) and value:
-                crs = _check_one_input(step.id, arg, value, context, errors, warnings, notes)
-                if crs is not None:
-                    input_crs[arg] = crs
+                resolved_input = _check_one_input(
+                    step.id, arg, value, context, errors, warnings, notes
+                )
+                if isinstance(resolved_input, SimulatedOutput):
+                    input_crs[arg] = resolved_input.crs
+                    _check_reference_contract(step, arg, entry, resolved_input, errors)
+                elif resolved_input is not None:
+                    input_crs[arg] = resolved_input
 
-        # Path arguments that arrive as a list get the identical treatment,
-        # element by element. Skipping them was a containment hole: see the
-        # comment on `Binding.list_input_args`. The CRS of an element is not
-        # recorded under the argument name, because several elements share it
-        # and the operations taking a list declare `crs_effect ("unknown", "")`
-        # anyway — the containment checks are what matter here.
         for arg in binding.list_input_args:
             values = step.arguments.get(arg)
             if not isinstance(values, list):
                 continue
             for index, value in enumerate(values):
                 if isinstance(value, str) and value:
-                    _check_one_input(
+                    resolved_input = _check_one_input(
                         step.id, f"{arg}[{index}]", value, context, errors, warnings, notes
                     )
+                    if isinstance(resolved_input, SimulatedOutput):
+                        _check_reference_contract(step, arg, entry, resolved_input, errors)
 
         output_path = _resolve_output(
             step, binding, workspace, seen_outputs, external_inputs, errors, warnings
         )
-
-        # --- CRS simulation and suitability ----------------------------------------
         output_crs = _simulate_crs(step, binding, input_crs, errors)
         _crs_suitability(step, input_crs, errors, notes)
 
         if output_path:
-            simulated[step.id] = SimulatedOutput(output=output_path, crs=output_crs)
+            simulated[step.id] = SimulatedOutput(
+                output=output_path, crs=output_crs, contract=step.output
+            )
 
     return ValidationReport(
         valid=not errors,

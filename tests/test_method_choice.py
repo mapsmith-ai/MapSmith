@@ -182,9 +182,10 @@ def test_typed_dag_output_contract_does_not_require_a_linear_final_step(case):
         warnings=["three independent results"],
     )
     answer["steps"] = [
-        {"id": "names", "operation": "run_sql", "arguments": {}, "output": {"kind": "table"}},
-        {"id": "all", "operation": "run_sql", "arguments": {}, "output": {"kind": "table"}},
-        {"id": "main", "operation": "run_sql", "arguments": {}, "output": {"kind": "table"}},
+        {"id": name, "operation": "run_sql", "arguments": {
+            "query": f"SELECT * FROM {name}", "output_path": f"{name}.parquet",
+        }, "output": {"kind": "table"}}
+        for name in ("names", "all", "main")
     ]
     row = bench.score_response(case, answer)
     assert row["output_contract"] is True
@@ -252,6 +253,14 @@ def test_residual_cases_have_explicit_branch_contracts(case_id, branches):
         assert not errors, (case_id, step.operation, errors)
         if step.operation in {"network_shortest_path", "service_area", "centroid_layer"}:
             assert entry["output_geometry"] == step.output.geometry
+
+
+def test_parser_normalizes_the_optional_geometry_placeholder():
+    answer = bench.parse_response(json.dumps({
+        "steps": [{"id": "r", "operation": "reclassify_raster", "arguments": {},
+                   "output": {"kind": "raster", "geometry": "optional"}}],
+    }))
+    assert "geometry" not in answer["steps"][0]["output"]
 
 
 def test_parser_accepts_a_fenced_answer_and_rejects_a_non_plan():
@@ -470,8 +479,121 @@ def test_anthropic_provider_runs_without_calling_gemini(case, tmp_path, monkeypa
         "assumptions": ["crs_units=metres"], "warnings": [],
     }))
     bench.plan_cases([case], tmp_path, "claude-sonnet-5", repeat=1, limit=None, provider="anthropic")
-    document = json.loads((tmp_path / "plans-claude-sonnet-5.json").read_text(encoding="utf-8"))
+    path = bench.plan_path(tmp_path, "claude-sonnet-5", "anthropic")
+    document = json.loads(path.read_text(encoding="utf-8"))
     assert document["records"]["synthetic"]["responses"][0]["model"] == "claude-sonnet-5"
+
+
+def test_structurally_invalid_typed_dag_cannot_score_exact(case):
+    case["accepted_sequences"] = [["run_sql"]]
+    case["output"] = {"kind": "table", "geometry": None}
+    case["required_assumption_keys"] = []
+    answer = response(["run_sql"])
+    answer["steps"] = [
+        {"id": "missing", "operation": "run_sql", "arguments": {}, "output": {"kind": "table"}},
+    ]
+    row = bench.score_response(case, answer)
+    assert row["verdict"] == "invalid_plan"
+    assert row["first_step_right"] is False
+    assert row["every_required_step_present"] is False
+    assert row["output_contract"] is False
+    assert row["silent_planning_error"] is True
+    assert "MISSING_ARGUMENT" in row["structural_errors"]
+
+
+def test_every_leaf_needs_its_own_output_contract(case):
+    case["output"] = {"kind": "table", "geometry": None, "cardinality": "unknown"}
+    answer = response(["run_sql", "run_sql"])
+    answer["steps"] = [
+        {"id": "first", "operation": "run_sql", "arguments": {
+            "query": "SELECT 1", "output_path": "first.parquet",
+        }, "output": {"kind": "table"}},
+        {"id": "last", "operation": "run_sql", "arguments": {
+            "query": "SELECT 2", "output_path": "last.parquet",
+        }},
+    ]
+    assert bench.output_matches(case, answer["plan"], answer["steps"]) is False
+
+
+def test_reproducibility_includes_typed_arguments_and_output_contracts():
+    first = response(["run_sql"])
+    first["steps"] = [{
+        "id": "query", "operation": "run_sql",
+        "arguments": {"query": "SELECT 1", "output_path": "one.parquet"},
+        "output": {"kind": "table"},
+    }]
+    second = response(["run_sql"])
+    second["steps"] = [{
+        "id": "query", "operation": "run_sql",
+        "arguments": {"query": "SELECT 2", "output_path": "two.parquet"},
+        "output": {"kind": "number"},
+    }]
+    assert bench.response_signature(first) != bench.response_signature(second)
+
+
+def test_temperature_and_provider_are_part_of_response_identity(case):
+    import copy
+
+    default = stored(case, response(["buffer_layer"]), "shared-model")
+    default.update({"provider": "anthropic", "temperature": None})
+    zero = copy.deepcopy(default)
+    zero["temperature"] = 0
+    record = {"split": "evaluation", "responses": [default, zero]}
+    assert bench.current_responses(record, case, "shared-model", "anthropic") == [default]
+    assert bench.current_responses(record, case, "shared-model", "anthropic", 0) == [zero]
+    assert bench.current_responses(record, case, "shared-model") == []
+    assert bench.plan_path(Path("out"), "m", "anthropic").name == "plans-m-anthropic-default.json"
+    assert bench.plan_path(Path("out"), "m", "anthropic", 0).name == "plans-m-anthropic-temperature-0.json"
+
+
+def test_gemini_cannot_relabel_its_fixed_zero_temperature(case, tmp_path):
+    with pytest.raises(ValueError, match="fixed at temperature zero"):
+        bench.plan_cases([case], tmp_path, "m", 1, None, temperature=0.5)
+    with pytest.raises(ValueError, match="fixed at temperature zero"):
+        bench.score_cases([case], tmp_path, "m", temperature=0)
+
+
+def test_list_references_mark_producers_as_nonterminal(case):
+    case["accepted_sequences"] = [["run_sql", "run_sql", "merge_layers"]]
+    case["output"] = {"kind": "vector", "geometry": "polygon", "cardinality": "unknown"}
+    answer = response(["run_sql", "run_sql", "merge_layers"])
+    answer["steps"] = [
+        {"id": "a", "operation": "run_sql", "arguments": {
+            "query": "SELECT 1", "output_path": "a.parquet",
+        }, "output": {"kind": "vector", "geometry": "polygon"}},
+        {"id": "b", "operation": "run_sql", "arguments": {
+            "query": "SELECT 2", "output_path": "b.parquet",
+        }, "output": {"kind": "vector", "geometry": "polygon"}},
+        {"id": "merged", "operation": "merge_layers", "arguments": {
+            "input_paths": ["$a", "$b"], "output_path": "merged.parquet",
+        }, "output": {"kind": "vector", "geometry": "polygon"}},
+    ]
+    assert bench.output_matches(case, answer["plan"], answer["steps"]) is True
+
+
+def test_score_artifacts_are_arm_qualified():
+    assert bench.score_path(Path("out"), "m").name == "scores-m.json"
+    assert bench.score_path(Path("out"), "m", "anthropic").name == "scores-m-anthropic-default.json"
+    assert bench.score_path(Path("out"), "m", "anthropic", 0).name == "scores-m-anthropic-temperature-0.json"
+
+
+def test_http_error_body_and_arm_are_retained(case, tmp_path, monkeypatch):
+    import io
+    import urllib.error
+
+    failure = urllib.error.HTTPError(
+        "url", 400, "bad request", hdrs=None,
+        fp=io.BytesIO(b'{"error":{"message":"temperature: Extra inputs are not permitted"}}'),
+    )
+    monkeypatch.setattr(bench, "ask_anthropic", lambda *_, **__: (_ for _ in ()).throw(failure))
+    bench.plan_cases([case], tmp_path, "m", 1, None, provider="anthropic", temperature=0)
+    path = bench.plan_path(tmp_path, "m", "anthropic", 0)
+    record = json.loads(path.read_text(encoding="utf-8"))["records"]["synthetic"]
+    event = record["api_errors"][0]
+    assert event["http_status"] == 400
+    assert event["provider"] == "anthropic"
+    assert event["temperature"] == 0
+    assert "Extra inputs are not permitted" in event["error"]
 
 
 def test_workspace_resolution_prefers_default_and_caches(monkeypatch):

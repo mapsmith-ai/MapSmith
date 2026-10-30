@@ -83,7 +83,9 @@ class Plan(BaseModel):
         equal plans dedup to the same fingerprint; bools stay bools.
         """
         canonical = json.dumps(
-            _normalize_numbers(self.model_dump()), sort_keys=True, separators=(",", ":")
+            _normalize_numbers(self.model_dump(exclude_none=True)),
+            sort_keys=True,
+            separators=(",", ":"),
         )
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -123,6 +125,7 @@ class SimulatedOutput(BaseModel):
 
     output: str
     crs: str  # "EPSG:xxxx", a WKT/name string, or "unknown"
+    contract: OutputContract | None = None
 
 
 class ValidationReport(BaseModel):

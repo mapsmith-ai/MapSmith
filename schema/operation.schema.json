@@ -48,6 +48,14 @@
         "plan_result"
       ]
     },
+    "output_geometry": {
+      "description": "The geometry family a vector-writing operation guarantees for every valid input. Optional where the output geometry depends on the input or operation arguments; the typed-plan validator uses a declared value to reject an incompatible branch before execution.",
+      "enum": ["point", "line", "polygon"]
+    },
+    "output_cardinality": {
+      "description": "The feature cardinality a dataset-writing operation guarantees for every valid input. Optional where cardinality depends on the input or operation arguments.",
+      "enum": ["one", "fewer", "more", "same_as_input", "unknown"]
+    },
     "applicability": {
       "description": "FACET. What the operation can be pointed at, and how much of it. These are the declarations a caller can answer from their own situation without knowing the vocabulary of the catalogue they are searching.",
       "type": "object",

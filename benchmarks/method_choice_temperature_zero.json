@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "measured_at": "2026-10-30",
+  "provider": "anthropic",
+  "temperature": 0,
+  "dataset_sha256": "269b9fa2e48942b21bfbe9c62b13799b01480f2e1e28b359ac759c44aa7f1041",
+  "catalogue_sha256": "4e53ec78e64580a6244edce17ca89506d1784ed91ccf16836f4798e18afa7d8e",
+  "attempts": [
+    {
+      "model": "claude-sonnet-5",
+      "cases": 73,
+      "api_errors": 73,
+      "http_status": 400,
+      "error": "temperature: Extra inputs are not permitted"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "cases": 1,
+      "api_errors": 1,
+      "http_status": 400,
+      "error": "temperature: Extra inputs are not permitted"
+    }
+  ],
+  "valid_responses": 0,
+  "complete": false,
+  "exact_rate": null,
+  "reproducible_cases": null,
+  "conclusion": "No zero-temperature accuracy or reproducibility result exists on this Anthropic workspace. The API rejects the parameter; mocked request tests are not a live measurement. Default-temperature results must not be relabelled as temperature-zero results."
+}

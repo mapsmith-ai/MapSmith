@@ -166,6 +166,47 @@ def test_legacy_plan_without_output_contract_is_still_valid(tmp_path):
     assert validate(make_plan(step)).valid
 
 
+def test_legacy_plan_hash_does_not_change_with_optional_output_contracts():
+    plan = make_plan({
+        "id": "legacy", "operation": "run_sql", "arguments": {"query": "SELECT 1"},
+    })
+    assert plan.sha256() == "f752b39578918df826472c4d5d07a7dab52e49374eb619faa25a4077601a34d6"
+
+
+def test_fixed_cardinality_and_kind_contradictions_are_refused(wells, tmp_path):
+    centroid = {
+        "id": "centroid", "operation": "centroid_layer",
+        "arguments": {"input_path": wells, "output_path": str(tmp_path / "c.parquet")},
+        "output": {"kind": "vector", "cardinality": "more"},
+    }
+    assert codes(validate(make_plan(centroid))) == ["OUTPUT_CARDINALITY_UNGUARANTEED"]
+
+    from mapsmith.plans.validator import validate_structure
+
+    table = {
+        "id": "table", "operation": "run_sql",
+        "arguments": {"query": "SELECT 1", "output_path": "table.parquet"},
+        "output": {"kind": "table"},
+    }
+    buffered = {
+        "id": "buffered", "operation": "buffer_layer",
+        "arguments": {
+            "input_path": "$table", "distance_meters": 10, "output_path": "buffer.parquet",
+        },
+        "output": {"kind": "vector", "geometry": "polygon"},
+    }
+    assert "INPUT_KIND_MISMATCH" in codes(validate_structure(make_plan(table, buffered)))
+
+    literal = dict(buffered)
+    literal["arguments"] = dict(buffered["arguments"], input_path="table.parquet")
+    assert "INPUT_KIND_MISMATCH" in codes(validate(make_plan(table, literal)))
+
+    buffered["output"] = {"kind": "vector", "cardinality": "more"}
+    assert "OUTPUT_CARDINALITY_UNGUARANTEED" in codes(
+        validate_structure(make_plan(buffered))
+    )
+
+
 # --- one closed-form trigger per error code ---------------------------------------
 
 

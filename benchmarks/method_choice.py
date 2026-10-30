@@ -136,9 +136,18 @@ def catalogue_text() -> str:
         rules = parameter_rules(op)
         geometry = applicability.get("geometry") or []
         constraints = f"; geometry: {', '.join(geometry)}" if geometry else ""
+        parameters = ", ".join(
+            f"{param['name']}:{param['type']}{' required' if param.get('required') else ' optional'}"
+            for param in op.get("parameters", [])
+        )
+        guarantees = ", ".join(
+            f"{key}={op[key]}" for key in ("output_geometry", "output_cardinality") if key in op
+        )
         lines.append(
             f"- {op['name']}: {op['summary'].strip().rstrip('.')}. "
             f"[takes: {', '.join(applicability.get('inputs', []))}{constraints}; produces: {op.get('produces')}]"
+            f" [arguments: {parameters or 'none'}]"
+            + (f" [output guarantees: {guarantees}]" if guarantees else "")
             + (f" [rules: {rules}]" if rules else "")
         )
     return "\n".join(lines)
@@ -214,6 +223,11 @@ def parse_response(text: str) -> dict[str, Any]:
     if "steps" in answer:
         if not isinstance(answer["steps"], list):
             raise TypeError("planner JSON has no steps list")
+        for step in answer["steps"]:
+            if isinstance(step, dict) and isinstance(step.get("output"), dict):
+                geometry = step["output"].get("geometry")
+                if isinstance(geometry, str) and geometry.lower() in {"optional", "none"}:
+                    step["output"].pop("geometry")
         if answer["steps"]:
             typed = Plan.model_validate({"goal": answer.get("goal", ""), "steps": answer["steps"]})
             answer["plan"] = [step.operation for step in typed.steps]
@@ -300,17 +314,45 @@ def retryable(exc: BaseException) -> bool:
     return isinstance(exc, (urllib.error.URLError, TimeoutError))
 
 
-def current_responses(record: dict[str, Any], case: dict[str, Any], model: str) -> list[dict[str, Any]]:
+def validate_arm(provider: str, temperature: float | None) -> None:
+    if provider == "gemini" and temperature is not None:
+        raise ValueError("Gemini's benchmark request is fixed at temperature zero; do not relabel it")
+
+
+def plan_path(out: Path, model: str, provider: str = "gemini", temperature: float | None = None) -> Path:
+    if provider == "gemini" and temperature is None:
+        return out / f"plans-{model}.json"
+    arm = "default" if temperature is None else f"temperature-{temperature:g}"
+    return out / f"plans-{model}-{provider}-{arm}.json"
+
+
+def score_path(out: Path, model: str, provider: str = "gemini", temperature: float | None = None) -> Path:
+    if provider == "gemini" and temperature is None:
+        return out / f"scores-{model}.json"
+    arm = "default" if temperature is None else f"temperature-{temperature:g}"
+    return out / f"scores-{model}-{provider}-{arm}.json"
+
+
+def current_responses(
+    record: dict[str, Any], case: dict[str, Any], model: str,
+    provider: str = "gemini", temperature: float | None = None,
+) -> list[dict[str, Any]]:
     if record.get("split") != case["split"]:
         return []
     prompt_hash = hashlib.sha256(prompt_for(case).encode()).hexdigest()
     return [
         response for response in record.get("responses", [])
-        if response.get("model") == model and response.get("prompt_sha256") == prompt_hash
+        if response.get("model") == model
+        and response.get("provider", "gemini") == provider
+        and response.get("temperature") == temperature
+        and response.get("prompt_sha256") == prompt_hash
     ]
 
 
-def current_events(record: dict[str, Any], case: dict[str, Any], model: str, key: str) -> list[dict[str, Any]]:
+def current_events(
+    record: dict[str, Any], case: dict[str, Any], model: str, key: str,
+    provider: str = "gemini", temperature: float | None = None,
+) -> list[dict[str, Any]]:
     if record.get("split") != case["split"]:
         return []
     prompt_hash = hashlib.sha256(prompt_for(case).encode()).hexdigest()
@@ -318,6 +360,8 @@ def current_events(record: dict[str, Any], case: dict[str, Any], model: str, key
         event for event in record.get(key, [])
         if event.get("split") == case["split"]
         and event.get("model") == model
+        and event.get("provider", "gemini") == provider
+        and event.get("temperature") == temperature
         and event.get("prompt_sha256") == prompt_hash
     ]
 
@@ -340,17 +384,30 @@ def write_json(path: Path, value: Any) -> None:
             time.sleep(0.05)
 
 
+def error_detail(exc: BaseException) -> str:
+    detail = str(exc)
+    if isinstance(exc, urllib.error.HTTPError):
+        try:
+            body = exc.read()
+            if body:
+                detail += "; " + body.decode("utf-8", errors="replace")
+        except (OSError, AttributeError):
+            pass
+    return detail[:500]
+
+
 def plan_cases(
     cases: list[dict[str, Any]], out: Path, model: str, repeat: int, limit: int | None,
     provider: str = "gemini", temperature: float | None = None,
 ) -> None:
-    path = out / f"plans-{model}.json"
+    validate_arm(provider, temperature)
+    path = plan_path(out, model, provider, temperature)
     document = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"records": {}}
     records = document.setdefault("records", {})
     prompt_hash = hashlib.sha256(catalogue_text().encode()).hexdigest()
     for case in cases[:limit]:
         record = records.setdefault(case["id"], {"split": case["split"], "responses": [], "api_errors": []})
-        valid = current_responses(record, case, model)
+        valid = current_responses(record, case, model, provider, temperature)
         if len(valid) != len(record["responses"]):
             record.setdefault("stale_responses", []).extend(
                 response for response in record["responses"] if response not in valid
@@ -358,7 +415,7 @@ def plan_cases(
         record["responses"] = valid
         record.setdefault("invalid_responses", [])
         for key in ("api_errors", "invalid_responses"):
-            events = current_events(record, case, model, key)
+            events = current_events(record, case, model, key, provider, temperature)
             record.setdefault(f"stale_{key}", []).extend(
                 event for event in record[key] if event not in events
             )
@@ -377,11 +434,16 @@ def plan_cases(
                     else:
                         raw = ask_anthropic(prompt, model, temperature=temperature)
                 except (urllib.error.URLError, TimeoutError) as exc:
-                    record["api_errors"].append({
-                        "attempt": attempt, "retry": retry + 1, "time": now(), "error": str(exc)[:500],
-                        "split": case["split"], "model": model,
+                    event = {
+                        "attempt": attempt, "retry": retry + 1, "time": now(),
+                        "error": error_detail(exc), "split": case["split"], "model": model,
+                        "provider": provider, "temperature": temperature,
+                        "catalogue_sha256": prompt_hash,
                         "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
-                    })
+                    }
+                    if isinstance(exc, urllib.error.HTTPError):
+                        event["http_status"] = exc.code
+                    record["api_errors"].append(event)
                     write_json(path, document)
                     if not retryable(exc):
                         break
@@ -393,6 +455,8 @@ def plan_cases(
                     record["invalid_responses"].append({
                         "attempt": attempt, "time": now(), "raw": raw, "error": str(exc)[:500],
                         "split": case["split"], "model": model,
+                        "provider": provider, "temperature": temperature,
+                        "catalogue_sha256": prompt_hash,
                         "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
                     })
                     write_json(path, document)
@@ -402,17 +466,12 @@ def plan_cases(
             if not answered:
                 break
             record["responses"].append({
-                "attempt": attempt,
-                "time": now(),
-                "model": model,
+                "attempt": attempt, "time": now(), "model": model, "provider": provider,
                 "catalogue_sha256": prompt_hash,
                 "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
-                "raw": raw,
-                "temperature": temperature,
-                "plan": answer["plan"],
-                "steps": answer.get("steps", []),
-                "assumptions": answer["assumptions"],
-                "warnings": answer["warnings"],
+                "raw": raw, "temperature": temperature,
+                "plan": answer["plan"], "steps": answer.get("steps", []),
+                "assumptions": answer["assumptions"], "warnings": answer["warnings"],
             })
             write_json(path, document)
             time.sleep(1)
@@ -448,9 +507,6 @@ def verdict_for(got: list[str], accepted: list[list[str]]) -> str:
 def output_matches(case: dict[str, Any], got: list[str], steps: list[dict[str, Any]] | None = None) -> bool:
     if steps:
         typed = Plan.model_validate({"goal": case["goal"], "steps": steps})
-        contracts = [step.output for step in typed.steps if step.output is not None]
-        if not contracts:
-            return False
         operations = available_operations()
         for step in typed.steps:
             if step.operation not in operations:
@@ -459,16 +515,25 @@ def output_matches(case: dict[str, Any], got: list[str], steps: list[dict[str, A
             _check_output_contract(step, operations[step.operation], errors)
             if errors:
                 return False
+        from mapsmith.plans.models import REFERENCE
+
+        referenced = set()
+        for step in typed.steps:
+            for value in step.arguments.values():
+                for item in value if isinstance(value, list) else [value]:
+                    if isinstance(item, str) and REFERENCE.fullmatch(item):
+                        referenced.add(item[1:])
+        leaves = [step for step in typed.steps if step.id not in referenced]
+        if not leaves or any(step.output is None for step in leaves):
+            return False
         expected = case["output"]
         compatible = {
-            "vector": {"vector"},
-            "raster": {"raster"},
-            "map": {"map", "vector"},
-            "table": {"table", "description"},
-            "number": {"number", "table"},
+            "vector": {"vector"}, "raster": {"raster"}, "map": {"map", "vector"},
+            "table": {"table", "description"}, "number": {"number", "table"},
             "description": {"description"},
         }
-        for contract in contracts:
+        for step in leaves:
+            contract = step.output
             if contract.kind not in compatible.get(expected["kind"], set()):
                 return False
             if expected.get("geometry") and contract.geometry != expected["geometry"]:
@@ -517,12 +582,25 @@ def relevant_warnings(
     return all(any(token in text for token in alternatives) for alternatives in required)
 
 
+def structural_error_codes(steps: list[dict[str, Any]] | None) -> list[str]:
+    if not steps:
+        return []
+    from mapsmith.plans.validator import validate_structure
+
+    try:
+        typed = Plan.model_validate({"goal": "", "steps": steps})
+    except (TypeError, ValueError):
+        return ["INVALID_WIRE_PLAN"]
+    return sorted({issue.code for issue in validate_structure(typed).errors})
+
+
 def score_response(case: dict[str, Any], response: dict[str, Any]) -> dict[str, Any]:
     got = response.get("plan") or []
     accepted = case["accepted_sequences"]
     unknown = sorted(set(got) - available_operations().keys())
-    verdict = verdict_for(got, accepted)
-    output_ok = output_matches(case, got, response.get("steps"))
+    structural_errors = structural_error_codes(response.get("steps"))
+    verdict = "invalid_plan" if structural_errors else verdict_for(got, accepted)
+    output_ok = not structural_errors and output_matches(case, got, response.get("steps"))
     missing_keys = sorted(set(case["required_assumption_keys"]) - declared_keys(response))
     disclosed = relevant_warnings(response, unknown, output_ok, missing_keys, verdict)
     return {
@@ -530,9 +608,12 @@ def score_response(case: dict[str, Any], response: dict[str, Any]) -> dict[str, 
         "split": case["split"],
         "plan": got,
         "verdict": verdict,
+        "structural_errors": structural_errors,
         "unknown_names": unknown,
-        "first_step_right": bool(got) and any(got[0] == sequence[0] for sequence in accepted),
-        "every_required_step_present": bool(got) and any(
+        "first_step_right": not structural_errors and bool(got) and any(
+            got[0] == sequence[0] for sequence in accepted
+        ),
+        "every_required_step_present": not structural_errors and bool(got) and any(
             not (collections.Counter(sequence) - collections.Counter(got)) for sequence in accepted
         ),
         "output_contract": output_ok,
@@ -545,15 +626,24 @@ def score_response(case: dict[str, Any], response: dict[str, Any]) -> dict[str, 
 
 
 def response_signature(response: dict[str, Any]) -> tuple[Any, ...]:
+    steps = response.get("steps") or []
+    plan_fingerprint = (
+        Plan.model_validate({"goal": "", "steps": steps}).sha256()
+        if steps else json.dumps(response.get("plan") or [], separators=(",", ":"))
+    )
     return (
-        response.get("plan") or [],
+        plan_fingerprint,
         sorted(item.strip().lower() for item in response.get("assumptions", []) if item.strip()),
         sorted(item.strip().lower() for item in response.get("warnings", []) if item.strip()),
     )
 
 
-def score_cases(cases: list[dict[str, Any]], out: Path, model: str) -> dict[str, Any]:
-    path = out / f"plans-{model}.json"
+def score_cases(
+    cases: list[dict[str, Any]], out: Path, model: str,
+    provider: str = "gemini", temperature: float | None = None,
+) -> dict[str, Any]:
+    validate_arm(provider, temperature)
+    path = plan_path(out, model, provider, temperature)
     records = json.loads(path.read_text(encoding="utf-8"))["records"] if path.exists() else {}
     rows = []
     api_errors = invalid_cases = not_attempted = 0
@@ -563,11 +653,11 @@ def score_cases(cases: list[dict[str, Any]], out: Path, model: str) -> dict[str,
     unsupported_empty = unsupported_irrelevant = 0
     for case in cases:
         record = records.get(case["id"], {})
-        responses = current_responses(record, case, model)
+        responses = current_responses(record, case, model, provider, temperature)
         if not responses:
-            if current_events(record, case, model, "api_errors"):
+            if current_events(record, case, model, "api_errors", provider, temperature):
                 api_errors += 1
-            elif current_events(record, case, model, "invalid_responses"):
+            elif current_events(record, case, model, "invalid_responses", provider, temperature):
                 invalid_cases += 1
             else:
                 not_attempted += 1
@@ -610,6 +700,8 @@ def score_cases(cases: list[dict[str, Any]], out: Path, model: str) -> dict[str,
     )
     summary = {
         "model": model,
+        "provider": provider,
+        "temperature": temperature,
         "split": cases[0]["split"] if cases and all(case["split"] == cases[0]["split"] for case in cases) else "all",
         "cases": len(cases),
         "scored_cases": len(rows),
@@ -626,10 +718,12 @@ def score_cases(cases: list[dict[str, Any]], out: Path, model: str) -> dict[str,
         "invalid_response_cases": invalid_cases,
         "not_attempted": not_attempted,
         "api_error_events": sum(
-            len(current_events(records.get(case["id"], {}), case, model, "api_errors")) for case in cases
+            len(current_events(records.get(case["id"], {}), case, model, "api_errors", provider, temperature))
+            for case in cases
         ),
         "invalid_response_events": sum(
-            len(current_events(records.get(case["id"], {}), case, model, "invalid_responses")) for case in cases
+            len(current_events(records.get(case["id"], {}), case, model, "invalid_responses", provider, temperature))
+            for case in cases
         ),
         "complete": answered == len(cases),
         "verdicts": dict(verdicts),
@@ -676,8 +770,8 @@ def main() -> int:
     elif args.command == "plan":
         plan_cases(cases, out, model, args.repeat, args.limit, provider=args.provider, temperature=args.temperature)
     else:
-        report = score_cases(cases, out, model)
-        write_json(out / f"scores-{model}.json", report)
+        report = score_cases(cases, out, model, args.provider, args.temperature)
+        write_json(score_path(out, model, args.provider, args.temperature), report)
         print(json.dumps(report["summary"], indent=2))
     return 0
 

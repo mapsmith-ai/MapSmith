@@ -122,6 +122,15 @@ something they already have. Check it against what the code actually writes — 
 declaration that disagrees makes the operation unreachable for the caller who
 filters correctly.
 
+### `output_geometry` and `output_cardinality` — what a writer guarantees
+
+Optional output declarations, used by the typed-plan validator rather than as
+search facets. `output_geometry` is `point`, `line` or `polygon`;
+`output_cardinality` is `one`, `fewer`, `more`, `same_as_input` or `unknown`.
+Declare them only when every valid invocation guarantees that value. Unlike
+`applicability.geometry`, they describe the output rather than the input. They
+are omitted when geometry or cardinality depends on the input or arguments.
+
 ### `category` — the family, and the one facet that MUST NOT filter
 
 Measured the single most informative facet — and that is exactly why it is

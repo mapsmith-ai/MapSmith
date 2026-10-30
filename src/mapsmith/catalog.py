@@ -79,6 +79,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "vector",
         "produces": "dataset:vector",
+        "output_cardinality": "same_as_input",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Metric buffer with automatic UTM estimation on geographic CRS",
         "phrasings": "everything within a distance of; a zone around; how far out from; catchment radius; protection zone; ground at least 100 m in from the edge; at least 250 m away from any settlement; widen the outline by a margin; no-go zone around nest sites; strip along both banks of a stream; corridor alongside every road",
@@ -702,6 +703,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "category": "vector",
         "produces": "dataset:vector",
         "output_geometry": "point",
+        "output_cardinality": "same_as_input",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "One point per feature: geometric centroids computed in a "
         "metric CRS, never on degrees",
@@ -1043,6 +1045,7 @@ OPERATIONS: list[dict[str, Any]] = [
         "workload": "small_vector",
         "category": "vector",
         "produces": "dataset:vector",
+        "output_cardinality": "same_as_input",
         "applicability": {"inputs": ["vector"], "requires_projected_crs": False, 'dataset_inputs': 1},
         "summary": "Reproject a layer to a target CRS (EPSG code or WKT)",
         "phrasings": "my data is in degrees and I need metres; change the coordinate system; wrong units; put two layers on the same system; back to latitude and longitude from UTM; a whole folder of files to one system at once; a UTM copy so lengths come out right; a metric system suited to the region before measuring",
