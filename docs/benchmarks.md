@@ -688,15 +688,15 @@ evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
 What it says about MapSmith 0.11.0 (all thirty families, engine tier, `spec_commit`
-[`8bd3133`](https://github.com/argleton/argleton/tree/main/results/2026-10-29-declared-datum-shift)):
+[`24c9fd0`](https://github.com/argleton/argleton/tree/main/results/2026-10-30-multi-step-selection)):
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
-| MapSmith | **0.00** | 1.00 | 32 | 0 |
-| naive composition (read file, take statistic) | 0.875 | 1.00 | 32 | 0 |
+| MapSmith | **0.00** | 1.00 | 33 | 0 |
+| naive composition (read file, take statistic) | 0.8788 | 1.00 | 33 | 0 |
 
-The current run measures the 0.11.0 release and adds the thirtieth family: a CRS that declares
-its own datum shift. MapSmith's verdicts on the preceding 31 traps are unchanged. The runs from
+The current run measures the 0.11.0 release and adds a multi-step selection with
+ordered IDs. MapSmith answers the new trap and its clean control correctly. The runs from
 2026-08-30 to 2026-09-15 scored trap 024 against a wrong truth in MapSmith's favour: the
 [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) recounts them,
 and the section below the next one says what the trap was and why the fix made it worse.

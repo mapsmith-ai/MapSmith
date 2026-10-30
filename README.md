@@ -54,9 +54,9 @@ already has — are listed in [`docs/manifest-vocabulary.md`](docs/manifest-voca
 generated from the source rather than maintained by hand.
 
 Evidence before promises. A correctness suite in its own organisation,
-[**Argleton**](https://argleton.org), grades MapSmith on thirty-two traps whose answers are
+[**Argleton**](https://argleton.org), grades MapSmith on thirty-three traps whose answers are
 computed on paper before any system runs: **0.00 silent errors, nothing skipped**, against
-0.875 for the obvious way of writing the same code. The runs from 2026-08-30 to 2026-09-15 said
+0.8788 for the obvious way of writing the same code. The runs from 2026-08-30 to 2026-09-15 said
 0.00 too, and on one trap they were wrong: its truth was wrong in MapSmith's favour for 26 days, the error was ours
 twice over, and the [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) says so. Every run since 2026-09-26, the current one
 included, is scored against the corrected truth. Getting here cost seven defects the suite sent back, and they are listed. Alongside it: an [A/B on GABench](docs/benchmarks.md) whose
@@ -1182,7 +1182,7 @@ inside the thing it evaluates is easy to dismiss in one line. Closed-form truth,
 model in the evaluator, fixtures rebuilt rather than vendored.
 
 **The score.** On the current run — all thirty families — MapSmith answers every
-trap correctly: **0.00 silent errors over 32 traps, nothing skipped**, against 0.875
+trap correctly: **0.00 silent errors over 33 traps, nothing skipped**, against 0.8788
 for a careless composition of the same libraries. The runs from 2026-08-30 to 2026-09-15 said
 0.00 as well and were wrong on one trap, a point-registered DEM: its truth was derived from a
 premise about GDAL that GDAL documents the other way, MapSmith had been built to that premise,
