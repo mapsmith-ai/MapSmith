@@ -268,15 +268,18 @@ def anthropic_workspace_id(key: str) -> str:
     raise RuntimeError("set ANTHROPIC_WORKSPACE_ID to choose the workspace for this baseline")
 
 
-def ask_anthropic(prompt: str, model: str, timeout: int = 120) -> str:
+def ask_anthropic(prompt: str, model: str, timeout: int = 120, temperature: float | None = None) -> str:
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         raise RuntimeError("ANTHROPIC_API_KEY is not set in the environment")
-    body = json.dumps({
+    payload = {
         "model": model,
         "max_tokens": 16384,
         "messages": [{"role": "user", "content": prompt}],
-    }).encode()
+    }
+    if temperature is not None:
+        payload["temperature"] = temperature
+    body = json.dumps(payload).encode()
     request = urllib.request.Request(
         ANTHROPIC_ENDPOINT, data=body,
         headers={
@@ -339,7 +342,7 @@ def write_json(path: Path, value: Any) -> None:
 
 def plan_cases(
     cases: list[dict[str, Any]], out: Path, model: str, repeat: int, limit: int | None,
-    provider: str = "gemini",
+    provider: str = "gemini", temperature: float | None = None,
 ) -> None:
     path = out / f"plans-{model}.json"
     document = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"records": {}}
@@ -367,7 +370,12 @@ def plan_cases(
             answered = False
             for retry in range(3):
                 try:
-                    raw = ask_gemini(prompt, model) if provider == "gemini" else ask_anthropic(prompt, model)
+                    if provider == "gemini":
+                        raw = ask_gemini(prompt, model)
+                    elif temperature is None:
+                        raw = ask_anthropic(prompt, model)
+                    else:
+                        raw = ask_anthropic(prompt, model, temperature=temperature)
                 except (urllib.error.URLError, TimeoutError) as exc:
                     record["api_errors"].append({
                         "attempt": attempt, "retry": retry + 1, "time": now(), "error": str(exc)[:500],
@@ -400,6 +408,7 @@ def plan_cases(
                 "catalogue_sha256": prompt_hash,
                 "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
                 "raw": raw,
+                "temperature": temperature,
                 "plan": answer["plan"],
                 "steps": answer.get("steps", []),
                 "assumptions": answer["assumptions"],
@@ -655,6 +664,7 @@ def main() -> int:
     parser.add_argument("--split", choices=("calibration", "evaluation", "all"), default="all")
     parser.add_argument("--repeat", type=int, default=1)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--temperature", type=float)
     args = parser.parse_args()
     if args.repeat < 1:
         parser.error("--repeat must be at least 1")
@@ -664,7 +674,7 @@ def main() -> int:
     if args.command == "validate":
         print(json.dumps(validate_cases(cases), indent=2))
     elif args.command == "plan":
-        plan_cases(cases, out, model, args.repeat, args.limit, provider=args.provider)
+        plan_cases(cases, out, model, args.repeat, args.limit, provider=args.provider, temperature=args.temperature)
     else:
         report = score_cases(cases, out, model)
         write_json(out / f"scores-{model}.json", report)

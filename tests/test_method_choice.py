@@ -443,6 +443,26 @@ def test_anthropic_request_uses_the_versioned_messages_contract(monkeypatch):
     assert "temperature" not in body
 
 
+def test_anthropic_temperature_zero_is_an_explicit_experimental_arm(monkeypatch):
+    seen = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return None
+
+        def read(self):
+            return json.dumps({"content": [{"type": "text", "text": "zero"}]}).encode()
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("ANTHROPIC_WORKSPACE_ID", "wrkspc_test")
+    monkeypatch.setattr(bench.urllib.request, "urlopen", lambda request, timeout: seen.__setitem__("request", request) or FakeResponse())
+    assert bench.ask_anthropic("plan this", "claude-sonnet-5", temperature=0) == "zero"
+    assert json.loads(seen["request"].data)["temperature"] == 0
+
+
 def test_anthropic_provider_runs_without_calling_gemini(case, tmp_path, monkeypatch):
     monkeypatch.setattr(bench, "ask_gemini", lambda *_: (_ for _ in ()).throw(AssertionError("Gemini called")))
     monkeypatch.setattr(bench, "ask_anthropic", lambda *_: json.dumps({
