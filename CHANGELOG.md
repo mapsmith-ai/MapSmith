@@ -13,6 +13,9 @@ All notable changes to MapSmith are documented here, in the format of
   geometry constraints, permit independent repeated-operation branches, separate
   unsupported requests from method-choice scoring, and accept minimal defensible
   sequences. Unsupported outcomes now have exhaustive, explicitly disclosed classes.
+- **Clarify preview and unsupported planning contracts.** The `preview_map` summary
+  declares EPSG:4326 without changing its discovery terms, and the planner refuses
+  read-only approximations of writes, per-feature iteration and multi-engine requests.
 
 ## [0.11.0] - 2026-10-29
 
