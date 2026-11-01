@@ -1219,6 +1219,9 @@ def _spec_fixtures(tmp_path):
     def out(name: str) -> str:
         return str(tmp_path / name)
 
+    starts = tmp_path / "starts.parquet"
+    gpd.GeoDataFrame(geometry=[Point(0, 0), Point(200, 0)], crs=crs).to_parquet(starts)
+
     from mapsmith.engines import linework, network, spatial_stats, whitebox_engine
 
     fixtures = {
@@ -1226,7 +1229,8 @@ def _spec_fixtures(tmp_path):
             str(streets), out("route.parquet"), 0, 0, 200, 0, tolerance=0.01
         ),
         "service_area": lambda: network.service_area(
-            str(streets), out("reach.parquet"), 0, 0, budget=150.0, tolerance=0.01
+            str(streets), out("reach.parquet"), budget=150.0, tolerance=0.01,
+            start_points_path=str(starts),
         ),
         "hot_spots": lambda: spatial_stats.hot_spots(
             str(areas), out("gi.parquet"), value_field="cases", weights="contiguity"

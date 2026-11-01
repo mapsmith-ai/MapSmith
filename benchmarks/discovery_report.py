@@ -227,8 +227,8 @@ def ablation(queries: list[dict[str, Any]], engine: str = "lexical") -> list[dic
     checked.
 
     So the report gives both columns. They differ in a way worth seeing anyway:
-    BM25 is the better ranker while the candidate set is large, and the
-    embedding engine only overtakes it once the facets have narrowed.
+    BM25 leads at every declaration level in this run, and the embedding engine
+    earns its place on phrasings it has never seen rather than on the final rank.
 
     `delivered` is not an accuracy: below the choose threshold every survivor is
     handed to the caller, so it measures whether the narrowing ever drops the

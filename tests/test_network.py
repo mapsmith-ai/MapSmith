@@ -14,7 +14,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import pytest
-from shapely.geometry import LineString
+from shapely.geometry import LineString, Point
 
 from mapsmith.engines import network
 
@@ -230,6 +230,93 @@ def test_length_costs_on_a_geographic_network_are_refused(tmp_path):
 
 
 # ----------------------------------------------------------- service area
+
+def test_service_area_computes_reach_from_every_start_point(tmp_path):
+    lines = [LineString([(0, 0), (100, 0)]), LineString([(100, 0), (200, 0)])]
+    path = _write(lines, tmp_path, "corridor")
+    starts = tmp_path / "starts.gpkg"
+    gpd.GeoDataFrame(
+        {"name": ["west", "east"]},
+        geometry=[Point(0, 0), Point(200, 0)],
+        crs="EPSG:32632",
+    ).to_file(starts, layer="starts", driver="GPKG")
+    out = tmp_path / "areas.parquet"
+
+    result = network.service_area(
+        str(path), str(out), budget=150.0, tolerance=0.01,
+        start_points_path=str(starts),
+    )
+
+    got = gpd.read_parquet(out)
+    assert result["origins"] == 2
+    assert result["segments"] == 4
+    assert got["origin_index"].tolist() == [0, 0, 1, 1]
+    lengths = got.assign(length=got.geometry.length).groupby("origin_index")["length"].apply(list)
+    assert lengths.to_dict() == {
+        0: [100.0, 50.0],
+        1: [50.0, 100.0],
+    }
+    manifest = _manifest(out)
+    assert [item["argument"] for item in manifest["inputs"]] == [
+        "network_path", "start_points_path",
+    ]
+    assert manifest["parameters"]["start_points"] == 2
+    assert _named(out)["x-mapsmith:no_edge_is_emitted_over_itself_twice"]["passed"] is True
+
+
+def test_service_area_checks_original_points_before_crs_alignment(tmp_path, monkeypatch):
+    network_path = tmp_path / "network.gpkg"
+    gpd.GeoDataFrame(
+        {"id": [0]}, geometry=[LineString([(0, 0), (100, 0)])], crs="EPSG:3857"
+    ).to_file(network_path, layer="net", driver="GPKG")
+    starts = tmp_path / "starts.gpkg"
+    gpd.GeoDataFrame(geometry=[Point(0, 0)], crs="EPSG:4326").to_file(
+        starts, layer="starts", driver="GPKG"
+    )
+    events = []
+    loaded = network.verify.verify_loaded_inputs
+    aligned = network.datum.aligned
+    pairs = network.verify.verify_input_pairs
+
+    def record_loaded(*args, **kwargs):
+        events.append("loaded")
+        return loaded(*args, **kwargs)
+
+    def record_aligned(*args, **kwargs):
+        events.append("aligned")
+        return aligned(*args, **kwargs)
+
+    def record_pairs(*args, **kwargs):
+        events.append("pairs")
+        return pairs(*args, **kwargs)
+
+    monkeypatch.setattr(network.verify, "verify_loaded_inputs", record_loaded)
+    monkeypatch.setattr(network.datum, "aligned", record_aligned)
+    monkeypatch.setattr(network.verify, "verify_input_pairs", record_pairs)
+    network.service_area(
+        str(network_path), str(tmp_path / "area.parquet"),
+        budget=100.0, tolerance=0.01, start_points_path=str(starts),
+    )
+    assert events == ["loaded", "aligned", "pairs"]
+
+
+def test_service_area_requires_exactly_one_origin_mode(tmp_path):
+    path = _write([LineString([(0, 0), (100, 0)])], tmp_path, "corridor")
+    starts = tmp_path / "starts.gpkg"
+    gpd.GeoDataFrame(geometry=[Point(0, 0)], crs="EPSG:32632").to_file(
+        starts, layer="starts", driver="GPKG"
+    )
+    with pytest.raises(ValueError, match="exactly one origin"):
+        network.service_area(
+            str(path), str(tmp_path / "both.parquet"), 0, 0,
+            budget=100.0, tolerance=0.01, start_points_path=str(starts),
+        )
+    with pytest.raises(ValueError, match="exactly one origin"):
+        network.service_area(
+            str(path), str(tmp_path / "neither.parquet"),
+            budget=100.0, tolerance=0.01,
+        )
+
 
 def test_a_budget_of_one_hundred_and_fifty_cuts_the_second_segment_in_half(tmp_path):
     """Closed form: a straight 100 m + 100 m corridor, budget 150.

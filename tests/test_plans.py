@@ -6,7 +6,7 @@ from pathlib import Path
 import geopandas as gpd
 import pytest
 from pydantic import ValidationError
-from shapely.geometry import Point, box
+from shapely.geometry import LineString, Point, box
 
 from mapsmith import catalog
 from mapsmith.plans import Plan, execute, validate
@@ -141,6 +141,27 @@ def test_output_geometry_mismatch_is_refused(wells, tmp_path):
         "output": {"kind": "vector", "geometry": "point"},
     }
     assert codes(validate(make_plan(step))) == ["OUTPUT_GEOMETRY_MISMATCH"]
+
+
+def test_service_area_accepts_a_start_points_layer(wells, tmp_path):
+    network = tmp_path / "network.gpkg"
+    gpd.GeoDataFrame(
+        geometry=[LineString([(9.19, 45.46), (9.30, 45.60)])], crs="EPSG:4326"
+    ).to_file(network)
+    step = {
+        "id": "reachable",
+        "operation": "service_area",
+        "arguments": {
+            "network_path": str(network),
+            "start_points_path": wells,
+            "output_path": str(tmp_path / "reachable.parquet"),
+            "budget": 250.0,
+            "tolerance": 0.001,
+        },
+        "output": {"kind": "vector", "geometry": "line", "cardinality": "unknown"},
+    }
+    report = validate(make_plan(step))
+    assert report.valid, codes(report)
 
 
 def test_output_cardinality_is_not_guaranteed_by_grouping(wells, tmp_path):
@@ -679,6 +700,88 @@ def test_execute_resolves_step_references_inside_list_inputs(wells, zone, tmp_pa
     result = execute(plan)
     assert result["executed"] is True, result
     assert len(gpd.read_parquet(tmp_path / "merged.parquet")) == 3
+
+
+def test_run_sql_input_paths_are_validated_as_dataset_references(wells, tmp_path):
+    steps = [
+        {
+            "id": "people",
+            "operation": "run_sql",
+            "arguments": {
+                "query": f"SELECT * FROM ST_Read('{wells}')",
+                "input_paths": [wells],
+                "output_path": str(tmp_path / "people.parquet"),
+            },
+            "output": {"kind": "table"},
+        },
+        {
+            "id": "summary",
+            "operation": "run_sql",
+            "arguments": {
+                "query": "SELECT count(*) AS n FROM read_parquet('$people')",
+                "input_paths": ["$people"],
+                "output_path": str(tmp_path / "summary.parquet"),
+            },
+            "output": {"kind": "table"},
+        },
+    ]
+    report = validate(make_plan(*steps))
+    assert report.valid, codes(report)
+    result = execute(make_plan(*steps))
+    assert result["executed"] is True, result
+    import pyarrow.parquet as pq
+
+    assert pq.read_table(tmp_path / "summary.parquet").column("n")[0].as_py() == 2
+
+
+def test_list_inputs_participate_in_overwrite_protection(wells, tmp_path):
+    steps = [
+        {
+            "id": "sql",
+            "operation": "run_sql",
+            "arguments": {
+                "query": f"SELECT * FROM ST_Read('{wells}')",
+                "input_paths": [wells],
+                "output_path": wells,
+            },
+        },
+        {
+            "id": "merge",
+            "operation": "merge_layers",
+            "arguments": {"input_paths": [wells, wells], "output_path": wells},
+        },
+    ]
+    for step in steps:
+        assert "OUTPUT_OVERWRITES_INPUT" in codes(validate(make_plan(step)))
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        {},
+        {"from_x": 0.0},
+        {"from_y": 0.0},
+        {"from_x": 0.0, "from_y": 0.0, "start_points_path": "starts.gpkg"},
+    ],
+)
+def test_service_area_requires_exactly_one_origin_mode_statically(wells, tmp_path, origin):
+    from mapsmith.plans.validator import validate_structure
+
+    step = {
+        "id": "area",
+        "operation": "service_area",
+        "arguments": {
+            "network_path": wells,
+            "output_path": str(tmp_path / "area.parquet"),
+            "budget": 100.0,
+            "tolerance": 1.0,
+            **origin,
+        },
+        "output": {"kind": "vector", "geometry": "line"},
+    }
+    plan = make_plan(step)
+    assert not validate_structure(plan).valid
+    assert not validate(plan).valid
 
 
 def test_execute_stops_at_first_failure_keeps_earlier_outputs(wells, tmp_path):

@@ -577,7 +577,7 @@ BINDINGS: dict[str, Binding] = {
     ),
     "service_area": Binding(
         _service_area,
-        ("network_path",),
+        ("network_path", "start_points_path"),
         "output_path",
         None,
         ("same_as", "network_path"),
@@ -654,7 +654,7 @@ BINDINGS: dict[str, Binding] = {
         "vector",
     ),
     # run_sql reads whatever the query names: inputs are opaque to static analysis.
-    "run_sql": Binding(_run_sql, (), "output_path", None, ("unknown", ""), "vector"),
+    "run_sql": Binding(_run_sql, (), "output_path", None, ("unknown", ""), "vector", ("input_paths",)),
     "resample_raster": Binding(
         _resample_raster,
         ("input_path",),

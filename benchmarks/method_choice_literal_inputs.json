@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "measured_at": "2026-11-01",
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "temperature": null,
+  "dataset_sha256": "ba5efec447aaed0344029ed9834542323503c1c0ae61f53a10949fa099c657a2",
+  "public_cases_sha256": "8483d6bced5a870799a521ec6440f51eaa12cbbe3daaa39da5ce5c824300e940",
+  "catalogue_sha256": "fdce7def6036438a175c55f6f1a3813c6dc706530d85a92137bc802e138660eb",
+  "prompt_sha256": "c2267703db1c6ce128c4cc60d1adb804bb88c4a38735dccd9fc51fd227df77cf",
+  "responses_per_case": 2,
+  "cases": 73,
+  "responses": 146,
+  "scored_cases": 63,
+  "unsupported_cases": 10,
+  "complete": true,
+  "api_errors": 0,
+  "invalid_response_events": 1,
+  "summary": {
+    "exact": 63,
+    "exact_rate": 1.0,
+    "exact_plus_output": 63,
+    "first_step_right": 63,
+    "every_required_step_present": 63,
+    "output_contract": 63,
+    "silent_planning_errors": 0,
+    "unsupported_refused": 10,
+    "unsupported_warned": 9,
+    "unsupported_irrelevant_warning": 1,
+    "unsupported_with_plan": 0
+  },
+  "structural_errors": {},
+  "plans_with_structural_errors": 0,
+  "non_exact_ids": [],
+  "output_failed_ids": [],
+  "reproducibility": {
+    "repeated_supported_cases": 63,
+    "same_operation_sequence": 61,
+    "same_typed_plan": 13,
+    "same_full_response": 1,
+    "typed_plan_contents": "operations, ids, arguments, references, comments and output contracts",
+    "full_response_adds": "assumptions and warnings"
+  },
+  "previous_raw_rescored": {
+    "api_calls": 0,
+    "exact": 38,
+    "exact_plus_output": 38,
+    "scored_cases": 65,
+    "invalid_plan": 21,
+    "unknown_references": 16,
+    "note": "The archived typed-DAG responses were scored directly with the corrected scorer. This is a historical baseline, not a controlled prompt-only comparison."
+  },
+  "transitions_exact_plus_output": {
+    "improved_ids": [],
+    "regressed_ids": []
+  },
+  "contract_corrections": [
+    "Initial inputs are literal input_1, input_2, ... placeholders; only earlier step outputs use $step_id.",
+    "Only operations with executable plan bindings are offered.",
+    "Output kind and cardinality are checked against operation guarantees and the overall DAG result, including intermediate deliverables.",
+    "run_sql declares every input through input_paths, making SQL references part of the typed DAG and its provenance.",
+    "service_area accepts start_points_path and computes reachability from every origin.",
+    "Defensible alternative methods are accepted instead of forcing one sequence.",
+    "DDL, saved-view rewrites and live virtual views are refused separately from the 63 supported cases."
+  ],
+  "comparison_limit": "Many prompt, scorer, truth and capability corrections were measured across iterations. The final pair uses one frozen prompt, catalogue, dataset and scorer. The earlier 38/65 baseline is historical and not a controlled before/after estimate.",
+  "validation": {
+    "focused_tests_passed": 220,
+    "full_tests_passed": 2587,
+    "skipped": 7,
+    "ruff": "passed",
+    "independent_artifact": "benchmarks/method_choice_literal_inputs_independent.json"
+  }
+}

@@ -144,6 +144,142 @@ def test_run_sql_end_to_end_inside_workspace(ws):
     assert (ws / "result.parquet").exists()
 
 
+def test_run_sql_records_declared_input_paths(ws):
+    import json
+
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    source = ws / "people.parquet"
+    gpd.GeoDataFrame({"id": [1]}, geometry=[Point(0, 0)], crs="EPSG:4326").to_parquet(source)
+    out = str(ws / "result.parquet")
+    duckdb_engine.run_sql(
+        f"SELECT * FROM read_parquet('{source}')",
+        output_path=out,
+        input_paths=[str(source)],
+    )
+    record = json.loads((ws / "result.parquet.provenance.json").read_text(encoding="utf-8"))
+    assert record["parameters"]["input_paths"] == [str(source)]
+    assert [item["argument"] for item in record["inputs"]] == ["input_paths"]
+
+
+def test_run_sql_rejects_query_inputs_missing_from_declaration(ws):
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    source = ws / "people.parquet"
+    gpd.GeoDataFrame({"id": [1]}, geometry=[Point(0, 0)], crs="EPSG:4326").to_parquet(source)
+    with pytest.raises(ValueError, match="input_paths"):
+        duckdb_engine.run_sql(
+            f"SELECT * FROM read_parquet('{source}')",
+            output_path=str(ws / "result.parquet"),
+            input_paths=[],
+        )
+
+
+@pytest.mark.parametrize(
+    ("reader", "suffix", "contents"),
+    [
+        ("read_csv_auto", "csv", "id\n1\n"),
+        ("read_json_auto", "json", '[{"id": 1}]'),
+    ],
+)
+def test_run_sql_derives_file_inputs_when_legacy_call_omits_declaration(ws, reader, suffix, contents):
+    import json
+
+    source = ws / f"people.{suffix}"
+    source.write_text(contents, encoding="utf-8")
+    out = ws / "result.parquet"
+    duckdb_engine.run_sql(f"SELECT * FROM {reader}('{source}')", output_path=str(out))
+    record = json.loads((ws / "result.parquet.provenance.json").read_text(encoding="utf-8"))
+    assert record["parameters"]["input_paths"] == [str(source)]
+    assert [item["argument"] for item in record["inputs"]] == ["input_paths"]
+
+
+def test_run_sql_rejects_csv_input_missing_from_declaration(ws):
+    source = ws / "people.csv"
+    source.write_text("id\n1\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="input_paths"):
+        duckdb_engine.run_sql(
+            f"SELECT * FROM read_csv_auto('{source}')",
+            output_path=str(ws / "result.parquet"),
+            input_paths=[],
+        )
+
+
+def test_run_sql_accepts_equivalent_path_spellings(ws):
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    source = ws / "people.parquet"
+    gpd.GeoDataFrame({"id": [1]}, geometry=[Point(0, 0)], crs="EPSG:4326").to_parquet(source)
+    duckdb_engine.run_sql(
+        f"SELECT * FROM read_parquet('{source.as_posix()}')",
+        output_path=str(ws / "result.parquet"),
+        input_paths=[str(source)],
+    )
+
+
+def test_run_sql_expands_globs_into_the_declared_inputs(ws):
+    import json
+
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    tiles = ws / "tiles"
+    tiles.mkdir()
+    sources = [tiles / "a.parquet", tiles / "b.parquet"]
+    for source in sources:
+        gpd.GeoDataFrame({"id": [1]}, geometry=[Point(0, 0)], crs="EPSG:4326").to_parquet(source)
+    duckdb_engine.run_sql(
+        f"SELECT * FROM read_parquet('{tiles / '*.parquet'}')",
+        output_path=str(ws / "result.parquet"),
+        input_paths=[str(source) for source in sources],
+    )
+    record = json.loads((ws / "result.parquet.provenance.json").read_text(encoding="utf-8"))
+    assert set(record["parameters"]["input_paths"]) == {str(source) for source in sources}
+    assert len(record["inputs"]) == 2
+
+
+def test_run_sql_rejects_inputs_declared_but_not_read(ws):
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    source = ws / "people.parquet"
+    gpd.GeoDataFrame({"id": [1]}, geometry=[Point(0, 0)], crs="EPSG:4326").to_parquet(source)
+    with pytest.raises(ValueError, match="input_paths"):
+        duckdb_engine.run_sql(
+            "SELECT 1",
+            output_path=str(ws / "result.parquet"),
+            input_paths=[str(source)],
+        )
+
+
+def test_run_sql_refuses_a_dataset_reader_it_cannot_account_for(ws):
+    with pytest.raises(ValueError, match="input_paths|cannot account"):
+        duckdb_engine.run_sql(
+            f"SELECT * FROM sqlite_scan('{ws / 'db.sqlite'}')",
+            output_path=str(ws / "result.parquet"),
+            input_paths=[],
+        )
+
+
+def test_mcp_run_sql_accepts_and_forwards_input_paths(ws):
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    from mapsmith import server
+
+    source = ws / "people.parquet"
+    gpd.GeoDataFrame({"id": [1]}, geometry=[Point(0, 0)], crs="EPSG:4326").to_parquet(source)
+    result = server.run_sql(
+        f"SELECT * FROM read_parquet('{source}')",
+        output_path=str(ws / "result.parquet"),
+        input_paths=[str(source)],
+    )
+    assert result["row_count"] == 1
+
+
 # --- hardening that applies even without a workspace -----------------------
 
 def test_community_extensions_and_autoload_are_off_without_a_workspace(monkeypatch):

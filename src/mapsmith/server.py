@@ -495,11 +495,16 @@ def spatial_join(
 
 
 @mcp.tool(annotations=_SQL)
-def run_sql(query: str, output_path: str = "") -> dict[str, Any]:
+def run_sql(
+    query: str,
+    output_path: str = "",
+    input_paths: list[str] | None = None,
+) -> dict[str, Any]:
     """Run spatial SQL (DuckDB dialect, ST_* functions, read_parquet/ST_Read for files).
 
     Without output_path: returns up to 50 preview rows. With output_path (.parquet):
-    materializes the full result as GeoParquet with a provenance manifest.
+    materializes the full result as GeoParquet with a provenance manifest. input_paths
+    declares every dataset read; when omitted, the engine derives them from the query.
     Under MAPSMITH_WORKSPACE only SELECT runs, and coordinate systems
     (ST_Transform, ST_SetCRS) and dataset paths (ST_Read, read_parquet) must be
     string literals, so they can be checked before anything opens them; ST_Read
@@ -510,7 +515,16 @@ def run_sql(query: str, output_path: str = "") -> dict[str, Any]:
     out = output_path or None
     if out:
         _guard(output_path=out)
-    return _run("run_sql", {"query": query, "output": out}, duckdb_engine.run_sql, query, out)
+    for path in input_paths or []:
+        workspace.guard(path, "input_paths")
+    return _run(
+        "run_sql",
+        {"query": query, "output": out, "input_paths": input_paths or []},
+        duckdb_engine.run_sql,
+        query,
+        out,
+        input_paths,
+    )
 
 
 @mcp.tool(annotations=_WRITER)
@@ -890,7 +904,7 @@ def list_operations(
     the normal case and it is asking you to pick.** It carries every operation
     that survived, in relevance order, each with the sentence saying what it is
     NOT for. The order is a hint and nothing else: our ranking puts the right
-    operation in the top three 61% of the time, while a model reading the same
+    operation in the top three 62% of the time, while a model reading the same
     candidates and choosing gets its first pick right 69% — and 70% is where the two
     model labellers who wrote the ground truth agree with EACH OTHER, so there is
     often no single right answer to rank toward. You have context no ranking has: which

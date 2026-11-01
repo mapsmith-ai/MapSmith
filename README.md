@@ -463,11 +463,11 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 80 | 30% | 19% | 30% |
-| what data I have | 53 | 33% | 24% | 34% |
+| nothing — words alone | 80 | 31% | 19% | 31% |
+| what data I have | 53 | 34% | 24% | 35% |
 | + what I want back | 33 | 46% | 43% | 57% |
-| + how many datasets I have | 18 | 57% | 53% | 89% |
-| **+ what geometry it holds** | **15** | **61%** | **62%** | **98%** |
+| + how many datasets I have | 18 | 54% | 51% | 89% |
+| **+ what geometry it holds** | **15** | **62%** | **62%** | **98%** |
 
 **The last row is new on 2026-09-29, and the row above it shows why.** Thirty-one operations
 now take one vector layer to another, one more than the threshold below, so a caller who
@@ -487,11 +487,9 @@ recomputed the first row as 28% where this page said 18%. Not a flaky test: a
 number that had never been reproducible on a machine without the model,
 published under a sentence promising it could be checked.
 
-The two also differ in a way worth seeing. The embedding engine only overtakes BM25
-at the fullest declaration, where geometry narrows the set: 62% against 61%.
-BM25 leads or ties at every other row, by eleven points on words alone. The
-embedding engine earns its place on the phrasings it has never seen, not on the
-ranking once the set is small.
+The two also differ in a way worth seeing. In this run BM25 leads at every
+declaration level, by twelve points on words alone. The embedding engine earns its
+place on the phrasings it has never seen, not on the ranking once the set is small.
 
 The last column is not an accuracy figure — it is a property, and the 98% rather than 100% is
 worth a sentence. The narrowing never drops the right operation: that is asserted per entry and
@@ -589,7 +587,7 @@ Three measurements say this is the right shape, and the third is the one that se
 
 | | |
 |---|---|
-| our ranking puts the answer in the top three | **61%** |
+| our ranking puts the answer in the top three | **62%** |
 | a model handed the same candidates and asked to *choose* gets its first pick right | **69%** |
 | the two labellers who wrote the ground truth agree **with each other** | **70%** |
 
@@ -620,7 +618,7 @@ against a human answer where there is one.
 
 All three are over the same 118 requests, which matters: agreement measured over all 155 requests
 in the file is 68%, and the difference is the 21 pairs where both labellers agreed a request was
-unanswerable — true, and the easy half. Quoting that 68% beside a 61% computed over the 118 would
+unanswerable — true, and the easy half. Quoting that 68% beside a 62% computed over the 118 would
 be comparing two populations, which this table did for half a day.
 
 **The last row is a ceiling, not a baseline**, and the second row sits at it rather than below it.

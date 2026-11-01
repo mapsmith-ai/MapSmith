@@ -245,6 +245,12 @@
      "run_sql",
      "run_sql",
      "run_sql"
+    ],
+    [
+     "run_sql",
+     "run_sql",
+     "run_sql",
+     "run_sql"
     ]
    ],
    "required_assumption_keys": [],
@@ -331,7 +337,7 @@
   },
   {
    "id": "vector_analysis-013",
-   "goal": "What is the shortest route along the road network between these two locations, and how long is it? (about 1000 m in the example)",
+   "goal": "What is the shortest route along the road network between these two locations, and how long is it? Use from_x=0, from_y=0, to_x=1000, to_y=0 in the network CRS (about 1000 m in the example)",
    "inputs": [
     {
      "kind": "vector",
@@ -374,11 +380,9 @@
     "geometry": null,
     "cardinality": "same_as_input"
    },
-   "accepted_sequences": [
-    [
-     "run_sql"
-    ]
-   ],
+   "supported": false,
+   "unsupported_reason": "Changing the saved view requires DDL on the original object, while MAPSMITH_WORKSPACE is SELECT-only.",
+   "accepted_sequences": [],
    "required_assumption_keys": [],
    "cautions": [],
    "source_section": "",
@@ -416,7 +420,7 @@
   },
   {
    "id": "rasters_grass-002",
-   "goal": "These aerial images are in latitude/longitude but the rest of my project uses a different coordinate system; give me copies already in the project's projection so I am not relying on on-the-fly display.",
+   "goal": "These aerial images are in latitude/longitude but the rest of my project uses a different coordinate system; give me copies already in the project's projection so I am not relying on on-the-fly display. The project CRS is EPSG:32633.",
    "inputs": [
     {
      "kind": "raster",
@@ -555,6 +559,11 @@
     [
      "centroid_layer",
      "centroid_layer"
+    ],
+    [
+     "centroid_layer",
+     "centroid_layer",
+     "merge_layers"
     ]
    ],
    "required_assumption_keys": [],
@@ -769,11 +778,9 @@
     "geometry": null,
     "cardinality": "fewer"
    },
-   "accepted_sequences": [
-    [
-     "run_sql"
-    ]
-   ],
+   "supported": false,
+   "unsupported_reason": "A reusable virtual table requires a live view, while the declared writers produce static datasets, not database views.",
+   "accepted_sequences": [],
    "required_assumption_keys": [],
    "cautions": [],
    "source_section": "",
@@ -986,7 +993,7 @@
    },
    "accepted_sequences": [
     [
-     "describe_crs"
+     "run_sql"
     ]
    ],
    "required_assumption_keys": [],
@@ -1046,6 +1053,10 @@
     [
      "select_features",
      "spatial_join",
+     "run_sql"
+    ],
+    [
+     "select_features",
      "run_sql"
     ]
    ],
@@ -1343,6 +1354,9 @@
    "accepted_sequences": [
     [
      "select_features"
+    ],
+    [
+     "run_sql"
     ]
    ],
    "required_assumption_keys": [],
@@ -1536,6 +1550,10 @@
      "run_sql"
     ],
     [
+     "select_features",
+     "run_sql"
+    ],
+    [
      "run_sql"
     ]
    ],
@@ -1558,7 +1576,7 @@
    "output": {
     "kind": "number",
     "geometry": null,
-    "cardinality": "one"
+    "cardinality": "more"
    },
    "accepted_sequences": [
     [
@@ -1660,6 +1678,10 @@
    "accepted_sequences": [
     [
      "run_sql",
+     "run_sql"
+    ],
+    [
+     "join_table",
      "run_sql"
     ],
     [
@@ -1892,6 +1914,21 @@
     [
      "select_features",
      "simplify_layer"
+    ],
+    [
+     "select_features",
+     "simplify_layer",
+     "overlay_layers",
+     "merge_layers"
+    ],
+    [
+     "select_features",
+     "simplify_layer",
+     "run_sql",
+     "merge_layers"
+    ],
+    [
+     "run_sql"
     ]
    ],
    "required_assumption_keys": [],
@@ -1955,6 +1992,11 @@
     [
      "buffer_layer",
      "dissolve_layer"
+    ],
+    [
+     "buffer_layer",
+     "dissolve_layer",
+     "simplify_layer"
     ]
    ],
    "required_assumption_keys": [],
@@ -2105,12 +2147,16 @@
    "output": {
     "kind": "table",
     "geometry": null,
-    "cardinality": "fewer"
+    "cardinality": "more"
    },
    "accepted_sequences": [
     [
      "summarize_field",
      "summarize_field"
+    ],
+    [
+     "run_sql",
+     "run_sql"
     ],
     [
      "run_sql"
@@ -2227,6 +2273,11 @@
      "run_sql",
      "run_sql",
      "run_sql"
+    ],
+    [
+     "run_sql",
+     "run_sql",
+     "select_features"
     ]
    ],
    "required_assumption_keys": [],
@@ -2257,9 +2308,7 @@
    },
    "accepted_sequences": [
     [
-     "service_area",
-     "merge_layers",
-     "execute_plan"
+     "service_area"
     ]
    ],
    "required_assumption_keys": [],
@@ -2322,7 +2371,49 @@
     [
      "dissolve_layer",
      "centroid_layer",
-     "centroid_layer"
+     "centroid_layer",
+     "run_sql"
+    ],
+    [
+     "dissolve_layer",
+     "centroid_layer",
+     "centroid_layer",
+     "merge_layers"
+    ],
+    [
+     "dissolve_layer",
+     "centroid_layer",
+     "centroid_layer",
+     "nearest_join"
+    ],
+    [
+     "run_sql",
+     "centroid_layer",
+     "merge_layers"
+    ],
+    [
+     "run_sql",
+     "centroid_layer",
+     "run_sql"
+    ],
+    [
+     "run_sql",
+     "centroid_layer",
+     "nearest_join"
+    ],
+    [
+     "dissolve_layer",
+     "centroid_layer",
+     "dissolve_layer",
+     "centroid_layer",
+     "run_sql"
+    ],
+    [
+     "run_sql",
+     "run_sql"
+    ],
+    [
+     "run_sql"
     ]
    ],
    "required_assumption_keys": [],
@@ -2617,13 +2708,52 @@
    "goal": "Turn the coordinate pair (1, 1) into a point, read it back as readable text, and get the area within 1 unit around it.",
    "inputs": [],
    "output": {
-    "kind": "vector",
-    "geometry": "polygon",
-    "cardinality": "one"
+    "kind": "table",
+    "geometry": null,
+    "cardinality": "more"
    },
    "accepted_sequences": [
     [
      "run_sql",
+     "run_sql",
+     "run_sql"
+    ],
+    [
+     "run_sql",
+     "run_sql",
+     "run_sql",
+     "run_sql"
+    ],
+    [
+     "run_sql",
+     "run_sql",
+     "buffer_layer"
+    ],
+    [
+     "run_sql",
+     "run_sql",
+     "buffer_layer",
+     "measure_area",
+     "run_sql"
+    ],
+    [
+     "run_sql",
+     "run_sql",
+     "buffer_layer",
+     "measure_area"
+    ],
+    [
+     "run_sql",
+     "buffer_layer",
+     "measure_area",
+     "run_sql"
+    ],
+    [
+     "run_sql",
+     "buffer_layer",
+     "measure_area"
+    ],
+    [
      "run_sql",
      "run_sql"
     ],
@@ -2660,6 +2790,12 @@
      "run_sql"
     ],
     [
+     "select_features",
+     "run_sql",
+     "run_sql",
+     "run_sql"
+    ],
+    [
      "run_sql",
      "run_sql",
      "run_sql"
@@ -2686,6 +2822,7 @@
     "geometry": null,
     "cardinality": "unknown"
    },
+   "supported": true,
    "accepted_sequences": [
     [
      "dissolve_layer",

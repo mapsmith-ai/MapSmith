@@ -1229,6 +1229,12 @@ OPERATIONS: list[dict[str, Any]] = [
                 "required": False,
                 "description": "If set (.parquet), materialize the full result with provenance",
             },
+            {
+                "name": "input_paths",
+                "type": "list[str]",
+                "required": False,
+                "description": "Every dataset read by the query, in reference order; earlier step outputs use $step_id",
+            },
         ],
         "examples": [
             {
@@ -4155,7 +4161,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'category': 'network',
         "produces": "dataset:vector",
         "output_geometry": "line",
-        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1, 'geometry': ['line']},
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': None, 'geometry': ['line']},
         'summary': 'Every stretch of network reachable within a cost budget, with the '
                    'last segment cut where the budget runs out',
         "phrasings": "which blocks are more than a ten minute walk from a clinic; what "
@@ -4166,24 +4172,27 @@ OPERATIONS: list[dict[str, Any]] = [
                          "and excludes the house 900 m away along a straight road; not "
                          "network_shortest_path, which is the way to one place rather "
                          "than everywhere.",
-        'description': 'Dijkstra from one position, keeping every edge whose start is '
-                       'within the budget and cutting the last one at the point where '
-                       'the budget runs out, so the edge of the area is where the walk '
-                       'actually ends rather than at the nearest junction. Each output '
-                       'segment carries cost_at_start, cost_at_end and a partial flag. '
-                       'The connectivity caveats of network_shortest_path apply '
-                       'identically and are reported the same way: tolerance decides '
-                       'whether the network is one piece, and a disconnected graph '
-                       'makes destinations unreachable by construction rather than by '
-                       'distance.',
+        'description': 'Dijkstra from one position or from every point in a start layer, '
+                       'keeping every edge whose start is within the budget and cutting '
+                       'the last one at the point where the budget runs out, so the edge '
+                       'of the area is where the walk actually ends rather than at the '
+                       'nearest junction. Each output segment carries cost_at_start, '
+                       'cost_at_end and a partial flag; with a start layer, origin_index '
+                       'keeps each origin separate. The connectivity caveats of '
+                       'network_shortest_path apply identically and are reported the '
+                       'same way: tolerance decides whether the network is one piece, '
+                       'and a disconnected graph makes destinations unreachable by '
+                       'construction rather than by distance.',
         'parameters': [{'name': 'network_path', 'type': 'str', 'required': True,
                         'description': 'Line layer forming the network'},
                        {'name': 'output_path', 'type': 'str', 'required': True,
                         'description': 'Output line layer: the reachable stretches'},
-                       {'name': 'from_x', 'type': 'float', 'required': True,
-                        'description': 'Origin easting'},
-                       {'name': 'from_y', 'type': 'float', 'required': True,
-                        'description': 'Origin northing'},
+                       {'name': 'from_x', 'type': 'float', 'required': False,
+                        'description': 'Origin easting; required with from_y when no start layer is given'},
+                       {'name': 'from_y', 'type': 'float', 'required': False,
+                        'description': 'Origin northing; required with from_x when no start layer is given'},
+                       {'name': 'start_points_path', 'type': 'str', 'required': False,
+                        'description': 'Point layer whose every feature is an origin; use instead of from_x/from_y'},
                        {'name': 'budget', 'type': 'float', 'required': True,
                         'description': "Cost budget, in the cost field's unit or in the CRS's length unit"},
                        {'name': 'tolerance', 'type': 'float', 'required': True,
@@ -4206,7 +4215,14 @@ OPERATIONS: list[dict[str, Any]] = [
                                              'arguments': {'network_path': 'roads.gpkg',
                                                            'output_path': 'reach.parquet',
                                                            'from_x': 512000.0, 'from_y': 4928000.0,
-                                                           'budget': 800.0, 'tolerance': 0.5}}}}]},
+                                                           'budget': 800.0, 'tolerance': 0.5}}}},
+                     {'goal': 'From each of these points, which streets can I reach within 250 m along the roads?',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'service_area',
+                                             'arguments': {'network_path': 'roads.gpkg',
+                                                           'start_points_path': 'origins.gpkg',
+                                                           'output_path': 'reach_per_origin.parquet',
+                                                           'budget': 250.0, 'tolerance': 0.5}}}}]},
     {   'name': 'hot_spots',
         'status': 'available',
         'tool': None,
@@ -5684,7 +5700,7 @@ def search(
     ``status: "choose"`` carrying all of them, ordered by relevance and each with
     the text that separates it from its neighbours. Measured over the 118 requests in
     ``tests/data/discovery_queries.json``, written by two other model families:
-    our ranking puts the right operation in the top three 61% of the time; a model handed the same candidates and asked to choose
+    our ranking puts the right operation in the top three 62% of the time; a model handed the same candidates and asked to choose
     gets its FIRST pick right 69%. Over those same 118 requests the two labellers
     who produced the ground truth agree WITH EACH OTHER 70% of the time — both are
     language models, and no GIS analyst has tried it — so 69% is the ceiling of the
@@ -5788,7 +5804,7 @@ def search(
     # THE SHORTLIST IS NOT THE ANSWER when there are few enough to read.
     #
     # Measured over 118 requests written by two other model families: our ranking
-    # puts the right operation in the top three 61% of the time, while a model
+    # puts the right operation in the top three 62% of the time, while a model
     # handed the same candidates and asked to CHOOSE gets its first pick right 69% —
     # and 70% is where the two labellers who wrote the ground truth agree with each
     # OTHER on those same requests, so 69% is the ceiling of the task rather than a

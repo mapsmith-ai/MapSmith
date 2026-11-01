@@ -326,7 +326,19 @@ def _check_arguments(
             continue
         _check_contract(step_id, name, value, param, errors)
     _check_step_contracts(step_id, entry["name"], arguments, errors)
-
+    if entry["name"] == "service_area":
+        single = arguments.get("from_x") is not None or arguments.get("from_y") is not None
+        multiple = arguments.get("start_points_path") is not None
+        incomplete = single and (
+            arguments.get("from_x") is None or arguments.get("from_y") is None
+        )
+        if single == multiple or incomplete:
+            errors.append(Issue(
+                code="INVALID_ARGUMENT_VALUE",
+                step_id=step_id,
+                message="service_area requires exactly one origin: complete from_x/from_y "
+                "or start_points_path",
+            ))
 
 
 def _collect_literal_outputs(plan: Plan) -> dict[str, tuple[int, str]]:
@@ -358,22 +370,24 @@ def _collect_external_inputs(plan: Plan, literal_outputs: dict[str, tuple[int, s
         binding = BINDINGS.get(step.operation)
         if not binding:
             continue
-        for arg in binding.input_args:
-            value = step.arguments.get(arg)
-            if (
-                not isinstance(value, str)
-                or not value
-                or REFERENCE.match(value)
-                or _nonlocal_reason(value)
-            ):
-                continue
-            key = _canon(value)
-            dependency = literal_outputs.get(key)
-            if dependency is None or (dependency[0] >= index and Path(value).exists()):
-                externals.update(
-                    _canon(f"{value}{suffix}")
-                    for suffix in ("", *AUDIT_SIDECAR_SUFFIXES)
-                )
+        for arg in (*binding.input_args, *binding.list_input_args):
+            argument = step.arguments.get(arg)
+            values = argument if isinstance(argument, list) else [argument]
+            for value in values:
+                if (
+                    not isinstance(value, str)
+                    or not value
+                    or REFERENCE.match(value)
+                    or _nonlocal_reason(value)
+                ):
+                    continue
+                key = _canon(value)
+                dependency = literal_outputs.get(key)
+                if dependency is None or (dependency[0] >= index and Path(value).exists()):
+                    externals.update(
+                        _canon(f"{value}{suffix}")
+                        for suffix in ("", *AUDIT_SIDECAR_SUFFIXES)
+                    )
     return externals
 
 

@@ -231,6 +231,40 @@ with HTTP 400 (`temperature: Extra inputs are not permitted`). No score or
 variance is claimed for that arm; see
 `benchmarks/method_choice_temperature_zero.json`.
 
+## Literal initial inputs and final confirmation (1 November 2026)
+
+The typed-DAG prompt labels initial inputs `input_1`, `input_2`, ... as literal
+values and reserves `$step_id` for outputs of earlier steps. Only operations with
+executable plan bindings are offered. `run_sql` also declares every input through
+`input_paths`, so SQL references are part of the DAG and its provenance, and
+`service_area` computes reachability from every point in `start_points_path`.
+
+The final pair uses one frozen prompt, catalogue, dataset and scorer. Both runs
+reach **63/63 exact and 63/63 exact-plus-output**, with **10/10 unsupported
+requests refused** and no structurally invalid plans. The denominator is 63
+supported cases and 10 unsupported cases: DDL, saved-view rewrites and live
+virtual views are reported separately rather than forced into method-choice
+scores. No transitions occur between the two runs.
+
+Reproducibility remains a different measurement. In the first run, operation
+sequences repeat in 61/63 pairs, typed plans in 13/63 and full responses in 1/63.
+In the independent run, they repeat in 61/63, 12/63 and 0/63 respectively. These
+figures are not evidence of deterministic planning.
+
+Independent review then checked execution rather than only the scores. It found unresolved
+SQL step literals, incomplete input collection, a dedicated-tool bypass, path and glob
+identity errors, missing overwrite and origin validation, unchecked initial-input
+placeholders, and CRS preconditions evaluated after alignment. Regression tests now cover
+each defect. The final contract resolves declared step references in exact SQL literals,
+derives provenance for legacy writers, compares canonical input identities in both
+directions, and refuses dataset readers it cannot account for. These changes do not alter
+the frozen responses or their scores.
+
+The final reports are `benchmarks/method_choice_literal_inputs.json` and
+`benchmarks/method_choice_literal_inputs_independent.json`. The focused suites
+passed 220 tests and the full suite passed **2587 tests with 7 skipped**. The
+earlier 38/65 baseline is historical, not a controlled before/after estimate.
+
 ## Setup
 
 - **Benchmark**: [GABench](https://github.com/GeoX-Lab/GABench) — 57 executable
