@@ -21,11 +21,11 @@ catalogue is written: *"the coastline is 400 000 nodes and the browser dies"*, n
 
 | what the caller declares | candidates left | ranked, found@3 | **in what comes back** |
 |---|---|---|---|
-| nothing — words alone | 80 | 30% | 30% |
-| the input kind | 53 | 33% | 34% |
-| + what it should produce | 33 | 46% | 57% |
-| + how many datasets | 18 | 57% | 89% |
-| **+ what geometry it holds** | **15** | **61%** | **98%** |
+| nothing — words alone | 81 | 31% | 31% |
+| the input kind | 54 | 34% | 35% |
+| + what it should produce | 33 | 47% | 58% |
+| + how many datasets | 18 | 54% | 89% |
+| **+ what geometry it holds** | **16** | **62%** | **98%** |
 
 **Ranking is not the mechanism; narrowing is** — and the last column is why. Once
 the two facts a caller genuinely knows have cut the catalogue to something readable,
@@ -37,7 +37,7 @@ Three more numbers say why the answer is a set rather than a pick:
 
 | | |
 |---|---|
-| the ranker puts the answer in the top three | 61% |
+| the ranker puts the answer in the top three | 62% |
 | a model handed the same candidates and asked to **choose** | **69%** |
 | the two labellers who wrote the ground truth agreeing **with each other** | **70%** |
 
@@ -116,7 +116,7 @@ when a catalogue of your own outgrows its facets:
 
 `dataset:vector`, `dataset:raster`, `answer`, `description`, `plan_result`.
 
-Worth 23 points of *in what comes back* on top of the input kind (34% to 57%, table above), and it is a facet the caller
+Worth 23 points of *in what comes back* on top of the input kind (35% to 58%, table above), and it is a facet the caller
 always knows: they know whether they want a file, a number, or an account of
 something they already have. Check it against what the code actually writes — a
 declaration that disagrees makes the operation unreachable for the caller who
@@ -139,7 +139,7 @@ kind and projected-CRS are facts about the data in hand, `produces` is what they
 want back, but the family is a guess about *your* taxonomy, which they cannot see.
 
 Measured on the same set: as a hard filter it removes five candidates out of
-fifteen, and when the guess is wrong it removes **the right operation**, with no
+sixteen, and when the guess is wrong it removes **the right operation**, with no
 error, leaving a confident answer assembled from neighbours. Every request in the
 set has 4.4 plausible families. At 800 operations the guess is among 43.
 
@@ -218,7 +218,7 @@ operation DOES differently, not around a list of names.
 
 1. **It is read at selection time, not at search time — and selection is where the
    accuracy is.** A model handed the surviving candidates and asked to choose gets
-   its first pick right 69% of the time, against 61% for the ranker putting it in the
+   its first pick right 69% of the time, against 62% for the ranker putting it in the
    top three. Entries that all say "one point per polygon" give it nothing to choose
    on. `distinguishes` is the only field written to be read *against its neighbours*,
    and that is the moment it pays. Measured against retrieval it is worth nothing;

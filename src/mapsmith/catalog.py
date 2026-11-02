@@ -824,6 +824,68 @@ OPERATIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        "name": "calculate_field",
+        "status": "available",
+        "tool": None,
+        "workload": "sql",
+        "category": "vector",
+        "produces": "dataset:vector",
+        "output_cardinality": "same_as_input",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, "dataset_inputs": 1},
+        "summary": "Create or replace a numeric or boolean attribute from existing fields, with null-safe conditions and full lineage",
+        "phrasings": "add a column computed from existing fields; derive an attribute; calculate a new value per feature; field calculator; ratio between two columns; flag features with a condition; replace a field without changing the geometries",
+        "distinguishes": "Changes or adds one attribute while preserving every feature and geometry. Not select_features, which drops rows; not run_sql, which accepts a whole query rather than one restricted expression.",
+        "description": (
+            "Calculate one numeric or boolean field from other numeric and boolean fields. "
+            "Supports arithmetic, comparisons, boolean logic, CASE, COALESCE and NULLIF; "
+            "text, dates, geometry functions, aggregates, windows and subqueries are refused. "
+            "Creating a field refuses a collision unless on_existing='replace'; replacement "
+            "preserves the column position and source spelling. Feature count, all other attributes, "
+            "geometries and CRS are verified unchanged, and NaN or infinity in the calculated "
+            "field is refused with the manifest retained."
+        ),
+        "parameters": [
+            {"name": "input_path", "type": "str", "required": True, "description": "Input vector dataset with a declared CRS"},
+            {"name": "output_path", "type": "str", "required": True, "description": "Output GeoParquet path"},
+            {"name": "field_name", "type": "str", "required": True, "description": "Attribute to create or replace; never a geometry column"},
+            {"name": "expression", "type": "str", "required": True, "description": "Restricted expression over numeric and boolean columns"},
+            {"name": "on_existing", "type": "str", "required": False, "description": "error (default) or replace"},
+        ],
+        "examples": [
+            {
+                "goal": "Add a column computed from existing attributes",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "calculate_field",
+                        "arguments": {
+                            "input_path": "parcels.parquet",
+                            "output_path": "ratios.parquet",
+                            "field_name": "ratio",
+                            "expression": "residents / households",
+                        },
+                    },
+                },
+            },
+            {
+                "goal": "Replace missing elevations with zero while keeping the other attributes",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "calculate_field",
+                        "arguments": {
+                            "input_path": "stations.parquet",
+                            "output_path": "filled.parquet",
+                            "field_name": "elevation",
+                            "expression": "COALESCE(elevation, 0)",
+                            "on_existing": "replace",
+                        },
+                    },
+                },
+            },
+        ],
+    },
+    {
         "name": "select_features",
         "status": "available",
         "tool": None,
@@ -1229,6 +1291,12 @@ OPERATIONS: list[dict[str, Any]] = [
                 "required": False,
                 "description": "If set (.parquet), materialize the full result with provenance",
             },
+            {
+                "name": "input_paths",
+                "type": "list[str]",
+                "required": False,
+                "description": "Every dataset read by the query, in reference order; earlier step outputs use $step_id",
+            },
         ],
         "examples": [
             {
@@ -1426,7 +1494,7 @@ OPERATIONS: list[dict[str, Any]] = [
         # identical on every facet the narrowing uses -- workload, category,
         # produces, applicability -- so discovery cannot separate them and only
         # prose could. Reachable by name through `run_operation`, like the
-        # forty-nine other catalogue operations that are not tools.
+        # fifty-five other catalogue operations that are not tools.
         "workload": "small_vector",
         "category": "provenance",
         "produces": "description",
@@ -4155,7 +4223,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'category': 'network',
         "produces": "dataset:vector",
         "output_geometry": "line",
-        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': 1, 'geometry': ['line']},
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': False, 'dataset_inputs': None, 'geometry': ['line']},
         'summary': 'Every stretch of network reachable within a cost budget, with the '
                    'last segment cut where the budget runs out',
         "phrasings": "which blocks are more than a ten minute walk from a clinic; what "
@@ -4166,24 +4234,27 @@ OPERATIONS: list[dict[str, Any]] = [
                          "and excludes the house 900 m away along a straight road; not "
                          "network_shortest_path, which is the way to one place rather "
                          "than everywhere.",
-        'description': 'Dijkstra from one position, keeping every edge whose start is '
-                       'within the budget and cutting the last one at the point where '
-                       'the budget runs out, so the edge of the area is where the walk '
-                       'actually ends rather than at the nearest junction. Each output '
-                       'segment carries cost_at_start, cost_at_end and a partial flag. '
-                       'The connectivity caveats of network_shortest_path apply '
-                       'identically and are reported the same way: tolerance decides '
-                       'whether the network is one piece, and a disconnected graph '
-                       'makes destinations unreachable by construction rather than by '
-                       'distance.',
+        'description': 'Dijkstra from one position or from every point in a start layer, '
+                       'keeping every edge whose start is within the budget and cutting '
+                       'the last one at the point where the budget runs out, so the edge '
+                       'of the area is where the walk actually ends rather than at the '
+                       'nearest junction. Each output segment carries cost_at_start, '
+                       'cost_at_end and a partial flag; with a start layer, origin_index '
+                       'keeps each origin separate. The connectivity caveats of '
+                       'network_shortest_path apply identically and are reported the '
+                       'same way: tolerance decides whether the network is one piece, '
+                       'and a disconnected graph makes destinations unreachable by '
+                       'construction rather than by distance.',
         'parameters': [{'name': 'network_path', 'type': 'str', 'required': True,
                         'description': 'Line layer forming the network'},
                        {'name': 'output_path', 'type': 'str', 'required': True,
                         'description': 'Output line layer: the reachable stretches'},
-                       {'name': 'from_x', 'type': 'float', 'required': True,
-                        'description': 'Origin easting'},
-                       {'name': 'from_y', 'type': 'float', 'required': True,
-                        'description': 'Origin northing'},
+                       {'name': 'from_x', 'type': 'float', 'required': False,
+                        'description': 'Origin easting; required with from_y when no start layer is given'},
+                       {'name': 'from_y', 'type': 'float', 'required': False,
+                        'description': 'Origin northing; required with from_x when no start layer is given'},
+                       {'name': 'start_points_path', 'type': 'str', 'required': False,
+                        'description': 'Point layer whose every feature is an origin; use instead of from_x/from_y'},
                        {'name': 'budget', 'type': 'float', 'required': True,
                         'description': "Cost budget, in the cost field's unit or in the CRS's length unit"},
                        {'name': 'tolerance', 'type': 'float', 'required': True,
@@ -4206,7 +4277,14 @@ OPERATIONS: list[dict[str, Any]] = [
                                              'arguments': {'network_path': 'roads.gpkg',
                                                            'output_path': 'reach.parquet',
                                                            'from_x': 512000.0, 'from_y': 4928000.0,
-                                                           'budget': 800.0, 'tolerance': 0.5}}}}]},
+                                                           'budget': 800.0, 'tolerance': 0.5}}}},
+                     {'goal': 'From each of these points, which streets can I reach within 250 m along the roads?',
+                      'call': {'tool': 'run_operation',
+                               'arguments': {'operation': 'service_area',
+                                             'arguments': {'network_path': 'roads.gpkg',
+                                                           'start_points_path': 'origins.gpkg',
+                                                           'output_path': 'reach_per_origin.parquet',
+                                                           'budget': 250.0, 'tolerance': 0.5}}}}]},
     {   'name': 'hot_spots',
         'status': 'available',
         'tool': None,
@@ -5234,6 +5312,8 @@ PARAMETER_CONTRACTS: dict[tuple[str, str], dict[str, Any]] = {
     ("contour_lines", "smoothing"): {"minimum": 0},
     ("merge_layers", "input_paths"): {"min_items": 2},
     ("run_sql", "output_path"): {"extensions": [".parquet"]},
+    ("calculate_field", "output_path"): {"extensions": [".parquet"]},
+    ("calculate_field", "on_existing"): {"choices": ["error", "replace"]},
     ("polygonize_raster", "band"): {"minimum": 1},
     ("polygonize_raster", "connectivity"): {"choices": [4, 8]},
     ("polygonize_raster", "max_features"): {"exclusive_minimum": 0},
@@ -5684,7 +5764,7 @@ def search(
     ``status: "choose"`` carrying all of them, ordered by relevance and each with
     the text that separates it from its neighbours. Measured over the 118 requests in
     ``tests/data/discovery_queries.json``, written by two other model families:
-    our ranking puts the right operation in the top three 61% of the time; a model handed the same candidates and asked to choose
+    our ranking puts the right operation in the top three 62% of the time; a model handed the same candidates and asked to choose
     gets its FIRST pick right 69%. Over those same 118 requests the two labellers
     who produced the ground truth agree WITH EACH OTHER 70% of the time — both are
     language models, and no GIS analyst has tried it — so 69% is the ceiling of the
@@ -5788,7 +5868,7 @@ def search(
     # THE SHORTLIST IS NOT THE ANSWER when there are few enough to read.
     #
     # Measured over 118 requests written by two other model families: our ranking
-    # puts the right operation in the top three 61% of the time, while a model
+    # puts the right operation in the top three 62% of the time, while a model
     # handed the same candidates and asked to CHOOSE gets its first pick right 69% —
     # and 70% is where the two labellers who wrote the ground truth agree with each
     # OTHER on those same requests, so 69% is the ceiling of the task rather than a

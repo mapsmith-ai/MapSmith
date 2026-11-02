@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "measured_at": "2026-11-01",
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "temperature": null,
+  "dataset_sha256": "ba5efec447aaed0344029ed9834542323503c1c0ae61f53a10949fa099c657a2",
+  "public_cases_sha256": "8483d6bced5a870799a521ec6440f51eaa12cbbe3daaa39da5ce5c824300e940",
+  "catalogue_sha256": "fdce7def6036438a175c55f6f1a3813c6dc706530d85a92137bc802e138660eb",
+  "prompt_sha256": "c2267703db1c6ce128c4cc60d1adb804bb88c4a38735dccd9fc51fd227df77cf",
+  "responses_per_case": 2,
+  "cases": 73,
+  "responses": 146,
+  "scored_cases": 63,
+  "unsupported_cases": 10,
+  "complete": true,
+  "api_errors": 0,
+  "invalid_response_events": 0,
+  "summary": {
+    "exact": 63,
+    "exact_rate": 1.0,
+    "exact_plus_output": 63,
+    "first_step_right": 63,
+    "every_required_step_present": 63,
+    "output_contract": 63,
+    "silent_planning_errors": 0,
+    "unsupported_refused": 10,
+    "unsupported_warned": 9,
+    "unsupported_irrelevant_warning": 1,
+    "unsupported_with_plan": 0
+  },
+  "structural_errors": {},
+  "plans_with_structural_errors": 0,
+  "non_exact_ids": [],
+  "output_failed_ids": [],
+  "reproducibility": {
+    "repeated_supported_cases": 63,
+    "same_operation_sequence": 61,
+    "same_typed_plan": 12,
+    "same_full_response": 0,
+    "typed_plan_contents": "operations, ids, arguments, references, comments and output contracts",
+    "full_response_adds": "assumptions and warnings"
+  },
+  "transitions_exact_plus_output": {
+    "improved_ids": [],
+    "regressed_ids": []
+  },
+  "comparison": {
+    "first_artifact": "benchmarks/method_choice_literal_inputs.json",
+    "same_prompt_catalogue_dataset_and_scorer": true,
+    "no_intervening_edits": true,
+    "result": "Both runs reach 63/63 exact-plus-output and 10/10 unsupported refusals."
+  },
+  "validation": {
+    "focused_tests_passed": 220,
+    "full_tests_passed": 2587,
+    "skipped": 7,
+    "ruff": "passed"
+  }
+}

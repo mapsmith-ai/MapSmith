@@ -123,6 +123,10 @@ def _quote(path: str) -> str:
     return str(path).replace("'", "''")
 
 
+def _path_identity(path: str) -> str:
+    return os.path.normcase(str(Path(path).resolve()))
+
+
 def _rel(path: str) -> str:
     """SQL relation for a dataset file: GeoParquet natively, other formats via GDAL."""
     if str(path).lower().endswith(".parquet"):
@@ -203,7 +207,11 @@ def _axis_order_check(con: Any, used: list[str]) -> verify.Check | None:
     )
 
 
-def run_sql(query: str, output_path: str | None = None) -> dict[str, Any]:
+def run_sql(
+    query: str,
+    output_path: str | None = None,
+    input_paths: list[str] | None = None,
+) -> dict[str, Any]:
     """Run spatial SQL. With output_path, materialize the result as GeoParquet."""
     # SQL text is out of reach of the path guard at the tool boundary, and GDAL
     # brings its own HTTP client: without this the remote opt-in (#21) would be
@@ -230,10 +238,33 @@ def run_sql(query: str, output_path: str | None = None) -> dict[str, Any]:
     # server: checked in every mode, after the paths so ST_Read_Meta only opens
     # what the policy above admitted.
     sql_policy.refuse_missing_gdal_layer(query, con)
+    actual_paths: list[str] = []
+    if output_path or input_paths is not None:
+        seen: set[str] = set()
+        for path in sql_policy.declared_paths(query, con):
+            identity = _path_identity(path)
+            if identity not in seen:
+                seen.add(identity)
+                actual_paths.append(path)
+    if input_paths is not None:
+        actual_by_id = {_path_identity(path): path for path in actual_paths}
+        declared_by_id = {_path_identity(path): path for path in input_paths}
+        missing = [actual_by_id[key] for key in sorted(actual_by_id.keys() - declared_by_id.keys())]
+        extra = [declared_by_id[key] for key in sorted(declared_by_id.keys() - actual_by_id.keys())]
+        if missing or extra:
+            details = []
+            if missing:
+                details.append(f"read but not declared: {missing}")
+            if extra:
+                details.append(f"declared but not read: {extra}")
+            raise ValueError(f"run_sql: input_paths must match the query datasets ({'; '.join(details)})")
     record = ProvenanceRecord(
         operation="run_sql",
-        parameters={"query": query},
-        inputs=[],
+        parameters={"query": query, "input_paths": actual_paths},
+        inputs=[
+            InputRecord.from_path(path, crs=verify.probe_crs(path), argument="input_paths")
+            for path in actual_paths
+        ],
         engine=_engine_info(),
     )
     if output_path:

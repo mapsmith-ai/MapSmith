@@ -25,6 +25,7 @@ import functools
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -37,6 +38,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from mapsmith import catalog
 from mapsmith.plans import Plan
+from mapsmith.plans.registry import BINDINGS
 from mapsmith.plans.validator import _check_output_contract
 
 DATA = ROOT / "benchmarks" / "method_choice_cases.json"
@@ -53,7 +55,11 @@ def load_cases(path: Path = DATA) -> list[dict[str, Any]]:
 
 
 def available_operations() -> dict[str, dict[str, Any]]:
-    return {op["name"]: op for op in catalog.OPERATIONS if op.get("status") == "available"}
+    return {
+        op["name"]: op
+        for op in catalog.OPERATIONS
+        if op.get("status") == "available" and op["name"] in BINDINGS
+    }
 
 
 def validate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
@@ -157,10 +163,10 @@ def describe_inputs(inputs: list[dict[str, Any]]) -> str:
     if not inputs:
         return "no files; all values are literal in the request"
     return "; ".join(
-        f"a {item.get('kind')} layer"
+        f"input_{index}=a {item.get('kind')} layer"
         + (f" of {item['geometry']}s" if item.get("geometry") else "")
         + (f" ({item['role']})" if item.get("role") else "")
-        for item in inputs
+        for index, item in enumerate(inputs, start=1)
     )
 
 
@@ -199,17 +205,59 @@ Write the shortest plan that answers the request. Return ONLY a JSON object, no 
                "cardinality": "<one|fewer|more|same_as_input|unknown>"}}}}}}],
  "assumptions": ["<key>=<value>", ...], "warnings": ["<material uncertainty", ...]}}
 Every final branch must declare its output kind, geometry and cardinality. Arguments must name
-inputs and parameters explicitly; use $step_id when a step consumes an earlier output.
+inputs and parameters explicitly. The input_1, input_2, ... placeholders in WHAT THEY HAVE are
+literal values for the original datasets: use them without a $ prefix. Use $step_id only when
+a step consumes an earlier step output. References have no field selection: $step.field is invalid.
+In run_sql, list every dataset used by the query in input_paths, using literal initial-input names
+or $step_id references. Read an initial dataset with read_parquet('input_1') and an earlier output
+with read_parquet('$step_id'). Each step's output describes what the operation actually produces under
+its declared output guarantees, not the requested output: never relabel a vector as a table or map,
+and never replace an operation's cardinality guarantee with the desired result's cardinality.
+Every dataset-writing step needs output_path. If an operation already returns a requested value,
+do not add another operation to recompute it: network_shortest_path returns total_cost, so do not
+add measure_length for it. buffer_layer and centroid_layer must keep same_as_input even when the
+request asks for one result. For example, {{"operation": "centroid_layer", "output":
+{{"kind": "vector", "geometry": "point", "cardinality": "same_as_input"}}}} is correct even for one point.
+Likewise, {{"operation": "simplify_layer", "output":
+{{"kind": "vector", "geometry": "polygon", "cardinality": "same_as_input"}}}} is correct for one area.
+service_area and reproject_raster require output_path. For example,
+{{"operation": "service_area", "arguments": {{"output_path": "reachable.parquet"}}}} has a required output path.
+select_features and simplify_layer require output_path. select_features produces vector, never table.
+describe_dataset produces description, never table. Include every requested output, not just every
+operation: if the request names multiple results, each needs its own output branch.
+Operations returning an answer object, including compare_layers and summarize_field, must declare
+kind=table for that report, never kind=answer.
+summarize_points_in_polygons requires output_path.
 Use only names from the list. Prefer dedicated operations over run_sql whenever they answer the
-whole request. For a repeated operation, use comment to name its input and distinguishing arguments.
+whole request. describe_crs reads no data: use it for a CRS already identified by code or text;
+for a lookup inside a spatial_ref_sys table, use run_sql. For geometric centres, use centroid_layer.
+A reprojected vector can be a mappable artifact when no rendering operation is available; do not
+refuse it merely because it is not an image. When a declared key joins two datasets, use join_table
+or run_sql, not nearest_join as a substitute for the declared relationship.
+dissolve_layer and run_sql already use different engines, so a multi-engine comparison is supported
+when the operations themselves differ. When the request asks to compare two results, include a final
+comparison step such as run_sql, nearest_join or merge_layers.
+For a repeated operation, use comment to name its input and distinguishing arguments.
+comment belongs at step level, never inside arguments.
+Preserve every requested selection and explicit constraint, including a request without an intermediate
+layer. When the request says "one of" a layer's features, use select_features with an explicit
+criterion instead of processing every feature. The shortest plan has no redundant steps but never
+drops required selections or transformations.
 Use the declared data rather than external geographic knowledge. Declare CRS, units, selection
 scope, boundary rules and other material assumptions as short key=value strings when the request
 does not settle them.
 Do not add reading, saving, plan-validation or plan-execution steps. Do not add extract_layer merely
 to read an input; it is only for choosing a named layer in a multi-layer container. Do not substitute
 a read-only approximation for a write, iteration or multi-engine request you cannot fulfill as asked.
-Do not invent a result when no listed operation or declared parameter applies; return an empty plan
-with a warning instead."""
+If any required part cannot be fulfilled as asked, return an empty plan with a warning instead.
+A warning does not make an approximation or a partially fulfilled request acceptable. Invalid
+approximations include a filtered copy for a delete, appended rows for an insert, separate files
+for one required container, and one combined output for per-feature outputs. INSERT, DELETE or UPDATE
+of original data must be refused rather than simulated with UNION ALL or rewritten files. Repeated
+steps sharing the same output_path do not create a single container with independent layers. CREATE TABLE
+and other DDL must be refused. CREATE OR REPLACE VIEW and modifying a saved view are DDL:
+return an empty plan, not a sorted copy. If one GeoPackage with multiple layers is required, separate files
+are not a valid answer: return an empty plan."""
 
 
 def parse_response(text: str) -> dict[str, Any]:
@@ -226,7 +274,7 @@ def parse_response(text: str) -> dict[str, Any]:
         for step in answer["steps"]:
             if isinstance(step, dict) and isinstance(step.get("output"), dict):
                 geometry = step["output"].get("geometry")
-                if isinstance(geometry, str) and geometry.lower() in {"optional", "none"}:
+                if isinstance(geometry, str) and geometry.lower() in {"optional", "none", ""}:
                     step["output"].pop("geometry")
         if answer["steps"]:
             typed = Plan.model_validate({"goal": answer.get("goal", ""), "steps": answer["steps"]})
@@ -529,16 +577,24 @@ def output_matches(case: dict[str, Any], got: list[str], steps: list[dict[str, A
         expected = case["output"]
         compatible = {
             "vector": {"vector"}, "raster": {"raster"}, "map": {"map", "vector"},
-            "table": {"table", "description"}, "number": {"number", "table"},
+            "table": {"table", "description", "vector", "number"},
+            "number": {"number", "table", "description"},
             "description": {"description"},
         }
+        expected_cardinality = expected.get("cardinality", "unknown")
+        output_steps = [step for step in typed.steps if step.output is not None]
+        if expected_cardinality == "one" and len(leaves) != 1:
+            return False
         for step in leaves:
             contract = step.output
             if contract.kind not in compatible.get(expected["kind"], set()):
                 return False
             if expected.get("geometry") and contract.geometry != expected["geometry"]:
                 return False
-            if expected.get("cardinality", "unknown") != "unknown" and contract.cardinality != expected["cardinality"]:
+            if expected_cardinality == "more":
+                if len(output_steps) == 1 and contract.cardinality != "more":
+                    return False
+            elif expected_cardinality not in {"unknown", "one"} and contract.cardinality != expected_cardinality:
                 return False
         return True
     if not got or got[-1] not in available_operations():
@@ -582,7 +638,20 @@ def relevant_warnings(
     return all(any(token in text for token in alternatives) for alternatives in required)
 
 
-def structural_error_codes(steps: list[dict[str, Any]] | None) -> list[str]:
+def _argument_strings(value: Any):
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from _argument_strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _argument_strings(item)
+    elif isinstance(value, str):
+        yield value
+
+
+def structural_error_codes(
+    steps: list[dict[str, Any]] | None, input_count: int | None = None
+) -> list[str]:
     if not steps:
         return []
     from mapsmith.plans.validator import validate_structure
@@ -591,14 +660,21 @@ def structural_error_codes(steps: list[dict[str, Any]] | None) -> list[str]:
         typed = Plan.model_validate({"goal": "", "steps": steps})
     except (TypeError, ValueError):
         return ["INVALID_WIRE_PLAN"]
-    return sorted({issue.code for issue in validate_structure(typed).errors})
+    errors = [issue.code for issue in validate_structure(typed).errors]
+    if input_count is not None:
+        for step in typed.steps:
+            for text in _argument_strings(step.arguments):
+                for match in re.finditer(r"(?<!\w)input_(\d+)\b", text):
+                    if not 1 <= int(match.group(1)) <= input_count:
+                        errors.append("UNKNOWN_INPUT_PLACEHOLDER")
+    return sorted(set(errors))
 
 
 def score_response(case: dict[str, Any], response: dict[str, Any]) -> dict[str, Any]:
     got = response.get("plan") or []
     accepted = case["accepted_sequences"]
     unknown = sorted(set(got) - available_operations().keys())
-    structural_errors = structural_error_codes(response.get("steps"))
+    structural_errors = structural_error_codes(response.get("steps"), len(case["inputs"]))
     verdict = "invalid_plan" if structural_errors else verdict_for(got, accepted)
     output_ok = not structural_errors and output_matches(case, got, response.get("steps"))
     missing_keys = sorted(set(case["required_assumption_keys"]) - declared_keys(response))

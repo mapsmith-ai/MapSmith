@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from typing import Any
 
 # `--` to end of line, and `/* ... */` including newlines. Removed before
@@ -241,6 +242,16 @@ _DATASET_READERS = frozenset(
     {"st_read", "st_read_meta", "st_readshp", "st_readosm", "shapefile_meta", "read_parquet", "parquet_scan"}
 )
 
+#: File readers that carry no CRS into PROJ but still belong in provenance.
+_TABULAR_FILE_READERS = frozenset({
+    "read_csv", "read_csv_auto", "csv_scan",
+    "read_json", "read_json_auto", "json_scan",
+    "read_ndjson", "read_ndjson_auto", "read_json_objects", "read_json_objects_auto",
+    "read_text", "read_blob",
+})
+_FILE_READERS = _DATASET_READERS | _TABULAR_FILE_READERS
+_READER_NAME = re.compile(r"(?:^|_)(?:read|scan)(?:_|$)")
+
 #: The readers that hand the file to GDAL, which reads the SRS -- and opens a
 #: grid it names -- in whatever format it recognises. The path gate can only
 #: vouch for the formats `crs_policy` reads itself, so these take those and
@@ -401,11 +412,24 @@ def _functions_named(node: Any, wanted: str) -> list[dict[str, Any]]:
     return found
 
 
-def _walk(node: Any, ctes: set[str], con: Any) -> None:
+def declared_paths(query: str, con: Any) -> list[str]:
+    """Dataset paths read by the query, collected from DuckDB's parsed statement."""
+    raw = con.execute("SELECT json_serialize_sql(?::VARCHAR)", [query]).fetchone()[0]
+    paths: list[str] = []
+    _walk(json.loads(raw), set(), con, paths.append)
+    return paths
+
+
+def _walk(
+    node: Any,
+    ctes: set[str],
+    con: Any,
+    on_path: Callable[[str], None] | None = None,
+) -> None:
     """Visit nodes with the CTE names visible in this exact lexical scope."""
     if isinstance(node, list):
         for item in node:
-            _walk(item, ctes, con)
+            _walk(item, ctes, con, on_path)
         return
     if not isinstance(node, dict):
         return
@@ -422,25 +446,38 @@ def _walk(node: Any, ctes: set[str], con: Any) -> None:
         if name in _CRS_FUNCTIONS:
             for child in children[1:]:
                 _check_crs_argument(name, child)
+        if on_path is not None and _READER_NAME.search(name) and name not in _FILE_READERS:
+            raise ValueError(
+                f"run_sql cannot account for dataset reader {name}() in input_paths; "
+                "use a supported file reader so provenance can name every input"
+            )
         if name in _DATASET_READERS:
             for child in children:
                 alias, value = _argument(child)
                 if alias in ("", "sibling_files"):
                     for path in _literal_paths(name, value):
-                        _check_path(path, con, gdal=name in _GDAL_READERS and alias == "")
+                        _check_path(
+                            path, con, gdal=name in _GDAL_READERS and alias == "", on_path=on_path
+                        )
                 elif alias == "open_options":
                     raise ValueError(
                         f"{name}(open_options := …) is refused under MAPSMITH_WORKSPACE: a GDAL open "
                         "option can name a file, and MapSmith does not check them. Read the dataset "
                         "without it."
                     )
+        if on_path is not None and name in _TABULAR_FILE_READERS:
+            for child in children:
+                alias, value = _argument(child)
+                if alias in ("", "sibling_files"):
+                    for path in _literal_paths(name, value):
+                        _collect_path(path, con, on_path)
     if node.get("type") == "BASE_TABLE":
         # Replacement scans are not limited to names with an extension. Only a
         # CTE visible in this scope can shadow one; a nested CTE cannot hide a
         # file read by its parent query.
         table = str(node.get("table_name", ""))
         if table and table.lower() not in local_ctes:
-            _check_path(table, con, gdal=not _NATIVE_SCAN.search(table))
+            _check_path(table, con, gdal=not _NATIVE_SCAN.search(table), on_path=on_path)
     modifiers = node.get("user_type_modifiers")
     if modifiers:
         # GEOMETRY('…') carries a CRS in the type, and DuckDB resolves it.
@@ -449,7 +486,7 @@ def _walk(node: Any, ctes: set[str], con: Any) -> None:
                 _check_crs_text("a GEOMETRY type", str(modifier.get("value")))
     for key, value in node.items():
         if key != "cte_map":
-            _walk(value, local_ctes, con)
+            _walk(value, local_ctes, con, on_path)
             continue
         visible = set(ctes)
         for entry in entries:
@@ -457,7 +494,7 @@ def _walk(node: Any, ctes: set[str], con: Any) -> None:
             value = entry.get("value") or {}
             query_node = (value.get("query") or {}).get("node") or {}
             if query_node.get("type") != "RECURSIVE_CTE_NODE":
-                _walk(value, visible, con)
+                _walk(value, visible, con, on_path)
             else:
                 initial = query_node.get("left")
                 recursive = query_node.get("right")
@@ -466,9 +503,9 @@ def _walk(node: Any, ctes: set[str], con: Any) -> None:
                 remainder["query"]["node"] = {
                     key: part for key, part in query_node.items() if key not in ("left", "right")
                 }
-                _walk(remainder, visible, con)
-                _walk(initial, visible, con)
-                _walk(recursive, visible | {name}, con)
+                _walk(remainder, visible, con, on_path)
+                _walk(initial, visible, con, on_path)
+                _walk(recursive, visible | {name}, con, on_path)
             visible.add(name)
 
 
@@ -535,16 +572,31 @@ def _literal_paths(function: str, child: Any) -> list[str]:
     )
 
 
-def _check_path(path: str, con: Any, gdal: bool = False) -> None:
+def _expand_paths(path: str, con: Any) -> list[str]:
     if not _GLOB_CHARACTERS.search(path):
-        _check_one_path(path, gdal)
-        return
+        return [path]
     try:
         matches = [row[0] for row in con.execute("SELECT file FROM glob(?)", [path]).fetchall()]
     except Exception as exc:  # noqa: BLE001 - the sandbox refusing the pattern is a refusal here too
         raise ValueError(f"'run_sql': the pattern {path!r} could not be expanded inside the workspace ({exc}).") from None
-    for match in matches:
-        _check_one_path(str(match), gdal)
+    return [str(match) for match in matches]
+
+
+def _collect_path(path: str, con: Any, on_path: Callable[[str], None]) -> None:
+    for resolved in _expand_paths(path, con):
+        on_path(resolved)
+
+
+def _check_path(
+    path: str,
+    con: Any,
+    gdal: bool = False,
+    on_path: Callable[[str], None] | None = None,
+) -> None:
+    for resolved in _expand_paths(path, con):
+        if on_path is not None:
+            on_path(resolved)
+        _check_one_path(resolved, gdal)
 
 
 def _check_one_path(path: str, gdal: bool) -> None:

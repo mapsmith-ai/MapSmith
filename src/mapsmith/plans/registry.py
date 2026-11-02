@@ -145,6 +145,12 @@ def _run_sql() -> Callable[..., dict[str, Any]]:
     return duckdb_engine.run_sql
 
 
+def _calculate_field() -> Callable[..., dict[str, Any]]:
+    from ..engines import field_calculation
+
+    return field_calculation.calculate_field
+
+
 
 def _sample_raster_at_points() -> Callable[..., dict[str, Any]]:
     from ..engines import sampling
@@ -577,7 +583,7 @@ BINDINGS: dict[str, Binding] = {
     ),
     "service_area": Binding(
         _service_area,
-        ("network_path",),
+        ("network_path", "start_points_path"),
         "output_path",
         None,
         ("same_as", "network_path"),
@@ -653,8 +659,11 @@ BINDINGS: dict[str, Binding] = {
         ("same_as", "left_path"),
         "vector",
     ),
+    "calculate_field": Binding(
+        _calculate_field, ("input_path",), "output_path", None, ("same_as", "input_path"), "vector"
+    ),
     # run_sql reads whatever the query names: inputs are opaque to static analysis.
-    "run_sql": Binding(_run_sql, (), "output_path", None, ("unknown", ""), "vector"),
+    "run_sql": Binding(_run_sql, (), "output_path", None, ("unknown", ""), "vector", ("input_paths",)),
     "resample_raster": Binding(
         _resample_raster,
         ("input_path",),

@@ -29,7 +29,7 @@ from .validator import validate
 
 # step-result keys worth echoing back to the agent (full details live in provenance)
 _ECHO_KEYS = (
-    "output", "provenance", "feature_count", "crs", "engine_used", "verified",
+    "output", "provenance", "feature_count", "field_name", "crs", "engine_used", "verified",
     "warnings",  # non-critical verification failures (empty results, disjoint inputs)
     "repairs",  # geometry MapSmith rewrote: must not be invisible at plan level
 )
@@ -65,6 +65,8 @@ def execute(plan: Plan, repair: RepairRequest | None = None) -> dict[str, Any]:
         kwargs = _resolve_arguments(
             step.arguments, outputs, (*binding.input_args, *binding.list_input_args)
         )
+        if step.operation == "run_sql":
+            kwargs = _resolve_sql_literals(step.arguments, kwargs, outputs)
         record: dict[str, Any] = {"id": step.id, "operation": step.operation}
         if binding.output_arg:
             value = kwargs.get(binding.output_arg)
@@ -161,6 +163,23 @@ def _resolve_arguments(
             if match:
                 value = outputs[match.group(1)]
         resolved[key] = value
+    return resolved
+
+
+def _resolve_sql_literals(
+    arguments: dict[str, Any], resolved: dict[str, Any], outputs: dict[str, str]
+) -> dict[str, Any]:
+    """Resolve declared step references written as exact single-quoted SQL literals."""
+    query = resolved.get("query")
+    declarations = arguments.get("input_paths")
+    if not isinstance(query, str) or not isinstance(declarations, list):
+        return resolved
+    for declared in declarations:
+        if not isinstance(declared, str) or not (match := REFERENCE.fullmatch(declared)):
+            continue
+        path = outputs[match.group(1)].replace("'", "''")
+        query = query.replace(f"'{declared}'", f"'{path}'")
+    resolved["query"] = query
     return resolved
 
 

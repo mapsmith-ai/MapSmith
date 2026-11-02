@@ -33,8 +33,8 @@ from typing import Any
 import geopandas as gpd
 from shapely import union_all
 
-from .. import readers, verify
-from ..provenance import InputRecord, ProvenanceRecord
+from .. import datum, readers, verify
+from ..provenance import InputRecord, ProvenanceRecord, alignment_decisions
 
 #: Endpoint coordinates are rounded to this many decimals before being compared,
 #: on top of the caller's tolerance. Purely defensive against float noise in a
@@ -488,14 +488,15 @@ def network_shortest_path(
 def service_area(
     network_path: str,
     output_path: str,
-    from_x: float,
-    from_y: float,
-    budget: float,
-    tolerance: float,
+    from_x: float | None = None,
+    from_y: float | None = None,
+    budget: float | None = None,
+    tolerance: float | None = None,
     cost_field: str | None = None,
     oneway_field: str | None = None,
+    start_points_path: str | None = None,
 ) -> dict[str, Any]:
-    """Every stretch of network reachable from a position within a cost budget.
+    """Every stretch of network reachable from one or more positions within a budget.
 
     This is the "ten-minute walk" question, and the reason it is a network
     operation rather than a buffer is the whole point: a circle of 800 m around
@@ -506,19 +507,64 @@ def service_area(
     The last segment of each branch is **cut where the budget runs out** rather
     than included or dropped whole, so the edge of the area is where the walk
     actually ends. Each output segment carries `cost_at_start` and
-    `cost_at_end`; a segment that was cut is marked `partial`.
+    `cost_at_end`; a segment that was cut is marked `partial`. With
+    `start_points_path`, `origin_index` identifies each origin's segments.
     """
-    if budget <= 0:
+    if budget is None or budget <= 0:
         raise ValueError(f"budget must be positive, got {budget}")
+    if tolerance is None or tolerance < 0:
+        raise ValueError(f"tolerance must be zero or positive, got {tolerance}")
+    single_origin = from_x is not None or from_y is not None
+    multiple_origins = start_points_path is not None
+    if single_origin == multiple_origins or (single_origin and (from_x is None or from_y is None)):
+        raise ValueError("provide exactly one origin: from_x/from_y or start_points_path")
     lines, graph, costs = _common_preamble(
         network_path, tolerance, cost_field, oneway_field
     )
-    source, snap_distance = _nearest_node(graph, from_x, from_y)
+
+    original_points = None
+    points = None
+    aligned = False
+    shift = None
+    if multiple_origins:
+        original_points = readers.read_vector(start_points_path)
+        if original_points.crs is None:
+            raise ValueError(
+                readers.no_crs_message(original_points, f"{start_points_path} has no CRS.")
+            )
+        present = original_points.geometry.notna() & ~original_points.geometry.is_empty
+        kinds = set(original_points.geometry[present].geom_type)
+        if kinds - {"Point"}:
+            raise ValueError("start_points_path must contain only Point geometries")
+        if not present.any():
+            raise ValueError("start_points_path contains no non-empty points")
+        pre = verify.verify_loaded_inputs(
+            "service_area", network_path=lines, start_points_path=original_points
+        )
+        aligned = not verify.same_crs(original_points.crs, lines.crs)
+        points = original_points
+        if aligned:
+            points, _, shift = datum.aligned(original_points, lines.crs)
+    else:
+        pre = verify.verify_loaded_inputs("service_area", network_path=lines)
+
+    origin_sources = []
+    if multiple_origins:
+        for geometry in points.geometry:
+            if geometry is None or geometry.is_empty:
+                continue
+            origin_sources.append(_nearest_node(graph, geometry.x, geometry.y))
+    else:
+        origin_sources.append(_nearest_node(graph, from_x, from_y))
+    snap_distances = [snap for _, snap in origin_sources]
 
     record = ProvenanceRecord(
         operation="service_area",
         parameters={
-            "from": [from_x, from_y],
+            **(
+                {"start_points": len(origin_sources), "start_points_path": start_points_path}
+                if multiple_origins else {"from": [from_x, from_y]}
+            ),
             "budget": budget,
             "tolerance": tolerance,
             # How many endpoints the tolerance welded together. It used to be a
@@ -535,111 +581,140 @@ def service_area(
             if cost_field
             else f"length in {verify.crs_label(lines.crs)} units",
         },
-        inputs=[InputRecord.from_path(network_path, crs=verify.crs_label(lines.crs))],
+        inputs=[
+            InputRecord.from_path(
+                network_path, crs=verify.crs_label(lines.crs), argument="network_path"
+            ),
+            *(
+                [InputRecord.from_path(
+                    start_points_path,
+                    crs=verify.crs_label(original_points.crs),
+                    argument="start_points_path",
+                )]
+                if multiple_origins else []
+            ),
+        ],
         engine=_engine_info(),
     )
-    record.crs_decisions = {
-        "analysis_crs": verify.crs_label(lines.crs),
-        "reason": "reachability is computed in the network's own CRS; the budget is "
-        "read in the cost field's unit, or in that CRS's length unit without one",
-    }
+    record.crs_decisions = alignment_decisions(
+        lines.crs,
+        "start points are brought onto the network CRS before routing"
+        if aligned else
+        "reachability is computed in the network's own CRS; the budget is read in "
+        "the cost field's unit, or in that CRS's length unit without one",
+        [("start_points_path", original_points)] if aligned else [],
+        chosen=[shift] if shift else None,
+    )
 
-    reached, _ = graph.dijkstra(source)
     pieces = []
-    # Same reason as `_build`: `itertuples()` renames columns that are not
-    # identifiers, and this loop has no need of them anyway.
-    for index, geometry in enumerate(lines.geometry):
-        if geometry is None or geometry.is_empty:
-            continue
-        coords = list(geometry.coords)
-        a = graph.nodes[
-            (
-                round(coords[0][0], _COORDINATE_DECIMALS),
-                round(coords[0][1], _COORDINATE_DECIMALS),
-            )
-        ]
-        b = graph.nodes[
-            (
-                round(coords[-1][0], _COORDINATE_DECIMALS),
-                round(coords[-1][1], _COORDINATE_DECIMALS),
-            )
-        ]
-        cost = costs[index]
-        # AN EDGE IS DECIDED ONCE, from both ends at the same time.
-        #
-        # Walking it from each end independently double-counted the overlap
-        # whenever both ends were reachable, which on any network with a cycle is
-        # most edges: a triangle with a budget of 4 emitted 8.0 metres of an edge
-        # whose union is 6.83. "How many metres of road are within ten minutes"
-        # is exactly the number computed from this output, and it was inflated —
-        # under a `nothing_exceeds_the_budget` check that passed, because every
-        # individual piece did respect the budget.
-        from_a = reached.get(a)
-        from_b = reached.get(b)
-        budget_a = None if from_a is None or from_a > budget else budget - from_a
-        budget_b = None if from_b is None or from_b > budget else budget - from_b
-        if budget_a is None and budget_b is None:
-            continue
-        if cost <= 0:
-            continue
+    reachable_counts = []
+    for origin_index, (source, _) in enumerate(origin_sources):
+        reached, _ = graph.dijkstra(source)
+        reachable_counts.append(sum(1 for cost in reached.values() if cost <= budget))
+        # Same reason as `_build`: `itertuples()` renames columns that are not
+        # identifiers, and this loop has no need of them anyway.
+        for index, geometry in enumerate(lines.geometry):
+            if geometry is None or geometry.is_empty:
+                continue
+            coords = list(geometry.coords)
+            a = graph.nodes[
+                (
+                    round(coords[0][0], _COORDINATE_DECIMALS),
+                    round(coords[0][1], _COORDINATE_DECIMALS),
+                )
+            ]
+            b = graph.nodes[
+                (
+                    round(coords[-1][0], _COORDINATE_DECIMALS),
+                    round(coords[-1][1], _COORDINATE_DECIMALS),
+                )
+            ]
+            cost = costs[index]
+            # AN EDGE IS DECIDED ONCE, from both ends at the same time.
+            #
+            # Walking it from each end independently double-counted the overlap
+            # whenever both ends were reachable, which on any network with a cycle is
+            # most edges: a triangle with a budget of 4 emitted 8.0 metres of an edge
+            # whose union is 6.83. "How many metres of road are within ten minutes"
+            # is exactly the number computed from this output, and it was inflated —
+            # under a `nothing_exceeds_the_budget` check that passed, because every
+            # individual piece did respect the budget.
+            from_a = reached.get(a)
+            from_b = reached.get(b)
+            budget_a = None if from_a is None or from_a > budget else budget - from_a
+            budget_b = None if from_b is None or from_b > budget else budget - from_b
+            if budget_a is None and budget_b is None:
+                continue
+            if cost <= 0:
+                continue
 
-        forward = budget_a if budget_a is not None else 0.0
-        backward = budget_b if budget_b is not None else 0.0
-        if forward + backward >= cost - 1e-12:
-            # The two reaches meet or overlap: the whole edge is walkable. Once.
-            entered_from_a = budget_a is not None and (
-                budget_b is None or from_a <= from_b
-            )
-            at_start = from_a if entered_from_a else from_b
-            pieces.append(
-                {
-                    "line_index": index,
-                    "geometry": geometry if entered_from_a else geometry.reverse(),
-                    "cost_at_start": at_start,
-                    "cost_at_end": min(at_start + cost, budget),
-                    "partial": forward < cost and backward < cost,
-                }
-            )
-            continue
-
-        # They do not meet: two disjoint stubs, one from each reachable end,
-        # with a gap in the middle that nobody can walk to within the budget.
-        if budget_a is not None:
-            cut = _substring(geometry, budget_a / cost)
-            if cut is not None:
+            forward = budget_a if budget_a is not None else 0.0
+            backward = budget_b if budget_b is not None else 0.0
+            origin = {"origin_index": origin_index} if multiple_origins else {}
+            if forward + backward >= cost - 1e-12:
+                # The two reaches meet or overlap: the whole edge is walkable. Once.
+                entered_from_a = budget_a is not None and (
+                    budget_b is None or from_a <= from_b
+                )
+                at_start = from_a if entered_from_a else from_b
                 pieces.append(
                     {
+                        **origin,
                         "line_index": index,
-                        "geometry": cut,
-                        "cost_at_start": from_a,
-                        "cost_at_end": budget,
-                        "partial": True,
+                        "geometry": geometry if entered_from_a else geometry.reverse(),
+                        "cost_at_start": at_start,
+                        "cost_at_end": min(at_start + cost, budget),
+                        "partial": forward < cost and backward < cost,
                     }
                 )
-        if budget_b is not None:
-            cut = _substring(geometry.reverse(), budget_b / cost)
-            if cut is not None:
-                pieces.append(
-                    {
-                        "line_index": index,
-                        "geometry": cut,
-                        "cost_at_start": from_b,
-                        "cost_at_end": budget,
-                        "partial": True,
-                    }
-                )
+                continue
 
+            # They do not meet: two disjoint stubs, one from each reachable end,
+            # with a gap in the middle that nobody can walk to within the budget.
+            if budget_a is not None:
+                cut = _substring(geometry, budget_a / cost)
+                if cut is not None:
+                    pieces.append(
+                        {
+                            **origin,
+                            "line_index": index,
+                            "geometry": cut,
+                            "cost_at_start": from_a,
+                            "cost_at_end": budget,
+                            "partial": True,
+                        }
+                    )
+            if budget_b is not None:
+                cut = _substring(geometry.reverse(), budget_b / cost)
+                if cut is not None:
+                    pieces.append(
+                        {
+                            **origin,
+                            "line_index": index,
+                            "geometry": cut,
+                            "cost_at_start": from_b,
+                            "cost_at_end": budget,
+                            "partial": True,
+                        }
+                    )
+
+    output_data = {
+        "line_index": [p["line_index"] for p in pieces],
+        "cost_at_start": [p["cost_at_start"] for p in pieces],
+        "cost_at_end": [p["cost_at_end"] for p in pieces],
+        "partial": [p["partial"] for p in pieces],
+    }
+    if multiple_origins:
+        output_data["origin_index"] = [p["origin_index"] for p in pieces]
     out = gpd.GeoDataFrame(
-        {
-            "line_index": [p["line_index"] for p in pieces],
-            "cost_at_start": [p["cost_at_start"] for p in pieces],
-            "cost_at_end": [p["cost_at_end"] for p in pieces],
-            "partial": [p["partial"] for p in pieces],
-        },
+        output_data,
         geometry=[p["geometry"] for p in pieces],
         crs=lines.crs,
     )
-    pre = verify.verify_loaded_inputs("service_area", network_path=lines)
+    if multiple_origins:
+        pre += verify.verify_input_pairs(
+            "service_area", network_path=lines, start_points_path=points
+        )
     with verify.audit_on_failure(record, output_path, pre):
         if str(output_path).endswith(".parquet"):
             out.to_parquet(output_path)
@@ -689,7 +764,7 @@ def service_area(
                 f"{sum(1 for p in pieces if p['cost_at_end'] > budget + 1e-9)} "
                 "segment(s) end beyond the budget",
             ),
-            _snap_check("origin", snap_distance, _unit(lines.crs), tolerance),
+            _snap_check("origin", max(snap_distances), _unit(lines.crs), tolerance),
             *_network_checks(graph, tolerance),
         ],
     )
@@ -698,19 +773,24 @@ def service_area(
         "segments": len(pieces),
         "partial_segments": sum(1 for p in pieces if p["partial"]),
         "budget": budget,
-        "reachable_junctions": sum(1 for cost in reached.values() if cost <= budget),
+        "reachable_junctions": reachable_counts if multiple_origins else reachable_counts[0],
         "junctions": len(graph.positions),
-        "origin_snap_distance": snap_distance,
+        "origins": len(origin_sources),
+        **(
+            {"origin_snap_distances": snap_distances}
+            if multiple_origins else {"origin_snap_distance": snap_distances[0]}
+        ),
         "components": graph.components(),
         "provenance": str(manifest),
         **extras,
     }
 
 
-def _by_edge(pieces: list[dict[str, Any]]) -> dict[int, list[dict[str, Any]]]:
-    grouped: dict[int, list[dict[str, Any]]] = {}
+def _by_edge(pieces: list[dict[str, Any]]) -> dict[tuple[int, int], list[dict[str, Any]]]:
+    grouped: dict[tuple[int, int], list[dict[str, Any]]] = {}
     for piece in pieces:
-        grouped.setdefault(piece["line_index"], []).append(piece)
+        key = (piece["line_index"], piece.get("origin_index", 0))
+        grouped.setdefault(key, []).append(piece)
     return grouped
 
 

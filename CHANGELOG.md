@@ -6,6 +6,14 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+### Added
+
+- **Restricted, deterministic field calculation.** `calculate_field` creates or replaces
+  one numeric or boolean attribute through `run_operation`, with arithmetic, comparisons,
+  boolean logic, `CASE`, `COALESCE` and `NULLIF`. DuckDB's parsed expression tree is
+  validated fail-closed; geometries, all other attributes and CRS stay unchanged, and
+  non-finite calculated values are refused with the provenance record retained.
+
 ### Fixed
 
 - **Declare the workspace's SELECT-only behavior in the `run_sql` catalog summary.**

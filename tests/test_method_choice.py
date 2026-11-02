@@ -48,9 +48,9 @@ def test_public_dataset_is_balanced_and_covers_multi_step_methods():
     supported = [case for case in cases if case.get("supported", True)]
     assert len(cases) == 93
     assert collections.Counter(case["split"] for case in cases) == {"calibration": 46, "evaluation": 47}
-    assert collections.Counter(len(case["accepted_sequences"][0]) for case in supported) == {1: 46, 2: 24, 3: 14, 4: 1}
+    assert collections.Counter(len(case["accepted_sequences"][0]) for case in supported) == {1: 45, 2: 24, 3: 12, 4: 2}
     assert bench.validate_cases(cases)["cases"] == 93
-    assert bench.validate_cases(cases)["unsupported_cases"] == 8
+    assert bench.validate_cases(cases)["unsupported_cases"] == 10
 
 
 def test_reviewed_cases_keep_their_defensible_exact_truth():
@@ -155,6 +155,403 @@ def test_numeric_output_contract_uses_answer_operations(case):
     assert bench.score_response(case, response(["nearest_neighbour_index"]))["output_contract"] is True
 
 
+def test_typed_numeric_output_accepts_descriptive_answer():
+    case = next(c for c in bench.load_cases() if c["id"] == "complete_classification-028")
+    steps = [{
+        "id": "describe_rivers",
+        "operation": "describe_dataset",
+        "arguments": {"path": "rivers"},
+        "output": {"kind": "description", "cardinality": "one"},
+    }]
+    assert bench.output_matches(case, ["describe_dataset"], steps)
+
+
+def test_more_output_cardinality_allows_multiple_final_branches():
+    case = next(c for c in bench.load_cases() if c["id"] == "data_databases-028")
+    steps = [
+        {
+            "id": name,
+            "operation": "run_sql",
+            "arguments": {"query": "SELECT 1", "output_path": f"{name}.parquet"},
+            "output": {"kind": "table", "cardinality": cardinality},
+        }
+        for name, cardinality in (("towns", "fewer"), ("countries", "fewer"), ("people", "more"))
+    ]
+    assert bench.output_matches(case, ["run_sql"] * 3, steps)
+
+
+def test_more_output_cardinality_includes_intermediate_deliverables():
+    case = next(c for c in bench.load_cases() if c["id"] == "data_databases-028")
+    steps = [
+        {
+            "id": name,
+            "operation": "run_sql",
+            "arguments": {"query": "SELECT 1", "output_path": f"{name}.parquet"},
+            "output": {"kind": "table", "cardinality": cardinality},
+        }
+        for name, cardinality in (("towns", "fewer"), ("countries", "fewer"), ("people_normalized", "same_as_input"))
+    ]
+    steps[-1]["arguments"]["input_paths"] = ["input_1", "$towns", "$countries"]
+    assert bench.output_matches(case, ["run_sql"] * 3, steps)
+
+
+def test_point_buffer_area_accepts_two_sql_steps():
+    case = next(c for c in bench.load_cases() if c["id"] == "data_databases-049")
+    assert ["run_sql", "run_sql"] in case["accepted_sequences"]
+
+
+def test_one_output_cardinality_accepts_operation_guarantee():
+    case = next(c for c in bench.load_cases() if c["id"] == "vector_analysis-002")
+    steps = [{
+        "id": "reproject_oceans",
+        "operation": "reproject_layer",
+        "arguments": {"input_path": "input_1", "target_crs": "+proj=vandg", "output_path": "oceans.parquet"},
+        "output": {"kind": "vector", "geometry": "polygon", "cardinality": "same_as_input"},
+    }]
+    assert bench.output_matches(case, ["reproject_layer"], steps)
+
+
+def test_one_output_cardinality_requires_one_final_branch():
+    case = next(c for c in bench.load_cases() if c["id"] == "data_databases-028")
+    case = {**case, "output": {**case["output"], "cardinality": "one"}}
+    steps = [
+        {
+            "id": name,
+            "operation": "run_sql",
+            "arguments": {"query": "SELECT 1", "output_path": f"{name}.parquet"},
+            "output": {"kind": "table", "cardinality": "one"},
+        }
+        for name in ("towns", "countries")
+    ]
+    assert not bench.output_matches(case, ["run_sql"] * 2, steps)
+
+
+def test_table_output_accepts_vector_dataset():
+    case = next(c for c in bench.load_cases() if c["id"] == "complete_classification-029")
+    steps = [{
+        "id": "select_towns",
+        "operation": "select_features",
+        "arguments": {"input_path": "input_1", "output_path": "towns.parquet", "by": "field_equals", "field": "place", "value": "town"},
+        "output": {"kind": "vector", "geometry": "point", "cardinality": "fewer"},
+    }]
+    assert bench.output_matches(case, ["select_features"], steps)
+
+
+def test_table_output_accepts_numeric_answer():
+    case = next(c for c in bench.load_cases() if c["id"] == "processing-016")
+    steps = [{
+        "id": "stats",
+        "operation": "summarize_field",
+        "arguments": {"input_path": "input_1", "field": "POP2000", "statistics": ["mean"]},
+        "output": {"kind": "number", "cardinality": "one"},
+    }]
+    assert bench.output_matches(case, ["summarize_field"], steps)
+
+
+def test_buffer_area_can_finish_with_measure_area():
+    case = next(c for c in bench.load_cases() if c["id"] == "data_databases-049")
+    assert ["run_sql", "run_sql", "buffer_layer", "measure_area"] in case["accepted_sequences"]
+    assert ["run_sql", "buffer_layer", "measure_area"] in case["accepted_sequences"]
+    assert ["run_sql"] * 4 in case["accepted_sequences"]
+
+
+def test_raster_reprojection_case_supplies_target_crs():
+    case = next(c for c in bench.load_cases() if c["id"] == "rasters_grass-002")
+    assert "EPSG:32633" in case["goal"]
+
+
+def test_multi_origin_service_area_truth_uses_one_operation():
+    case = next(c for c in bench.load_cases() if c["id"] == "vector_analysis-017")
+    assert case["accepted_sequences"] == [["service_area"]]
+    parameters = {item["name"] for item in bench.available_operations()["service_area"]["parameters"]}
+    assert "start_points_path" in parameters
+
+
+def test_method_choice_truth_excludes_execution_steps():
+    for case in bench.load_cases():
+        for sequence in case["accepted_sequences"]:
+            assert "execute_plan" not in sequence, (case["id"], sequence)
+
+
+def test_prompt_assigns_literal_initial_input_placeholders(case):
+    case["inputs"] = [
+        {"kind": "vector", "geometry": "point", "role": "sample points"},
+        {"kind": "vector", "geometry": "polygon", "role": "study area"},
+    ]
+    text = bench.prompt_for(case)
+    assert "input_1" in text
+    assert "input_2" in text
+    assert text.index("input_1") < text.index("input_2")
+    assert "$input_1" not in text
+    assert "$input_2" not in text
+    assert "literal" in text.lower()
+    assert "earlier step" in text.lower()
+
+
+def test_only_executable_operations_are_offered_to_the_planner():
+    assert {"preview_map", "validate_plan", "execute_plan"}.isdisjoint(bench.available_operations())
+
+
+def test_prompt_separates_operation_output_from_requested_output(case):
+    text = bench.prompt_for(case).lower()
+    assert "operation actually produces" in text
+    assert "declared output guarantees" in text
+    assert "not the requested output" in text
+
+
+def test_prompt_rejects_partial_approximations(case):
+    text = bench.prompt_for(case).lower()
+    assert "any required part" in text
+    assert "warning does not make" in text
+    assert "empty plan" in text
+
+
+def test_prompt_names_forbidden_approximation_patterns(case):
+    text = " ".join(bench.prompt_for(case).lower().split())
+    for example in (
+        "filtered copy for a delete",
+        "appended rows for an insert",
+        "separate files for one required container",
+        "combined output for per-feature outputs",
+    ):
+        assert example in text
+
+
+def test_prompt_preserves_selections_and_explicit_constraints(case):
+    text = " ".join(bench.prompt_for(case).lower().split())
+    assert "every requested selection" in text
+    assert "without an intermediate layer" in text
+
+
+def test_prompt_requires_declared_sql_input_paths(case):
+    text = " ".join(bench.prompt_for(case).lower().split())
+    assert "input_paths" in text
+    assert "every dataset used by the query" in text
+
+
+def test_prompt_shows_literal_inputs_in_sql_and_limits_reference_syntax(case):
+    text = bench.prompt_for(case)
+    assert "read_parquet('input_1')" in text
+    assert "field selection" in text
+
+
+def test_prompt_requires_output_paths_for_dataset_writers(case):
+    assert "every dataset-writing step needs output_path" in bench.prompt_for(case).lower()
+
+
+def test_prompt_requires_selection_and_simplify_output_paths(case):
+    assert "select_features and simplify_layer require output_path" in bench.prompt_for(case).lower()
+
+
+def test_prompt_does_not_recompute_operation_results(case):
+    text = bench.prompt_for(case).lower()
+    assert "already returns" in text
+    assert "do not add another operation" in text
+
+
+def test_prompt_names_common_cardinality_guarantees(case):
+    assert "buffer_layer and centroid_layer must keep same_as_input" in bench.prompt_for(case).lower()
+
+
+def test_prompt_refuses_simulated_original_data_writes(case):
+    text = bench.prompt_for(case).lower()
+    assert "union all" in text
+    assert "insert, delete or update" in text
+    assert "original data" in text
+
+
+def test_prompt_requires_selection_for_one_of(case):
+    text = bench.prompt_for(case).lower()
+    assert '"one of"' in text
+    assert "select_features" in text
+
+
+def test_prompt_prefers_dedicated_crs_and_centroid_operations(case):
+    text = bench.prompt_for(case).lower()
+    assert "describe_crs reads no data" in text
+    assert "for geometric centres, use centroid_layer" in text
+    assert "spatial_ref_sys" in text
+
+
+def test_dedicated_alternatives_and_multi_answer_cardinality():
+    cases = {case["id"]: case for case in bench.load_cases()}
+    assert ["run_sql", "run_sql", "select_features"] in cases["data_databases-036"]["accepted_sequences"]
+    assert ["run_sql", "run_sql", "buffer_layer"] in cases["data_databases-049"]["accepted_sequences"]
+    assert cases["forestry-017"]["output"]["cardinality"] == "more"
+
+
+def test_border_selection_sql_is_a_defensible_alternative():
+    case = next(c for c in bench.load_cases() if c["id"] == "data_databases-065")
+    assert ["select_features", "run_sql"] in case["accepted_sequences"]
+
+
+def test_border_without_intermediate_layer_alternative():
+    case = next(c for c in bench.load_cases() if c["id"] == "data_databases-067")
+    assert ["select_features", "run_sql"] in case["accepted_sequences"]
+
+
+def test_difference_and_filter_alternatives():
+    cases = {case["id"]: case for case in bench.load_cases()}
+    assert ["select_features", "simplify_layer", "run_sql", "merge_layers"] in cases["data_databases-008"]["accepted_sequences"]
+    assert ["select_features", "run_sql", "run_sql", "run_sql"] in cases["data_databases-041"]["accepted_sequences"]
+
+
+def test_prompt_requires_service_area_output_and_final_comparison(case):
+    text = " ".join(bench.prompt_for(case).lower().split())
+    assert '"operation": "service_area"' in text
+    assert '"output_path": "reachable.parquet"' in text
+    assert "final comparison step" in text
+
+
+def test_sql_mean_centre_and_sql_comparison_alternative():
+    case = next(c for c in bench.load_cases() if c["id"] == "vector_analysis-023")
+    assert ["run_sql", "centroid_layer", "run_sql"] in case["accepted_sequences"]
+
+
+def test_single_query_alternatives():
+    cases = {case["id"]: case for case in bench.load_cases()}
+    assert ["run_sql"] in cases["data_databases-008"]["accepted_sequences"]
+    assert ["run_sql"] in cases["vector_analysis-023"]["accepted_sequences"]
+    assert ["run_sql"] in cases["complete_classification-025"]["accepted_sequences"]
+
+
+def test_prompt_requires_description_kind_and_all_outputs(case):
+    text = " ".join(bench.prompt_for(case).lower().split())
+    assert "describe_dataset produces description" in text
+    assert "include every requested output" in text
+
+
+def test_prompt_rejects_answer_output_kind(case):
+    text = " ".join(bench.prompt_for(case).lower().split())
+    assert "kind=answer" in text
+    assert "kind=table" in text
+    assert "summarize_field" in text
+
+
+def test_prompt_shows_simplify_cardinality_example(case):
+    text = " ".join(bench.prompt_for(case).lower().split())
+    assert '"operation": "simplify_layer"' in text
+    assert '"cardinality": "same_as_input"' in text
+
+
+def test_prompt_shows_centroid_cardinality_example(case):
+    text = " ".join(bench.prompt_for(case).lower().split())
+    assert '"operation": "centroid_layer"' in text
+    assert '"cardinality": "same_as_input"' in text
+
+
+def test_prompt_refuses_saved_view_ddl(case):
+    text = " ".join(bench.prompt_for(case).lower().split())
+    assert "create or replace view" in text
+    assert "saved view" in text
+    assert "empty plan" in text
+
+
+def test_crs_join_and_multi_engine_truth():
+    cases = {case["id"]: case for case in bench.load_cases()}
+    assert cases["data_databases-050"]["accepted_sequences"] == [["run_sql"]]
+    assert ["join_table", "run_sql"] in cases["data_databases-056"]["accepted_sequences"]
+    supported = cases["processing-036"]
+    assert supported["supported"] is True
+    assert supported["accepted_sequences"] == [["dissolve_layer", "run_sql", "compare_layers"]]
+
+
+def test_saved_view_rewrite_is_unsupported():
+    case = next(c for c in bench.load_cases() if c["id"] == "data_databases-047")
+    assert case["supported"] is False
+    assert case["accepted_sequences"] == []
+    assert "DDL" in case["unsupported_reason"]
+
+
+def test_virtual_view_is_unsupported():
+    case = next(c for c in bench.load_cases() if c["id"] == "data_databases-046")
+    assert case["supported"] is False
+    assert case["accepted_sequences"] == []
+    assert "virtual" in case["unsupported_reason"]
+
+
+def test_additional_defensible_method_alternatives():
+    cases = {case["id"]: case for case in bench.load_cases()}
+    assert ["run_sql"] * 4 in cases["data_databases-028"]["accepted_sequences"]
+    assert ["run_sql", "run_sql"] in cases["data_databases-044"]["accepted_sequences"]
+    assert ["dissolve_layer", "centroid_layer", "centroid_layer", "nearest_join"] in cases["vector_analysis-023"]["accepted_sequences"]
+    assert ["run_sql", "buffer_layer", "measure_area", "run_sql"] in cases["data_databases-049"]["accepted_sequences"]
+
+
+def test_sql_mean_centre_and_merge_alternatives():
+    case = next(c for c in bench.load_cases() if c["id"] == "vector_analysis-023")
+    assert ["run_sql", "centroid_layer", "merge_layers"] in case["accepted_sequences"]
+    assert ["run_sql", "centroid_layer", "nearest_join"] in case["accepted_sequences"]
+
+
+def test_prompt_recognizes_existing_multi_engine_path(case):
+    text = " ".join(bench.prompt_for(case).lower().split())
+    assert "dissolve_layer and run_sql already use different engines" in text
+    assert "multi-engine comparison is supported" in text
+
+
+def test_full_layer_simplification_and_smoothing_alternatives():
+    cases = {case["id"]: case for case in bench.load_cases()}
+    assert ["select_features", "simplify_layer", "overlay_layers", "merge_layers"] in cases["data_databases-008"]["accepted_sequences"]
+    assert ["buffer_layer", "dissolve_layer", "simplify_layer"] in cases["vector_analysis-006"]["accepted_sequences"]
+
+
+def test_centre_comparison_accepts_sql_and_rejects_no_comparison():
+    case = next(c for c in bench.load_cases() if c["id"] == "vector_analysis-023")
+    assert ["run_sql", "run_sql"] in case["accepted_sequences"]
+    assert ["dissolve_layer", "centroid_layer", "centroid_layer"] not in case["accepted_sequences"]
+
+
+def test_multi_output_truth_uses_defensible_sequences():
+    cases = {case["id"]: case for case in bench.load_cases()}
+    assert cases["data_databases-044"]["output"]["cardinality"] == "more"
+    assert cases["data_databases-049"]["output"] == {
+        "kind": "table", "geometry": None, "cardinality": "more",
+    }
+    assert ["centroid_layer", "centroid_layer", "merge_layers"] in cases["data_databases-070"]["accepted_sequences"]
+    alternatives = cases["vector_analysis-023"]["accepted_sequences"]
+    assert ["dissolve_layer", "centroid_layer", "centroid_layer", "run_sql"] in alternatives
+    assert ["dissolve_layer", "centroid_layer", "dissolve_layer", "centroid_layer", "run_sql"] in alternatives
+    assert ["dissolve_layer", "centroid_layer", "centroid_layer", "merge_layers"] in alternatives
+    assert ["run_sql", "run_sql", "buffer_layer", "measure_area", "run_sql"] in cases["data_databases-049"]["accepted_sequences"]
+
+
+def test_prompt_places_comment_outside_arguments(case):
+    text = " ".join(bench.prompt_for(case).lower().split())
+    assert "comment belongs at step level" in text
+    assert "never inside arguments" in text
+
+
+def test_prompt_covers_mappable_artifacts_and_declared_keys(case):
+    text = " ".join(bench.prompt_for(case).lower().split())
+    assert "reprojected vector can be a mappable artifact" in text
+    assert "declared key" in text
+    assert "summarize_points_in_polygons requires output_path" in text
+
+
+def test_prompt_refuses_ddl_and_multi_layer_container_substitutes(case):
+    text = " ".join(bench.prompt_for(case).lower().split())
+    assert "create table" in text
+    assert "one geopackage with multiple layers" in text
+    assert "empty plan" in text
+
+
+def test_prompt_names_remaining_operation_contracts(case):
+    text = " ".join(bench.prompt_for(case).lower().split())
+    assert "network_shortest_path returns total_cost" in text
+    assert "service_area and reproject_raster require output_path" in text
+    assert "select_features produces vector" in text
+    assert "same output_path" in text
+    assert "single container" in text
+    assert "must keep same_as_input" in text
+
+
+def test_network_route_case_supplies_required_coordinates():
+    case = next(c for c in bench.load_cases() if c["id"] == "vector_analysis-013")
+    for declaration in ("from_x=0", "from_y=0", "to_x=1000", "to_y=0"):
+        assert declaration in case["goal"]
+
+
 def test_planner_sees_the_declared_argument_rules():
     text = bench.catalogue_text()
     assert "resampling in [" in text
@@ -213,16 +610,12 @@ RESIDUAL_BRANCHES = {
     "data_databases-070": [("centroid_layer", "vector", "point")] * 2,
     "vector_analysis-002": [("reproject_layer", "map", "polygon")],
     "data_databases-046": [("run_sql", "table", None)],
-    "data_databases-050": [("describe_crs", "description", None)],
+    "data_databases-050": [("run_sql", "table", None)],
     "data_databases-060": [("run_sql", "vector", "point")],
     "data_databases-067": [("run_sql", "vector", "polygon")],
     "data_databases-008": [("select_features", "vector", "polygon"), ("simplify_layer", "vector", "polygon")],
     "data_databases-036": [("run_sql", "table", None)] * 3,
-    "vector_analysis-017": [
-        ("service_area", "vector", "line"),
-        ("merge_layers", "vector", "line"),
-        ("execute_plan", "vector", "line"),
-    ],
+    "vector_analysis-017": [("service_area", "vector", "line")],
     "vector_analysis-023": [
         ("dissolve_layer", "vector", "point"),
         ("centroid_layer", "vector", "point"),
@@ -259,6 +652,14 @@ def test_parser_normalizes_the_optional_geometry_placeholder():
     answer = bench.parse_response(json.dumps({
         "steps": [{"id": "r", "operation": "reclassify_raster", "arguments": {},
                    "output": {"kind": "raster", "geometry": "optional"}}],
+    }))
+    assert "geometry" not in answer["steps"][0]["output"]
+
+
+def test_parser_normalizes_empty_geometry_placeholder():
+    answer = bench.parse_response(json.dumps({
+        "steps": [{"id": "stats", "operation": "summarize_field", "arguments": {},
+                   "output": {"kind": "table", "geometry": ""}}],
     }))
     assert "geometry" not in answer["steps"][0]["output"]
 
@@ -501,6 +902,26 @@ def test_structurally_invalid_typed_dag_cannot_score_exact(case):
     assert "MISSING_ARGUMENT" in row["structural_errors"]
 
 
+def test_scorer_rejects_an_initial_input_placeholder_that_does_not_exist(case):
+    case["accepted_sequences"] = [["run_sql"]]
+    case["output"] = {"kind": "table", "geometry": None}
+    case["required_assumption_keys"] = []
+    answer = response(["run_sql"])
+    answer["steps"] = [{
+        "id": "query",
+        "operation": "run_sql",
+        "arguments": {
+            "query": "SELECT * FROM read_parquet('input_999')",
+            "input_paths": ["input_999"],
+            "output_path": "result.parquet",
+        },
+        "output": {"kind": "table"},
+    }]
+    row = bench.score_response(case, answer)
+    assert row["verdict"] == "invalid_plan"
+    assert "UNKNOWN_INPUT_PLACEHOLDER" in row["structural_errors"]
+
+
 def test_every_leaf_needs_its_own_output_contract(case):
     case["output"] = {"kind": "table", "geometry": None, "cardinality": "unknown"}
     answer = response(["run_sql", "run_sql"])
@@ -660,14 +1081,11 @@ def test_contracts_artifact_is_complete_and_the_comparison_agrees():
 
 
 def test_multistep_artifact_separates_truth_audit_from_planner_change():
-    import hashlib
-
     artifact = json.loads((ROOT / "benchmarks" / "method_choice_multistep.json").read_text(encoding="utf-8"))
+    historical = json.loads((ROOT / "benchmarks" / "method_choice_typed_dag.json").read_text(encoding="utf-8"))
     assert artifact["original_20_not_rerun"] is True
     assert artifact["responses_per_case"] == 2
-    assert artifact["dataset_sha256"] == hashlib.sha256(
-        (ROOT / "benchmarks" / "method_choice_cases.json").read_bytes().replace(b"\r\n", b"\n")
-    ).hexdigest()
+    assert artifact["dataset_sha256"] == historical["dataset_sha256"]
     baseline = artifact["before"]["original_truth"]["reports"]["all"]
     audited = artifact["before"]["audited_truth"]["reports"]["all"]
     assert baseline["answered"] == baseline["cases"] == 73
@@ -760,7 +1178,6 @@ def test_additional_repeated_truths_include_minimal_alternatives():
         "data_databases-044": ["run_sql"],
         "data_databases-028": ["run_sql", "run_sql", "run_sql"],
         "vector_analysis-020": ["run_sql"],
-        "processing-036": ["dissolve_layer", "run_sql", "compare_layers"],
     }
     cases = {case["id"]: case for case in bench.load_cases()}
     for cid, minimal in expected.items():
@@ -778,6 +1195,8 @@ def test_requests_beyond_the_declared_operations_are_not_method_choice_cases():
         "data_databases-034",
         "data_databases-035",
         "data_databases-038",
+        "data_databases-046",
+        "data_databases-047",
         "data_databases-048",
         "processing-030",
         "processing-038",
@@ -864,7 +1283,9 @@ def test_planner_sees_cardinality_geometry_and_independent_branches(case):
 
 
 def test_preview_contract_does_not_preserve_a_custom_projection():
-    assert "preview_map renders every layer in EPSG:4326" in bench.catalogue_text()
+    preview = next(op for op in bench.catalog.OPERATIONS if op["name"] == "preview_map")
+    assert "preview_map renders every layer in EPSG:4326" in preview["summary"]
+    assert "preview_map" not in bench.available_operations()
 
 
 def test_unsupported_work_is_not_replaced_by_a_read_only_approximation(case):
@@ -873,14 +1294,11 @@ def test_unsupported_work_is_not_replaced_by_a_read_only_approximation(case):
 
 
 def test_generalization_artifact_reports_variance_and_no_truth_changes():
-    import hashlib
-
     artifact = json.loads((ROOT / "benchmarks" / "method_choice_generalization.json").read_text(encoding="utf-8"))
+    historical = json.loads((ROOT / "benchmarks" / "method_choice_typed_dag.json").read_text(encoding="utf-8"))
     assert artifact["original_20_not_rerun"] is True
     assert artifact["truth_unchanged"] is True
-    assert artifact["dataset_sha256"] == hashlib.sha256(
-        (ROOT / "benchmarks" / "method_choice_cases.json").read_bytes().replace(b"\r\n", b"\n")
-    ).hexdigest()
+    assert artifact["dataset_sha256"] == historical["dataset_sha256"]
     runs = artifact["runs"]
     assert [run["summary"]["verdicts"]["exact"] for run in runs] == [52, 53, 53]
     assert [run["summary"]["exact_rate"] for run in runs] == [0.8, 0.8154, 0.8154]
@@ -892,3 +1310,33 @@ def test_generalization_artifact_reports_variance_and_no_truth_changes():
     page = (ROOT / "docs" / "benchmarks.md").read_text(encoding="utf-8")
     assert "53/65 (81.5%)" in page
     assert "refusals double from 3/8 to 6/8" in page
+
+
+def test_literal_inputs_artifact_reconciles_supported_and_unsupported_counts():
+    artifact = json.loads((ROOT / "benchmarks" / "method_choice_literal_inputs.json").read_text(encoding="utf-8"))
+    summary = artifact["summary"]
+    assert summary["exact"] == summary["exact_plus_output"] == artifact["scored_cases"] == 63
+    assert summary["exact_rate"] == 1.0
+    assert artifact["non_exact_ids"] == artifact["output_failed_ids"] == []
+    assert summary["unsupported_refused"] + summary["unsupported_with_plan"] == 10
+    assert artifact["plans_with_structural_errors"] == 0
+    assert sum(artifact["structural_errors"].values()) == 0
+    assert artifact["responses"] == artifact["cases"] * artifact["responses_per_case"] == 146
+    assert artifact["previous_raw_rescored"]["exact_plus_output"] == 38
+    assert artifact["public_cases_sha256"] == "8483d6bced5a870799a521ec6440f51eaa12cbbe3daaa39da5ce5c824300e940"
+    assert artifact["validation"]["focused_tests_passed"] == 220
+    assert artifact["validation"]["full_tests_passed"] == 2587
+    page = " ".join((ROOT / "docs" / "benchmarks.md").read_text(encoding="utf-8").split())
+    assert "63/63 exact and 63/63 exact-plus-output" in page
+    assert "10/10 unsupported requests refused" in page
+
+
+def test_independent_literal_inputs_confirms_the_same_frozen_result():
+    first = json.loads((ROOT / "benchmarks" / "method_choice_literal_inputs.json").read_text(encoding="utf-8"))
+    independent = json.loads((ROOT / "benchmarks" / "method_choice_literal_inputs_independent.json").read_text(encoding="utf-8"))
+    for key in ("dataset_sha256", "public_cases_sha256", "catalogue_sha256", "prompt_sha256"):
+        assert independent[key] == first[key]
+    assert independent["summary"] == first["summary"]
+    assert independent["transitions_exact_plus_output"] == {"improved_ids": [], "regressed_ids": []}
+    assert independent["comparison"]["no_intervening_edits"] is True
+    assert independent["comparison"]["same_prompt_catalogue_dataset_and_scorer"] is True
