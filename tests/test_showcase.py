@@ -1156,13 +1156,11 @@ def test_the_site_names_what_main_has_that_the_release_does_not():
 def test_method_choice_entries_are_rendered_on_the_site():
     import importlib.util
 
-    from mapsmith import __version__
-
     spec = importlib.util.spec_from_file_location("site_build", ROOT / "site" / "build.py")
     build = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(build)
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    section = changelog.split(f"## [{__version__}]", 1)[1].split("\n## [", 1)[0]
+    section = changelog.split("## [0.12.0]", 1)[1].split("\n## [", 1)[0]
     rendered = build.unreleased_html(f"## [Unreleased]\n{section}", "0.11.0")
     assert "SELECT-only" in rendered
     assert "method-choice" in rendered

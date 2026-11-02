@@ -6,6 +6,21 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-02
+
+Records continue to declare `spec_version` `1.0.0-draft.10`; no manifest key is
+new or renamed in this release.
+
+### Fixed
+
+- **Compare every declared geometry CRS semantically in `calculate_field`.** Primary
+  and secondary GeoParquet CRS declarations, including native GeoArrow declarations,
+  must match the input. Equivalent PROJJSON serializations remain accepted, while an
+  actual CRS change fails verification and retains the manifest.
+- **Correct the public showcases.** Include 0.12.x in the draft.10 range, describe
+  Argleton's current multi-step scope without calling every trap single-step, and
+  correct the current trap count.
+
 ## [0.12.0] - 2026-11-02
 
 Records continue to declare `spec_version` `1.0.0-draft.10`; no manifest key is

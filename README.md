@@ -45,7 +45,7 @@ MapSmith's private output: JSON Schema, a toolchain-free validator, a conformanc
 hundred-line emitter that never imports MapSmith. Records carry `spec_version`, and CI validates
 real MapSmith output against the spec's own validator. The specification is archived and citable
 as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213), a concept DOI that
-resolves to the latest *archived* draft. Records written by 0.8.0 to 0.11.0 declare `1.0.0-draft.10`, and
+resolves to the latest *archived* draft. Records written by 0.8.0 to 0.12.1 declare `1.0.0-draft.10`, and
 0.7.x's declare `1.0.0-draft.8`; if the DOI shows an earlier one, the archive has not caught up, and the
 [repository](https://github.com/mapsmith-ai/manifest-spec) holds the text they are written against. The names MapSmith puts
 in a record beyond the ones the specification defines — every extension check name, and every
@@ -223,9 +223,11 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.12.0**, which is what that command installs. When `main` runs ahead of
+This page describes **0.12.1**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **New in 0.12.0**
+have to find out by calling a tool that is not there. **New in 0.12.1**
+([release notes](CHANGELOG.md#0121---2026-11-02)): semantic verification of every primary,
+secondary and native geometry CRS declaration in `calculate_field`. **New in 0.12.0**
 ([release notes](CHANGELOG.md#0120---2026-11-02)): restricted numeric and boolean field
 calculation, executable typed-DAG input contracts and corrected multi-step method-choice
 benchmarks. **New in 0.11.0**
@@ -313,7 +315,7 @@ for it:
 ```json
 {
   "spec_version": "1.0.0-draft.10",
-  "producer": {"name": "mapsmith", "version": "0.12.0"},
+  "producer": {"name": "mapsmith", "version": "0.12.1"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{
@@ -994,8 +996,8 @@ downstream it looks like a parcel, **every step reported verified**, and on this
 table comes out identical to the correct one — the defect is silent in the output. The heading
 said "reject wrong analyses" until that run; it says malformed now, because that is what is true.
 Catching the other kind is an open problem, and it is the reason the
-[correctness suite](https://argleton.org) exists — though its traps are single-step, so today it
-does not catch this one either.
+[correctness suite](https://argleton.org) exists — though this particular wrong-order case is
+outside its current probes, so today it does not catch this one either.
 
 ```json
 {
@@ -1187,7 +1189,7 @@ for a careless composition of the same libraries. The runs from 2026-08-30 to 20
 premise about GDAL that GDAL documents the other way, MapSmith had been built to that premise,
 and both corrected half a cell that was already corrected. Found on 2026-09-25 by a Copernicus
 DEM whose samples fall on whole arc-seconds by its own documentation; the
-[erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) rescores every run it touched, and the fix shipped in 0.7.0; every run since measures it. One of the thirty-two is not an answer
+[erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) rescores every run it touched, and the fix shipped in 0.7.0; every run since measures it. One of the thirty-three is not an answer
 at all but a refusal: a raster and the sidecar beside it declare different georeferencing,
 both readings are GDAL behaving as documented, and the right move is to stop and say so
 rather than pick one. That family arrived on 2026-08-31, the morning after the list of

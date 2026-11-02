@@ -262,6 +262,12 @@ def _parquet_geo(path: str) -> dict[str, Any] | None:
     return json.loads(metadata[b"geo"]) if b"geo" in metadata else None
 
 
+def _crs_declaration_matches(source: Any, output: Any) -> bool:
+    if source is None or output is None:
+        return source == output
+    return verify.same_crs(source, output)
+
+
 def _geo_metadata_matches(source: dict[str, Any], output: dict[str, Any]) -> bool:
     if source.get("primary_column") != output.get("primary_column"):
         return False
@@ -273,6 +279,8 @@ def _geo_metadata_matches(source: dict[str, Any], output: dict[str, Any]) -> boo
         for key in ("geometry_types", "encoding"):
             if source_columns[name].get(key) != output_columns[name].get(key):
                 return False
+        if not _crs_declaration_matches(source_columns[name].get("crs"), output_columns[name].get("crs")):
+            return False
     return True
 
 
@@ -414,8 +422,19 @@ def calculate_field(
                 f"AND (isnan(CAST({excluded} AS DOUBLE)) OR isinf(CAST({excluded} AS DOUBLE)))"
             ).fetchone()[0]
         output_geo = _parquet_geo(output_path)
-        metadata_ok = source_geo is None or (
-            output_geo is not None and _geo_metadata_matches(source_geo, output_geo)
+        source_native = dict(readers.native_geometry_columns(input_path))
+        output_native = dict(readers.native_geometry_columns(output_path))
+        native_metadata_ok = not source_native or (
+            set(source_native) == set(output_native)
+            and all(
+                _crs_declaration_matches(source_native[name], output_native[name])
+                for name in source_native
+            )
+        )
+        metadata_ok = native_metadata_ok and (
+            source_geo is None or (
+                output_geo is not None and _geo_metadata_matches(source_geo, output_geo)
+            )
         )
         return [
             *verify.verify_vector_output(

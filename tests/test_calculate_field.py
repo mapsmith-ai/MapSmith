@@ -244,6 +244,48 @@ def test_calculate_field_preserves_primary_and_secondary_geometry_metadata(tmp_p
     assert got["other"].tolist() == gpd.read_parquet(source)["other"].tolist()
 
 
+def test_calculate_field_refuses_changed_secondary_geometry_crs(tmp_path, monkeypatch):
+    source = _people(tmp_path / "people.parquet")
+    out = tmp_path / "changed_crs.parquet"
+    original_geo = field_calculation._parquet_geo
+
+    def changed_secondary_crs(path):
+        geo = original_geo(path)
+        if str(path) == str(out):
+            geo["columns"]["other"]["crs"] = "EPSG:32632"
+        return geo
+
+    monkeypatch.setattr(field_calculation, "_parquet_geo", changed_secondary_crs)
+    with pytest.raises(verify.VerificationError):
+        field_calculation.calculate_field(str(source), str(out), "answer", "a + 1")
+    manifest = json.loads(Path(f"{out}.provenance.json").read_text(encoding="utf-8"))
+    assert any(
+        check["name"] == "x-mapsmith:geoparquet_metadata_preserved" and not check["passed"]
+        for check in manifest["verification"]
+    )
+
+
+def test_calculate_field_refuses_changed_native_geometry_declaration(tmp_path, monkeypatch):
+    source = _people(tmp_path / "people.parquet")
+    out = tmp_path / "changed_native.parquet"
+    from mapsmith import readers
+
+    monkeypatch.setattr(field_calculation, "_parquet_geo", lambda _path: None)
+
+    def changed_native_declaration(path):
+        declaration = "EPSG:32632" if str(path) == str(out) else "EPSG:4326"
+        return [("geom", f'{{"crs":"{declaration}"}}')]
+
+    monkeypatch.setattr(readers, "native_geometry_columns", changed_native_declaration)
+    with pytest.raises(verify.VerificationError):
+        field_calculation.calculate_field(str(source), str(out), "answer", "a + 1")
+    manifest = json.loads(Path(f"{out}.provenance.json").read_text(encoding="utf-8"))
+    assert any(
+        check["name"] == "x-mapsmith:geoparquet_metadata_preserved" and not check["passed"]
+        for check in manifest["verification"]
+    )
+
+
 def test_calculate_field_refuses_input_without_crs(tmp_path):
     source = tmp_path / "plain.parquet"
     gpd.GeoDataFrame({"a": [1.0]}, geometry=[Point(0, 0)]).to_parquet(source)
