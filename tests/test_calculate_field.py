@@ -208,6 +208,28 @@ def test_calculate_field_empty_input_preserves_schema_and_geo_metadata(tmp_path)
     assert got.columns.tolist() == ["a", "b", "nullable", "flag", "label", "geom", "other", "answer"]
 
 
+def test_calculate_field_does_not_overwrite_existing_metadata_tmp(tmp_path):
+    source = _people(tmp_path / "empty.parquet", empty=True)
+    out = tmp_path / "out.parquet"
+    victim = tmp_path / "out.parquet.metadata.tmp"
+    victim.write_bytes(b"do not delete")
+    field_calculation.calculate_field(str(source), str(out), "answer", "a + 1")
+    assert victim.read_bytes() == b"do not delete"
+
+
+def test_calculate_field_cleans_metadata_tmp_when_rewrite_fails(tmp_path, monkeypatch):
+    source = _people(tmp_path / "empty.parquet", empty=True)
+    out = tmp_path / "out.parquet"
+
+    def fail_open(_path):
+        raise RuntimeError("cannot read parquet")
+
+    monkeypatch.setattr(pq, "ParquetFile", fail_open)
+    with pytest.raises(RuntimeError, match="cannot read parquet"):
+        field_calculation.calculate_field(str(source), str(out), "answer", "a + 1")
+    assert list(tmp_path.glob(".out.parquet.*.tmp")) == []
+
+
 def test_calculate_field_preserves_primary_and_secondary_geometry_metadata(tmp_path):
     source = _people(tmp_path / "people.parquet")
     out = tmp_path / "metadata.parquet"

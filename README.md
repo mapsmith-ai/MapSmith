@@ -225,7 +225,8 @@ To check it runs before wiring a client, `uvx mapsmith` starts the server on std
 
 This page describes **0.11.0**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. On `main`, the method-choice benchmark has
+have to find out by calling a tool that is not there. On `main`, `calculate_field` adds a
+restricted numeric or boolean attribute through `run_operation`, the method-choice benchmark has
 corrected multi-step contracts and the `run_sql` catalog declares the workspace's SELECT-only
 behavior ([Unreleased](CHANGELOG.md#unreleased)). **New in 0.11.0**
 ([release notes](CHANGELOG.md#0110---2026-10-29)): the validated project brief, bounded agent
@@ -786,9 +787,9 @@ thing it was ever evidence about.
 The applicability filter above runs first for **both** engines — otherwise the guarantee would
 only be true of one of them, and there is a test that says so.
 
-**Then it runs, tool or no tool.** Most catalog operations have a tool of their own; the newer
-ones increasingly do not, and `run_operation(operation, arguments)` runs those by name. This is
-deliberate: capability count has no ceiling, but the *exposed tool list* has one, so the catalog
+**Then it runs, tool or no tool.** Most catalog operations have no dedicated tool:
+56 of 81 are declared without one. Available operations run by name through
+`run_operation(operation, arguments)`. This is deliberate: capability count has no ceiling, but the *exposed tool list* has one, so the catalog
 is allowed to grow faster than the tool list. Arguments are checked against the catalog before
 anything executes — unknown operation (with a "did you mean", from the same ranking), missing or
 misnamed argument, wrong type, path outside the workspace — and every error carries a stable

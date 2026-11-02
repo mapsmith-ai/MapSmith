@@ -840,7 +840,7 @@ OPERATIONS: list[dict[str, Any]] = [
             "Supports arithmetic, comparisons, boolean logic, CASE, COALESCE and NULLIF; "
             "text, dates, geometry functions, aggregates, windows and subqueries are refused. "
             "Creating a field refuses a collision unless on_existing='replace'; replacement "
-            "preserves the column position and source spelling. Feature count, attributes, "
+            "preserves the column position and source spelling. Feature count, all other attributes, "
             "geometries and CRS are verified unchanged, and NaN or infinity in the calculated "
             "field is refused with the manifest retained."
         ),
@@ -1494,7 +1494,7 @@ OPERATIONS: list[dict[str, Any]] = [
         # identical on every facet the narrowing uses -- workload, category,
         # produces, applicability -- so discovery cannot separate them and only
         # prose could. Reachable by name through `run_operation`, like the
-        # forty-nine other catalogue operations that are not tools.
+        # fifty-five other catalogue operations that are not tools.
         "workload": "small_vector",
         "category": "provenance",
         "produces": "description",

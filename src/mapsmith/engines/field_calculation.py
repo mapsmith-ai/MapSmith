@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -283,23 +285,30 @@ def _write_empty_output(
 
     native_declarations = dict(readers.native_geometry_columns(input_path))
     if source_geo is not None or native_declarations:
-        temporary = f"{output_path}.metadata.tmp"
+        descriptor, temporary = tempfile.mkstemp(
+            dir=Path(output_path).parent,
+            prefix=f".{Path(output_path).name}.",
+            suffix=".tmp",
+        )
+        os.close(descriptor)
         import pyarrow as pa
 
-        if source_geo is None:
-            import geopandas as gpd
-
-            source_geo = gpd.io.arrow._create_metadata(readers.read_vector(input_path))
-        reader = pq.ParquetFile(output_path)
-        source_reader = pq.ParquetFile(input_path)
-        metadata = dict(reader.schema_arrow.metadata or {})
-        metadata[b"geo"] = json.dumps(source_geo).encode()
-        fields = [
-            pa.field(name, _GeoWkbType(native_declarations[name]))
-            if name in native_declarations else reader.schema_arrow.field(name)
-            for name in reader.schema_arrow.names
-        ]
+        reader = None
+        source_reader = None
         try:
+            if source_geo is None:
+                import geopandas as gpd
+
+                source_geo = gpd.io.arrow._create_metadata(readers.read_vector(input_path))
+            reader = pq.ParquetFile(output_path)
+            source_reader = pq.ParquetFile(input_path)
+            metadata = dict(reader.schema_arrow.metadata or {})
+            metadata[b"geo"] = json.dumps(source_geo).encode()
+            fields = [
+                pa.field(name, _GeoWkbType(native_declarations[name]))
+                if name in native_declarations else reader.schema_arrow.field(name)
+                for name in reader.schema_arrow.names
+            ]
             with pq.ParquetWriter(temporary, pa.schema(fields, metadata=metadata)) as writer:
                 for batch in reader.iter_batches():
                     writer.write_batch(batch)
@@ -307,8 +316,10 @@ def _write_empty_output(
             source_reader.close()
             Path(temporary).replace(output_path)
         finally:
-            reader.close()
-            source_reader.close()
+            if reader is not None:
+                reader.close()
+            if source_reader is not None:
+                source_reader.close()
             Path(temporary).unlink(missing_ok=True)
         return
 

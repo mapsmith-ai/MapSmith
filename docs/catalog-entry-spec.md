@@ -116,7 +116,7 @@ when a catalogue of your own outgrows its facets:
 
 `dataset:vector`, `dataset:raster`, `answer`, `description`, `plan_result`.
 
-Worth 23 points of *in what comes back* on top of the input kind (34% to 57%, table above), and it is a facet the caller
+Worth 23 points of *in what comes back* on top of the input kind (35% to 58%, table above), and it is a facet the caller
 always knows: they know whether they want a file, a number, or an account of
 something they already have. Check it against what the code actually writes — a
 declaration that disagrees makes the operation unreachable for the caller who
