@@ -6,6 +6,11 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-02
+
+Records continue to declare `spec_version` `1.0.0-draft.10`; no manifest key is
+new or renamed in this release.
+
 ### Added
 
 - **Restricted, deterministic field calculation.** `calculate_field` creates or replaces

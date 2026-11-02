@@ -223,12 +223,12 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.11.0**, which is what that command installs. When `main` runs ahead of
+This page describes **0.12.0**, which is what that command installs. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. On `main`, `calculate_field` adds a
-restricted numeric or boolean attribute through `run_operation`, the method-choice benchmark has
-corrected multi-step contracts and the `run_sql` catalog declares the workspace's SELECT-only
-behavior ([Unreleased](CHANGELOG.md#unreleased)). **New in 0.11.0**
+have to find out by calling a tool that is not there. **New in 0.12.0**
+([release notes](CHANGELOG.md#0120---2026-11-02)): restricted numeric and boolean field
+calculation, executable typed-DAG input contracts and corrected multi-step method-choice
+benchmarks. **New in 0.11.0**
 ([release notes](CHANGELOG.md#0110---2026-10-29)): the validated project brief, bounded agent
 repair, vector/raster conversion and QGIS `native:buffer`, taking
 the catalogue to 80 operations behind 29 tools. **If you run 0.10.0 or earlier under
@@ -313,7 +313,7 @@ for it:
 ```json
 {
   "spec_version": "1.0.0-draft.10",
-  "producer": {"name": "mapsmith", "version": "0.11.0"},
+  "producer": {"name": "mapsmith", "version": "0.12.0"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{
