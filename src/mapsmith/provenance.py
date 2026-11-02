@@ -221,6 +221,26 @@ CONTAINER_EXTENSIONS: dict[str, dict[str, str]] = {
             "the reference extent. This check measures the burned-cell mask, so "
             "a value equal to the fill still counts as present."
         ),
+        "x-mapsmith:unchanged_features": (
+            "Not `feature_count_exact`, which is only a cardinality check: this "
+            "compares the multiset outside the calculated field in both directions "
+            "and catches an attribute or geometry changed despite a preserved count."
+        ),
+        "x-mapsmith:calculated_field_position": (
+            "Not `feature_count_exact` or `geometry_types`: this checks the output "
+            "schema and the calculated field's position, including replacement "
+            "without moving the source column to the end."
+        ),
+        "x-mapsmith:finite_calculated_values": (
+            "Not `geometry_valid`, which checks spatial shapes: this rejects NaN "
+            "and infinity in the calculated numeric field, values an otherwise "
+            "ordinary row count and CRS cannot detect."
+        ),
+        "x-mapsmith:geoparquet_metadata_preserved": (
+            "Not `crs_matches`, which checks only the active CRS: this also checks "
+            "the primary column, secondary geometry columns, their CRS declarations, "
+            "geometry types, and encodings."
+        ),
     },
 }
 

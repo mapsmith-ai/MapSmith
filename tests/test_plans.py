@@ -784,6 +784,48 @@ def test_service_area_requires_exactly_one_origin_mode_statically(wells, tmp_pat
     assert not validate(plan).valid
 
 
+def test_calculate_field_composes_through_typed_plan(tmp_path):
+    source = tmp_path / "values.parquet"
+    gpd.GeoDataFrame(
+        {"a": [7.0], "b": [2.0]}, geometry=[Point(0, 0)], crs="EPSG:4326"
+    ).to_parquet(source)
+    calculated = tmp_path / "calculated.parquet"
+    doubled = tmp_path / "doubled.parquet"
+    plan = make_plan(
+        {
+            "id": "calculated",
+            "operation": "calculate_field",
+            "arguments": {
+                "input_path": str(source),
+                "output_path": str(calculated),
+                "field_name": "ratio",
+                "expression": "a / b",
+            },
+            "output": {"kind": "vector", "geometry": "point", "cardinality": "same_as_input"},
+        },
+        {
+            "id": "doubled",
+            "operation": "calculate_field",
+            "arguments": {
+                "input_path": "$calculated",
+                "output_path": str(doubled),
+                "field_name": "double_ratio",
+                "expression": "ratio * 2",
+            },
+            "output": {"kind": "vector", "geometry": "point", "cardinality": "same_as_input"},
+        },
+    )
+    report = validate(plan)
+    assert report.valid, codes(report)
+    result = execute(plan)
+    assert result["executed"] is True, result
+    assert result["steps"][1]["field_name"] == "double_ratio"
+    assert gpd.read_parquet(doubled)["double_ratio"].tolist() == [7.0]
+    manifest = json.loads(Path(f"{doubled}.provenance.json").read_text(encoding="utf-8"))
+    assert manifest["operation"] == "calculate_field"
+    assert manifest["inputs"][0]["path"].endswith("calculated.parquet")
+
+
 def test_execute_stops_at_first_failure_keeps_earlier_outputs(wells, tmp_path):
     """Step 2 fails at runtime (bad SQL): step 1 output + manifest must survive."""
     buf = str(tmp_path / "buf.parquet")

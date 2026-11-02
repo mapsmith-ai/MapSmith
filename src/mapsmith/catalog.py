@@ -824,6 +824,68 @@ OPERATIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        "name": "calculate_field",
+        "status": "available",
+        "tool": None,
+        "workload": "sql",
+        "category": "vector",
+        "produces": "dataset:vector",
+        "output_cardinality": "same_as_input",
+        "applicability": {"inputs": ["vector"], "requires_projected_crs": False, "dataset_inputs": 1},
+        "summary": "Create or replace a numeric or boolean attribute from existing fields, with null-safe conditions and full lineage",
+        "phrasings": "add a column computed from existing fields; derive an attribute; calculate a new value per feature; field calculator; ratio between two columns; flag features with a condition; replace a field without changing the geometries",
+        "distinguishes": "Changes or adds one attribute while preserving every feature and geometry. Not select_features, which drops rows; not run_sql, which accepts a whole query rather than one restricted expression.",
+        "description": (
+            "Calculate one numeric or boolean field from other numeric and boolean fields. "
+            "Supports arithmetic, comparisons, boolean logic, CASE, COALESCE and NULLIF; "
+            "text, dates, geometry functions, aggregates, windows and subqueries are refused. "
+            "Creating a field refuses a collision unless on_existing='replace'; replacement "
+            "preserves the column position and source spelling. Feature count, attributes, "
+            "geometries and CRS are verified unchanged, and NaN or infinity in the calculated "
+            "field is refused with the manifest retained."
+        ),
+        "parameters": [
+            {"name": "input_path", "type": "str", "required": True, "description": "Input vector dataset with a declared CRS"},
+            {"name": "output_path", "type": "str", "required": True, "description": "Output GeoParquet path"},
+            {"name": "field_name", "type": "str", "required": True, "description": "Attribute to create or replace; never a geometry column"},
+            {"name": "expression", "type": "str", "required": True, "description": "Restricted expression over numeric and boolean columns"},
+            {"name": "on_existing", "type": "str", "required": False, "description": "error (default) or replace"},
+        ],
+        "examples": [
+            {
+                "goal": "Add a column computed from existing attributes",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "calculate_field",
+                        "arguments": {
+                            "input_path": "parcels.parquet",
+                            "output_path": "ratios.parquet",
+                            "field_name": "ratio",
+                            "expression": "residents / households",
+                        },
+                    },
+                },
+            },
+            {
+                "goal": "Replace missing elevations with zero while keeping the other attributes",
+                "call": {
+                    "tool": "run_operation",
+                    "arguments": {
+                        "operation": "calculate_field",
+                        "arguments": {
+                            "input_path": "stations.parquet",
+                            "output_path": "filled.parquet",
+                            "field_name": "elevation",
+                            "expression": "COALESCE(elevation, 0)",
+                            "on_existing": "replace",
+                        },
+                    },
+                },
+            },
+        ],
+    },
+    {
         "name": "select_features",
         "status": "available",
         "tool": None,
@@ -5250,6 +5312,8 @@ PARAMETER_CONTRACTS: dict[tuple[str, str], dict[str, Any]] = {
     ("contour_lines", "smoothing"): {"minimum": 0},
     ("merge_layers", "input_paths"): {"min_items": 2},
     ("run_sql", "output_path"): {"extensions": [".parquet"]},
+    ("calculate_field", "output_path"): {"extensions": [".parquet"]},
+    ("calculate_field", "on_existing"): {"choices": ["error", "replace"]},
     ("polygonize_raster", "band"): {"minimum": 1},
     ("polygonize_raster", "connectivity"): {"choices": [4, 8]},
     ("polygonize_raster", "max_features"): {"exclusive_minimum": 0},

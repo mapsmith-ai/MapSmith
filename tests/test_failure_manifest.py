@@ -131,6 +131,7 @@ def test_a_check_that_raises_after_the_write_leaves_a_record(
 #: writer silently moving out of reach is a failure, not a quieter test.
 _WRITE_UNREACHABLE = {
     "aspect",
+    "calculate_field",
     "curvature",
     "euclidean_distance",
     "extract_streams",

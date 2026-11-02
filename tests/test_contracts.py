@@ -58,6 +58,7 @@ def test_engine_enums_match_the_declared_contracts():
     from mapsmith.engines import (
         conversion,
         dispatch,
+        field_calculation,
         geodesy,
         linework,
         qgis,
@@ -74,6 +75,7 @@ def test_engine_enums_match_the_declared_contracts():
         ("dissolve_layer", "aggfunc"): vector.DISSOLVE_AGGFUNCS,
         ("measure_area", "method"): vector.AREA_METHODS,
         ("select_features", "by"): vector.SELECT_BY,
+        ("calculate_field", "on_existing"): field_calculation.ON_EXISTING,
         ("spatial_join", "predicate"): {"intersects", "within", "contains"},
         ("spatial_join", "engine"): dispatch.SPATIAL_JOIN_ENGINES,
         ("flow_accumulation", "out_type"): {"cells", "sca"},

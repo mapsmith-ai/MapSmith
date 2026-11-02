@@ -29,7 +29,7 @@ from .validator import validate
 
 # step-result keys worth echoing back to the agent (full details live in provenance)
 _ECHO_KEYS = (
-    "output", "provenance", "feature_count", "crs", "engine_used", "verified",
+    "output", "provenance", "feature_count", "field_name", "crs", "engine_used", "verified",
     "warnings",  # non-critical verification failures (empty results, disjoint inputs)
     "repairs",  # geometry MapSmith rewrote: must not be invisible at plan level
 )
