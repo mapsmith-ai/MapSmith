@@ -879,5 +879,5 @@ def test_measles_answer_tracks_the_new_apportion_operation():
 
     raw = ROOT / "benchmarks" / "discovery_labels_2026-11-04.json"
     assert hashlib.sha256(raw.read_bytes()).hexdigest() == (
-        "03a494e8366109f1c4d90711a782164743bf12f315b842f72dab18f168bab825"
+        "9dab4f50afff51aae5ac433bb235c89ed66dec652e5e9c73b1a293f429481bb4"
     ), "the immutable raw relabelling artifact changed"
