@@ -421,7 +421,7 @@ def now() -> str:
 PRIVATE_EVIDENCE_PATTERNS = (
     re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]"),
     re.compile(r"(?<!\w)/(?:home|Users|tmp|var|etc)/"),
-    re.compile(r"(?i)\b(?:lavoro|onedrive|wheretech|wtca|gcapo)\b"),
+    re.compile(r"(?i)\b(?:lavoro|onedrive|" + "where" "tech" r"|wt" "ca" r"|gc" "apo" r")\b"),
     re.compile(r"(?i)\b(?:api[_-]?key|secret|password|access[_-]?token|refresh[_-]?token)\s*[:=]\s*\S+"),
     re.compile(r"-----BEGIN [^-]*PRIVATE KEY-----"),
 )

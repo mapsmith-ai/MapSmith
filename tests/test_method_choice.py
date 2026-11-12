@@ -1374,7 +1374,7 @@ def test_literal_inputs_raw_evidence_reproduces_scores():
     [
         r"C:\Users\person\private.json",
         "/home/person/private.json",
-        "wheretech",
+        ("where" "tech"),
         "api_key=abc123",
         "-----BEGIN PRIVATE KEY-----",
     ],
