@@ -2320,3 +2320,16 @@ def test_no_public_file_carries_a_mangled_character():
         "these tracked lines carry cp1252 mojibake, which means a character was "
         f"written once and saved twice: {damaged[:10]}"
     )
+
+
+def test_project_description_names_the_multi_step_deterministic_analysis():
+    import tomllib
+
+    expected = (
+        "An MCP server that turns a question about your data into a multi-step "
+        "GIS analysis, run by deterministic engines, with a lineage manifest "
+        "beside every output."
+    )
+    with (ROOT / "pyproject.toml").open("rb") as stream:
+        document = tomllib.load(stream)
+    assert document["project"]["description"] == expected
