@@ -350,9 +350,9 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   </p>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1.5rem;margin:2rem 0 1.5rem">
     <div class="stat"><b>118</b><span>REQUESTS WE DID NOT WRITE</span></div>
-    <div class="stat"><b>62%</b><span>OUR RANKING, FOUND@3</span></div>
+    <div class="stat"><b>75%</b><span>OUR RANKING, FOUND@3</span></div>
     <div class="stat"><b>69%</b><span>A MODEL <em>CHOOSING</em> FROM THE SET</span></div>
-    <div class="stat"><b>70%</b><span>WHERE THE TWO MODEL LABELLERS AGREE WITH EACH OTHER<br><em>labels written 2026-08-28, catalogue of 51</em></span></div>
+    <div class="stat"><b>75%</b><span>WHERE THE TWO MODEL LABELLERS AGREE WITH EACH OTHER<br><em>labels written 2026-11-04, Sonnet + Haiku, catalogue of 81</em></span></div>
   </div>
   <p class="pull">
     Ranking is the wrong verb.<br>
@@ -368,7 +368,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     in the repository — <code>benchmarks/discovery_report.py</code> recomputes every figure here
     with no network and no model, and a test fails if this page and the harness disagree. All three
     of the numbers above are over the same 118 requests; agreement measured over all 155 in the file
-    is 68%, and the difference is the pairs where both labellers agreed a request was unanswerable.
+    is 60%, which also counts the requests both labellers called unanswerable.
   </p>
   <p>
     <strong>It narrows first, deterministically, on facts the caller already has.</strong> What data
@@ -376,17 +376,16 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     how many datasets, and whether they are points, lines or polygons, take them further —
     and at thirty survivors or fewer the search stops choosing for you: it returns
     <code>status: "choose"</code> with every candidate, ordered as a hint that says so, each carrying
-    the sentence that separates it from its neighbours. On 116 of those 118 requests the right
-    operation is in what comes back; the other two leave a set still too large to hand over whole
-    and fall back to a ranked shortlist. Not as an accuracy figure — as a property: the narrowing
-    never drops the answer, and the 2% is the gap between «cannot lose it» and «can show you all of
-    it».
+    the sentence that separates it from its neighbours. **114/118, or 97%**, receive the whole
+    set; **117/118, or 99%**, have the accepted answer in the returned payload. Three of the four
+    oversized sets still return that answer in the ranked fallback. Not as an accuracy figure —
+    as two distinct properties: whole-set delivery and answer returned.
   </p>
   <p>
     <strong>The family orders instead of filtering, and that is a correction.</strong> It used to be
     a hard filter like the others, and it is not like the others: input kind is a fact about your
     data, family is a guess about our taxonomy that you cannot see. It removed five candidates out of
-    sixteen — and when the guess was wrong it removed <em>the right operation</em>, silently,
+    fifteen — and when the guess was wrong it removed <em>the right operation</em>, silently,
     leaving a confident answer built from neighbours. Every request here has 4.4 plausible families.
     That is the failure <a href="https://argleton.org">Argleton</a> measures in other people's
     systems, found in our own discovery layer.
@@ -424,7 +423,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   <p>
     So the figure to watch is not found@3. A ranker gets worse as a catalogue grows and it is a hint
     either way. It is the <em>average</em> surviving set at the fullest declaration — 9 at fifty-one
-    operations, 14 at sixty-one, 16 at seventy-two, 16 at seventy-four, 16 at seventy-five, 17 at seventy-six, 15 at seventy-seven, 15 at seventy-eight, 16 at eighty-one.
+    operations, 14 at sixty-one, 16 at seventy-two, 16 at seventy-four, 16 at seventy-five, 17 at seventy-six, 15 at seventy-seven, 15 at seventy-eight, 15 at eighty-one.
     (This page said
     <em>median</em> until 29 August and published the mean; the median at eighty-one is 13. The
     distribution is skewed, so the two say different things, and the mean is the pessimistic one.)
@@ -467,7 +466,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <em>This one can ask instead — the same rule the operations follow when a number would be wrong.</em>
   </p>
   <p>
-    One caveat we will not bury: that 68% ceiling was measured between two language models. Whether
+    One caveat we will not bury: that 60% ceiling was measured between two language models. Whether
     human GIS analysts agree with each other more, less or about the same is unknown, and two
     analysts with thirty years each routinely do the same job with different tools. Until people
     have tried it, these are reported as agreement with model-written labels — never as accuracy.
@@ -494,15 +493,15 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <tr>
       <td>ablation</td>
       <td>Each facet is worth measuring alone, over the 118 independent requests: nothing declared
-      → 81 candidates, 20% found@3 with embeddings and 31% with BM25; what data I have → 54,
-      24% and 34%; + what I want back → 33, 42% and 47%; + how many datasets I have → 18, 51% and
-      54%; + what geometry it holds →
-      <strong>16, 62% ranked and 98% delivered</strong>. Both engines, because this row carried one
+      → 81 candidates, 32% found@3 with embeddings and 47% with BM25; what data I have → 54,
+      35% and 52%; + what I want back → 33, 52% and 61%; + how many datasets I have → 18, 62% and
+      66%; + what geometry it holds →
+      <strong>15, 75% ranked and 99% answer returned</strong>. Whole-set delivery is 114/118,
+      or 97%; 117/118, or 99%, have the accepted answer in the payload. Both engines, because this row carried one
       unnamed column until a CI run met a rate limit from the model host, fell back to BM25 and
       recomputed the first figure as 28% — the published number had been a measurement of what
-      the machine could download. The jump in the last column is not the ranker getting better
-      — it is the set becoming small enough to hand over whole, and the 2% that is not 100% is
-      the handful of requests where it still is not.</td>
+      the machine could download. Three of the four oversized sets still return that answer in
+      the ranked fallback.</td>
     </tr>
     <tr>
       <td>the default</td>
@@ -563,7 +562,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     no CDN, works offline — where the cases are answered by clicking and the percentages
     recompute against those answers as you go. It carries a panel the log cannot produce:
     every request where the two model labellers disagreed with each other, which is what the
-    70% ceiling is made of and the part that needs somebody who has done the job. Beside it:
+    75% ceiling is made of and the part that needs somebody who has done the job. Beside it:
     whether every operation can actually be found, the degradation curve as the catalogue
     grows, and what each engine does with each family of trap.
   </p>
@@ -574,7 +573,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     which is the failure this whole project exists to measure. The model revision stays pinned, held
     by a golden-vector test, so the same question gets the same answer next year. What changes is the
     catalogue text, as a diff somebody can read and revert. That loop is not the timid option: it is
-    what took found@3 from 18% to 58% and delivery to 98%.
+    what took found@3 from 18% to 58% and delivery to 99%.
   </p>
   <p>
     It found something on its first recorded session, which is the argument for it in one line. A

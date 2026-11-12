@@ -39,6 +39,13 @@ from mapsmith import catalog  # noqa: E402
 
 DATA = ROOT / "tests" / "data" / "discovery_queries.json"
 NOT_AN_OPERATION = ("none", "ambiguous")
+CURRENT_LABEL_DATE = "2026_11"
+HISTORICAL_LABELLER = {"claude": "claude", "haiku": "gemini"}
+
+
+def model_label(query: dict[str, Any], labeller: str) -> str | None:
+    historical = HISTORICAL_LABELLER.get(labeller, labeller)
+    return query.get(f"label_{labeller}_{CURRENT_LABEL_DATE}") or query.get(f"label_{historical}")
 
 
 def load() -> list[dict[str, Any]]:
@@ -66,7 +73,7 @@ def accepted_of(query: dict[str, Any]) -> tuple[str, ...]:
     """
     primary = query.get("label_human")
     if not primary:
-        model = query.get("label_claude")
+        model = model_label(query, "claude")
         return (model,) if model else ()
     also = [name for name in (query.get("label_human_also") or []) if name != primary]
     return (primary, *also)
@@ -86,7 +93,7 @@ def truth_of(query: dict[str, Any]) -> str | None:
     `human_coverage` rather than blended into one percentage with two meanings,
     which is the mistake this file has a comment about further down.
     """
-    return query.get("label_human") or query.get("label_claude")
+    return query.get("label_human") or model_label(query, "claude")
 
 
 def human_coverage(queries: list[dict[str, Any]]) -> dict[str, Any]:
@@ -100,7 +107,7 @@ def human_coverage(queries: list[dict[str, Any]]) -> dict[str, Any]:
     overruled = [
         q
         for q in answered
-        if q["label_human"] not in (q.get("label_claude"), q.get("label_gemini"))
+        if q["label_human"] not in (model_label(q, "claude"), model_label(q, "haiku"))
     ]
     return {
         "requests": len(queries),
@@ -123,10 +130,10 @@ def answerable(queries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         q
         for q in queries
-        if q.get("label_claude") not in (None, *NOT_AN_OPERATION)
-        and q.get("label_gemini") not in (None, *NOT_AN_OPERATION)
-        and q["label_claude"] in names
-        and q["label_gemini"] in names
+        if model_label(q, "claude") not in (None, *NOT_AN_OPERATION)
+        and model_label(q, "haiku") not in (None, *NOT_AN_OPERATION)
+        and model_label(q, "claude") in names
+        and model_label(q, "haiku") in names
     ]
 
 
@@ -139,10 +146,10 @@ def agreement(queries: list[dict[str, Any]]) -> dict[str, Any]:
     the number to compare our own results against, because it is measured on the
     same rows.
     """
-    both = [q for q in queries if q.get("label_claude") and q.get("label_gemini")]
-    same = sum(1 for q in both if q["label_claude"] == q["label_gemini"])
+    both = [q for q in queries if model_label(q, "claude") and model_label(q, "haiku")]
+    same = sum(1 for q in both if model_label(q, "claude") == model_label(q, "haiku"))
     ans = answerable(queries)
-    same_ans = sum(1 for q in ans if q["label_claude"] == q["label_gemini"])
+    same_ans = sum(1 for q in ans if model_label(q, "claude") == model_label(q, "haiku"))
     return {
         "all": (same, len(both)),
         "answerable": (same_ans, len(ans)),
@@ -236,7 +243,7 @@ def ablation(queries: list[dict[str, Any]], engine: str = "lexical") -> list[dic
     """
     rows = []
     for label, declare in LEVELS:
-        left, top3, delivered = [], 0, 0
+        left, top3, delivered, whole_set = [], 0, 0, 0
         for q in queries:
             # Every answer a person would accept, not one (D-062). The facets
             # come from the one they would CHOOSE — a request has one shape,
@@ -253,6 +260,7 @@ def ablation(queries: list[dict[str, Any]], engine: str = "lexical") -> list[dic
             names = [entry["name"] for entry in catalog.entries(answer)]
             top3 += any(name in accepted for name in names[:3])
             delivered += any(name in accepted for name in names)
+            whole_set += left[-1] <= catalog.CHOOSABLE
         n = len(queries)
         rows.append(
             {
@@ -260,6 +268,8 @@ def ablation(queries: list[dict[str, Any]], engine: str = "lexical") -> list[dic
                 "candidates": round(sum(left) / n),
                 "found_at_3": round(100 * top3 / n),
                 "delivered": round(100 * delivered / n),
+                "whole_set_delivered": round(100 * whole_set / n),
+                "answer_returned": round(100 * delivered / n),
             }
         )
     return rows

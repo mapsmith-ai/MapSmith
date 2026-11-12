@@ -155,7 +155,7 @@ def measured():
         "answerable": len(rows),
         "all_requests": len(discovery_report.load()),
         "ranker_top3": lexical[discovery_report.FULLEST]["found_at_3"],
-        "delivered_pct": lexical[discovery_report.FULLEST]["delivered"],
+        "delivered_pct": lexical[discovery_report.FULLEST]["answer_returned"],
         "delivered_count": sum(1 for s in sizes if s <= catalog.CHOOSABLE),
         "candidates_bare": lexical[0]["candidates"],
         "candidates_two_facets": lexical[2]["candidates"],
@@ -220,7 +220,7 @@ FIGURES: dict[str, Figure] = {
         ),
     ),
     "delivered_pct": Figure(
-        "how often the surviving set is small enough to hand over whole",
+        "how often the accepted answer appears in the returned payload",
         patterns=(
             r"\*\*\d+%\*\* \| \*\*\d+%\*\* \| \*\*{n}%\*\* \|",
             # The entry spec's row, which has one ranking column where the
@@ -247,7 +247,7 @@ FIGURES: dict[str, Figure] = {
     ),
     "delivered_count": Figure(
         "requests whose surviving set could be handed over whole",
-        patterns=(r"On {n} of those \d+ requests the right",),
+        patterns=(r"\*\*{n}/118, or 97%\*\*",),
     ),
     "agreement": Figure(
         "where the two model labellers agree with each other",

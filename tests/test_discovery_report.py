@@ -84,6 +84,24 @@ def test_the_readme_ablation_table_is_what_the_harness_computes(report):
 
 
 @pytest.mark.slow
+def test_the_words_only_gap_is_derived_from_the_ablation(report):
+    """The prose comparison must move with the lexical and vector fixtures."""
+    prose = README.read_text(encoding="utf-8")
+    stated = re.search(
+        r"BM25 leads at every\s+declaration level, by ([a-z-]+) points on words alone",
+        prose,
+    )
+    assert stated, "the words-only comparison has been reworded; update this guard"
+
+    from test_published_figures import in_words
+
+    gap = report["ablation"][0]["found_at_3"] - report["ablation_vector"][0]["found_at_3"]
+    assert stated.group(1) == in_words(gap), (
+        f"the README says {stated.group(1)} points; the ablation computes {gap}"
+    )
+
+
+@pytest.mark.slow
 def test_the_ceiling_is_quoted_over_the_same_population_as_everything_else(report):
     """Two numbers in one table must be over one denominator.
 
@@ -233,7 +251,7 @@ def test_the_site_carries_the_same_facet_numbers_as_the_harness():
     assert int(match.group(1)) == len(catalog.OPERATIONS)
     assert int(match.group(2)) == round(sum(narrowed) / len(narrowed))
 
-    match = re.search(r"On (\d+) of those (\d+) requests the right", prose)
+    match = re.search(r"\*\*(\d+)/(\d+), or \d+%\*\*", prose)
     assert match, "the delivery sentence has been reworded; update this test with it"
     assert int(match.group(1)) == delivered
     assert int(match.group(2)) == len(rows)
@@ -763,3 +781,103 @@ def test_the_site_heading_says_the_breadth_before_the_choice():
         "bigger number is the one a skimming reader should take away, and "
         f"there are {len(catalog.OPERATIONS)} operations behind the tools."
     )
+
+
+def test_current_model_labels_cover_every_request_and_preserve_history():
+    import hashlib
+    import json
+
+    import discovery_report
+
+    from mapsmith import catalog
+
+    queries = discovery_report.load()
+    assert len(queries) == 155
+    allowed = {op["name"] for op in catalog.OPERATIONS} | set(discovery_report.NOT_AN_OPERATION)
+    for field in ("label_claude_2026_11", "label_haiku_2026_11"):
+        assert all(query.get(field) in allowed for query in queries), field
+    historical = [[query.get("label_claude"), query.get("label_gemini")] for query in queries]
+    digest = hashlib.sha256(
+        json.dumps(historical, ensure_ascii=False, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert digest == "924520a5cbc96ce68a36a045dd8c98fd1946d6db20b18cd08eaf719781cb55ee"
+
+
+def test_current_model_labels_take_precedence_without_displacing_human_answers():
+    import discovery_report
+
+    current = {
+        "query": "a request with both generations of labels",
+        "label_claude": "buffer_layer",
+        "label_gemini": "clip_layer",
+        "label_claude_2026_11": "spatial_join",
+        "label_haiku_2026_11": "spatial_join",
+    }
+    assert discovery_report.truth_of(current) == "spatial_join"
+    assert discovery_report.accepted_of(current) == ("spatial_join",)
+    assert discovery_report.answerable([current]) == [current]
+    assert discovery_report.agreement([current]) == {"all": (1, 1), "answerable": (1, 1)}
+    assert discovery_report.truth_of({**current, "label_human": "measure_area"}) == "measure_area"
+
+
+def test_historical_model_labels_still_measure_old_fixtures():
+    import discovery_report
+
+    historical = {"label_claude": "buffer_layer", "label_gemini": "buffer_layer"}
+    assert discovery_report.answerable([historical]) == [historical]
+    assert discovery_report.agreement([historical]) == {"all": (1, 1), "answerable": (1, 1)}
+    assert discovery_report.truth_of(historical) == "buffer_layer"
+    assert discovery_report.human_coverage([historical])["neither_labeller_was_right"] == 0
+    assert discovery_report.truth_of({**historical, "label_human": "spatial_join"}) == "spatial_join"
+    assert discovery_report.human_coverage([{**historical, "label_human": "spatial_join"}])["neither_labeller_was_right"] == 1
+
+
+def test_delivery_metrics_distinguish_whole_set_from_answer_returned():
+    import discovery_report
+
+    rows = discovery_report.answerable(discovery_report.load())
+    fullest = discovery_report.ablation(rows, engine="lexical")[discovery_report.FULLEST]
+    assert fullest["whole_set_delivered"] == 97
+    assert fullest["answer_returned"] == 99
+    assert fullest["delivered"] == fullest["answer_returned"]
+    for filename in ("README.md", "site/index.template.html", "docs/catalog-entry-spec.md"):
+        prose = (ROOT / filename).read_text(encoding="utf-8")
+        assert "114/118" in prose
+        assert "117/118" in prose
+        assert "97%" in prose
+        assert "99%" in prose
+
+
+def test_measles_answer_tracks_the_new_apportion_operation():
+    import hashlib
+
+    import discovery_report
+
+    row = next(
+        query
+        for query in discovery_report.load()
+        if "per-capita measles incidence rates" in query["query"]
+    )
+    assert discovery_report.accepted_of(row) == ("apportion_by_area", "execute_plan")
+    assert discovery_report.model_label(row, "claude") == "apportion_by_area"
+    assert discovery_report.model_label(row, "haiku") == "apportion_by_area"
+    assert row["label_claude"] == "overlay_layers"
+    assert row["label_gemini"] == "aggregate_weighted"
+    assert row["label_fable"] == "none"
+    assert row["label_fable_also"] == ["execute_plan"]
+    assert row["label_fable_note"] == (
+        "the operation asked for is areal interpolation: reapportioning counts and "
+        "population between two zone systems that don't nest. Nothing in the catalogue "
+        "owns it — aggregate_weighted computes the rate but presumes numerator and "
+        "denominator already live on the same zones. It is composable (overlay_layers "
+        "intersection then measure_area then area-share weights via run_sql then the "
+        "rate), so execute_plan is defensible if composition counts as an answer; the "
+        "missing primitive is the finding."
+    )
+    assert "2026-11-05" in row["label_human_note"]
+    assert "overlay_layers" in row["label_human_note"]
+
+    raw = ROOT / "benchmarks" / "discovery_labels_2026-11-04.json"
+    assert hashlib.sha256(raw.read_bytes()).hexdigest() == (
+        "03a494e8366109f1c4d90711a782164743bf12f315b842f72dab18f168bab825"
+    ), "the immutable raw relabelling artifact changed"

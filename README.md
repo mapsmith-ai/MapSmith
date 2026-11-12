@@ -466,11 +466,11 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 81 | 31% | 20% | 31% |
-| what data I have | 54 | 34% | 24% | 35% |
-| + what I want back | 33 | 47% | 42% | 58% |
-| + how many datasets I have | 18 | 54% | 51% | 89% |
-| **+ what geometry it holds** | **16** | **62%** | **62%** | **98%** |
+| nothing — words alone | 81 | 47% | 32% | 47% |
+| what data I have | 54 | 52% | 35% | 53% |
+| + what I want back | 33 | 61% | 52% | 67% |
+| + how many datasets I have | 18 | 66% | 62% | 89% |
+| **+ what geometry it holds** | **15** | **75%** | **72%** | **99%** |
 
 **The last row is new on 2026-09-29, and the row above it shows why.** Thirty-one operations
 now take one vector layer to another, one more than the threshold below, so a caller who
@@ -491,16 +491,13 @@ number that had never been reproducible on a machine without the model,
 published under a sentence promising it could be checked.
 
 The two also differ in a way worth seeing. In this run BM25 leads at every
-declaration level, by eleven points on words alone. The embedding engine earns its
+declaration level, by fifteen points on words alone. The embedding engine earns its
 place on the phrasings it has never seen, not on the ranking once the set is small.
 
-The last column is not an accuracy figure — it is a property, and the 98% rather than 100% is
-worth a sentence. The narrowing never drops the right operation: that is asserted per entry and
-holds for all 81. What the column measures is whether the surviving set was small enough to hand
-over WHOLE, and for a handful of requests it still is not, so those fall back to a ranked
-shortlist and the answer can be outside the top three. Ranking decides the order; it does not
-decide membership; and the 2% is the gap between "cannot lose the answer" and "can show you all
-of it".
+The last column reports whether the accepted answer appears in the returned payload:
+**117/118, or 99%**. Whole-set delivery is a different measurement: **114/118, or 97%**.
+Four sets exceed thirty candidates; three of those still return the accepted answer in the
+ranked fallback. Ranking decides the order, not membership.
 
 **The third row is the scaling wall, and we hit it in one afternoon.** On 2026-08-29 the
 catalogue went from 51 operations to 61. Two rows of that table got worse: the commonest
@@ -535,7 +532,7 @@ of comparison this page exists to refuse.)
 That is the shape of the trade, and it says when the next facet is due. The figure to watch is
 not found@3 — a ranker will always get worse as the catalogue grows, and it is a hint. It is the
 **average** surviving set at the fullest declaration, the fourth column of that table:
-9 at 51 operations, 14 at 61, 16 at 72, 16 at 74, 16 at 75, 17 at 76, 15 at 77, 15 at 78, 16 at 81. (The
+9 at 51 operations, 14 at 61, 16 at 72, 16 at 74, 16 at 75, 17 at 76, 15 at 77, 15 at 78, 15 at 81. (The
 point at 77 is the first with the geometry declared; without it the set would be 17.) When that crosses the threshold, delivery stops being a
 property and starts being a ranking again, and the lasting answer is another fact the caller
 already knows. A bigger threshold is an answer only as far as the caller still chooses well
@@ -556,8 +553,9 @@ choices are in the repository, so its figures can be recomputed without the mode
 **So it hands over the set instead of picking for you.** At thirty survivors or fewer `list_operations`
 answers with `status: "choose"`: every candidate, ordered as a hint that says it is a hint, each
 carrying the sentence that separates it from its neighbours. Over those 118 requests the surviving
-set has a median of 13 and exceeds 30 for two of them — which is the 98% in the table above,
-seen from the other side. The payload is about 2,100 tokens, less than one wrong operation costs
+set has a median of 13 and exceeds 30 for four of them — **114/118, or 97%** receive it whole.
+The table's **117/118, or 99%** includes ranked fallbacks: three of those four still return the
+accepted answer. The payload is about 2,100 tokens, less than one wrong operation costs
 to run and undo.
 
 **Thirty is measured, and a larger threshold was tried first.** Raising it was the obvious answer
@@ -590,9 +588,9 @@ Three measurements say this is the right shape, and the third is the one that se
 
 | | |
 |---|---|
-| our ranking puts the answer in the top three | **62%** |
+| our ranking puts the answer in the top three | **75%** |
 | a model handed the same candidates and asked to *choose* gets its first pick right | **69%** |
-| the two labellers who wrote the ground truth agree **with each other** | **70%** |
+| the two labellers who wrote the ground truth agree **with each other** | **75%** |
 
 **These figures went up on 2026-09-01 because the measurement changed, not because the ranker
 did.** Somebody who does this work answered all fifty of the requests the two model labellers
@@ -609,20 +607,16 @@ each of those fifty is a human choice, and the secondaries were proposed by a th
 adopted wholesale rather than judged one at a time. Two different strengths of evidence, and
 the file says which is which.
 
-**The two model figures are dated: the labels were written on 2026-08-28, against a catalogue of
-51 operations.** It now has 81, so for any request whose right answer is one of the 30 added since,
-neither labeller *could* have been right — the answer was not in the catalogue to name. Measured on
-the first four requests a person has answered by hand, two of the four have both labellers wrong,
-and both of those two name operations that did not exist on the 28th. So "both labellers wrong" and
-"both labellers chose badly" are not the same number, and the honest thing is to say when the labels
-were made rather than to quietly benefit from the difference. Human answers are replacing them one
-at a time — `benchmarks/ingest_answers.py` is how they get in, and every figure above is computed
-against a human answer where there is one.
+**The current model labels were written on 2026-11-04 against the catalogue of 81 operations, by
+Claude Sonnet 5 and Claude Haiku 4.5.** Their raw answers and the dataset and catalogue hashes are
+in `benchmarks/discovery_labels_2026-11-04.json`. The original Claude/Gemini labels, written on
+2026-08-28 against 51 operations, remain unchanged in the file, so the dated comparison is not
+erased. Human answers still take precedence wherever one exists — `benchmarks/ingest_answers.py`
+is how they get in, and every figure above is computed against a human answer where there is one.
 
 All three are over the same 118 requests, which matters: agreement measured over all 155 requests
-in the file is 68%, and the difference is the 21 pairs where both labellers agreed a request was
-unanswerable — true, and the easy half. Quoting that 68% beside a 62% computed over the 118 would
-be comparing two populations, which this table did for half a day.
+in the file is 60%, which also counts requests both labellers called unanswerable. Quoting that 60%
+beside the 75% computed over the 118 would compare two populations.
 
 **The last row is a ceiling, not a baseline**, and the second row sits at it rather than below it.
 When two competent labellers disagree three times in ten about which operation answers a request,
@@ -643,7 +637,7 @@ numbers are reported as *agreement with model-written labels* and never as accur
 used to be a hard filter like the others. It is not like the others: input kind and projected-CRS
 are facts about the data in hand and output kind is what the caller wants, but *family* is a guess
 about our taxonomy, which the caller cannot see. Measured, it removed five candidates out of
-sixteen — and when the guess was wrong it removed the right operation, with no error, leaving a
+fifteen — and when the guess was wrong it removed the right operation, with no error, leaving a
 confident answer assembled from neighbours. Every request in the independent set has 4.4 plausible
 families. That is the silent-failure class [Argleton](https://argleton.org) measures in other
 people's systems, sitting in our own discovery layer, so it now sorts: declaring the family lifts
@@ -842,7 +836,7 @@ contradicts, which is the exact failure this product exists to measure. The mode
 stays pinned, held there by a golden-vector test, so the same query gets the same answer
 next year. What improves instead is the catalog text — a phrasing, a `distinguishes` that
 does not distinguish — as a diff somebody can read and revert. That loop is not the weak
-option: it is what took found@3 from 18% to 58% and delivery to 98%.
+option: it is what took found@3 from 18% to 58% and delivery to 99%.
 
 The log is off unless the variable is set, holds queries and operation names and nothing
 else (no dataset paths, no arguments), is guarded by `MAPSMITH_WORKSPACE` like any other
@@ -1117,7 +1111,7 @@ python benchmarks/dashboard.py --log /data/discovery.jsonl --argleton ../argleto
 * **Answer the open questions** — the requests where the two model labellers named different
   operations, and the cases the discovery log recorded, answered by clicking. The percentages
   recompute against your answers as you give them, and they come back out as JSON. This is
-  the open question the published figures rest on: two labellers agreeing 70% of the time is
+  the open question the published figures rest on: two labellers agreeing 75% of the time is
   the ceiling of a task with no single right answer, and the only way past it is somebody who
   has done the job.
 * **Trend** — each generation appends a row beside the page, so the numbers are a series

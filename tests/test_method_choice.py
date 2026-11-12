@@ -1340,3 +1340,47 @@ def test_independent_literal_inputs_confirms_the_same_frozen_result():
     assert independent["transitions_exact_plus_output"] == {"improved_ids": [], "regressed_ids": []}
     assert independent["comparison"]["no_intervening_edits"] is True
     assert independent["comparison"]["same_prompt_catalogue_dataset_and_scorer"] is True
+
+
+def test_literal_inputs_raw_evidence_reproduces_scores():
+    import hashlib
+
+    for filename in (
+        "method_choice_literal_inputs.json",
+        "method_choice_literal_inputs_independent.json",
+    ):
+        artifact = json.loads((ROOT / "benchmarks" / filename).read_text(encoding="utf-8"))
+        evidence = artifact["raw_evidence"]
+        for kind in ("dataset", "plans", "scores"):
+            path = ROOT / evidence[kind]["path"]
+            assert path.is_file()
+            bench.assert_public_evidence(path)
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == evidence[kind]["sha256"]
+        scores_path = ROOT / evidence["scores"]["path"]
+        expected = json.loads(scores_path.read_text(encoding="utf-8"))
+        recomputed = bench.score_cases(
+            bench.load_cases(ROOT / evidence["dataset"]["path"]), scores_path.parent,
+            artifact["model"], artifact["provider"], artifact["temperature"], frozen=True,
+        )
+        assert recomputed == expected
+        assert "--provider anthropic" in evidence["scoring_command"]
+        assert "--frozen" in evidence["scoring_command"]
+        assert f"--data {evidence['dataset']['path']}" in evidence["scoring_command"]
+        assert f"--out {scores_path.parent.relative_to(ROOT).as_posix()}" in evidence["scoring_command"]
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        r"C:\Users\person\private.json",
+        "/home/person/private.json",
+        "wheretech",
+        "api_key=abc123",
+        "-----BEGIN PRIVATE KEY-----",
+    ],
+)
+def test_public_evidence_rejects_private_markers(tmp_path, marker):
+    path = tmp_path / "raw.json"
+    path.write_text(marker, encoding="utf-8")
+    with pytest.raises(ValueError, match="private"):
+        bench.assert_public_evidence(path)
