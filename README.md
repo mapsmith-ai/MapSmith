@@ -223,7 +223,9 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.12.1**, which is what that command installs. When `main` runs ahead of
+This page describes **0.12.1**, which is what that command installs. On `main`, the
+[Unreleased notes](CHANGELOG.md#unreleased) describe benchmark evidence and refreshed
+discovery labels added since the release. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
 have to find out by calling a tool that is not there. **New in 0.12.1**
 ([release notes](CHANGELOG.md#0121---2026-11-02)): semantic verification of every primary,

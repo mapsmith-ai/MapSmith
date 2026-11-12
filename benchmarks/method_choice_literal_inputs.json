@@ -15,11 +15,11 @@
     },
     "plans": {
       "path": "benchmarks/raw/method-choice/literal-inputs-final-v19/plans-claude-sonnet-5-anthropic-default.json",
-      "sha256": "4baf74542e1b381e4d1e4e0b1cf44fb294243c67e48ab66d88ac1226b348a53f"
+      "sha256": "47d74426c1fb96896c8da5226bd19625bb59cbc18d9ed90146a96326af1d27bf"
     },
     "scores": {
       "path": "benchmarks/raw/method-choice/literal-inputs-final-v19/scores-claude-sonnet-5-anthropic-default.json",
-      "sha256": "4d034c1b928fbd586719ec939fd02ae1ca4359462f0777bc56fdfed78236e120"
+      "sha256": "bb45598873b5fa5fd88152a649e164f8e2ad88fb4351d562402effb08c0ca4a6"
     },
     "scoring_command": ".venv/Scripts/python benchmarks/method_choice.py score --provider anthropic --model claude-sonnet-5 --split all --data benchmarks/raw/method-choice/generalization-cases.json --frozen --out benchmarks/raw/method-choice/literal-inputs-final-v19"
   },

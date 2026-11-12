@@ -6,6 +6,25 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+### Added
+
+- **Traceable method-choice evidence.** Publish the frozen generalization dataset,
+  raw plans and scores with repository-relative paths and SHA-256 digests, plus
+  offline commands that reproduce the final 63/63 and 10/10 results without API
+  access. Relabelling is resumable and retains raw provider responses.
+- **A measured token footprint for validated plans.** Across the sixteen executable
+  D-063 chains, `validate_plan` plus `execute_plan` costs 52,238 tokens against
+  27,554 for the equivalent single-operation calls. The measurement covers
+  serialized request and result payloads; it does not claim a saving.
+
+### Changed
+
+- **Refresh discovery labels against the 81-operation catalogue.** Current Sonnet 5
+  and Haiku 4.5 labels cover all 155 requests without rewriting the historical
+  Claude, Gemini or Fable answers. The measles request now accepts
+  `apportion_by_area` with `execute_plan` defensible, through a dated human
+  revision; the derived discovery figures and their guards are updated accordingly.
+
 ## [0.12.1] - 2026-11-02
 
 Records continue to declare `spec_version` `1.0.0-draft.10`; no manifest key is
