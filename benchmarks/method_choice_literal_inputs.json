@@ -8,6 +8,21 @@
   "public_cases_sha256": "8483d6bced5a870799a521ec6440f51eaa12cbbe3daaa39da5ce5c824300e940",
   "catalogue_sha256": "fdce7def6036438a175c55f6f1a3813c6dc706530d85a92137bc802e138660eb",
   "prompt_sha256": "c2267703db1c6ce128c4cc60d1adb804bb88c4a38735dccd9fc51fd227df77cf",
+  "raw_evidence": {
+    "dataset": {
+      "path": "benchmarks/raw/method-choice/generalization-cases.json",
+      "sha256": "ba5efec447aaed0344029ed9834542323503c1c0ae61f53a10949fa099c657a2"
+    },
+    "plans": {
+      "path": "benchmarks/raw/method-choice/literal-inputs-final-v19/plans-claude-sonnet-5-anthropic-default.json",
+      "sha256": "4baf74542e1b381e4d1e4e0b1cf44fb294243c67e48ab66d88ac1226b348a53f"
+    },
+    "scores": {
+      "path": "benchmarks/raw/method-choice/literal-inputs-final-v19/scores-claude-sonnet-5-anthropic-default.json",
+      "sha256": "4d034c1b928fbd586719ec939fd02ae1ca4359462f0777bc56fdfed78236e120"
+    },
+    "scoring_command": ".venv/Scripts/python benchmarks/method_choice.py score --provider anthropic --model claude-sonnet-5 --split all --data benchmarks/raw/method-choice/generalization-cases.json --frozen --out benchmarks/raw/method-choice/literal-inputs-final-v19"
+  },
   "responses_per_case": 2,
   "cases": 73,
   "responses": 146,

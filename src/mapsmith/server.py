@@ -904,8 +904,8 @@ def list_operations(
     the normal case and it is asking you to pick.** It carries every operation
     that survived, in relevance order, each with the sentence saying what it is
     NOT for. The order is a hint and nothing else: our ranking puts the right
-    operation in the top three 62% of the time, while a model reading the same
-    candidates and choosing gets its first pick right 69% — and 70% is where the two
+    operation in the top three 75% of the time, while a model reading the same
+    candidates and choosing gets its first pick right 69% — and 75% is where the two
     model labellers who wrote the ground truth agree with EACH OTHER, so there is
     often no single right answer to rank toward. You have context no ranking has: which
     file is open, what ran a minute ago, what the person actually asked for. Use

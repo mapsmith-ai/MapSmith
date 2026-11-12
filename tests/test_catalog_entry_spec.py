@@ -75,7 +75,7 @@ def test_the_spec_states_the_measurement_that_justifies_the_facets():
     # measured on queries we wrote ourselves. The list is the current measurement,
     # and it includes the ceiling: a spec that states an accuracy without stating
     # what the accuracy is bounded by invites tuning past the point of meaning.
-    for number in ("118", "48%", "69%", "68%", "4.4"):
+    for number in ("118", "48%", "69%", "60%", "4.4"):
         assert number in prose, (
             f"the specification no longer states {number}, so the facets it requires "
             "have lost the measurement that justifies them"

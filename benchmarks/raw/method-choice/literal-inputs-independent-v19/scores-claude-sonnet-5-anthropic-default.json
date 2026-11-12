@@ -1,0 +1,1138 @@
+{
+  "summary": {
+    "model": "claude-sonnet-5",
+    "provider": "anthropic",
+    "temperature": null,
+    "split": "all",
+    "cases": 73,
+    "scored_cases": 63,
+    "unsupported_cases": 10,
+    "unsupported_answered": 10,
+    "unsupported_refused": 10,
+    "unsupported_warned": 9,
+    "unsupported_empty_without_warning": 0,
+    "unsupported_irrelevant_warning": 1,
+    "unsupported_with_plan": 0,
+    "attempted": 73,
+    "answered": 73,
+    "api_errors": 0,
+    "invalid_response_cases": 0,
+    "not_attempted": 0,
+    "api_error_events": 0,
+    "invalid_response_events": 0,
+    "complete": true,
+    "verdicts": {
+      "exact": 63
+    },
+    "exact_rate": 1.0,
+    "first_step_right": 63,
+    "every_required_step_present": 63,
+    "output_contract": 63,
+    "assumptions_applicable": 0,
+    "assumptions_declared": 0,
+    "silent_planning_errors": 0,
+    "repeated_cases": 63,
+    "reproducible_cases": 0
+  },
+  "rows": [
+    {
+      "id": "data_databases-028",
+      "split": "evaluation",
+      "plan": [
+        "run_sql",
+        "run_sql",
+        "run_sql"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "complete_classification-013",
+      "split": "evaluation",
+      "plan": [
+        "slope"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "vector_analysis-013",
+      "split": "evaluation",
+      "plan": [
+        "network_shortest_path"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-082",
+      "split": "evaluation",
+      "plan": [
+        "run_sql"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "rasters_grass-002",
+      "split": "calibration",
+      "plan": [
+        "reproject_raster"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "rasters_grass-006",
+      "split": "evaluation",
+      "plan": [
+        "aspect"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "complete_classification-012",
+      "split": "calibration",
+      "plan": [
+        "hillshade"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "vector_analysis-020",
+      "split": "evaluation",
+      "plan": [
+        "run_sql"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-070",
+      "split": "evaluation",
+      "plan": [
+        "centroid_layer",
+        "centroid_layer"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "processing-016",
+      "split": "calibration",
+      "plan": [
+        "summarize_field"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "rasters_grass-017",
+      "split": "evaluation",
+      "plan": [
+        "reclassify_raster"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "rasters_grass-005",
+      "split": "calibration",
+      "plan": [
+        "slope"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "vector_analysis-019",
+      "split": "evaluation",
+      "plan": [
+        "sample_raster_at_points"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "rasters_grass-013",
+      "split": "calibration",
+      "plan": [
+        "aspect"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "vector_analysis-002",
+      "split": "evaluation",
+      "plan": [
+        "reproject_layer"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "complete_classification-014",
+      "split": "evaluation",
+      "plan": [
+        "aspect"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "complete_classification-019",
+      "split": "calibration",
+      "plan": [
+        "select_features"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "complete_classification-030",
+      "split": "calibration",
+      "plan": [
+        "measure_area"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "complete_classification-029",
+      "split": "evaluation",
+      "plan": [
+        "select_features"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-050",
+      "split": "calibration",
+      "plan": [
+        "run_sql"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "forestry-007",
+      "split": "evaluation",
+      "plan": [
+        "join_table"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-065",
+      "split": "calibration",
+      "plan": [
+        "select_features",
+        "run_sql"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "complete_classification-016",
+      "split": "evaluation",
+      "plan": [
+        "reclassify_raster"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "complete_classification-002",
+      "split": "evaluation",
+      "plan": [
+        "select_features"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "processing-008",
+      "split": "calibration",
+      "plan": [
+        "band_math"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "rasters_grass-014",
+      "split": "evaluation",
+      "plan": [
+        "describe_dataset"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "complete_classification-015",
+      "split": "calibration",
+      "plan": [
+        "reclassify_raster"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "processing-001",
+      "split": "evaluation",
+      "plan": [
+        "centroid_layer"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "complete_classification-017",
+      "split": "evaluation",
+      "plan": [
+        "reclassify_raster"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "vector_analysis-008",
+      "split": "calibration",
+      "plan": [
+        "spatial_join"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "complete_classification-025",
+      "split": "evaluation",
+      "plan": [
+        "select_features"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "rasters_grass-004",
+      "split": "calibration",
+      "plan": [
+        "hillshade"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-060",
+      "split": "evaluation",
+      "plan": [
+        "run_sql"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "complete_classification-023",
+      "split": "calibration",
+      "plan": [
+        "overlay_layers"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-042",
+      "split": "evaluation",
+      "plan": [
+        "run_sql"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "vector_analysis-001",
+      "split": "calibration",
+      "plan": [
+        "reproject_layer"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-079",
+      "split": "calibration",
+      "plan": [
+        "run_sql"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-067",
+      "split": "calibration",
+      "plan": [
+        "run_sql"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "forestry-017",
+      "split": "evaluation",
+      "plan": [
+        "summarize_field",
+        "summarize_field"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-045",
+      "split": "calibration",
+      "plan": [
+        "run_sql"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-056",
+      "split": "evaluation",
+      "plan": [
+        "run_sql"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "complete_classification-020",
+      "split": "calibration",
+      "plan": [
+        "buffer_layer",
+        "dissolve_layer"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-043",
+      "split": "evaluation",
+      "plan": [
+        "run_sql"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-040",
+      "split": "calibration",
+      "plan": [
+        "run_sql",
+        "run_sql"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-008",
+      "split": "evaluation",
+      "plan": [
+        "select_features",
+        "simplify_layer"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "vector_analysis-006",
+      "split": "calibration",
+      "plan": [
+        "buffer_layer",
+        "dissolve_layer"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "complete_classification-010",
+      "split": "evaluation",
+      "plan": [
+        "clip_raster",
+        "clip_raster"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "processing-017",
+      "split": "calibration",
+      "plan": [
+        "voronoi_polygons",
+        "summarize_points_in_polygons"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "complete_classification-028",
+      "split": "evaluation",
+      "plan": [
+        "describe_dataset"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-044",
+      "split": "calibration",
+      "plan": [
+        "summarize_field",
+        "summarize_field"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "rasters_grass-016",
+      "split": "evaluation",
+      "plan": [
+        "reclassify_raster"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-072",
+      "split": "calibration",
+      "plan": [
+        "simplify_layer",
+        "simplify_layer"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "rasters_grass-007",
+      "split": "evaluation",
+      "plan": [
+        "reclassify_raster"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-036",
+      "split": "evaluation",
+      "plan": [
+        "run_sql",
+        "run_sql",
+        "select_features"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "vector_analysis-017",
+      "split": "calibration",
+      "plan": [
+        "service_area"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-081",
+      "split": "evaluation",
+      "plan": [
+        "run_sql"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "vector_analysis-023",
+      "split": "calibration",
+      "plan": [
+        "dissolve_layer",
+        "centroid_layer",
+        "dissolve_layer",
+        "centroid_layer",
+        "run_sql"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-080",
+      "split": "evaluation",
+      "plan": [
+        "clip_layer"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "rasters_grass-008",
+      "split": "evaluation",
+      "plan": [
+        "reclassify_raster",
+        "reclassify_raster"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "vector_analysis-005",
+      "split": "calibration",
+      "plan": [
+        "buffer_layer",
+        "dissolve_layer"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-049",
+      "split": "calibration",
+      "plan": [
+        "run_sql",
+        "run_sql",
+        "buffer_layer",
+        "measure_area"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "data_databases-041",
+      "split": "evaluation",
+      "plan": [
+        "run_sql",
+        "run_sql",
+        "run_sql"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    },
+    {
+      "id": "processing-036",
+      "split": "calibration",
+      "plan": [
+        "dissolve_layer",
+        "run_sql",
+        "compare_layers"
+      ],
+      "verdict": "exact",
+      "structural_errors": [],
+      "unknown_names": [],
+      "first_step_right": true,
+      "every_required_step_present": true,
+      "output_contract": true,
+      "missing_assumption_keys": [],
+      "assumptions_declared": true,
+      "silent_planning_error": false,
+      "reproducible": false
+    }
+  ]
+}

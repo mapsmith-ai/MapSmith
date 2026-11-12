@@ -21,28 +21,28 @@ catalogue is written: *"the coastline is 400 000 nodes and the browser dies"*, n
 
 | what the caller declares | candidates left | ranked, found@3 | **in what comes back** |
 |---|---|---|---|
-| nothing — words alone | 81 | 31% | 31% |
-| the input kind | 54 | 34% | 35% |
-| + what it should produce | 33 | 47% | 58% |
-| + how many datasets | 18 | 54% | 89% |
-| **+ what geometry it holds** | **16** | **62%** | **98%** |
+| nothing — words alone | 81 | 47% | 47% |
+| the input kind | 54 | 52% | 53% |
+| + what it should produce | 33 | 61% | 67% |
+| + how many datasets | 18 | 66% | 89% |
+| **+ what geometry it holds** | **15** | **75%** | **99%** |
 
 **Ranking is not the mechanism; narrowing is** — and the last column is why. Once
 the two facts a caller genuinely knows have cut the catalogue to something readable,
-every survivor is handed over, so the right operation is in the answer for 116 of the 118
-requests. That is not an accuracy figure. Ranking decides the
-order; it does not decide membership.
+every survivor is handed over: **114/118, or 97%**, receive the whole set. **117/118,
+or 99%**, have the accepted answer in the returned payload, including ranked fallbacks.
+That is not an accuracy figure. Ranking decides the order; it does not decide membership.
 
 Three more numbers say why the answer is a set rather than a pick:
 
 | | |
 |---|---|
-| the ranker puts the answer in the top three | 62% |
+| the ranker puts the answer in the top three | 75% |
 | a model handed the same candidates and asked to **choose** | **69%** |
-| the two labellers who wrote the ground truth agreeing **with each other** | **70%** |
+| the two labellers who wrote the ground truth agreeing **with each other** | **75%** |
 
 All three over the same 118 requests, which is not a detail: agreement over all 155 in the file
-is 68%, and the gap is the pairs where both labellers agreed a request was unanswerable.
+is 60%, which also counts the requests both labellers called unanswerable.
 
 The last is a ceiling, not a baseline. Where two competent labellers disagree a third
 of the time about which operation answers a request, "the right one" is not a single
@@ -139,7 +139,7 @@ kind and projected-CRS are facts about the data in hand, `produces` is what they
 want back, but the family is a guess about *your* taxonomy, which they cannot see.
 
 Measured on the same set: as a hard filter it removes five candidates out of
-sixteen, and when the guess is wrong it removes **the right operation**, with no
+fifteen, and when the guess is wrong it removes **the right operation**, with no
 error, leaving a confident answer assembled from neighbours. Every request in the
 set has 4.4 plausible families. At 800 operations the guess is among 43.
 
@@ -218,7 +218,7 @@ operation DOES differently, not around a list of names.
 
 1. **It is read at selection time, not at search time — and selection is where the
    accuracy is.** A model handed the surviving candidates and asked to choose gets
-   its first pick right 69% of the time, against 62% for the ranker putting it in the
+   its first pick right 69% of the time, against 75% for the ranker putting it in the
    top three. Entries that all say "one point per polygon" give it nothing to choose
    on. `distinguishes` is the only field written to be read *against its neighbours*,
    and that is the moment it pays. Measured against retrieval it is worth nothing;
@@ -295,7 +295,7 @@ average — but the exact percentages are ours.
 
 **Two limits stated rather than buried.**
 
-The 70% ceiling was measured between two language models — 68% if the requests both of them
+The 75% ceiling was measured between two language models — 60% if the requests both of them
 called unanswerable are counted in, which is the same figure over a larger population. Whether working GIS analysts
 agree with each other more, less or about the same is unmeasured. Until people have
 tried it, every number here is agreement with model-written labels and not accuracy,

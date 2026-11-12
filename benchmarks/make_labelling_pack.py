@@ -6,9 +6,8 @@
 A pack is a self-contained Markdown file somebody — or a model that is not one
 of the two already in the file — can read and answer from, with no access to
 this repository. It carries the catalogue as it is **today**, which is the point:
-the two existing labellers answered on 2026-08-28 against 51 operations, and
-there are now 74, so for any request whose right answer is one of the 23 added
-since, neither of them could have been right.
+the two existing labellers answered on 2026-08-28 against 51 operations, so for
+any request whose right answer arrived later, neither of them could have been right.
 
 Every question gets a short **id**. Answers come back keyed by id rather than by
 the text of the request, because the requests run to four hundred characters and
@@ -139,15 +138,17 @@ def main(argv: list[str] | None = None) -> int:
 
     from mapsmith import catalog
 
+    import discovery_report
+
     data = json.loads(QUERIES.read_text(encoding="utf-8"))
     queries = data["queries"]
     if args.only_disagreements:
         queries = [
             q
             for q in queries
-            if q.get("label_claude")
-            and q.get("label_gemini")
-            and q["label_claude"] != q["label_gemini"]
+            if discovery_report.model_label(q, "claude")
+            and discovery_report.model_label(q, "haiku")
+            and discovery_report.model_label(q, "claude") != discovery_report.model_label(q, "haiku")
         ]
 
     args.out.mkdir(parents=True, exist_ok=True)

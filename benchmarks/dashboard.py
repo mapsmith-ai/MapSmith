@@ -335,7 +335,10 @@ def recorded_cases(path: Path | None) -> list[dict[str, Any]]:
 
 #: Labellers whose answers are history rather than a proposal: the two the
 #: benchmark was built with, and the human, whose answer is the measurement.
-_NOT_A_PROPOSAL = {"label_claude", "label_gemini", "label_human", "label"}
+_NOT_A_PROPOSAL = {
+    "label_claude", "label_gemini", "label_human", "label",
+    "label_claude_2026_11", "label_haiku_2026_11",
+}
 
 
 def _proposer(query: dict[str, Any]) -> str | None:
@@ -368,7 +371,8 @@ def disagreements(queries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     names = {op["name"] for op in catalog.OPERATIONS}
     split = []
     for q in queries:
-        claude, gemini = q.get("label_claude"), q.get("label_gemini")
+        claude = discovery_report.model_label(q, "claude")
+        gemini = discovery_report.model_label(q, "haiku")
         if not claude or not gemini or claude == gemini:
             continue
         stale = [

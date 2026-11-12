@@ -383,7 +383,7 @@ def score_path(out: Path, model: str, provider: str = "gemini", temperature: flo
 
 def current_responses(
     record: dict[str, Any], case: dict[str, Any], model: str,
-    provider: str = "gemini", temperature: float | None = None,
+    provider: str = "gemini", temperature: float | None = None, frozen: bool = False,
 ) -> list[dict[str, Any]]:
     if record.get("split") != case["split"]:
         return []
@@ -393,13 +393,13 @@ def current_responses(
         if response.get("model") == model
         and response.get("provider", "gemini") == provider
         and response.get("temperature") == temperature
-        and response.get("prompt_sha256") == prompt_hash
+        and (frozen or response.get("prompt_sha256") == prompt_hash)
     ]
 
 
 def current_events(
     record: dict[str, Any], case: dict[str, Any], model: str, key: str,
-    provider: str = "gemini", temperature: float | None = None,
+    provider: str = "gemini", temperature: float | None = None, frozen: bool = False,
 ) -> list[dict[str, Any]]:
     if record.get("split") != case["split"]:
         return []
@@ -410,12 +410,29 @@ def current_events(
         and event.get("model") == model
         and event.get("provider", "gemini") == provider
         and event.get("temperature") == temperature
-        and event.get("prompt_sha256") == prompt_hash
+        and (frozen or event.get("prompt_sha256") == prompt_hash)
     ]
 
 
 def now() -> str:
     return dt.datetime.now(dt.UTC).isoformat()
+
+
+PRIVATE_EVIDENCE_PATTERNS = (
+    re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]"),
+    re.compile(r"(?<!\w)/(?:home|Users|tmp|var|etc)/"),
+    re.compile(r"(?i)\b(?:lavoro|onedrive|wheretech|wtca|gcapo)\b"),
+    re.compile(r"(?i)\b(?:api[_-]?key|secret|password|access[_-]?token|refresh[_-]?token)\s*[:=]\s*\S+"),
+    re.compile(r"-----BEGIN [^-]*PRIVATE KEY-----"),
+)
+
+
+def assert_public_evidence(path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    for pattern in PRIVATE_EVIDENCE_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            raise ValueError(f"private content in public evidence {path}: {match.group(0)[:80]}")
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -716,7 +733,7 @@ def response_signature(response: dict[str, Any]) -> tuple[Any, ...]:
 
 def score_cases(
     cases: list[dict[str, Any]], out: Path, model: str,
-    provider: str = "gemini", temperature: float | None = None,
+    provider: str = "gemini", temperature: float | None = None, frozen: bool = False,
 ) -> dict[str, Any]:
     validate_arm(provider, temperature)
     path = plan_path(out, model, provider, temperature)
@@ -729,11 +746,11 @@ def score_cases(
     unsupported_empty = unsupported_irrelevant = 0
     for case in cases:
         record = records.get(case["id"], {})
-        responses = current_responses(record, case, model, provider, temperature)
+        responses = current_responses(record, case, model, provider, temperature, frozen)
         if not responses:
-            if current_events(record, case, model, "api_errors", provider, temperature):
+            if current_events(record, case, model, "api_errors", provider, temperature, frozen):
                 api_errors += 1
-            elif current_events(record, case, model, "invalid_responses", provider, temperature):
+            elif current_events(record, case, model, "invalid_responses", provider, temperature, frozen):
                 invalid_cases += 1
             else:
                 not_attempted += 1
@@ -794,11 +811,11 @@ def score_cases(
         "invalid_response_cases": invalid_cases,
         "not_attempted": not_attempted,
         "api_error_events": sum(
-            len(current_events(records.get(case["id"], {}), case, model, "api_errors", provider, temperature))
+            len(current_events(records.get(case["id"], {}), case, model, "api_errors", provider, temperature, frozen))
             for case in cases
         ),
         "invalid_response_events": sum(
-            len(current_events(records.get(case["id"], {}), case, model, "invalid_responses", provider, temperature))
+            len(current_events(records.get(case["id"], {}), case, model, "invalid_responses", provider, temperature, frozen))
             for case in cases
         ),
         "complete": answered == len(cases),
@@ -835,6 +852,10 @@ def main() -> int:
     parser.add_argument("--repeat", type=int, default=1)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--temperature", type=float)
+    parser.add_argument(
+        "--frozen", action="store_true",
+        help="score archived responses without requiring today's prompt hash",
+    )
     args = parser.parse_args()
     if args.repeat < 1:
         parser.error("--repeat must be at least 1")
@@ -846,7 +867,7 @@ def main() -> int:
     elif args.command == "plan":
         plan_cases(cases, out, model, args.repeat, args.limit, provider=args.provider, temperature=args.temperature)
     else:
-        report = score_cases(cases, out, model, args.provider, args.temperature)
+        report = score_cases(cases, out, model, args.provider, args.temperature, frozen=args.frozen)
         write_json(score_path(out, model, args.provider, args.temperature), report)
         print(json.dumps(report["summary"], indent=2))
     return 0
