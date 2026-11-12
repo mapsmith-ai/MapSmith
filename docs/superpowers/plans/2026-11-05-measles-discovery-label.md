@@ -17,7 +17,7 @@
 - Public files, identifiers, comments, and notes are in English.
 - Add no dependency and make no unrelated product-code change.
 - Make no commit, push, tag, or release.
-- Preserve all pre-existing worktree and private-workspace changes, especially social-owned files.
+- Preserve all pre-existing changes outside this plan's scope.
 
 ## Review Focus
 
@@ -101,15 +101,14 @@ Run: `PYTHONPATH=src ../../.venv/Scripts/python -m pytest tests/test_discovery_r
 Run: `PYTHONPATH=src ../../.venv/Scripts/python -m ruff check .`
 Expected: PASS with no stale discovery figures.
 
-### Task 3: Full verification and board closure
+### Task 3: Full verification
 
 **Files:**
-- Modify after green verification: `../../../.claude/bacheca.json` (the measles board item only)
-- Regenerate: `../../../docs/progetto/17-todo-master.md`
+- No additional files; verification only.
 
 **Interfaces:**
 - Consumes: the verified worktree from Task 2.
-- Produces: a board item closed with the actual result and a regenerated local snapshot.
+- Produces: a verified deliverable with its actual test results.
 
 - [x] **Step 1: Run the existing follow-up verification set**
 
@@ -119,20 +118,10 @@ Expected: PASS, preserving all three existing follow-up deliverables.
 - [x] **Step 2: Run the complete suite**
 
 Run: `PYTHONPATH=src ../../.venv/Scripts/python -m pytest -q`
-Expected: PASS. Report skips and any pre-existing failure exactly; do not close the item with a red relevant suite.
+Expected: PASS. Report skips and any pre-existing failure exactly; do not integrate with a red relevant suite.
 
 - [x] **Step 3: Inspect the delivered diff**
 
 Run: `git status --short`
 Run: `git diff --check`
 Confirm that all edits are scoped to the approved measles work plus the pre-existing follow-up files, and remove only temporary artifacts created by this execution.
-
-- [x] **Step 4: Close the board item with evidence**
-
-Append the actual 2026-11-05 outcome to the measles item in `../../../.claude/bacheca.json` and set `fatto: true`. Record the human revision, preserved historical labels, recomputed figures, and actual test results.
-
-From the private workspace root run, without pipes:
-`python .claude/crea_bacheca.py --applica`
-`python .claude/snapshot_bacheca.py`
-`python .claude/controlla_bacheca.py`
-Expected: synchronization and snapshot succeed; investigate and report any unrelated control finding rather than editing generated files by hand.
