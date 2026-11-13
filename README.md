@@ -45,7 +45,7 @@ MapSmith's private output: JSON Schema, a toolchain-free validator, a conformanc
 hundred-line emitter that never imports MapSmith. Records carry `spec_version`, and CI validates
 real MapSmith output against the spec's own validator. The specification is archived and citable
 as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213), a concept DOI that
-resolves to the latest *archived* draft. Records written by 0.8.0 to 0.12.1 declare `1.0.0-draft.10`, and
+resolves to the latest *archived* draft. Records written by 0.8.0 to 0.12.2 declare `1.0.0-draft.10`, and
 0.7.x's declare `1.0.0-draft.8`; if the DOI shows an earlier one, the archive has not caught up, and the
 [repository](https://github.com/mapsmith-ai/manifest-spec) holds the text they are written against. The names MapSmith puts
 in a record beyond the ones the specification defines — every extension check name, and every
@@ -223,9 +223,9 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.12.1**, which is what that command installs. On `main`, the
-[Unreleased notes](CHANGELOG.md#unreleased) describe benchmark evidence and refreshed
-discovery labels added since the release. When `main` runs ahead of
+This page describes **0.12.2**, which is what that command installs. Its
+[release notes](CHANGELOG.md#0122---2026-11-13) add benchmark evidence and refreshed
+discovery labels. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
 have to find out by calling a tool that is not there. **New in 0.12.1**
 ([release notes](CHANGELOG.md#0121---2026-11-02)): semantic verification of every primary,
@@ -317,7 +317,7 @@ for it:
 ```json
 {
   "spec_version": "1.0.0-draft.10",
-  "producer": {"name": "mapsmith", "version": "0.12.1"},
+  "producer": {"name": "mapsmith", "version": "0.12.2"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{
@@ -621,7 +621,7 @@ in the file is 60%, which also counts requests both labellers called unanswerabl
 beside the 75% computed over the 118 would compare two populations.
 
 **The last row is a ceiling, not a baseline**, and the second row sits at it rather than below it.
-When two competent labellers disagree three times in ten about which operation answers a request,
+When two competent labellers disagree one time in four about which operation answers a request,
 "the right one" is not a single value to rank toward, and a system scoring above that is fitting
 one annotator rather than getting better. Two GIS analysts with thirty years each do the same job
 with different tools and neither is wrong.

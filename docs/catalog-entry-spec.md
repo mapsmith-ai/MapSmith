@@ -44,7 +44,7 @@ Three more numbers say why the answer is a set rather than a pick:
 All three over the same 118 requests, which is not a detail: agreement over all 155 in the file
 is 60%, which also counts the requests both labellers called unanswerable.
 
-The last is a ceiling, not a baseline. Where two competent labellers disagree a third
+The last is a ceiling, not a baseline. Where two competent labellers disagree a quarter
 of the time about which operation answers a request, "the right one" is not a single
 value to rank toward — so a discovery layer built to this specification should return
 the surviving set with the text that separates its members, and say that the order is

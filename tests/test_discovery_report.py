@@ -251,7 +251,7 @@ def test_the_site_carries_the_same_facet_numbers_as_the_harness():
     assert int(match.group(1)) == len(catalog.OPERATIONS)
     assert int(match.group(2)) == round(sum(narrowed) / len(narrowed))
 
-    match = re.search(r"\*\*(\d+)/(\d+), or \d+%\*\*", prose)
+    match = re.search(r"(?:\*\*|<strong>)(\d+)/(\d+), or \d+%(?:\*\*|</strong>)", prose)
     assert match, "the delivery sentence has been reworded; update this test with it"
     assert int(match.group(1)) == delivered
     assert int(match.group(2)) == len(rows)

@@ -29,15 +29,22 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "benchmarks"))
 
-import brief_cases
 import method_choice as api
+from relabel_discovery import call_with_retries
+
+import brief_cases
 from mapsmith import server
 from mapsmith.plans.brief import execute_plan_requests
-from relabel_discovery import call_with_retries
 
 
 def compact(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def mcp_tool_call(name: str, arguments: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    if name in ("validate_plan", "execute_plan"):
+        return name, {"plan": arguments}
+    return "run_operation", {"operation": name, "arguments": arguments}
 
 
 def blob(calls: list[tuple[str, dict[str, Any], dict[str, Any]]]) -> tuple[str, str]:
@@ -92,8 +99,8 @@ def measure_case(index: int, workdir: Path) -> dict[str, Any]:
         validated = server.validate_plan(plan)
         executed = server.execute_plan(plan) if validated.get("valid") else {"executed": False}
     plan_calls = [
-        ("validate_plan", plan_payload, validated),
-        ("execute_plan", plan_payload, executed),
+        (*mcp_tool_call("validate_plan", plan_payload), validated),
+        (*mcp_tool_call("execute_plan", plan_payload), executed),
     ]
 
     single = brief_cases.case(index, single_dir)
@@ -101,7 +108,7 @@ def measure_case(index: int, workdir: Path) -> dict[str, Any]:
     with mock.patch.dict(os.environ, {"MAPSMITH_WORKSPACE": str(single_dir)}):
         for step in single.steps:
             result = server.run_operation(step.operation, step.arguments)
-            single_calls.append((step.operation, step.arguments, result))
+            single_calls.append((*mcp_tool_call(step.operation, step.arguments), result))
     plan_ok = bool(validated.get("valid") and executed.get("executed"))
     single_ok = bool(single_calls) and all(result.get("ran") for _, _, result in single_calls)
     return {
@@ -139,6 +146,7 @@ def summarize(cases: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def run(out: Path = ARTIFACT) -> dict[str, Any]:
+    out = out.resolve()
     document: dict[str, Any] = {
         "schema_version": 1,
         "measured_at": dt.datetime.now(dt.UTC).date().isoformat(),

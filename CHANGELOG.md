@@ -6,6 +6,11 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-11-13
+
+Records continue to declare `spec_version` `1.0.0-draft.10`; no manifest key is
+new or renamed in this release.
+
 ### Added
 
 - **Traceable method-choice evidence.** Publish the frozen generalization dataset,
@@ -13,9 +18,10 @@ All notable changes to MapSmith are documented here, in the format of
   offline commands that reproduce the final 63/63 and 10/10 results without API
   access. Relabelling is resumable and retains raw provider responses.
 - **A measured token footprint for validated plans.** Across the sixteen executable
-  D-063 chains, `validate_plan` plus `execute_plan` costs 52,238 tokens against
-  27,554 for the equivalent single-operation calls. The measurement covers
-  serialized request and result payloads; it does not claim a saving.
+  D-063 chains, `validate_plan` plus `execute_plan` costs 53,452 tokens against
+  29,075 for the equivalent single-operation calls. The measurement uses the real
+  MCP argument envelopes and covers serialized request and result payloads; it does
+  not claim a saving.
 
 ### Changed
 

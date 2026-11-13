@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mapsmith"
-version = "0.12.1"
+version = "0.12.2"
 description = "An MCP server that turns a question about your data into a multi-step GIS analysis, run by deterministic engines, with a lineage manifest beside every output."
 dynamic = ["readme"]
 requires-python = ">=3.12"

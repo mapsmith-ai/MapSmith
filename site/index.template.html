@@ -244,7 +244,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
       Never by the model that asked.
     </p>
     <div class="pull">
-      A wrong step is refused before it runs.<br><em>A right one leaves a record of what ran,
+      A malformed step is refused before it runs.<br><em>A valid one leaves a record of what ran,
       on which bytes, for anyone to rerun.</em>
     </div>
     <p class="lede">
@@ -356,8 +356,8 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
   </div>
   <p class="pull">
     Ranking is the wrong verb.<br>
-    <em>When the two labellers who wrote the ground truth disagree with each other three times in
-    ten, there is no single right answer to rank toward — so the search hands over the set and says
+    <em>When the two labellers who wrote the ground truth disagree with each other one time in
+    four, there is no single right answer to rank toward — so the search hands over the set and says
     the order is a hint.</em>
   </p>
   <p>
@@ -376,8 +376,8 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     how many datasets, and whether they are points, lines or polygons, take them further —
     and at thirty survivors or fewer the search stops choosing for you: it returns
     <code>status: "choose"</code> with every candidate, ordered as a hint that says so, each carrying
-    the sentence that separates it from its neighbours. **114/118, or 97%**, receive the whole
-    set; **117/118, or 99%**, have the accepted answer in the returned payload. Three of the four
+    the sentence that separates it from its neighbours. <strong>114/118, or 97%</strong>, receive the whole
+    set; <strong>117/118, or 99%</strong>, have the accepted answer in the returned payload. Three of the four
     oversized sets still return that answer in the ranked fallback. Not as an accuracy figure —
     as two distinct properties: whole-set delivery and answer returned.
   </p>
@@ -466,7 +466,7 @@ footer nav { margin-left: auto; display: flex; gap: 1.1rem; font-family: var(--m
     <em>This one can ask instead — the same rule the operations follow when a number would be wrong.</em>
   </p>
   <p>
-    One caveat we will not bury: that 60% ceiling was measured between two language models. Whether
+    One caveat we will not bury: that 75% ceiling was measured between two language models. Whether
     human GIS analysts agree with each other more, less or about the same is unknown, and two
     analysts with thirty years each routinely do the same job with different tools. Until people
     have tried it, these are reported as agreement with model-written labels — never as accuracy.

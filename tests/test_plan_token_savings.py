@@ -55,3 +55,49 @@ def test_plan_token_savings_report_reconciles_all_sixteen_cases():
     single_tokens = sum(total(case["single"]) for case in cases)
     assert summary["tokens_saved"] == single_tokens - plan_tokens
     assert summary["savings_fraction"] == pytest.approx((single_tokens - plan_tokens) / single_tokens)
+
+
+def test_tool_calls_use_the_same_envelopes_as_mcp():
+    sys.path.insert(0, str(ROOT / "benchmarks"))
+    from plan_token_savings import mcp_tool_call
+
+    operation_name, arguments = mcp_tool_call("buffer_layer", {"input_path": "in.parquet"})
+    assert operation_name == "run_operation"
+    assert arguments == {
+        "operation": "buffer_layer",
+        "arguments": {"input_path": "in.parquet"},
+    }
+
+    plan = {"version": 1, "steps": []}
+    operation_name, arguments = mcp_tool_call("validate_plan", plan)
+    assert operation_name == "validate_plan"
+    assert arguments == {"plan": plan}
+
+
+def test_run_pins_a_relative_artifact_before_cases_change_the_cwd(tmp_path, monkeypatch):
+    sys.path.insert(0, str(ROOT / "benchmarks"))
+    from plan_token_savings import run
+
+    start = tmp_path / "start"
+    elsewhere = tmp_path / "elsewhere"
+    start.mkdir()
+    elsewhere.mkdir()
+    monkeypatch.chdir(start)
+    monkeypatch.setattr("plan_token_savings.execute_plan_requests", lambda: [(7, None)])
+
+    def measure_case(index, workdir):
+        monkeypatch.chdir(elsewhere)
+        arm = {
+            "executed": True,
+            "calls": 1,
+            "requests": {"characters": 1, "tokens": 1, "sha256": "0" * 64},
+            "results": {"characters": 1, "tokens": 1, "sha256": "1" * 64},
+        }
+        return {"index": index, "operations": 1, "plan": arm, "single": arm}
+
+    monkeypatch.setattr("plan_token_savings.measure_case", measure_case)
+    run(Path("savings.json"))
+
+    artifact = json.loads((start / "savings.json").read_text(encoding="utf-8"))
+    assert [case["index"] for case in artifact["cases"]] == [7]
+    assert not (elsewhere / "savings.json").exists()

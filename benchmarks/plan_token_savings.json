@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "measured_at": "2026-11-04",
+  "measured_at": "2026-11-13",
   "model": "claude-sonnet-5",
   "measurement": "serialized compact JSON tool-call and result payloads; Anthropic count_tokens input tokens",
   "population": "the sixteen executable D-063 cases",
@@ -12,28 +12,28 @@
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 3618,
-          "tokens": 1933,
-          "sha256": "cdd26d9d926955b89911b1b7180ef4b130cf6dfdd8e8d871f5ac9bba45a60d0e"
+          "characters": 3636,
+          "tokens": 1989,
+          "sha256": "7fd6dfffb3209a0aeb688519c6e45227554959023afc85ebe3b13bf7ac513104"
         },
         "results": {
           "characters": 4291,
-          "tokens": 2215,
-          "sha256": "5e306201bb8b5996fae5807e86b7b4c4c1867b5e57d24a69c9d125546323a78e"
+          "tokens": 2247,
+          "sha256": "92590075feb2d08cd4905eeba94b42b16f2938c8f2e7100222f58a7ed8122d40"
         }
       },
       "single": {
         "executed": true,
         "calls": 4,
         "requests": {
-          "characters": 1516,
-          "tokens": 848,
-          "sha256": "32733dc3bd739f629210ed9da50720df47270f907cc98bd19c4eb0c289c28370"
+          "characters": 1684,
+          "tokens": 938,
+          "sha256": "9ce88d9b637e4ec09faf7e6d15cb62278d791dacfe56ec0f36e8c38abc481582"
         },
         "results": {
           "characters": 2482,
-          "tokens": 1319,
-          "sha256": "44262adc66859286285332be2b6fa94af77a990c8b81b0f3f7bd37d61f819a5a"
+          "tokens": 1342,
+          "sha256": "897760e8d92b989428a00c5b424daf729f32097f92f32f9c3b9f3030f536a872"
         }
       }
     },
@@ -44,28 +44,28 @@
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 1602,
-          "tokens": 817,
-          "sha256": "7e771cc48f2e8fa0d3e45392b6256ad166e8388f583ba5005a1bcc2fbbdc89d0"
+          "characters": 1620,
+          "tokens": 845,
+          "sha256": "7e5dc27d4bf2f3a41d64647eedb56b849ae92b26ec70bcfe6326b73c6566da0c"
         },
         "results": {
           "characters": 1841,
-          "tokens": 1007,
-          "sha256": "787ca4255c65432d8a5212e9af3ec1862700c9a6277b4933b529974dba5098f1"
+          "tokens": 1026,
+          "sha256": "4e416d49428e1c8f652ddc4e42703c468548204853fd674986883d15bb589176"
         }
       },
       "single": {
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 630,
-          "tokens": 338,
-          "sha256": "7b1ec41f3b4a895ba7ed29a971ffb081a5ce65dd91815ee29169e4ba85485586"
+          "characters": 714,
+          "tokens": 380,
+          "sha256": "b6288606e6acc21b55d156bb435db532e51366f7aaeec02020775d9039b8a4d5"
         },
         "results": {
           "characters": 1012,
-          "tokens": 560,
-          "sha256": "5ca667a5cb0fbadff7c207522e27f4e88a05cdc3deafc1b543581d22655e030d"
+          "tokens": 570,
+          "sha256": "0ae23ee7ce5a12a688f2370b27c9256775d1bb64269ab9c66b9bb78861fa168c"
         }
       }
     },
@@ -76,28 +76,28 @@
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 3480,
-          "tokens": 1847,
-          "sha256": "41bd2e33c221e2aeb384b8b17b0aa35a2c1e1b1c9a97b306e57231336b869e54"
+          "characters": 3498,
+          "tokens": 1899,
+          "sha256": "705c234b5e53779431498c66250d8e94d147ede13a800f29af31068e8fbc24b0"
         },
         "results": {
           "characters": 3379,
-          "tokens": 1796,
-          "sha256": "657b6dee2cda536f344fca766c2a51619e35ebd24f1c1da61322be71d942ad92"
+          "tokens": 1827,
+          "sha256": "8e51c9022061838b1988815db7fb3e1fe5a1c5dcb5bf4df48bdc5289c8b551ed"
         }
       },
       "single": {
         "executed": true,
         "calls": 4,
         "requests": {
-          "characters": 1479,
-          "tokens": 820,
-          "sha256": "0e9e08d040b33d6e1f3385380303e6b13df61835d47d2ad5b126d8e8b02c7956"
+          "characters": 1647,
+          "tokens": 908,
+          "sha256": "4781455bf57cd46b96b68a38d2c7df9decce2edaee49491705de46861e94a6fb"
         },
         "results": {
           "characters": 2174,
-          "tokens": 1166,
-          "sha256": "fe25e77c24dcbe4dab32eee712b2282a6aa2800962e4bb92d6005c53f0b932d8"
+          "tokens": 1190,
+          "sha256": "1b36d93e7e75acbc258b43f4ffe5ad00ba400d29aea064f28e7fa3138ad73aef"
         }
       }
     },
@@ -108,28 +108,28 @@
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 1806,
-          "tokens": 1049,
-          "sha256": "9caa8df0e446d7ee5a875aa5e22aff873eafab69e6f0e3a5c6a9101a29e65d93"
+          "characters": 1824,
+          "tokens": 1081,
+          "sha256": "85238884a8a3d919ef842748d998604c583f3676bf0dadb2490320f07e25d8cf"
         },
         "results": {
           "characters": 1284,
-          "tokens": 700,
-          "sha256": "55513b306f84fb536ca7c18bea193c53d223c39f460b7f3334273deb011f3998"
+          "tokens": 715,
+          "sha256": "43428695f2a4b60cc1095ca2bfd2cb3cef2180fc6e944d396a9b9f583df24db6"
         }
       },
       "single": {
         "executed": true,
         "calls": 1,
         "requests": {
-          "characters": 773,
-          "tokens": 466,
-          "sha256": "2b2768df9f2f5a9a5c97f47d80641bc41e4a6020ec58c814f7feb8cdd7674ead"
+          "characters": 815,
+          "tokens": 493,
+          "sha256": "67dc13cd7ab6501a04c79876694d2eae125e124b1f74c25b1802f80e0c30bf03"
         },
         "results": {
           "characters": 580,
-          "tokens": 321,
-          "sha256": "272de7d2569b3fa65c4aff47eb8ea39d9b03ec72c239b04ba5fa2031a1bed50c"
+          "tokens": 320,
+          "sha256": "b29fe082c2f4436ba2b44f9ae72bf19bb735823e16b4e73c3d431f5d23c5c502"
         }
       }
     },
@@ -140,28 +140,28 @@
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 8248,
-          "tokens": 4453,
-          "sha256": "a1ede264d48e03b039ed2a5ba763f8b2c144aff110084a4e6c096cb7fc623881"
+          "characters": 8266,
+          "tokens": 4565,
+          "sha256": "bf8e7b7d7fc499d1976b5a3e88b26cda28b1f9bda8d2202eb61a883cf60d2f3b"
         },
         "results": {
-          "characters": 8870,
-          "tokens": 4632,
-          "sha256": "9cbdcd43bbf4c36430623afd1d00cca58a88c852819543ae9753f9353f517d76"
+          "characters": 8869,
+          "tokens": 4716,
+          "sha256": "bd55522f57db6d9a5c6547116aba9aa700ee5475198b1df645c75dab8338568a"
         }
       },
       "single": {
         "executed": true,
         "calls": 10,
         "requests": {
-          "characters": 3580,
-          "tokens": 2014,
-          "sha256": "2bbb435227af0ae36b1208323a174fcf582cc4b575d4f6e0af23f5cbf5960df0"
+          "characters": 4000,
+          "tokens": 2234,
+          "sha256": "33929a9aec72f7f584f21b41a6b55c0dca097a3c2e6871d32086689ac24a064c"
         },
         "results": {
           "characters": 5588,
-          "tokens": 3030,
-          "sha256": "a5cf2270ca8e77d911c52770bfa37e452104d916b9a2b579009a1c1e0fcba3e3"
+          "tokens": 3086,
+          "sha256": "aa95174610d50caf837ec72c6e681238147172bdc86c1e667e4bf3439cae8f64"
         }
       }
     },
@@ -172,28 +172,28 @@
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 2410,
-          "tokens": 1275,
-          "sha256": "964ba8b07124a608a1783a9aa6b73669ac676d9ea7453caf45cbebb4b479397e"
+          "characters": 2428,
+          "tokens": 1315,
+          "sha256": "a0b33fd0c82946a43b14a4707205847d5c20b68a4f7e46e891ec981ddb92e6c3"
         },
         "results": {
-          "characters": 2690,
-          "tokens": 1426,
-          "sha256": "78b1fad5a7462444e14fe727c2a93ddbbd07616e9cbeb2666b52ae779190f7f0"
+          "characters": 2691,
+          "tokens": 1455,
+          "sha256": "0945bfd35f247fe2362d94dffa9ad9d41be18db3f35ad5c03b85e4f3869fe270"
         }
       },
       "single": {
         "executed": true,
         "calls": 3,
         "requests": {
-          "characters": 991,
-          "tokens": 551,
-          "sha256": "ac6335672184a0a5dda97fb1317735d8606b2b2d6709b40cabaff4f239fa33da"
+          "characters": 1117,
+          "tokens": 616,
+          "sha256": "fd665cd48e6c98d91f2002e24058b9e16147f2f3e21dff88c138091b535e4ce5"
         },
         "results": {
-          "characters": 1579,
-          "tokens": 861,
-          "sha256": "991414b0f754c103bbc3ac2cf5021d91cec47295b3878039d85076b79c00d2af"
+          "characters": 1580,
+          "tokens": 876,
+          "sha256": "c50d3710ee1728e23b2809357c2cbc046f6ba3808cc4d4ee290c00ff69e5e770"
         }
       }
     },
@@ -204,28 +204,28 @@
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 2078,
-          "tokens": 1113,
-          "sha256": "091f085d7eda54f2a4d9de570c25c855aa8a6f63602453d40599059cbc328c6c"
+          "characters": 2096,
+          "tokens": 1149,
+          "sha256": "68e1c3c2f5cffb2407ad17e3ce4012f9515b13a5d6c11666ce381738105b504f"
         },
         "results": {
           "characters": 1915,
-          "tokens": 1043,
-          "sha256": "a9ce3ab7995f63bbe107c88ba880c8a51281655cc7bd4316c296c9084def71f6"
+          "tokens": 1060,
+          "sha256": "4d38eca7b0bb3228e5253ac6ea229638cc8632178841ffabd4d38a1168def687"
         }
       },
       "single": {
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 861,
-          "tokens": 485,
-          "sha256": "719d54e879cf0e5013f65507533c8dfd4eb770288c4d10eb3d3d15631755165c"
+          "characters": 945,
+          "tokens": 531,
+          "sha256": "99ba5ad04309eb4e663d370e63c497bdffda6584e330b91d17ec411ec87527c6"
         },
         "results": {
           "characters": 1098,
-          "tokens": 602,
-          "sha256": "72f32612f162cdd340583525d38e48a94e3b47ee6cd2672a778f58f27fa707b9"
+          "tokens": 616,
+          "sha256": "89dea0cce9e44f06e09bb04e3e55fe41c83daba1cc1e7b2d8609667619b6c1bc"
         }
       }
     },
@@ -236,28 +236,28 @@
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 2012,
-          "tokens": 1047,
-          "sha256": "a5efe3a6b44247ea0e538fc209ae170c97137042e5f1a6ebb0ac5d3ce546c8f0"
+          "characters": 2030,
+          "tokens": 1079,
+          "sha256": "0967afe9980a9dabb4e8edb6eeb93dac6f421fff135c15774b610dbc85ea5913"
         },
         "results": {
           "characters": 1896,
-          "tokens": 1024,
-          "sha256": "cd97631c3610b25a49793e8cfad268714397e43009b40c869e2da2379c2d7717"
+          "tokens": 1042,
+          "sha256": "bb7b00a18061bac6a399b152e5628e1a8b4df445b97dcd935c2f3b08b595c84c"
         }
       },
       "single": {
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 819,
-          "tokens": 450,
-          "sha256": "d78e76c284e068e63a70aab69e44315a45ec1d54cd60489bd1cd95dc3919ac9d"
+          "characters": 903,
+          "tokens": 494,
+          "sha256": "bd6c701e50965e639e55330c7040fef7007f1eaadaa9fa78d8af1fa32f01a831"
         },
         "results": {
           "characters": 1071,
-          "tokens": 584,
-          "sha256": "12fe4969160d2211324ca2d65fd618dbf57dc55bf9ac66e341bdd2658d66da0a"
+          "tokens": 596,
+          "sha256": "6971fdfde2a1a685a5d2d11cf71961b0df355a5007ca8f33eaf558caaf135049"
         }
       }
     },
@@ -268,28 +268,28 @@
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 2014,
-          "tokens": 1047,
-          "sha256": "aa4d97f8ce9262563a0b153cb1c7c22331fa14525c37f1e76752efae5d3bfa21"
+          "characters": 2032,
+          "tokens": 1079,
+          "sha256": "9bef437fcaa9dc1c3a5a6132af087cc97187d8eb5987081d8c67ac18b2ecfbe2"
         },
         "results": {
           "characters": 1896,
-          "tokens": 1015,
-          "sha256": "615249507dfb354c93bced3ba8584b2eac3abb28a3a7058736552e2bd74d304b"
+          "tokens": 1046,
+          "sha256": "fd13f5ac31f73293de7b9cc37e634531c707f0ec95692d70f04f494e39c996a8"
         }
       },
       "single": {
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 820,
-          "tokens": 450,
-          "sha256": "67dab629503bfc26a79783eed9d29d4494a44108362fe723949e375c725a4ea2"
+          "characters": 904,
+          "tokens": 494,
+          "sha256": "ca0e322258d319f380c11e6ec1a86a32a2b199cb3da8b139041ea15f174624c4"
         },
         "results": {
           "characters": 1071,
-          "tokens": 589,
-          "sha256": "61f2fd2777b3b4d7d9d4b8b55507728716c90ea8868d7f4b4a5f3c132ba4b449"
+          "tokens": 599,
+          "sha256": "7e92fe6e4e55b1d2104de06405a69e208fa850365f6bcf203fffb5d3b6d7e1a6"
         }
       }
     },
@@ -300,28 +300,28 @@
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 1916,
-          "tokens": 1007,
-          "sha256": "926478969930a281ff5d0671e3f2357af2cdb06396cf3c738cf9d0a7ce148f12"
+          "characters": 1934,
+          "tokens": 1039,
+          "sha256": "33262e941fe7ec9594d7b237494374c68da5406ef121e7fbe755c64fbd5a17c2"
         },
         "results": {
           "characters": 1896,
-          "tokens": 1028,
-          "sha256": "81926578e9fd37a3d622034b86b95d4e3d59dd1a909ab638e3f82511101b5545"
+          "tokens": 1039,
+          "sha256": "ff182c86219ccd8ca5b1fb6692f6d6a70d1c65cf581ff09a90f10f43fa3043be"
         }
       },
       "single": {
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 771,
-          "tokens": 430,
-          "sha256": "51aa5ec8fd650670a61ee99f2c48b188a7f37bde6d976bb1dbc6fb77ddfb73b2"
+          "characters": 855,
+          "tokens": 474,
+          "sha256": "a374090aa246946844465bd2d4fea01a99d4a3d0d099b40767df91d3e212b809"
         },
         "results": {
           "characters": 1071,
-          "tokens": 576,
-          "sha256": "702dda6f321c9238b6c93c57b7d5d64d3628001e82ffb58b4bd6c0aacdc79e1c"
+          "tokens": 597,
+          "sha256": "6b18d5fe21804e39e7f12a8d2380719f64c21858af535fb7b15fcdab38114027"
         }
       }
     },
@@ -332,28 +332,28 @@
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 3346,
-          "tokens": 1779,
-          "sha256": "cb73119b388b3ea8159af5d5b294fa52b58b01a958cdfecb8300cd180905a098"
+          "characters": 3364,
+          "tokens": 1827,
+          "sha256": "224a651a39919b8bcc5800c2ee07260f08e4029b6ae7cca65ed48354b068ef9d"
         },
         "results": {
           "characters": 2485,
-          "tokens": 1336,
-          "sha256": "910b495fc97b4697007d9c8925282f0e2958d05089a0b55aa71b506ff541ab99"
+          "tokens": 1359,
+          "sha256": "877befc181ea4927782163921e35428a3afeae0c1f6d7e5548fd853f18331c70"
         }
       },
       "single": {
         "executed": true,
         "calls": 3,
         "requests": {
-          "characters": 1467,
-          "tokens": 807,
-          "sha256": "941d7f28bf01d9b50de1d8e8fe217e01f50218b1861bdfe1574d9982b721500f"
+          "characters": 1593,
+          "tokens": 876,
+          "sha256": "f30c35ce008632aff696cd8509cde6f10af006f0110b5740c4343bcef4dd15d9"
         },
         "results": {
           "characters": 1563,
-          "tokens": 846,
-          "sha256": "f2b685083a5b2cad3a243f2243a5365789898d355a15511dd3ba6ae5e125cee7"
+          "tokens": 872,
+          "sha256": "d69a46cb6f3358587fc0ba98f60f45a8e44567a68bbfac4aafba2832fd14aa07"
         }
       }
     },
@@ -364,28 +364,28 @@
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 1868,
-          "tokens": 1015,
-          "sha256": "ae4d2efc323924f261aa50a913f9e5db89a88f23018ce0b6d90a621d41023c35"
+          "characters": 1886,
+          "tokens": 1051,
+          "sha256": "3fb3c6a647127ee19eaea1a46ee74ba79bd2fb96be5514e1c72729650a2941ae"
         },
         "results": {
           "characters": 1657,
-          "tokens": 915,
-          "sha256": "e674b3d7cb76dcd0e39dd0828bf71a5638c6a2d544d29e2f2b7af8e3b15a6a45"
+          "tokens": 938,
+          "sha256": "d1f6c0a5ed936088ba8aac750b292c7022a5b60471bd0bb16eb055c8e91d05c7"
         }
       },
       "single": {
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 767,
-          "tokens": 439,
-          "sha256": "b5dd56e9b6015a4f91c3b8dbb543ed74179921e5b4fb374d30733c7277afccc6"
+          "characters": 851,
+          "tokens": 485,
+          "sha256": "2ea10f52f532803523da96f0567f9ddb3341221d5a3f57f20f9426f4d3cec028"
         },
         "results": {
           "characters": 997,
-          "tokens": 555,
-          "sha256": "ac4aa3c51ba4327a492062dcb40922f53257b9fb6610191e701db55087f2d265"
+          "tokens": 559,
+          "sha256": "46018a92d99e10cb3610fd795fab4b10d02c195512f0076c86558a71a3f02aa5"
         }
       }
     },
@@ -396,28 +396,28 @@
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 5968,
-          "tokens": 3221,
-          "sha256": "9942aeba35580bc3706bc0decdec6e0ec2fb90604416c931a3290288f4910168"
+          "characters": 5986,
+          "tokens": 3305,
+          "sha256": "ea32cb77750b91ffc4da715ca95562f8b96b118fb6957a019ff7b5e47448e6aa"
         },
         "results": {
           "characters": 5594,
-          "tokens": 2960,
-          "sha256": "bd9d3056f26b73c7ced63c415fe54d170b05cef2e6fb80d9e46adfc3381867c1"
+          "tokens": 3010,
+          "sha256": "584ca095cc3ebde40372a59bf9ac15733340e99da61297499d5ca398b4e7bab9"
         }
       },
       "single": {
         "executed": true,
         "calls": 7,
         "requests": {
-          "characters": 2565,
-          "tokens": 1445,
-          "sha256": "78e94060dc5f15860070ac36b4c4aecb9711f18fe0e26812f2bfcd8696e870ea"
+          "characters": 2859,
+          "tokens": 1600,
+          "sha256": "312c8e854d338a845707e0d8b9827565243c9ecdc6bc4a6d9a3ebf3c50fbb295"
         },
         "results": {
-          "characters": 3631,
-          "tokens": 1964,
-          "sha256": "bdb7d9875326f8e695889757610603da24f721d7cb45bc581d74fe31889a2c2e"
+          "characters": 3632,
+          "tokens": 2018,
+          "sha256": "2fbe22573000a1aea16c27dfaa5a1dd5cdb6071cfb08112c06a51eded1b40e6b"
         }
       }
     },
@@ -428,28 +428,28 @@
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 3692,
-          "tokens": 1999,
-          "sha256": "a93761aaf40f3e2c2aa80c9b44e4b8aaaa2807a267ccb0dce3a095824f97d489"
+          "characters": 3710,
+          "tokens": 2055,
+          "sha256": "6fead99b4772e5007ba640dee0ace4b34959ba51e6880776fad4008cc20e37cd"
         },
         "results": {
-          "characters": 3343,
-          "tokens": 1804,
-          "sha256": "edb8589473e558b28c2513e42d8295522a926e1f1b9100809d32c4cfd3a7e45e"
+          "characters": 3344,
+          "tokens": 1834,
+          "sha256": "ceb4d16a7d0c9321e7b90f084e05094472c87800834188d18db610ef08740453"
         }
       },
       "single": {
         "executed": true,
         "calls": 4,
         "requests": {
-          "characters": 1558,
-          "tokens": 883,
-          "sha256": "44ba3dbd3a734266fb5150355435e66c0c6bb19ba59829abd923b332cc2c3483"
+          "characters": 1726,
+          "tokens": 973,
+          "sha256": "f63018da57d487e2f3c7a8b1f64ca0dbc966f369f40f651fcc577e769422b8d0"
         },
         "results": {
           "characters": 2147,
-          "tokens": 1177,
-          "sha256": "d10b5f697906495b598e0070225e2bbabf923c2a29cc62a0e391ef1063027b98"
+          "tokens": 1192,
+          "sha256": "86bbf062ece9d632551d61cc1857fc5cfae3f17974e4c475f35e4d6699cf7637"
         }
       }
     },
@@ -460,28 +460,28 @@
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 2398,
-          "tokens": 1305,
-          "sha256": "ae866ba36d18a4ae427043b3922c8cc5930ddf58d9778de654f0b0a729a2c626"
+          "characters": 2416,
+          "tokens": 1345,
+          "sha256": "9329caa7fbf94971f4a1c2e1a68f11aba920f7e9e67a742f6226e1445cad48b7"
         },
         "results": {
           "characters": 2556,
-          "tokens": 1389,
-          "sha256": "803d2b3459229f2c57762265c12578cdddb2611cd6b3667f789894e7b654e663"
+          "tokens": 1407,
+          "sha256": "89d418fef85699dff486641a38d767afadb826398219c21885a6f1a33831603b"
         }
       },
       "single": {
         "executed": true,
         "calls": 3,
         "requests": {
-          "characters": 982,
-          "tokens": 563,
-          "sha256": "d1b53421b42edcea0c156f6659cc65e9a4089b15e7655bb33118b330cceb4633"
+          "characters": 1108,
+          "tokens": 628,
+          "sha256": "191abb613b10518708cb9d736c27007bc55ce54711aa78025dc0d7d5ebdf2e9d"
         },
         "results": {
           "characters": 1501,
-          "tokens": 829,
-          "sha256": "f73f3bed02f229d856c6d8cf856a9acb7451e4992fb0a4a126d16b2ffc27908e"
+          "tokens": 845,
+          "sha256": "98c68d77c43c3cc59c95518292cdaf91e0edc5a8846ae33277bb44225d9dfb33"
         }
       }
     },
@@ -492,28 +492,28 @@
         "executed": true,
         "calls": 2,
         "requests": {
-          "characters": 3010,
-          "tokens": 1615,
-          "sha256": "3dedf9e712d72770ddff47c42faacf77c15cc01397c973a09b3f00ac464d802a"
+          "characters": 3028,
+          "tokens": 1663,
+          "sha256": "f7ae4ed12b195256740246d3a8c284a961ad1bd61cf95924b8c9654e43d99e28"
         },
         "results": {
           "characters": 2643,
-          "tokens": 1426,
-          "sha256": "3a9843e9268aace660b2a8827535b06c2d11b7010d9e58103b31c993a4395135"
+          "tokens": 1445,
+          "sha256": "2d11a5dea6198157e3d8e1b160bf50403fe77a42a8a6da5b05973c0f9048725b"
         }
       },
       "single": {
         "executed": true,
         "calls": 3,
         "requests": {
-          "characters": 1285,
-          "tokens": 719,
-          "sha256": "18e2fcd6a9dd2bde9018b66651dc52185b46a161ff8dfe845a01aba18ddda943"
+          "characters": 1411,
+          "tokens": 788,
+          "sha256": "f4fa3a26fbfa750bea023384e868df579199d742766e347883b45bd1cb6ea703"
         },
         "results": {
-          "characters": 1590,
-          "tokens": 867,
-          "sha256": "d9158fc4efe1af9492336fe685c6e7ea6623a291b9c38a07412f32a1f18c8be6"
+          "characters": 1589,
+          "tokens": 885,
+          "sha256": "34be13842557ec10b39dc49535389b739352bc8bc07148549857cfb1dcc2978d"
         }
       }
     }
@@ -524,25 +524,25 @@
     "excluded_cases": [],
     "plan": {
       "requests": {
-        "characters": 49466,
-        "tokens": 26522
+        "characters": 49754,
+        "tokens": 27286
       },
       "results": {
-        "characters": 48236,
-        "tokens": 25716
+        "characters": 48237,
+        "tokens": 26166
       }
     },
     "single": {
       "requests": {
-        "characters": 20864,
-        "tokens": 11708
+        "characters": 23132,
+        "tokens": 12912
       },
       "results": {
-        "characters": 29155,
-        "tokens": 15846
+        "characters": 29156,
+        "tokens": 16163
       }
     },
-    "tokens_saved": -24684,
-    "savings_fraction": -0.8958408942440299
+    "tokens_saved": -24377,
+    "savings_fraction": -0.8384178847807394
   }
 }

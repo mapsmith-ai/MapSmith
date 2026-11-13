@@ -265,22 +265,23 @@ The final reports are `benchmarks/method_choice_literal_inputs.json` and
 passed 220 tests and the full suite passed **2587 tests with 7 skipped**. The
 earlier 38/65 baseline is historical, not a controlled before/after estimate.
 
-## Token footprint of validated plans (4 November 2026)
+## Token footprint of validated plans (13 November 2026)
 
 The sixteen executable D-063 cases, containing **54 operations**, were run in two
 arms: `validate_plan` followed by `execute_plan`, and the same operations called
 individually through `run_operation`. The measurement counts compact JSON
-tool-call and result payloads, not an end-to-end model conversation. Anthropic's
-`count_tokens` endpoint with `claude-sonnet-5` supplies the token counts; requests
-and results are reported separately. Raw per-case counts and payload SHA-256 values
-are in `benchmarks/plan_token_savings.json`.
+tool-call and result payloads using the same argument envelopes as the MCP tools,
+not an end-to-end model conversation. Anthropic's `count_tokens` endpoint with
+`claude-sonnet-5` supplies the token counts; requests and results are reported
+separately. Raw per-case counts and payload SHA-256 values are in
+`benchmarks/plan_token_savings.json`.
 
 | arm | request tokens | result tokens | total |
 |---|---:|---:|---:|
-| validate + execute plan | 26,522 | 25,716 | **52,238** |
-| individual operations | 11,708 | 15,846 | **27,554** |
+| validate + execute plan | 27,286 | 26,166 | **53,452** |
+| individual operations | 12,912 | 16,163 | **29,075** |
 
-The plan arm therefore uses **24,684 more tokens, an 89.6% increase** (1.90×), not
+The plan arm therefore uses **24,377 more tokens, an 83.8% increase** (1.84×), not
 a saving. The typed plan is sent once for validation and once for execution, and its
 aggregate response is larger than the individual step responses. This measurement
 does not support the token-efficiency argument for validated plans; that argument
