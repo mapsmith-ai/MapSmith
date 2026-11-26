@@ -70,7 +70,7 @@ this page had already published — including the one in the bullet list below.
 ## A whole analysis, start to finish
 
 This is the thing MapSmith is for, and it is not a single tool call. One question — six
-parcels, a river, an elevation grid — becomes a plan of five operations chosen out of 81,
+parcels, a river, an elevation grid — becomes a plan of five operations chosen out of 82,
 validated before anything runs, executed step by step, and recorded: the search that
 narrowed the catalogue, the arguments that mattered, the CRS decision behind each metric
 step, and the checks that ran on every result.
@@ -81,7 +81,7 @@ plan, reads the manifests, and writes what follows; `tests/test_worked_example.p
 page and that script disagree. The position column is BM25's rather than the default engine's,
 because a published figure should not depend on whether a model download succeeded on the machine
 that built the page — the narrowing, which is the point, is identical on both. Two things worth watching: the middle column, where the catalogue
-goes from 81 operations to a handful the caller can read; and the CRS column, where every
+goes from 82 operations to a handful the caller can read; and the CRS column, where every
 metric operation says which coordinate system it moved the data into and why.
 
 <!-- worked-example:start -->
@@ -92,15 +92,15 @@ flowchart TB
   ASK --> PLAN{{"plan validated<br/>before anything runs"}}
   PLAN -. "rejected: FORWARD_REFERENCE" .-> BAD["'mask_path' references '$buffer' which runs later — move step 'buffer' before 'near'"]
   BAD:::bad
-  BUFFER["<b>buffer_layer</b><br/>81 operations &rarr; 28 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
+  BUFFER["<b>buffer_layer</b><br/>82 operations &rarr; 28 candidates &rarr; chosen<br/>CRS EPSG:32610<br/>9/9 checks"]
   PLAN --> BUFFER
-  NEAR["<b>clip_layer</b><br/>81 operations &rarr; 13 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>12/12 checks"]
+  NEAR["<b>clip_layer</b><br/>82 operations &rarr; 13 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>12/12 checks"]
   BUFFER --> NEAR
-  HEIGHT["<b>zonal_statistics</b><br/>81 operations &rarr; 2 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
+  HEIGHT["<b>zonal_statistics</b><br/>82 operations &rarr; 2 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>7/7 checks"]
   NEAR --> HEIGHT
-  AREA["<b>measure_area</b><br/>81 operations &rarr; 25 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>10/10 checks"]
+  AREA["<b>measure_area</b><br/>82 operations &rarr; 25 candidates &rarr; chosen<br/>CRS WGS 84 &#40;ellipsoidal&#41;<br/>10/10 checks"]
   HEIGHT --> AREA
-  FILTER["<b>select_features</b><br/>81 operations &rarr; 25 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>10/10 checks"]
+  FILTER["<b>select_features</b><br/>82 operations &rarr; 25 candidates &rarr; chosen<br/>CRS EPSG:4326<br/>10/10 checks"]
   AREA --> FILTER
   OUT[["3 parcels, each with elevation and ground area"]]
   FILTER --> OUT
@@ -109,11 +109,11 @@ flowchart TB
 
 | what the agent asks for | it declares | candidates | picked | at position |
 |---|---|---|---|---|
-| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s), line | **28** of 81 | `buffer_layer` | 2 |
-| “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s), polygon | **13** of 81 | `clip_layer` | 1 |
-| “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s), polygon | **2** of 81 | `zonal_statistics` | 2 |
-| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s), polygon | **25** of 81 | `measure_area` | 1 |
-| “drop the ones where the ground is above 120 metres” | vector, dataset:vector, 1 dataset(s), polygon | **25** of 81 | `select_features` | 1 |
+| “everything within one and a half kilometres of the river” | vector, dataset:vector, 1 dataset(s), line | **28** of 82 | `buffer_layer` | 2 |
+| “keep only the parcels that fall inside that strip” | vector, dataset:vector, 2 dataset(s), polygon | **13** of 82 | `clip_layer` | 1 |
+| “how high is the ground under each of these parcels” | raster, dataset:vector, 2 dataset(s), polygon | **2** of 82 | `zonal_statistics` | 2 |
+| “how big is each one on the ground” | vector, dataset:vector, 1 dataset(s), polygon | **25** of 82 | `measure_area` | 1 |
+| “drop the ones where the ground is above 120 metres” | vector, dataset:vector, 1 dataset(s), polygon | **25** of 82 | `select_features` | 1 |
 
 | step | operation | arguments that mattered | CRS decision, recorded | checks |
 |---|---|---|---|---|
@@ -223,7 +223,10 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.12.2**, which is what that command installs. Its
+This page describes **0.12.2**, which is what that command installs. On `main`, the
+[Unreleased notes](CHANGELOG.md#unreleased) add `tin_interpolation` and correct
+`idw_interpolation`, which answered with row numbers for a misspelled, textual or
+null field; a surface made with it from a layer with nulls should be remade. The 0.12.2
 [release notes](CHANGELOG.md#0122---2026-11-13) add benchmark evidence and refreshed
 discovery labels. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
@@ -398,7 +401,7 @@ For the **analysis** rather than the step, `run_operation` with `get_lineage` ta
   without the LLM is in there. No AI slop.
 - **The engines compute, the model orchestrates.** Geometry and numbers only ever come
   from deterministic tool executions — never from model output.
-- **81 operations, reached through 29 goal-level tools.** The catalogue is the breadth and
+- **82 operations, reached through 29 goal-level tools.** The catalogue is the breadth and
   the tool list is the choice; it is searchable rather than dumped, because tool-selection
   accuracy degrades once
   a few dozen tools are exposed at once, and fastest when two of them apply to the same
@@ -448,8 +451,8 @@ For the **analysis** rather than the step, `run_operation` with `get_lineage` ta
 ### Finding the right operation
 
 Those are the tools an agent chooses between. Behind them the **catalog** holds every
-operation MapSmith can perform — 81 today, and 56 of them have no tool of their own — and
-it is built to hold thousands. (One of the 81 is marked `planned` and says so when asked:
+operation MapSmith can perform — 82 today, and 57 of them have no tool of their own — and
+it is built to hold thousands. (One of the 82 is marked `planned` and says so when asked:
 the roadmap is in the catalog on purpose, so an agent can answer "not yet" instead of
 inventing a call.)
 
@@ -468,11 +471,18 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 81 | 47% | 32% | 47% |
-| what data I have | 54 | 52% | 35% | 53% |
+| nothing — words alone | 82 | 47% | 32% | 47% |
+| what data I have | 54 | 50% | 34% | 51% |
 | + what I want back | 33 | 61% | 52% | 67% |
 | + how many datasets I have | 18 | 66% | 62% | 89% |
-| **+ what geometry it holds** | **15** | **75%** | **72%** | **99%** |
+| **+ what geometry it holds** | **16** | **75%** | **72%** | **99%** |
+
+**The second row moved on 2026-11-26, and an operation moved it.** At 81 operations it read
+52%, 35% and 53%. `tin_interpolation` is the eighty-second, and it sits beside
+`idw_interpolation`: both take a point layer and return a surface, so a request to
+interpolate now has two entries answering to the same words and the ranking on the input
+kind alone lost two points. Every other row is where it was, and the last one — what a
+caller who declares what it knows is handed — did not move.
 
 **The last row is new on 2026-09-29, and the row above it shows why.** Thirty-one operations
 now take one vector layer to another, one more than the threshold below, so a caller who
@@ -534,12 +544,12 @@ of comparison this page exists to refuse.)
 That is the shape of the trade, and it says when the next facet is due. The figure to watch is
 not found@3 — a ranker will always get worse as the catalogue grows, and it is a hint. It is the
 **average** surviving set at the fullest declaration, the fourth column of that table:
-9 at 51 operations, 14 at 61, 16 at 72, 16 at 74, 16 at 75, 17 at 76, 15 at 77, 15 at 78, 15 at 81. (The
+9 at 51 operations, 14 at 61, 16 at 72, 16 at 74, 16 at 75, 17 at 76, 15 at 77, 15 at 78, 15 at 81, 16 at 82. (The
 point at 77 is the first with the geometry declared; without it the set would be 17.) When that crosses the threshold, delivery stops being a
 property and starts being a ranking again, and the lasting answer is another fact the caller
 already knows. A bigger threshold is an answer only as far as the caller still chooses well
 among more, and that is measured below, not assumed. (It said *median* until 2026-08-29, and published the mean:
-the median at 81 is 13. The distribution is skewed — most requests leave a small set and a few
+the median at 82 is 13. The distribution is skewed — most requests leave a small set and a few
 leave a large one — so the two numbers say different things and the mean is the pessimistic
 one, which is the right one to watch.)
 
@@ -610,7 +620,10 @@ adopted wholesale rather than judged one at a time. Two different strengths of e
 the file says which is which.
 
 **The current model labels were written on 2026-11-04 against the catalogue of 81 operations, by
-Claude Sonnet 5 and Claude Haiku 4.5.** Their raw answers and the dataset and catalogue hashes are
+Claude Sonnet 5 and Claude Haiku 4.5.** `tin_interpolation`, the eighty-second, was added
+after them: no request is labelled with it, so a request it would answer still counts
+`idw_interpolation` as the accepted answer, and the figures above are computed on those
+labels against the catalogue as it is now. Their raw answers and the dataset and catalogue hashes are
 in `benchmarks/discovery_labels_2026-11-04.json`. The original Claude/Gemini labels, written on
 2026-08-28 against 51 operations, remain unchanged in the file, so the dated comparison is not
 erased. Human answers still take precedence wherever one exists — `benchmarks/ingest_answers.py`
@@ -638,8 +651,8 @@ numbers are reported as *agreement with model-written labels* and never as accur
 **The family is the one facet that orders instead of filtering, and that is a correction.** It
 used to be a hard filter like the others. It is not like the others: input kind and projected-CRS
 are facts about the data in hand and output kind is what the caller wants, but *family* is a guess
-about our taxonomy, which the caller cannot see. Measured, it removed five candidates out of
-fifteen — and when the guess was wrong it removed the right operation, with no error, leaving a
+about our taxonomy, which the caller cannot see. Measured, it removed six candidates out of
+sixteen — and when the guess was wrong it removed the right operation, with no error, leaving a
 confident answer assembled from neighbours. Every request in the independent set has 4.4 plausible
 families. That is the silent-failure class [Argleton](https://argleton.org) measures in other
 people's systems, sitting in our own discovery layer, so it now sorts: declaring the family lifts
@@ -674,9 +687,9 @@ catalog grows:
 
 | catalog size | BM25 found@3 | embeddings found@3 |
 |---|---|---|
-| 10 | 77% | 83% |
-| 30 | 62% | 60% |
-| 81 | 45% | 45% |
+| 10 | 75% | 83% |
+| 30 | 63% | 58% |
+| 82 | 45% | 45% |
 
 **This table used to say the opposite, and the reversal is the finding.** Published at 10/30/51
 it read 78/83, 47/65, 40/55 — embeddings ahead at every size — and the sentence under it said
@@ -727,7 +740,7 @@ number of features as the input. Those are structural properties of the operatio
 checkable against the code rather than declared by hand, and they separate the pairs a bag of
 words cannot: `spatial_join` from `overlay_layers`, `flow_accumulation` from `extract_streams`.
 That work is not done, and until it is, the honest claim is the measured one: the guarantee above
-holds at eighty-one operations, not at eight hundred.
+holds at eighty-two operations, not at eight hundred.
 
 **How an entry has to be written is a published specification**, not a convention:
 [`docs/catalog-entry-spec.md`](docs/catalog-entry-spec.md), with a normative
@@ -786,7 +799,7 @@ The applicability filter above runs first for **both** engines — otherwise the
 only be true of one of them, and there is a test that says so.
 
 **Then it runs, tool or no tool.** Most catalog operations have no dedicated tool:
-56 of 81 are declared without one. Available operations run by name through
+57 of 82 are declared without one. Available operations run by name through
 `run_operation(operation, arguments)`. This is deliberate: capability count has no ceiling, but the *exposed tool list* has one, so the catalog
 is allowed to grow faster than the tool list. Arguments are checked against the catalog before
 anything executes — unknown operation (with a "did you mean", from the same ranking), missing or
@@ -1303,7 +1316,7 @@ detects it, converts the input first, and discloses the workaround in the manife
   workspace — which is what the container runs with by default. DuckDB's own HTTP and S3
   filesystems stay off in every mode, so `read_parquet('s3://…')` does not work even with
   the opt-in: fetch the data down first, or run unconfined with remote reads on.
-- **You want the full breadth of a desktop GIS.** 81 operations, and a catalogue that tells
+- **You want the full breadth of a desktop GIS.** 82 operations, and a catalogue that tells
   the agent what does *not* exist yet rather than letting it improvise. The ~900 QGIS
   Processing algorithms are on the roadmap, not in the box.
 - **You expect plan validation to make a weak model strong.** Our own A/B says advisory

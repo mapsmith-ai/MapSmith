@@ -21,11 +21,11 @@ catalogue is written: *"the coastline is 400 000 nodes and the browser dies"*, n
 
 | what the caller declares | candidates left | ranked, found@3 | **in what comes back** |
 |---|---|---|---|
-| nothing — words alone | 81 | 47% | 47% |
-| the input kind | 54 | 52% | 53% |
+| nothing — words alone | 82 | 47% | 47% |
+| the input kind | 54 | 50% | 51% |
 | + what it should produce | 33 | 61% | 67% |
 | + how many datasets | 18 | 66% | 89% |
-| **+ what geometry it holds** | **15** | **75%** | **99%** |
+| **+ what geometry it holds** | **16** | **75%** | **99%** |
 
 **Ranking is not the mechanism; narrowing is** — and the last column is why. Once
 the two facts a caller genuinely knows have cut the catalogue to something readable,
@@ -138,8 +138,8 @@ dangerous. It is the only one the caller cannot read off their own situation: in
 kind and projected-CRS are facts about the data in hand, `produces` is what they
 want back, but the family is a guess about *your* taxonomy, which they cannot see.
 
-Measured on the same set: as a hard filter it removes five candidates out of
-fifteen, and when the guess is wrong it removes **the right operation**, with no
+Measured on the same set: as a hard filter it removes six candidates out of
+sixteen, and when the guess is wrong it removes **the right operation**, with no
 error, leaving a confident answer assembled from neighbours. Every request in the
 set has 4.4 plausible families. At 800 operations the guess is among 43.
 

@@ -411,6 +411,30 @@ def test_a_tin_accepts_a_repeated_measurement_and_says_so(tmp_path):
     assert any("repeat a location" in note for note in _manifest(result)["notes"])
 
 
+def test_a_multipoint_lends_its_value_to_each_of_its_parts(tmp_path):
+    """Two rows, four locations: the bottom edge at 10 and the top edge at 40.
+
+    The surface depends on y alone, 10 + 30 * y / 100, whichever diagonal the
+    triangulation takes: 11.5 at the lowest row of centres (y = 5) and 38.5 at
+    the highest (y = 95).
+    """
+    from shapely.geometry import MultiPoint
+
+    path = tmp_path / "pairs.parquet"
+    gpd.GeoDataFrame(
+        {"mm": [10.0, 40.0]},
+        geometry=[MultiPoint([(0, 0), (100, 0)]), MultiPoint([(0, 100), (100, 100)])],
+        crs="EPSG:32632",
+    ).to_parquet(path)
+    out = str(tmp_path / "tin.tif")
+    engine.tin_interpolation(str(path), out, field_name="mm", cell_size=10.0)
+    values = _read(out)
+    _, ys = _cell_centres(out)
+    assert float(np.abs(values - (10.0 + 30.0 * ys / 100.0)).max()) < 1e-9
+    assert float(values.min()) == pytest.approx(11.5)
+    assert float(values.max()) == pytest.approx(38.5)
+
+
 @pytest.mark.parametrize(
     ("locations", "said"),
     [
