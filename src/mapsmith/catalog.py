@@ -3760,8 +3760,8 @@ OPERATIONS: list[dict[str, Any]] = [
                        "fewer than three non-collinear locations, a geographic CRS. "
                        "'max_triangle_edge_length' leaves nodata in triangles with a longer "
                        'side, to keep the surface from bridging a gap in the sampling. Where '
-                       'four samples lie on one circle — a regular grid of samples — the '
-                       'triangulation has two valid diagonals and takes one: the result counts '
+                       'four samples admit two valid diagonals — a regular grid of samples — '
+                       'the triangulation takes one: the result counts '
                        "them in 'ambiguous_quadrilaterals'. A z coordinate is not read; a "
                        'MultiPoint lends its value to each of its parts. '
                        'Requires: pip install mapsmith[raster].',
