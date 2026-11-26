@@ -1474,7 +1474,7 @@ def _spec_fixtures(tmp_path):
     })
 
     try:
-        from mapsmith.engines import sampling, whitebox_engine
+        from mapsmith.engines import interpolation, sampling, whitebox_engine
     except ImportError:
         return fixtures
 
@@ -1534,7 +1534,7 @@ def _spec_fixtures(tmp_path):
         "idw_interpolation": lambda: whitebox_engine.idw_interpolation(
             str(quad), out("idw.tif"), field_name="v", cell_size=10.0
         ),
-        "tin_interpolation": lambda: whitebox_engine.tin_interpolation(
+        "tin_interpolation": lambda: interpolation.tin_interpolation(
             str(quad), out("tin.tif"), field_name="v", cell_size=10.0
         ),
         "viewshed": lambda: whitebox_engine.viewshed(

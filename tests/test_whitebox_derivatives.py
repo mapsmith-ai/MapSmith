@@ -21,7 +21,16 @@ rasterio = pytest.importorskip("rasterio")
 import numpy as np
 from rasterio.transform import from_origin
 
+from mapsmith.engines import interpolation
 from mapsmith.engines import whitebox_engine as engine
+
+
+def _interpolator(operation):
+    """The two interpolators live in two engines; the tests that hold for both name them."""
+    return {
+        "idw_interpolation": engine.idw_interpolation,
+        "tin_interpolation": interpolation.tin_interpolation,
+    }[operation]
 
 
 def _write(path, data, *, crs="EPSG:32632", resolution=10.0):
@@ -285,7 +294,7 @@ def test_an_interpolator_refuses_where_the_library_would_answer_with_row_numbers
     source = _points(tmp_path, "gauges", values, _SQUARE)
     out = tmp_path / "surface.tif"
     with pytest.raises(ValueError, match=said):
-        getattr(engine, operation)(source, str(out), field_name=asked, cell_size=10.0)
+        _interpolator(operation)(source, str(out), field_name=asked, cell_size=10.0)
     assert not out.exists()
 
 
@@ -298,11 +307,11 @@ def test_an_interpolator_refuses_a_grid_over_the_operators_limit(
     monkeypatch.setenv("MAPSMITH_MAX_GRID_CELLS", "100")
     with pytest.raises(ValueError, match="MAPSMITH_MAX_GRID_CELLS"):
         # 11 x 11 by the limit's own count, over 100.
-        getattr(engine, operation)(
+        _interpolator(operation)(
             source, str(tmp_path / "x.tif"), field_name="mm", cell_size=10.0
         )
     # 6 x 6 = 36 passes: the limit refuses the size, not the operation.
-    getattr(engine, operation)(
+    _interpolator(operation)(
         source, str(tmp_path / "ok.tif"), field_name="mm", cell_size=20.0
     )
 
@@ -319,7 +328,7 @@ def test_a_second_run_to_the_same_path_is_verified_against_itself(operation, tmp
     """
     source = _points(tmp_path, "sq", [1.0, 2.0, 3.0, 4.0], _SQUARE)
     out = str(tmp_path / "same.tif")
-    run = getattr(engine, operation)
+    run = _interpolator(operation)
     assert run(source, out, field_name="mm", cell_size=10.0)["shape"] == [10, 10]
     second = run(source, out, field_name="mm", cell_size=20.0)
     assert second["shape"] == [5, 5]
@@ -339,9 +348,9 @@ def test_a_bad_second_run_is_not_passed_on_the_first_runs_raster(tmp_path):
 
     source = _points(tmp_path, "sparse", [1.0, 2.0, 3.0, 4.0, 5.0], [*_SQUARE, (50, 50)])
     out = str(tmp_path / "same.tif")
-    engine.tin_interpolation(source, out, field_name="mm", cell_size=10.0)
+    interpolation.tin_interpolation(source, out, field_name="mm", cell_size=10.0)
     with pytest.raises(verify.VerificationError, match="result_not_empty"):
-        engine.tin_interpolation(
+        interpolation.tin_interpolation(
             source, out, field_name="mm", cell_size=10.0, max_triangle_edge_length=60.0
         )
 
@@ -374,7 +383,7 @@ def test_an_interpolator_refuses_a_row_the_library_would_drop(operation, tmp_pat
         crs="EPSG:32632",
     ).to_parquet(mixed)
     with pytest.raises(ValueError, match="reads point layers"):
-        getattr(engine, operation)(
+        _interpolator(operation)(
             str(mixed), str(tmp_path / "x.tif"), field_name="mm", cell_size=10.0
         )
     missing = tmp_path / "missing.parquet"
@@ -384,7 +393,7 @@ def test_an_interpolator_refuses_a_row_the_library_would_drop(operation, tmp_pat
         crs="EPSG:32632",
     ).to_parquet(missing)
     with pytest.raises(ValueError, match="no point geometry"):
-        getattr(engine, operation)(
+        _interpolator(operation)(
             str(missing), str(tmp_path / "y.tif"), field_name="mm", cell_size=10.0
         )
 
@@ -403,7 +412,7 @@ def test_an_interpolator_refuses_booleans_and_nullable_gaps(operation, values, s
         {"mm": values}, geometry=[Point(*xy) for xy in _SQUARE], crs="EPSG:32632"
     ).to_parquet(source)
     with pytest.raises(ValueError, match=said):
-        getattr(engine, operation)(
+        _interpolator(operation)(
             str(source), str(tmp_path / "x.tif"), field_name="mm", cell_size=10.0
         )
 
@@ -416,7 +425,7 @@ def test_an_interpolator_reads_a_nullable_integer_field_with_no_gaps(operation, 
         geometry=[Point(*xy) for xy in _SQUARE], crs="EPSG:32632",
     ).to_parquet(source)
     out = str(tmp_path / "ok.tif")
-    getattr(engine, operation)(str(source), out, field_name="mm", cell_size=10.0)
+    _interpolator(operation)(str(source), out, field_name="mm", cell_size=10.0)
     values = _read(out)
     assert float(values.min()) == pytest.approx(7.0)
     assert float(values.max()) == pytest.approx(7.0)
@@ -455,7 +464,7 @@ def test_a_tin_over_the_operators_point_limit_is_refused(tmp_path, monkeypatch):
     source = _points(tmp_path, "five", [1.0, 2.0, 3.0, 4.0, 5.0], [*_SQUARE, (50, 50)])
     monkeypatch.setenv("MAPSMITH_MAX_TRIANGULATION_POINTS", "4")
     with pytest.raises(ValueError, match="MAPSMITH_MAX_TRIANGULATION_POINTS"):
-        engine.tin_interpolation(
+        interpolation.tin_interpolation(
             source, str(tmp_path / "x.tif"), field_name="mm", cell_size=10.0
         )
 
@@ -468,7 +477,7 @@ def test_a_refusal_does_not_quote_every_column_a_file_brought(tmp_path):
         columns, geometry=[Point(*xy) for xy in _SQUARE], crs="EPSG:32632"
     ).to_parquet(path)
     with pytest.raises(ValueError, match="and 280 more") as refused:
-        engine.tin_interpolation(
+        interpolation.tin_interpolation(
             str(path), str(tmp_path / "x.tif"), field_name="nope", cell_size=10.0
         )
     assert "column_0019" in str(refused.value)
@@ -476,6 +485,8 @@ def test_a_refusal_does_not_quote_every_column_a_file_brought(tmp_path):
 
 
 # ------------------------------------------------------ tin_interpolation
+# On GEOS and GDAL, in `engines/interpolation.py`; kept in this file beside the
+# interpolator it is compared with.
 
 
 def _plane(x, y):
@@ -501,7 +512,7 @@ def test_a_tin_gives_back_the_plane_its_samples_lie_on(tmp_path):
         tmp_path, "survey", [_plane(x, y) for x, y in locations], locations, field="z"
     )
     out = str(tmp_path / "tin.tif")
-    result = engine.tin_interpolation(source, out, field_name="z", cell_size=10.0)
+    result = interpolation.tin_interpolation(source, out, field_name="z", cell_size=10.0)
     values = _read(out)
     xs, ys = _cell_centres(out)
     assert values.shape == (10, 10)
@@ -528,7 +539,7 @@ def test_a_tin_does_not_extrapolate_beyond_its_points(tmp_path):
         tmp_path, "three", [_plane(x, y) for x, y in locations], locations, field="z"
     )
     out = str(tmp_path / "tin.tif")
-    result = engine.tin_interpolation(source, out, field_name="z", cell_size=10.0)
+    result = interpolation.tin_interpolation(source, out, field_name="z", cell_size=10.0)
     values = _read(out)
     xs, ys = _cell_centres(out)
     inside = xs + ys <= 100
@@ -549,7 +560,7 @@ def test_a_tin_never_leaves_the_range_of_its_samples(tmp_path):
     locations = [*_SQUARE, (50, 50)]
     source = _points(tmp_path, "peak", [10.0, 10.0, 10.0, 10.0, 90.0], locations)
     out = str(tmp_path / "tin.tif")
-    result = engine.tin_interpolation(source, out, field_name="mm", cell_size=10.0)
+    result = interpolation.tin_interpolation(source, out, field_name="mm", cell_size=10.0)
     values = _read(out)
     assert 10.0 <= float(values.min()) and float(values.max()) <= 90.0
     # The four cells around the peak have centres 5 m from it in x and in y. On
@@ -559,13 +570,43 @@ def test_a_tin_never_leaves_the_range_of_its_samples(tmp_path):
     assert _checks(result)["values_in_expected_range"] is True
 
 
+def test_a_tin_refuses_a_geographic_layer(tmp_path):
+    """Which samples make a triangle is decided by distances, and degrees are not."""
+    source = _points(
+        tmp_path, "degrees", [1.0, 2.0, 3.0, 4.0],
+        [(12.001, 41.999), (12.008, 41.999), (12.001, 41.992), (12.008, 41.992)],
+        crs="EPSG:4326",
+    )
+    out = tmp_path / "x.tif"
+    with pytest.raises(ValueError, match="geographic CRS"):
+        interpolation.tin_interpolation(
+            source, str(out), field_name="mm", cell_size=0.001
+        )
+    assert not out.exists()
+
+
+def test_a_tin_keeps_a_crs_that_has_no_epsg_code(tmp_path):
+    """Written on whitebox, a custom CRS was lost on the way to the raster."""
+    custom = (
+        "+proj=tmerc +lat_0=41.9 +lon_0=12.5 +k=1 +x_0=1000 +y_0=2000 "
+        "+ellps=GRS80 +units=m +no_defs"
+    )
+    source = _points(tmp_path, "local", [1.0, 2.0, 3.0, 4.0], _SQUARE, crs=custom)
+    out = str(tmp_path / "tin.tif")
+    result = interpolation.tin_interpolation(source, out, field_name="mm", cell_size=10.0)
+    assert _checks(result)["crs_matches"] is True
+    with rasterio.open(out) as written:
+        assert written.crs.to_dict()["proj"] == "tmerc"
+        assert written.crs.to_dict()["x_0"] == 1000
+
+
 def test_a_tin_refuses_two_values_at_one_location(tmp_path):
     """Measured: the library keeps 1 and drops 9, and says nothing."""
     source = _points(
         tmp_path, "twice", [1.0, 9.0, 3.0, 4.0], [(0, 0), (0, 0), (100, 0), (0, 100)]
     )
     with pytest.raises(ValueError, match="more than one value"):
-        engine.tin_interpolation(
+        interpolation.tin_interpolation(
             source, str(tmp_path / "x.tif"), field_name="mm", cell_size=10.0
         )
 
@@ -574,7 +615,7 @@ def test_a_tin_accepts_a_repeated_measurement_and_says_so(tmp_path):
     source = _points(
         tmp_path, "same", [1.0, 1.0, 3.0, 4.0], [(0, 0), (0, 0), (100, 0), (0, 100)]
     )
-    result = engine.tin_interpolation(
+    result = interpolation.tin_interpolation(
         source, str(tmp_path / "tin.tif"), field_name="mm", cell_size=10.0
     )
     assert any("repeat a location" in note for note in _manifest(result)["notes"])
@@ -596,7 +637,7 @@ def test_a_multipoint_lends_its_value_to_each_of_its_parts(tmp_path):
         crs="EPSG:32632",
     ).to_parquet(path)
     out = str(tmp_path / "tin.tif")
-    engine.tin_interpolation(str(path), out, field_name="mm", cell_size=10.0)
+    interpolation.tin_interpolation(str(path), out, field_name="mm", cell_size=10.0)
     values = _read(out)
     _, ys = _cell_centres(out)
     assert float(np.abs(values - (10.0 + 30.0 * ys / 100.0)).max()) < 1e-9
@@ -614,7 +655,7 @@ def test_a_multipoint_lends_its_value_to_each_of_its_parts(tmp_path):
 def test_a_tin_refuses_points_that_make_no_triangle(locations, said, tmp_path):
     source = _points(tmp_path, "line", [float(i) for i in range(len(locations))], locations)
     with pytest.raises(ValueError, match=said):
-        engine.tin_interpolation(
+        interpolation.tin_interpolation(
             source, str(tmp_path / "x.tif"), field_name="mm", cell_size=10.0
         )
 
@@ -625,7 +666,7 @@ def test_a_tin_refuses_a_layer_that_is_not_points(tmp_path):
         {"mm": [1.0]}, geometry=[Point(50, 50).buffer(40)], crs="EPSG:32632"
     ).to_parquet(path)
     with pytest.raises(ValueError, match="reads point layers"):
-        engine.tin_interpolation(
+        interpolation.tin_interpolation(
             str(path), str(tmp_path / "x.tif"), field_name="mm", cell_size=10.0
         )
 
@@ -643,7 +684,7 @@ def test_a_surface_with_no_valid_cell_fails_with_its_record_on_disk(tmp_path):
     source = _points(tmp_path, "sparse", [1.0, 2.0, 3.0, 4.0, 5.0], locations)
     out = tmp_path / "tin.tif"
     with pytest.raises(verify.VerificationError):
-        engine.tin_interpolation(
+        interpolation.tin_interpolation(
             source, str(out), field_name="mm", cell_size=10.0,
             max_triangle_edge_length=60.0,
         )
@@ -661,7 +702,7 @@ def test_an_interpolator_refuses_a_cell_size_that_is_not_a_size(
 ):
     source = _points(tmp_path, "sq", [1.0, 2.0, 3.0, 4.0], _SQUARE)
     with pytest.raises(ValueError, match="cell_size must be positive and finite"):
-        getattr(engine, operation)(
+        _interpolator(operation)(
             source, str(tmp_path / "x.tif"), field_name="mm", cell_size=cell_size
         )
 
@@ -671,7 +712,7 @@ def test_a_tin_refuses_an_edge_limit_that_is_not_a_length(limit, tmp_path):
     """NaN passed `<= 0` and went into the manifest as a NaN literal: not JSON."""
     source = _points(tmp_path, "sq", [1.0, 2.0, 3.0, 4.0], _SQUARE)
     with pytest.raises(ValueError, match="max_triangle_edge_length must be positive"):
-        engine.tin_interpolation(
+        interpolation.tin_interpolation(
             source, str(tmp_path / "x.tif"), field_name="mm", cell_size=10.0,
             max_triangle_edge_length=limit,
         )
@@ -688,11 +729,11 @@ def test_the_edge_limit_blanks_the_long_triangles_and_keeps_the_short_ones(tmp_p
     near = [*_SQUARE, (50, 50)]
     far = [(x + 1000, y) for x, y in near]
     source = _points(tmp_path, "fields", [5.0] * 10, [*near, *far])
-    bridged = engine.tin_interpolation(
+    bridged = interpolation.tin_interpolation(
         source, str(tmp_path / "bridged.tif"), field_name="mm", cell_size=10.0
     )
     assert (bridged["valid_cells"], bridged["total_cells"]) == (1100, 1100)
-    capped = engine.tin_interpolation(
+    capped = interpolation.tin_interpolation(
         source, str(tmp_path / "capped.tif"), field_name="mm", cell_size=10.0,
         max_triangle_edge_length=150.0,
     )
@@ -702,13 +743,22 @@ def test_the_edge_limit_blanks_the_long_triangles_and_keeps_the_short_ones(tmp_p
     assert (blank == ((xs > 100) & (xs < 1000))).all()
 
 
-def test_a_tin_refuses_a_sample_it_could_not_tell_from_an_empty_cell(tmp_path):
-    """-32768 is what the engine writes for a cell with no value."""
-    source = _points(tmp_path, "sentinel", [-32768.0, 2.0, 3.0, 4.0], _SQUARE)
-    with pytest.raises(ValueError, match="could not be told apart"):
-        engine.tin_interpolation(
-            source, str(tmp_path / "x.tif"), field_name="mm", cell_size=10.0
-        )
+def test_a_sample_of_minus_32768_is_a_measurement_and_stays_one(tmp_path):
+    """Written on whitebox this was refused: -32768 is what that engine puts in an empty cell.
+
+    Here an empty cell is NaN, which no sample can be, so the value is kept.
+    The corner cell's centre is 5 m in from the sample in x and in y, on a
+    surface that climbs 32770, 32771 and 32772 over 100 m from it.
+    """
+    source = _points(tmp_path, "low", [-32768.0, 2.0, 3.0, 4.0], _SQUARE)
+    out = str(tmp_path / "tin.tif")
+    result = interpolation.tin_interpolation(source, out, field_name="mm", cell_size=10.0)
+    values = _read(out)
+    assert result["valid_cells"] == 100
+    assert float(values.min()) < -29000
+    assert float(values.max()) <= 4.0
+    with rasterio.open(out) as written:
+        assert np.isnan(written.nodata)
 
 
 def test_a_tin_reads_x_and_y_and_says_so_when_z_differs(tmp_path):
@@ -719,7 +769,7 @@ def test_a_tin_reads_x_and_y_and_says_so_when_z_differs(tmp_path):
         crs="EPSG:32632",
     ).to_parquet(path)
     with pytest.raises(ValueError, match="a z coordinate is not read"):
-        engine.tin_interpolation(
+        interpolation.tin_interpolation(
             str(path), str(tmp_path / "x.tif"), field_name="mm", cell_size=10.0
         )
 

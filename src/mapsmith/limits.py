@@ -29,12 +29,12 @@ DEFAULT_MAX_SAMPLES = 1_000_000
 MAX_GRID_CELLS_ENV = "MAPSMITH_MAX_GRID_CELLS"
 
 #: A 3162 x 3162 surface: 31 km at 10 m. Measured THROUGH the two interpolators,
-#: not on the library alone, from four points in a 12 kB file on
-#: whitebox-workflows 2.0.6: 464 MB at peak at this size, 949 MB at twenty-five
-#: million cells, and between three and fourteen seconds. The first figure
-#: published here was the library's own (493 MB at twenty-five million), which
-#: left out the write, the read-back and a 1.2 GB copy the operation made to
-#: count valid cells; the audit that found the difference measured 1.8 GB.
+#: not on a library alone, from four points in a 12 kB file: 463 MB at peak for
+#: `idw_interpolation` (949 MB at twenty-five million cells) and 377 MB for
+#: `tin_interpolation`, in two to fourteen seconds. The first figure written
+#: here was whitebox's own (493 MB at twenty-five million), which left out the
+#: write and the read-back; the audit that found the difference measured
+#: 1.8 GB through the operation as it then was.
 DEFAULT_MAX_GRID_CELLS = 10_000_000
 
 
@@ -61,10 +61,13 @@ def max_grid_cells() -> int:
 
 MAX_TRIANGULATION_POINTS_ENV = "MAPSMITH_MAX_TRIANGULATION_POINTS"
 
-#: Measured on whitebox-workflows 2.0.6 with points scattered at random: 100 000
-#: take 3 s, 300 000 take 16 s and 0.8 GB, 600 000 take 69 s and 1.4 GB. This is
-#: the bound on the ordinary case and NOT on the worst one: see SECURITY.md.
-DEFAULT_MAX_TRIANGULATION_POINTS = 250_000
+#: Set by the worst arrangement measured, not by the ordinary one. Through
+#: `tin_interpolation`, on GEOS 3.13: 30 000 points scattered at random take
+#: 1.6 s and 240 MB, 250 000 take 7.5 s and 0.9 GB — but 30 000 points on one
+#: circle take 3.4 s and 50 000 take half a minute in the triangulation alone,
+#: because points on a common circle are the case a Delaunay triangulation has
+#: no unique answer for. An operator whose callers are trusted raises it.
+DEFAULT_MAX_TRIANGULATION_POINTS = 30_000
 
 #: How many cell-by-sample evaluations a search radius may ask of an
 #: interpolator, as a multiple of `MAPSMITH_MAX_SAMPLES`: 100 million by

@@ -13,22 +13,26 @@ All notable changes to MapSmith are documented here, in the format of
   point layer. Each cell takes the value, at its centre, of the plane through
   the three samples whose triangle contains it, so the surface passes through
   every measurement, never leaves the range of the data, and gives back a plane
-  when the samples lie on one (measured: error under 1e-13 at the cell centres,
-  so the grid needs no registration correction). A cell whose centre is not on
+  when the samples lie on one (tested at the cell centres, to 1e-9, on a grid
+  anchored at the north-west corner of the points' extent). A cell whose centre is not on
   a sample does not hold that sample's value. Cells outside the convex hull are
   nodata, and the result reports `valid_cells` of `total_cells`; where
   `idw_interpolation` fills the whole rectangle and depends on an exponent, this
   has no parameter that shapes the answer. Inside the hull every gap is bridged
   unless `max_triangle_edge_length` is set. Refused rather than answered: two
-  different values at one location (the library keeps one and drops the other),
-  a sample equal to the value the engine writes for an empty cell, fewer than
-  three non-collinear locations, a layer that is not points, a geographic CRS. The check `values_in_expected_range` is the data's own
-  range: a linear interpolant cannot leave it. Requires the `[whitebox]` extra.
+  different values at one location, fewer than three non-collinear locations,
+  a layer that is not points, a field that is missing, not numeric or holding
+  nulls, a geographic CRS. It runs on GEOS and GDAL — a Delaunay triangulation
+  from shapely, the triangles burned onto the grid by rasterio — and nodata is
+  NaN, so no measurement can be mistaken for an empty cell. The check
+  `values_in_expected_range` is the data's own range: a linear interpolant
+  cannot leave it. Requires the `[raster]` extra.
 - **`MAPSMITH_MAX_GRID_CELLS`**, the operator's limit on a grid an operation
   invents (default 10 000 000 cells), and
-  **`MAPSMITH_MAX_TRIANGULATION_POINTS`** (default 250 000), the limit on the
-  distinct locations `tin_interpolation` will triangulate. The second bounds
-  the ordinary case only: `SECURITY.md` says what it does not bound.
+  **`MAPSMITH_MAX_TRIANGULATION_POINTS`** (default 30 000), the limit on the
+  distinct locations `tin_interpolation` will triangulate. The second is set
+  by the worst arrangement measured — points on one circle — and is lower than
+  ordinary data needs; `SECURITY.md` has the figures.
 
 ### Changed
 

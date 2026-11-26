@@ -3734,7 +3734,7 @@ OPERATIONS: list[dict[str, Any]] = [
         'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': 1, 'geometry': ['point']},
         'summary': 'Linear surface on the triangulation (TIN) of a point layer: the surface '
                    'passes through every sample and is nodata beyond their convex hull; the '
-                   'field is REQUIRED. Requires the [whitebox] extra',
+                   'field is REQUIRED. Requires the [raster] extra',
         "phrasings": "the surface must go exactly through the surveyed heights; do not invent values beyond the outermost points; a terrain model from spot heights by triangulation; blank outside the surveyed area; interpolate without choosing a power or a radius; triangulated surface from survey points",
         "distinguishes": "Joins the samples into triangles and reads each cell, at its centre, off "
         "the plane of its triangle: the surface passes through the samples, never leaves their "
@@ -3754,12 +3754,12 @@ OPERATIONS: list[dict[str, Any]] = [
                        'not extrapolate — but inside the hull every gap is bridged unless '
                        "'max_triangle_edge_length' is set; the result reports 'valid_cells' "
                        "of 'total_cells'. Refused rather than answered: a field that is missing, "
-                       'not numeric or holding nulls (the library would interpolate row numbers '
-                       'in their place, with no warning), two different values at one location, '
+                       'not numeric or holding nulls, a row that is not a point, two different '
+                       'values at one location, '
                        "fewer than three non-collinear locations, a geographic CRS. "
                        "'max_triangle_edge_length' leaves nodata in triangles with a longer "
                        'side, to keep the surface from bridging a gap in the sampling. '
-                       'Requires: pip install mapsmith[whitebox].',
+                       'Requires: pip install mapsmith[raster].',
         'parameters': [   {   'name': 'points_path',
                               'type': 'str',
                               'required': True,
@@ -3771,9 +3771,7 @@ OPERATIONS: list[dict[str, Any]] = [
                           {   'name': 'field_name',
                               'type': 'str',
                               'required': True,
-                              'description': 'Numeric attribute to interpolate — required: the '
-                                             'library default interpolates row numbers '
-                                             'without warning'},
+                              'description': 'Numeric attribute to interpolate'},
                           {   'name': 'cell_size',
                               'type': 'float',
                               'required': True,

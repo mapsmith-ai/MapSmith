@@ -95,7 +95,15 @@ def _whitebox():
 # (operation, argument, families that argument accepts, call). `call` receives the
 # layer to put in that argument, the other layers, the raster and an output path.
 def _rows():
-    from mapsmith.engines import linework, network, sampling, spatial_stats, vector, whitebox_engine
+    from mapsmith.engines import (
+        interpolation,
+        linework,
+        network,
+        sampling,
+        spatial_stats,
+        vector,
+        whitebox_engine,
+    )
     from mapsmith.engines import raster as raster_ops
 
     return [
@@ -118,8 +126,8 @@ def _rows():
          lambda lyr, L, r, out: (_whitebox(), whitebox_engine.idw_interpolation(
              lyr, out, field_name="v", cell_size=10.0))),
         ("tin_interpolation", "points_path", {"point"},
-         lambda lyr, L, r, out: (_whitebox(), whitebox_engine.tin_interpolation(
-             lyr, out, field_name="v", cell_size=10.0))),
+         lambda lyr, L, r, out: interpolation.tin_interpolation(
+             lyr, out, field_name="v", cell_size=10.0)),
         ("network_shortest_path", "network_path", {"line"},
          lambda lyr, L, r, out: network.network_shortest_path(
              lyr, out, 0, 0, 100, 100, tolerance=5.0)),

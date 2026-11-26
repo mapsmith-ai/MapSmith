@@ -411,9 +411,9 @@ def _idw_interpolation() -> Callable[..., dict[str, Any]]:
 
 
 def _tin_interpolation() -> Callable[..., dict[str, Any]]:
-    from ..engines import whitebox_engine
+    from ..engines import interpolation
 
-    return whitebox_engine.tin_interpolation
+    return interpolation.tin_interpolation
 
 
 def _voronoi_polygons() -> Callable[..., dict[str, Any]]:
@@ -904,7 +904,7 @@ BINDINGS: dict[str, Binding] = {
         _tin_interpolation,
         ("points_path",),
         "output_path",
-        "whitebox",
+        "raster",
         ("same_as", "points_path"),
         "raster",
     ),

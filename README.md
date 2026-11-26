@@ -472,7 +472,7 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
 | nothing — words alone | 82 | 47% | 31% | 47% |
-| what data I have | 54 | 50% | 34% | 51% |
+| what data I have | 54 | 50% | 33% | 51% |
 | + what I want back | 33 | 61% | 52% | 67% |
 | + how many datasets I have | 18 | 66% | 62% | 89% |
 | **+ what geometry it holds** | **16** | **75%** | **72%** | **99%** |
@@ -481,7 +481,7 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 they read 47%, 32%, 47% and 52%, 35%, 53%. `tin_interpolation` is the eighty-second, and it
 sits beside `idw_interpolation`: both take a point layer and return a surface, so a request
 to interpolate now has two entries answering to the same words. The ranking on the input
-kind alone lost two points under BM25 and one under embeddings, and the embeddings lost one
+kind alone lost two points under BM25 and two under embeddings, and the embeddings lost one
 on words alone. The other three rows are where they were, and the last one — what a caller
 who declares what it knows is handed — did not move.
 

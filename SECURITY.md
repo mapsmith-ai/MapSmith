@@ -431,9 +431,9 @@ from the points and the cell size from the agent, so a few points and a small
 enough cell ask for more cells than any machine holds. Both count the cells
 first and refuse above **`MAPSMITH_MAX_GRID_CELLS`** (default 10 000 000), a
 second environment variable of the server. Measured through the operations
-themselves, from a 12 kB file: 464 MB at peak at that size and 949 MB at
-twenty-five million cells, in three to fourteen seconds. `idw_interpolation`
-had no such bound from 0.3.0 to 0.12.2. `resample_raster` and
+themselves, from a 12 kB file, at that size: 463 MB at peak for
+`idw_interpolation` and 377 MB for `tin_interpolation`, in two to fourteen
+seconds. `idw_interpolation` had no such bound from 0.3.0 to 0.12.2. `resample_raster` and
 `reproject_raster` take a cell size too, and had none either: they now consult
 the same limit, which yields to sixteen times the cells of the raster they were
 given, so that a large input is not refused for being large. Operations that
@@ -448,15 +448,18 @@ product is counted and refused above one hundred times `MAPSMITH_MAX_SAMPLES`,
 and a `min_points` larger than the number of points is refused outright. Both
 were unbounded from 0.3.0 to 0.12.2.
 
-`tin_interpolation` triangulates, and triangulating grows faster than the
-points: measured with points scattered at random, 100 000 take 3 s, 300 000
-take 16 s and 0.8 GB, 600 000 take 69 s and 1.4 GB. It refuses above
-**`MAPSMITH_MAX_TRIANGULATION_POINTS`** (default 250 000). **That limit bounds
-the ordinary case and not the worst one, and this is open**: there are
-arrangements of a few thousand points on which the library takes many times
-longer than on the same number scattered, and no count separates them from a
-survey. Until the triangulation runs under a budget of its own, the bound on
-this operation is the one on the process.
+`tin_interpolation` triangulates, and a triangulation has a worst case that
+the count of points does not show: points lying on one circle, for which a
+Delaunay triangulation has no unique answer. It refuses above
+**`MAPSMITH_MAX_TRIANGULATION_POINTS`** (default 30 000), and the default is
+set by that case rather than by ordinary data. Measured through the
+operation: 30 000 points scattered at random take 1.6 s and 240 MB and
+250 000 take 7.5 s and 0.9 GB, while 30 000 on a circle take 3.4 s and
+50 000 take half a minute in the triangulation alone. The operation was
+first written on the terrain engine and moved to GEOS before it shipped for
+this reason: that engine took 11 s on 6 000 such points and did not finish
+10 000 in 40 s, which no usable limit could have bounded. A limit set by the
+worst arrangement we found is not a proof that there is no worse one.
 
 All of these were found by our own audit while `tin_interpolation` was being
 written, not reported.
