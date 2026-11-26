@@ -184,8 +184,8 @@ below:
   warned of a missing shift that was in fact applied, the direction a reader
   acts on by checking the data, and the data were right.
 
-  Broken in 0.12.2 and earlier, fixed in the release that follows it, found by
-  our own reviews while a new operation was being written, two more. First,
+  Two more were broken in 0.12.2 and earlier and are fixed in 0.13.0, both
+  found by our own reviews while a new operation was being written. First,
   `idw_interpolation` (since 0.3.0) ran to `verified: true` on a surface built
   partly or wholly from row numbers: a field name that is not in the layer and
   a numeric field stored as text made the library interpolate each feature's

@@ -6,6 +6,11 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-26
+
+Records continue to declare `spec_version` `1.0.0-draft.10`; no manifest key is
+new or renamed in this release.
+
 ### Added
 
 - **`tin_interpolation`: a surface that passes through its samples and stops
@@ -14,15 +19,16 @@ All notable changes to MapSmith are documented here, in the format of
   the three samples whose triangle contains it, so the surface passes through
   every measurement, never leaves the range of the data, and gives back a plane
   when the samples lie on one (tested at the cell centres, to 1e-9, on a grid
-  anchored at the north-west corner of the points' extent). A cell whose centre is not on
-  a sample does not hold that sample's value. Cells outside the convex hull are
+  anchored at the north-west corner of the points' extent). A cell whose centre
+  is not on a sample does not hold that sample's value. Cells outside the convex hull are
   nodata, and the result reports `valid_cells` of `total_cells`; where
   `idw_interpolation` fills the whole rectangle and depends on an exponent, this
   has no parameter that shapes the answer. Inside the hull every gap is bridged
   unless `max_triangle_edge_length` is set. Refused rather than answered: two
   different values at one location, fewer than three non-collinear locations,
   a layer that is not points, a field that is missing, not numeric or holding
-  nulls, a geographic CRS. It runs on GEOS and GDAL — a Delaunay triangulation
+  nulls, a geographic CRS, an output path with an `.aux.xml`, `.msk` or `.ovr`
+  file beside it. It runs on GEOS and GDAL — a Delaunay triangulation
   from shapely, the triangles burned onto the grid by rasterio — and nodata is
   NaN, so no measurement can be mistaken for an empty cell. A centre exactly on
   the edge of the surface is part of it, whichever way the edge faces. Where
@@ -100,8 +106,9 @@ All notable changes to MapSmith are documented here, in the format of
   refused outright; so is a grid whose cells would each weigh thousands of
   samples stacked on one location, which cost the same with no radius at all.
   The entitlement of a re-gridded raster stops at sixteen times the limit,
-  because its cell count is read from a header a small file can inflate. A cell size or a resolution that is NaN or infinite is
-  refused as well, where it used to reach the engine. All present since the
+  because its cell count is read from a header a small file can inflate. A
+  cell size or a resolution that is NaN or infinite is refused as well, where
+  it used to reach the engine. All present since the
   operations were added; found by the security audit of `tin_interpolation`.
 
 ## [0.12.2] - 2026-11-13

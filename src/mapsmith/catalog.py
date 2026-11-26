@@ -3672,8 +3672,11 @@ OPERATIONS: list[dict[str, Any]] = [
                        'default; higher makes the surface flatter between points and '
                        'peakier at them) and it is recorded, because an IDW surface '
                        "without its exponent cannot be reproduced. 'cell_size' is read in "
-                       "the point layer's own CRS units, so check them with describe_crs "
-                       'first if the layer is geographic. Requires: pip install '
+                       "the point layer's own CRS units. Refused rather than answered: a "
+                       'CRS that is missing or geographic; a field that is missing, not '
+                       'numeric (a boolean included) or holding nulls; a row that is not a '
+                       "point; a 'min_points' above the number of points; and a layer, a "
+                       "grid or a search over the server's limits. Requires: pip install "
                        'mapsmith[whitebox].',
         'parameters': [   {   'name': 'points_path',
                               'type': 'str',
@@ -3757,7 +3760,10 @@ OPERATIONS: list[dict[str, Any]] = [
                        "of 'total_cells'. Refused rather than answered: a field that is missing, "
                        'not numeric or holding nulls, a row that is not a point, two different '
                        'values at one location, '
-                       "fewer than three non-collinear locations, a geographic CRS. "
+                       "fewer than three non-collinear locations, a CRS that is missing or "
+                       'not projected (a geographic one included), an output path with an '
+                       '.aux.xml, .msk or .ovr file beside it, and a layer or a grid over '
+                       "the server's limits. "
                        "'max_triangle_edge_length' leaves nodata in triangles with a longer "
                        'side, to keep the surface from bridging a gap in the sampling. Where '
                        'four samples admit two valid diagonals — a regular grid of samples — '

@@ -45,7 +45,7 @@ MapSmith's private output: JSON Schema, a toolchain-free validator, a conformanc
 hundred-line emitter that never imports MapSmith. Records carry `spec_version`, and CI validates
 real MapSmith output against the spec's own validator. The specification is archived and citable
 as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213), a concept DOI that
-resolves to the latest *archived* draft. Records written by 0.8.0 to 0.12.2 declare `1.0.0-draft.10`, and
+resolves to the latest *archived* draft. Records written by 0.8.0 to 0.13.0 declare `1.0.0-draft.10`, and
 0.7.x's declare `1.0.0-draft.8`; if the DOI shows an earlier one, the archive has not caught up, and the
 [repository](https://github.com/mapsmith-ai/manifest-spec) holds the text they are written against. The names MapSmith puts
 in a record beyond the ones the specification defines — every extension check name, and every
@@ -223,14 +223,20 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.12.2**, which is what that command installs. On `main`, the
-[Unreleased notes](CHANGELOG.md#unreleased) add `tin_interpolation` and correct
+This page describes **0.13.0**, which is what that command installs. Its
+[release notes](CHANGELOG.md#0130---2026-11-26) add `tin_interpolation` and correct
 `idw_interpolation`, which answered with row numbers for a misspelled, textual or
-null field; a surface made with it from a layer with nulls should be remade. The 0.12.2
-[release notes](CHANGELOG.md#0122---2026-11-13) add benchmark evidence and refreshed
-discovery labels. When `main` runs ahead of
+null field; a surface made with it from a layer with nulls should be remade. They also fix the
+read-back of terrain and hydrology outputs, which checked a second run to the same path against
+the first run's raster, and add `MAPSMITH_MAX_GRID_CELLS` and
+`MAPSMITH_MAX_TRIANGULATION_POINTS`, above which a grid or a triangulation is refused. What the
+engine computed was not affected, but the checks recorded for a terrain output written twice to
+one path by one server process describe the earlier raster: re-run it if you rely on
+them. When `main` runs ahead of
 the published artifact this paragraph says so and names the difference — a reader should never
-have to find out by calling a tool that is not there. **New in 0.12.1**
+have to find out by calling a tool that is not there. **New in 0.12.2**
+([release notes](CHANGELOG.md#0122---2026-11-13)): benchmark evidence and refreshed
+discovery labels. **New in 0.12.1**
 ([release notes](CHANGELOG.md#0121---2026-11-02)): semantic verification of every primary,
 secondary and native geometry CRS declaration in `calculate_field`. **New in 0.12.0**
 ([release notes](CHANGELOG.md#0120---2026-11-02)): restricted numeric and boolean field
@@ -320,7 +326,7 @@ for it:
 ```json
 {
   "spec_version": "1.0.0-draft.10",
-  "producer": {"name": "mapsmith", "version": "0.12.2"},
+  "producer": {"name": "mapsmith", "version": "0.13.0"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{
@@ -471,8 +477,8 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 82 | 47% | 31% | 47% |
-| what data I have | 54 | 50% | 33% | 51% |
+| nothing — words alone | 82 | 48% | 31% | 48% |
+| what data I have | 54 | 51% | 33% | 52% |
 | + what I want back | 33 | 61% | 52% | 67% |
 | + how many datasets I have | 18 | 66% | 62% | 89% |
 | **+ what geometry it holds** | **16** | **75%** | **72%** | **99%** |
@@ -482,8 +488,10 @@ they read 47%, 32%, 47% and 52%, 35%, 53%. `tin_interpolation` is the eighty-sec
 sits beside `idw_interpolation`: both take a point layer and return a surface, so a request
 to interpolate now has two entries answering to the same words. The ranking on the input
 kind alone lost two points under BM25 and two under embeddings, and the embeddings lost one
-on words alone. The other three rows are where they were, and the last one — what a caller
-who declares what it knows is handed — did not move.
+on words alone. BM25 then gained a point on both rows, and not from the new operation:
+in the same release the `idw_interpolation` entry began to say what it refuses, and one
+request reaches it by those words. The other three rows are where they were, and the last
+one — what a caller who declares what it knows is handed — did not move.
 
 **The last row is new on 2026-09-29, and the row above it shows why.** Thirty-one operations
 now take one vector layer to another, one more than the threshold below, so a caller who
@@ -504,7 +512,7 @@ number that had never been reproducible on a machine without the model,
 published under a sentence promising it could be checked.
 
 The two also differ in a way worth seeing. In this run BM25 leads at every
-declaration level, by sixteen points on words alone. The embedding engine earns its
+declaration level, by seventeen points on words alone. The embedding engine earns its
 place on the phrasings it has never seen, not on the ranking once the set is small.
 
 The last column reports whether the accepted answer appears in the returned payload:
@@ -695,11 +703,12 @@ catalog grows:
 **This table used to say the opposite, and the reversal is the finding.** Published at 10/30/51
 it read 78/83, 47/65, 40/55 — embeddings ahead at every size — and the sentence under it said
 BM25 degrades faster, which is why the embedding engine became a dependency rather than an extra.
-Recomputed today the crossover has moved: embeddings still lead on ten entries, and from thirty
-up BM25 leads by a margin that widens with size. Part of that is the catalogue itself, because
+Recomputed today the crossover has moved: embeddings still lead on ten entries, BM25 leads
+on thirty, and on the whole catalogue the two are level. Part of that is the catalogue itself, because
 the distractors are drawn from it and it has grown from fifty-one entries to the last row — which
 is the point rather than a caveat. **The near-neighbour effect the eight-hundred-operation test
-predicted has arrived in our own catalogue**, and the two tables that used to disagree now agree.
+predicted has begun in our own catalogue**: the lead embeddings held at fifty-one entries is gone
+at the last row, where the two engines are level.
 
 The curve is recomputed by `tests/test_retrieval_degradation.py` and compared with this table, so
 it cannot go stale again in silence — which it did for three catalogue sizes.
