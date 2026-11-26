@@ -35,10 +35,12 @@ All notable changes to MapSmith are documented here, in the format of
   interpolant cannot leave it. Requires the `[raster]` extra.
 - **`MAPSMITH_MAX_GRID_CELLS`**, the operator's limit on a grid an operation
   invents (default 10 000 000 cells), and
-  **`MAPSMITH_MAX_TRIANGULATION_POINTS`** (default 30 000), the limit on the
+  **`MAPSMITH_MAX_TRIANGULATION_POINTS`** (default 20 000), the limit on the
   distinct locations `tin_interpolation` will triangulate. The second is set
-  by the worst arrangement measured — points on one circle — and is lower than
-  ordinary data needs; `SECURITY.md` has the figures.
+  by the worst arrangement measured — points on one line with a single one
+  lifted off it — and is lower than ordinary data needs; `SECURITY.md` has the
+  figures. Both interpolators refuse a layer with more coordinates than
+  `MAPSMITH_MAX_SAMPLES`, counted before the coordinates are read.
 
 ### Changed
 
@@ -95,7 +97,10 @@ All notable changes to MapSmith are documented here, in the format of
   weigh every sample (22 s for 250 000 cells and 1 000 points, where the
   default takes 0.4 s): that product is refused above one hundred times
   `MAPSMITH_MAX_SAMPLES`, and a `min_points` above the number of points is
-  refused outright. A cell size or a resolution that is NaN or infinite is
+  refused outright; so is a grid whose cells would each weigh thousands of
+  samples stacked on one location, which cost the same with no radius at all.
+  The entitlement of a re-gridded raster stops at sixteen times the limit,
+  because its cell count is read from a header a small file can inflate. A cell size or a resolution that is NaN or infinite is
   refused as well, where it used to reach the engine. All present since the
   operations were added; found by the security audit of `tin_interpolation`.
 

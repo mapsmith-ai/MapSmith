@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import shapely
 from pyproj import CRS
 
 from .. import grid, limits, readers, verify, workspace
@@ -361,7 +362,8 @@ def _raster_checks(
     """
     import rasterio
 
-    with rasterio.open(output_path) as out:
+    # With PAM off: the file's own tags, not what a sidecar beside it says.
+    with rasterio.Env(GDAL_PAM_ENABLED="NO"), rasterio.open(output_path) as out:
         crs = CRS.from_user_input(out.crs) if out.crs else None
         shape = (out.height, out.width)
         band = out.read(1, masked=True)
@@ -1444,8 +1446,14 @@ def idw_interpolation(
             f"min_points={min_points} asks every cell for more samples than the "
             f"{len(values)} that {points_path} holds."
         )
+    # The most samples at any one location: thousands of rows sharing a point
+    # make every cell weigh all of them, radius or not.
+    _, stacked = np.unique(
+        shapely.get_coordinates(layer.geometry.values), axis=0, return_counts=True
+    )
     limits.refuse_too_much_search(
-        cells, len(values), cell_size, radius, min_points, "idw_interpolation"
+        cells, len(values), cell_size, radius, min_points, "idw_interpolation",
+        coincident=int(stacked.max()),
     )
 
     wbe = wb.WbEnvironment()

@@ -498,7 +498,7 @@ def resample(
         # not gain a phantom column to floating-point noise.
         limits.refuse_too_many_cells(
             right - left, top - bottom, resolution, "resample_raster",
-            entitled=_REGRID_GROWTH * src.width * src.height,
+            entitled=_regrid_entitlement(src),
         )
         width = max(1, math.ceil((right - left) / resolution - _GRID_EPSILON))
         height = max(1, math.ceil((top - bottom) / resolution - _GRID_EPSILON))
@@ -630,9 +630,28 @@ _GRID_EPSILON = 1e-9
 #: `MAPSMITH_MAX_GRID_CELLS` says: halving the cell size twice. The limit is
 #: there for a cell size that turns a hundred cells into sixty-four million
 #: (measured by the security audit of 0.12.2: 4.6 s and 488 MB from a 10 x 10
-#: raster, accepted), not to refuse
-#: a satellite scene for being the size it is.
+#: raster, accepted), not to refuse a satellite scene for being the size it is.
 _REGRID_GROWTH = 16
+
+#: And the most that entitlement may come to, as a multiple of the limit. The
+#: cell count of the input is read from its HEADER: a sparse GeoTIFF of 1.5 kB
+#: can declare 100 000 x 100 000 cells, and sixteen times a number the file
+#: only claims is no bound at all (found by the same audit).
+_REGRID_CEILING = 16
+
+
+def _regrid_entitlement(src: Any) -> int:
+    """The cells a re-gridded raster may have whatever the limit says.
+
+    One row and one column more than the input before multiplying, because
+    the limit counts one more of each than the grid needs: without them,
+    halving the cell size twice — exactly sixteen times the cells — was
+    refused by the margin.
+    """
+    return min(
+        _REGRID_GROWTH * (src.width + 1) * (src.height + 1),
+        _REGRID_CEILING * limits.max_grid_cells(),
+    )
 
 
 def _datum_shift_check(shift: dict[str, Any], twin: tuple[str, str] | None = None) -> Any:
@@ -1360,7 +1379,7 @@ def reproject_raster(
             # square — under a manifest that recorded 30.
             limits.refuse_too_many_cells(
                 right - left, top - bottom, resolution, "reproject_raster",
-                entitled=_REGRID_GROWTH * src.width * src.height,
+                entitled=_regrid_entitlement(src),
             )
             width = max(1, math.ceil((right - left) / resolution - _GRID_EPSILON))
             height = max(1, math.ceil((top - bottom) / resolution - _GRID_EPSILON))

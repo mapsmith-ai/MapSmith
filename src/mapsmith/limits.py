@@ -61,13 +61,14 @@ def max_grid_cells() -> int:
 
 MAX_TRIANGULATION_POINTS_ENV = "MAPSMITH_MAX_TRIANGULATION_POINTS"
 
-#: Set by the worst arrangement measured, not by the ordinary one. Through
-#: `tin_interpolation`, on GEOS 3.13: 30 000 points scattered at random take
-#: 1.6 s and 240 MB, 250 000 take 7.5 s and 0.9 GB — but 30 000 points on one
-#: circle take 3.4 s and 50 000 take half a minute in the triangulation alone,
-#: because points on a common circle are the case a Delaunay triangulation has
-#: no unique answer for. An operator whose callers are trusted raises it.
-DEFAULT_MAX_TRIANGULATION_POINTS = 30_000
+#: Set by the worst arrangement measured, not by the ordinary one. On GEOS 3.13,
+#: triangulation alone: 20 000 points scattered at random take a fraction of a
+#: second and 250 000 take six — but 20 000 points on one line with the last
+#: one lifted off it take 10 s and 30 000 take 39 s, cubic in the points, and
+#: 50 000 on one circle take half a minute. Both are arrangements a Delaunay
+#: triangulation has no good answer for, and neither needs a large file. An
+#: operator whose callers are trusted raises it.
+DEFAULT_MAX_TRIANGULATION_POINTS = 20_000
 
 #: How many cell-by-sample evaluations a search radius may ask of an
 #: interpolator, as a multiple of `MAPSMITH_MAX_SAMPLES`: 100 million by
@@ -94,8 +95,31 @@ def refuse_too_many_points(count: int, operation: str) -> None:
         )
 
 
+def refuse_too_many_coordinates(count: int, operation: str) -> None:
+    """Refuse a point layer with more coordinates than `MAPSMITH_MAX_SAMPLES`.
+
+    Counted from the geometries' headers, before a coordinate array exists:
+    one row holding a MultiPoint of four million parts is a 69 MB file that
+    cost 2.8 GB to sort before the limit on distinct locations was consulted.
+    """
+    cap = max_samples()
+    if count > cap:
+        raise ValueError(
+            f"{operation} was given {count:,} coordinates, over this server's limit "
+            f"of {cap:,}. Thin the points first, or ask the operator to raise "
+            f"{MAX_SAMPLES_ENV}: it is a setting of the server, not an argument of "
+            "the tool."
+        )
+
+
 def refuse_too_much_search(
-    cells: int, points: int, cell_size: float, radius: float, min_points: int, operation: str
+    cells: int,
+    points: int,
+    cell_size: float,
+    radius: float,
+    min_points: int,
+    operation: str,
+    coincident: int = 1,
 ) -> None:
     """Refuse a search radius or a neighbour count that turns a grid into cells x points.
 
@@ -107,17 +131,26 @@ def refuse_too_much_search(
     in proportion to the cells it covers — the same 0.4 s at a twentieth of the
     extent — so the count below is the samples times the cells one radius
     reaches, whichever way the samples are clustered.
+
+    `coincident` is the largest number of samples at one location. "Near each
+    cell" stops meaning few when thousands of rows share a point: measured by
+    the audit, 20 000 identical points make a 250 000-cell grid take 11 s with
+    no radius and no minimum, and 100 000 did not finish two million cells in
+    two minutes. Every cell weighs all of them, so that product is counted too.
     """
     reached = 0.0
     if radius > 0:
         reached = points * min(float(cells), math.pi * (radius / cell_size) ** 2)
     wanted = float(cells) * min(min_points, points) if min_points > 0 else 0.0
-    work = max(reached, wanted)
+    stacked = float(cells) * coincident if coincident > 1 else 0.0
+    work = max(reached, wanted, stacked)
     cap = SEARCH_WORK_PER_SAMPLE * max_samples()
     if not math.isfinite(work) or work > cap:
         raise ValueError(
             f"{operation} with radius={radius} and min_points={min_points} over "
-            f"{cells:,} cells and {points:,} points would weigh about "
+            f"{cells:,} cells and {points:,} points"
+            + (f", {coincident:,} of them at one location," if coincident > 1 else "")
+            + " would weigh about "
             f"{min(work, 1e15):,.0f} cell-sample pairs, over this server's limit of "
             f"{cap:,}. Use a smaller radius, a smaller min_points or a larger cell "
             f"size, or ask the operator to raise {MAX_SAMPLES_ENV}: it is a setting "

@@ -23,6 +23,7 @@ Optional extra: ``pip install mapsmith[raster]``.
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -64,6 +65,29 @@ def _engine_info(rasterio: Any) -> dict[str, str]:
             f"rasterio {rasterio.__version__} (GDAL {rasterio.__gdal_version__})"
         ),
     }
+
+
+#: Files GDAL reads beside a GeoTIFF, ahead of or along with the file's own tags.
+_SIDECARS = (".aux.xml", ".msk", ".ovr")
+
+
+def _refuse_sidecars(output_path: str) -> None:
+    """Refuse to write a raster beside files that would change how it reads.
+
+    GDAL's PAM layer reads `<output>.aux.xml` before the GeoTIFF's own tags.
+    Measured by the audit with one placed there first: a different CRS and
+    geotransform came back from the read-back, and — the quiet case — a
+    `NoDataValue` of the placer's choosing replaced NaN with every check green.
+    The record's digest covers the raster and not the sidecar, so a reader
+    opening the pair through GDAL would not be reading what was verified.
+    """
+    present = [suffix for suffix in _SIDECARS if Path(f"{output_path}{suffix}").exists()]
+    if present:
+        raise ValueError(
+            f"{output_path} has {present} beside it: GDAL would read the raster "
+            "through them, and the record would describe a file no reader sees. "
+            "Remove them, or write to another path."
+        )
 
 
 def sample_values(
@@ -110,6 +134,10 @@ def sample_values(
             "A value belongs to a location: take centroid_layer or point_on_surface "
             "first, and say which."
         )
+    # Counted from the geometry headers, before any coordinate array is made.
+    limits.refuse_too_many_coordinates(
+        int(shapely.get_num_coordinates(geometry.values).sum()), operation
+    )
     if len(layer) and not np.isfinite(shapely.get_coordinates(geometry.values)).all():
         raise ValueError(
             f"{points_path} has points whose coordinates are not finite numbers."
@@ -163,6 +191,8 @@ def _distinct_samples(
     is older than this engine.
     """
     distinct, inverse = np.unique(coordinates, axis=0, return_inverse=True)
+    # As soon as the count exists, and before the hull and the grouping below.
+    limits.refuse_too_many_points(len(distinct), "tin_interpolation")
     inverse = np.asarray(inverse).reshape(-1)
     lowest = np.full(len(distinct), np.inf)
     highest = np.full(len(distinct), -np.inf)
@@ -432,6 +462,7 @@ def tin_interpolation(
     rasterio, features = _require()
     from rasterio.transform import from_origin
 
+    _refuse_sidecars(output_path)
     # `True > 0` holds, and a cell size of True made a grid of one-unit cells.
     if isinstance(cell_size, bool) or not (cell_size > 0 and math.isfinite(cell_size)):
         raise ValueError(f"cell_size must be positive and finite, got {cell_size}")
@@ -477,15 +508,15 @@ def tin_interpolation(
     values, _cells = sample_values(layer, field_name, points_path, cell_size, "tin_interpolation")
     # One row per coordinate, with its value: a MultiPoint lends its value to
     # each of its parts.
-    coordinates, owner = shapely.get_coordinates(geometry.values, return_index=True)
     # Before anything is sorted. The limit is on DISTINCT locations, which costs
     # a sort to know, and three million rows took 18 s to be refused; a layer
     # sixteen times over the limit is not waiting on its duplicates.
-    if len(coordinates) > 16 * limits.max_triangulation_points():
-        limits.refuse_too_many_points(len(coordinates), "tin_interpolation")
+    given = int(shapely.get_num_coordinates(geometry.values).sum())
+    if given > 16 * limits.max_triangulation_points():
+        limits.refuse_too_many_points(given, "tin_interpolation")
+    coordinates, owner = shapely.get_coordinates(geometry.values, return_index=True)
     sample = values[owner]
     distinct, heights = _distinct_samples(coordinates, sample, points_path, field_name)
-    limits.refuse_too_many_points(len(distinct), "tin_interpolation")
     pre = verify.verify_loaded_inputs("tin_interpolation", points_path=layer)
 
     record = ProvenanceRecord(
@@ -584,7 +615,8 @@ def tin_interpolation(
     margin = 1e-9 * max(1.0, abs(low), abs(high))
 
     def checks() -> list[verify.Check]:
-        with rasterio.open(output_path) as written:
+        # With PAM off: the file's own tags, not a sidecar's reading of them.
+        with rasterio.Env(GDAL_PAM_ENABLED="NO"), rasterio.open(output_path) as written:
             found_crs = written.crs
             shape = (written.height, written.width)
             found_transform = written.transform

@@ -483,3 +483,56 @@ def test_a_cell_larger_than_the_triangles_fails_with_a_hint_that_names_it(tmp_pa
     empty = next(c for c in record["verification"] if c["name"] == "result_not_empty")
     assert empty["passed"] is False
     assert "cell size is larger than the triangles" in empty["hint"]
+
+
+# -------------------------------------------- what a file may ask for
+
+
+def test_a_multipoint_of_a_million_parts_is_refused_from_its_header(tmp_path, monkeypatch):
+    """One row, one geometry, and the coordinates counted before any array of
+    them exists: four million parts in a 69 MB file cost 2.8 GB to sort before
+    the limit on distinct locations was looked at."""
+    from shapely.geometry import MultiPoint
+
+    rng = np.random.default_rng(8)
+    path = tmp_path / "one_row.parquet"
+    gpd.GeoDataFrame(
+        {"mm": [1.0]}, geometry=[MultiPoint(rng.random((2000, 2)) * 100)], crs="EPSG:32632"
+    ).to_parquet(path)
+    monkeypatch.setenv("MAPSMITH_MAX_SAMPLES", "1000")
+    looked = []
+    monkeypatch.setattr(interpolation.shapely, "get_coordinates", lambda *a, **k: looked.append(a))
+    with pytest.raises(ValueError, match="2,000 coordinates, over this server's limit of 1,000"):
+        interpolation.tin_interpolation(
+            str(path), str(tmp_path / "x.tif"), field_name="mm", cell_size=1.0
+        )
+    assert not looked
+
+
+@pytest.mark.parametrize("suffix", [".aux.xml", ".msk", ".ovr"])
+def test_a_tin_refuses_to_write_beside_a_file_gdal_would_read_first(suffix, tmp_path):
+    """A `.aux.xml` placed beside the output path answered the read-back in the
+    raster's place: a NoDataValue of the placer's choosing, every check green."""
+    source = _points(tmp_path, "sq", [1.0, 2.0, 3.0, 4.0], _SQUARE)
+    out = tmp_path / "tin.tif"
+    Path(f"{out}{suffix}").write_text("<PAMDataset/>", encoding="utf-8")
+    with pytest.raises(ValueError, match="beside it"):
+        interpolation.tin_interpolation(str(source), str(out), field_name="mm", cell_size=10.0)
+    assert not out.exists()
+
+
+def test_the_read_back_is_of_the_raster_and_not_of_a_sidecar_that_arrives_later(tmp_path):
+    """The check reads with PAM off: what it reports is in the file whose digest
+    the record carries."""
+    source = _points(tmp_path, "sq", [1.0, 2.0, 3.0, 4.0], _SQUARE)
+    out = tmp_path / "tin.tif"
+    interpolation.tin_interpolation(source, str(out), field_name="mm", cell_size=10.0)
+    Path(f"{out}.aux.xml").write_text(
+        "<PAMDataset><PAMRasterBand band=\"1\"><NoDataValue>2.5</NoDataValue>"
+        "</PAMRasterBand></PAMDataset>",
+        encoding="utf-8",
+    )
+    with rasterio.open(out) as through_the_sidecar:
+        assert through_the_sidecar.nodata == 2.5
+    with rasterio.Env(GDAL_PAM_ENABLED="NO"), rasterio.open(out) as the_file:
+        assert np.isnan(the_file.nodata)

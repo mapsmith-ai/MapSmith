@@ -200,6 +200,10 @@ below:
   recorded as checked — `checks` describing a raster that was no longer on
   disk beside the `output.sha256` of the one that was. What the engine
   computed was not affected: an input changed at the same path is read fresh.
+  The read-back now goes through GDAL with its sidecar layer off, and
+  `tin_interpolation` refuses to write beside an `.aux.xml`, `.msk` or `.ovr`
+  already at the output path: such a file answers a reader ahead of the
+  raster's own tags, and the record's digest does not cover it.
   A surface made by `idw_interpolation` from a layer with missing readings
   should be remade; a record of a terrain output written twice to one path by
   one server process should be regenerated before it is relied on.
@@ -440,8 +444,10 @@ themselves, from a 12 kB file, at that size: 463 MB at peak for
 seconds. `idw_interpolation` had no such bound from 0.3.0 to 0.12.2. `resample_raster` and
 `reproject_raster` take a cell size too, and had none either: they now consult
 the same limit, which yields to sixteen times the cells of the raster they were
-given, so that a large input is not refused for being large. Operations that
-take a reference raster are bounded by it.
+given, so that a large input is not refused for being large — and to no more
+than sixteen times the limit itself, because that count is read from the
+file's header and a sparse file of a kilobyte can declare ten billion cells.
+Operations that take a reference raster are bounded by it.
 
 Two more arguments of `idw_interpolation` size the work rather than the
 output. A search `radius` makes every cell weigh every sample inside it, and
@@ -449,21 +455,29 @@ output. A search `radius` makes every cell weigh every sample inside it, and
 the cells times the samples reached (measured: 250 000 cells and 1 000 samples
 take 0.4 s as they are and 22 s with a radius wider than the layer). That
 product is counted and refused above one hundred times `MAPSMITH_MAX_SAMPLES`,
-and a `min_points` larger than the number of points is refused outright. Both
-were unbounded from 0.3.0 to 0.12.2.
+and a `min_points` larger than the number of points is refused outright. With
+neither, the cost follows the grid only while the samples are apart: thousands
+of rows at one location make every cell weigh all of them (measured: 20 000
+identical points, 250 000 cells, 11 s), so the cells times the largest number
+of samples at one location is counted against the same budget. All three were
+unbounded from 0.3.0 to 0.12.2. Both interpolators also refuse a layer with
+more coordinates than `MAPSMITH_MAX_SAMPLES`, counted before the coordinates
+are read out of the geometries: one row can hold a MultiPoint of millions.
 
-`tin_interpolation` triangulates, and a triangulation has a worst case that
-the count of points does not show: points lying on one circle, for which a
-Delaunay triangulation has no unique answer. It refuses above
-**`MAPSMITH_MAX_TRIANGULATION_POINTS`** (default 30 000), and the default is
-set by that case rather than by ordinary data. Measured through the
-operation: 30 000 points scattered at random take 1.6 s and 240 MB and
-250 000 take 7.5 s and 0.9 GB, while 30 000 on a circle take 3.4 s and
-50 000 take half a minute in the triangulation alone. The operation was
-first written on the terrain engine and moved to GEOS before it shipped for
-this reason: that engine took 11 s on 6 000 such points and did not finish
-10 000 in 40 s, which no usable limit could have bounded. A limit set by the
-worst arrangement we found is not a proof that there is no worse one.
+`tin_interpolation` triangulates, and a triangulation has worst cases that the
+count of points does not show. It refuses above
+**`MAPSMITH_MAX_TRIANGULATION_POINTS`** (default 20 000), and the default is
+set by the worst of them rather than by ordinary data. Measured on GEOS 3.13,
+triangulation alone: 20 000 points scattered at random take a fraction of a
+second and 250 000 take six; 20 000 on one line with a single point lifted
+off it take 10 s and 30 000 take 39 s, cubic in the points; 30 000 on one
+circle take 2 s and 50 000 half a minute. The operation was first written on
+the terrain engine and moved to GEOS before it shipped: that engine took 11 s
+on 6 000 points on a circle and did not finish 10 000 in 40 s, which no
+usable limit could have bounded. Two reviews each found a case worse than the
+one before; a limit set by the worst arrangement found so far is not a proof
+that there is no worse one, and the bound that does not depend on our
+imagination is the one on the process.
 
 All of these were found by our own audit while `tin_interpolation` was being
 written, not reported.

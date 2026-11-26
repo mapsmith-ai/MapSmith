@@ -115,6 +115,22 @@ def test_a_search_is_counted_as_the_cells_each_sample_reaches():
             limits.refuse_too_much_search(250_000, 1000, 2.0, radius, min_points, "op")
 
 
+def test_samples_stacked_on_one_location_count_against_every_cell():
+    """No radius and no minimum, and still cells x samples: measured, 20 000
+    identical points make 250 000 cells take 11 s where 1 000 scattered take 0.4."""
+    limits.refuse_too_much_search(250_000, 20_000, 2.0, 0.0, 0, "op")
+    limits.refuse_too_much_search(250_000, 20_000, 2.0, 0.0, 0, "op", coincident=300)
+    with pytest.raises(ValueError, match="20,000 of them at one location"):
+        limits.refuse_too_much_search(250_000, 20_001, 2.0, 0.0, 0, "op", coincident=20_000)
+
+
+def test_a_layer_with_more_coordinates_than_the_sample_limit_is_refused(monkeypatch):
+    limits.refuse_too_many_coordinates(limits.DEFAULT_MAX_SAMPLES, "op")
+    monkeypatch.setenv(limits.MAX_SAMPLES_ENV, "10")
+    with pytest.raises(ValueError, match="11 coordinates, over this server's limit of 10"):
+        limits.refuse_too_many_coordinates(11, "op")
+
+
 @pytest.mark.parametrize("cell_size", [1e-300, 1e-320])
 def test_a_cell_size_too_small_to_count_is_refused_as_a_size_not_as_an_overflow(cell_size):
     """`math.floor(inf)` raises OverflowError; 1e-300 would print a hundred digits."""

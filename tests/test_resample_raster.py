@@ -148,6 +148,25 @@ def test_a_cell_size_that_invents_a_huge_grid_is_refused_before_it_is_allocated(
             raster.resample(landcover, str(tmp_path / "x.tif"), bad, "nearest")
 
 
+def test_the_entitlement_of_a_raster_is_sixteen_times_its_cells_and_no_more_than_that(
+    landcover, tmp_path, monkeypatch
+):
+    """Halving the cell size twice is allowed under a limit it exceeds, exactly:
+    2 x 2 at 20 m becomes 8 x 8 at 5 m with a limit of ten cells. And the
+    entitlement has a ceiling of its own, sixteen times the limit, because the
+    cell count of the input is read from its header and a sparse file of a
+    kilobyte can claim ten billion."""
+    monkeypatch.setenv("MAPSMITH_MAX_GRID_CELLS", "10")
+    raster.resample(landcover, str(tmp_path / "quartered.tif"), 5.0, "nearest")
+    with rasterio.open(tmp_path / "quartered.tif") as ds:
+        assert (ds.height, ds.width) == (8, 8)
+    # At a limit of one cell the ceiling is sixteen: 5 x 5 by the limit's count
+    # of a 4 x 4 grid is over it, though the input alone would have entitled 144.
+    monkeypatch.setenv("MAPSMITH_MAX_GRID_CELLS", "1")
+    with pytest.raises(ValueError, match="MAPSMITH_MAX_GRID_CELLS"):
+        raster.resample(landcover, str(tmp_path / "x.tif"), 10.0, "nearest")
+
+
 def test_a_raster_without_a_crs_is_refused(tmp_path):
     naked = tmp_path / "naked.tif"
     with rasterio.open(
