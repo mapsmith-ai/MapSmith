@@ -744,16 +744,17 @@ organisation on purpose: an evaluation that lives inside the thing it
 evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
-What it says about MapSmith 0.11.0 (all thirty families, engine tier, `spec_commit`
-[`24c9fd0`](https://github.com/argleton/argleton/tree/main/results/2026-10-30-multi-step-selection)):
+What it says about MapSmith 0.12.2 (all thirty families, engine tier, `spec_commit`
+[`b6051b2`](https://github.com/argleton/argleton/tree/main/results/2026-11-26-mapsmith-v0-12-2)):
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
 | MapSmith | **0.00** | 1.00 | 33 | 0 |
 | naive composition (read file, take statistic) | 0.8788 | 1.00 | 33 | 0 |
 
-The current run measures the 0.11.0 release and adds a multi-step selection with
-ordered IDs. MapSmith answers the new trap and its clean control correctly. The runs from
+The current run measures the 0.12.2 release; every verdict matches the run of 2026-10-30
+on 0.11.0, which added a multi-step selection with ordered IDs that MapSmith answers
+correctly, trap and clean control. The runs from
 2026-08-30 to 2026-09-15 scored trap 024 against a wrong truth in MapSmith's favour: the
 [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) recounts them,
 and the section below the next one says what the trap was and why the fix made it worse.
