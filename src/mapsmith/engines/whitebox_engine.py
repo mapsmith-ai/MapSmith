@@ -1403,7 +1403,7 @@ def idw_interpolation(
     "the cell size is read in that CRS's units" as though that settled it.
     """
     wb = _require()
-    if not (cell_size > 0 and math.isfinite(cell_size)):
+    if isinstance(cell_size, bool) or not (cell_size > 0 and math.isfinite(cell_size)):
         raise ValueError(f"cell_size must be positive and finite, got {cell_size}")
     if not field_name or not str(field_name).strip():
         raise ValueError(

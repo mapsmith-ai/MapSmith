@@ -3751,14 +3751,19 @@ OPERATIONS: list[dict[str, Any]] = [
                        'plane back. A cell holds the surface at its CENTRE, so a cell whose '
                        'centre is not on a sample does not hold that sample\'s value. Cells '
                        'outside the convex hull of the points are nodata — a triangulation does '
-                       'not extrapolate — but inside the hull every gap is bridged unless '
+                       'not extrapolate — and a centre exactly on the edge of the surface is '
+                       'part of it; inside the hull every gap is bridged unless '
                        "'max_triangle_edge_length' is set; the result reports 'valid_cells' "
                        "of 'total_cells'. Refused rather than answered: a field that is missing, "
                        'not numeric or holding nulls, a row that is not a point, two different '
                        'values at one location, '
                        "fewer than three non-collinear locations, a geographic CRS. "
                        "'max_triangle_edge_length' leaves nodata in triangles with a longer "
-                       'side, to keep the surface from bridging a gap in the sampling. '
+                       'side, to keep the surface from bridging a gap in the sampling. Where '
+                       'four samples lie on one circle — a regular grid of samples — the '
+                       'triangulation has two valid diagonals and takes one: the result counts '
+                       "them in 'ambiguous_quadrilaterals'. A z coordinate is not read; a "
+                       'MultiPoint lends its value to each of its parts. '
                        'Requires: pip install mapsmith[raster].',
         'parameters': [   {   'name': 'points_path',
                               'type': 'str',

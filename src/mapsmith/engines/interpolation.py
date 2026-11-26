@@ -189,9 +189,18 @@ def _distinct_samples(
 
 def _triangles(
     distinct: np.ndarray, heights: np.ndarray, max_edge: float | None
-) -> tuple[np.ndarray, np.ndarray]:
-    """Corners (n, 3, 2) and the value at each corner (n, 3) of the Delaunay triangles."""
-    parts = shapely.get_parts(shapely.delaunay_triangles(shapely.MultiPoint(distinct)))
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The Delaunay triangles: corners (n, 3, 2), the value at each corner (n, 3),
+    and which sample each corner is (n, 3)."""
+    try:
+        parts = shapely.get_parts(shapely.delaunay_triangles(shapely.MultiPoint(distinct)))
+    except shapely.errors.GEOSException as exc:
+        # Measured with coordinates of magnitude 1e-300: GEOS gives up locating a
+        # point, and its exception is not a sentence a caller can act on.
+        raise ValueError(
+            f"the points could not be triangulated ({exc}). Their coordinates are "
+            "probably of a magnitude no projected coordinate system produces."
+        ) from exc
     corners = shapely.get_coordinates(parts).reshape(-1, 4, 2)[:, :3, :]
     known = pd.MultiIndex.from_arrays([distinct[:, 0], distinct[:, 1]])
     asked = pd.MultiIndex.from_arrays([corners[:, :, 0].ravel(), corners[:, :, 1].ravel()])
@@ -205,11 +214,124 @@ def _triangles(
             "tin_interpolation cannot say what value it holds"
         )
     corner_values = heights[position].reshape(-1, 3)
+    vertices = position.reshape(-1, 3)
     if max_edge is not None:
         sides = np.linalg.norm(corners - np.roll(corners, -1, axis=1), axis=2)
         keep = (sides <= max_edge).all(axis=1)
-        corners, corner_values = corners[keep], corner_values[keep]
-    return corners, corner_values
+        corners, corner_values, vertices = corners[keep], corner_values[keep], vertices[keep]
+    return corners, corner_values, vertices
+
+
+def _edges(vertices: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Every side of every triangle as a sorted pair of samples, and the order that
+    groups equal sides: side `3 * t + k` runs from corner k of triangle t to the next."""
+    sides = np.stack(
+        [vertices[:, [0, 1]], vertices[:, [1, 2]], vertices[:, [2, 0]]], axis=1
+    ).reshape(-1, 2)
+    sides = np.sort(sides, axis=1)
+    return sides, np.lexsort((sides[:, 1], sides[:, 0]))
+
+
+def _cocircular_pairs(corners: np.ndarray, vertices: np.ndarray) -> int:
+    """How many pairs of adjacent triangles have their four corners on one circle.
+
+    There the Delaunay triangulation is not unique: the quadrilateral has two
+    diagonals and both satisfy the criterion, so the library takes one and the
+    surface inside the quadrilateral follows it. Measured on a 6 x 6 lattice of
+    samples: mirroring the points changes cells by up to 37 on values of 0 to
+    100. A lattice is the common case, which is why this is counted and said
+    rather than left as "no parameter shapes the surface".
+
+    The test is the in-circle determinant, taken about the fourth point and
+    compared with rounding at the size of the quadrilateral.
+    """
+    if len(vertices) < 2:
+        return 0
+    sides, order = _edges(vertices)
+    grouped = sides[order]
+    shared = np.flatnonzero((grouped[1:] == grouped[:-1]).all(axis=1))
+    if not shared.size:
+        return 0
+    one, other = order[shared], order[shared + 1]
+    a = corners[one // 3, one % 3]
+    b = corners[one // 3, (one % 3 + 1) % 3]
+    c = corners[one // 3, (one % 3 + 2) % 3]
+    d = corners[other // 3, (other % 3 + 2) % 3]
+    ax, ay = (a - d).T
+    bx, by = (b - d).T
+    cx, cy = (c - d).T
+    a2, b2, c2 = ax * ax + ay * ay, bx * bx + by * by, cx * cx + cy * cy
+    determinant = (
+        a2 * (bx * cy - by * cx) - b2 * (ax * cy - ay * cx) + c2 * (ax * by - ay * bx)
+    )
+    scale = np.maximum(np.maximum(a2, b2), c2) ** 2
+    return int((np.abs(determinant) <= 1e-9 * scale).sum())
+
+
+def _take_cells_on_the_edge(
+    features: Any,
+    burned: np.ndarray,
+    corners: np.ndarray,
+    vertices: np.ndarray,
+    transform: Any,
+    west: float,
+    north: float,
+    cell_size: float,
+) -> int:
+    """Give the surface the cells whose centre lies exactly ON its edge.
+
+    The rasteriser's rule is half-open, as it must be for two polygons that
+    share a side not to burn a cell twice: a centre on an edge facing east is
+    in, on one facing west it is out. Between two triangles that is invisible.
+    On the edge of the SURFACE it made the answer depend on which way the
+    survey faces — measured: a right triangle with its hypotenuse through ten
+    cell centres kept those ten, and the same triangle mirrored lost them.
+
+    So the sides that belong to one triangle only — the hull, and the border of
+    whatever `max_triangle_edge_length` removed — are walked again: the cells
+    they touch and the rasteriser left empty are tested with GEOS's exact
+    predicate, and a centre that is on a triangle is given to it. The lowest
+    triangle wins a centre that two could claim; they agree on its value.
+    """
+    if not len(vertices):
+        return 0
+    sides, order = _edges(vertices)
+    grouped = sides[order]
+    same_as_next = np.zeros(len(order), dtype=bool)
+    same_as_next[:-1] = (grouped[1:] == grouped[:-1]).all(axis=1)
+    alone = ~same_as_next
+    alone[1:] &= ~same_as_next[:-1]
+    lone = order[alone]
+    triangle, corner = lone // 3, lone % 3
+    start, end = corners[triangle, corner], corners[triangle, (corner + 1) % 3]
+    touched = features.rasterize(
+        (
+            ({"type": "LineString", "coordinates": [first, last]}, 1)
+            for first, last in zip(start.tolist(), end.tolist(), strict=True)
+        ),
+        out_shape=burned.shape,
+        transform=transform,
+        fill=0,
+        dtype="uint8",
+        all_touched=True,
+    )
+    rows, columns = np.nonzero((touched == 1) & (burned == 0))
+    if not rows.size:
+        return 0
+    xs = west + (columns + grid.SAMPLE_OFFSET) * cell_size
+    ys = north - (rows + grid.SAMPLE_OFFSET) * cell_size
+    bordering = np.unique(triangle)
+    rings = np.concatenate([corners[bordering], corners[bordering][:, :1, :]], axis=1)
+    tree = shapely.STRtree(shapely.polygons(rings))
+    centre, hit = tree.query(shapely.points(xs, ys), predicate="intersects")
+    if not centre.size:
+        return 0
+    claimed = np.lexsort((bordering[hit], centre))
+    centre, hit = centre[claimed], hit[claimed]
+    first = np.ones(len(centre), dtype=bool)
+    first[1:] = centre[1:] != centre[:-1]
+    burned[rows[centre[first]], columns[centre[first]]] = bordering[hit[first]] + 1
+    return int(first.sum())
 
 
 def _surface(
@@ -279,14 +401,24 @@ def tin_interpolation(
       hold that sample's value.
     - **It does not extrapolate.** Cells whose centre is outside the convex hull
       of the points are nodata (NaN), where IDW fills the whole rectangle with
-      numbers that look as measured as the rest. Inside the hull every gap is
-      bridged unless `max_triangle_edge_length` says otherwise. `valid_cells`
-      in the result says how much of the grid the triangulation covered.
+      numbers that look as measured as the rest. A centre exactly on the edge
+      of the surface is part of it. Inside the hull every gap is bridged unless
+      `max_triangle_edge_length` says otherwise. `valid_cells` in the result
+      says how much of the grid the triangulation covered.
     - **A trend is reproduced, not flattened.** Samples lying on a plane give
       back that plane; IDW bends it into a bullseye around each point.
 
     The grid is anchored at the north-west corner of the points' extent, with
     cells of exactly `cell_size`, and grows outward to the next whole cell.
+
+    "No parameter shapes it" has one exception that is the data's and not a
+    parameter: where four samples lie on one circle — a regular grid of samples
+    is the common case — the triangulation has two equally valid diagonals, the
+    library takes one, and the surface inside that quadrilateral follows it.
+    The result counts them (`ambiguous_quadrilaterals`) and the record says so.
+
+    A location is its x and y: a z coordinate is not read. A MultiPoint lends
+    its value to each of its parts.
 
     A geographic CRS is refused for the reason `idw_interpolation` gives and
     one more: which three samples make a triangle is decided by distances, and
@@ -300,12 +432,14 @@ def tin_interpolation(
     rasterio, features = _require()
     from rasterio.transform import from_origin
 
-    if not (cell_size > 0 and math.isfinite(cell_size)):
+    # `True > 0` holds, and a cell size of True made a grid of one-unit cells.
+    if isinstance(cell_size, bool) or not (cell_size > 0 and math.isfinite(cell_size)):
         raise ValueError(f"cell_size must be positive and finite, got {cell_size}")
     if not field_name or not str(field_name).strip():
         raise ValueError("field_name is required: name the attribute to interpolate.")
-    if max_triangle_edge_length is not None and not (
-        max_triangle_edge_length > 0 and math.isfinite(max_triangle_edge_length)
+    if max_triangle_edge_length is not None and (
+        isinstance(max_triangle_edge_length, bool)
+        or not (max_triangle_edge_length > 0 and math.isfinite(max_triangle_edge_length))
     ):
         raise ValueError(
             "max_triangle_edge_length must be positive and finite, got "
@@ -329,11 +463,26 @@ def tin_interpolation(
             "up joined and the surface changes with nothing to show for it. "
             "Reproject to a projected CRS first."
         )
+    if not crs.is_projected:
+        # An engineering (LOCAL_CS) or a geocentric system is neither. The first
+        # used to pass this gate, be written, and fail afterwards on a CRS GDAL
+        # could not write back; the second produced a raster of a plane through
+        # the Earth.
+        raise ValueError(
+            f"tin_interpolation needs a projected CRS, and {points_path} is in "
+            f"{verify.crs_label(crs)}, which is neither projected nor geographic. "
+            "A raster is a grid on a map plane: reproject the points to one first."
+        )
     geometry = layer.geometry
     values, _cells = sample_values(layer, field_name, points_path, cell_size, "tin_interpolation")
     # One row per coordinate, with its value: a MultiPoint lends its value to
     # each of its parts.
     coordinates, owner = shapely.get_coordinates(geometry.values, return_index=True)
+    # Before anything is sorted. The limit is on DISTINCT locations, which costs
+    # a sort to know, and three million rows took 18 s to be refused; a layer
+    # sixteen times over the limit is not waiting on its duplicates.
+    if len(coordinates) > 16 * limits.max_triangulation_points():
+        limits.refuse_too_many_points(len(coordinates), "tin_interpolation")
     sample = values[owner]
     distinct, heights = _distinct_samples(coordinates, sample, points_path, field_name)
     limits.refuse_too_many_points(len(distinct), "tin_interpolation")
@@ -377,7 +526,9 @@ def tin_interpolation(
     low, high = float(heights.min()), float(heights.max())
 
     with verify.audit_on_failure(record, output_path, pre):
-        corners, corner_values = _triangles(distinct, heights, max_triangle_edge_length)
+        corners, corner_values, vertices = _triangles(
+            distinct, heights, max_triangle_edge_length
+        )
         if len(corners):
             # Plain mappings and not geometry objects: handed 200 000 shapely
             # polygons this call took 38 s, handed the same rings as lists, 1 s.
@@ -394,6 +545,22 @@ def tin_interpolation(
             )
         else:
             burned = np.zeros((rows, columns), dtype="int32")
+        on_the_edge = _take_cells_on_the_edge(
+            features, burned, corners, vertices, transform, west, north, cell_size
+        )
+        ambiguous = _cocircular_pairs(corners, vertices)
+        if ambiguous:
+            record.notes.append(
+                f"{ambiguous} pair(s) of adjacent triangles have their four corners on "
+                "one circle, to within rounding: there the triangulation had two "
+                "equally valid diagonals, and the surface inside those quadrilaterals "
+                "follows the one GEOS took. A regular grid of samples is the usual cause"
+            )
+        if on_the_edge:
+            record.notes.append(
+                f"{on_the_edge} cell(s) have their centre exactly on the edge of the "
+                "surface and are part of it"
+            )
         surface = _surface(corners, corner_values, burned, west, north, cell_size)
         del burned
         with rasterio.open(
@@ -426,18 +593,34 @@ def tin_interpolation(
         valid = np.ma.compressed(band)
         valid = valid[~np.isnan(valid)]
         counts["valid"], counts["total"] = int(valid.size), total
-        record.notes.append(
-            f"{valid.size} of {total} cells hold a value: a cell whose centre is "
-            "outside the convex hull of the points"
-            + (
-                ", or inside a triangle with a side longer than "
-                f"{max_triangle_edge_length:g},"
-                if max_triangle_edge_length is not None
-                else ""
+        if valid.size == total:
+            record.notes.append(f"all {total} cells hold a value")
+        else:
+            record.notes.append(
+                f"{valid.size} of {total} cells hold a value: a cell whose centre is "
+                "outside the convex hull of the points"
+                + (
+                    ", or inside a triangle with a side longer than "
+                    f"{max_triangle_edge_length:g},"
+                    if max_triangle_edge_length is not None
+                    else ""
+                )
+                + " is nodata, because a triangulation does not extrapolate"
             )
-            + " is nodata, because a triangulation does not extrapolate"
-        )
         label = verify.crs_label(found_crs) if found_crs is not None else "output has no CRS"
+        if (
+            found_crs is not None
+            and label != verify.crs_label(crs)
+            and verify.same_crs(found_crs, crs)
+        ):
+            # GDAL writes a CRS under the code it recognises: a custom definition
+            # equal to a registered one comes back named. Same system, two labels
+            # in one record, and a reader comparing them deserves to be told.
+            record.notes.append(
+                f"the raster's CRS reads back as {label} where the layer's is "
+                f"{verify.crs_label(crs)}: the same coordinate system by comparison, "
+                "written by GDAL under the name it recognised"
+            )
         found = [
             verify.Check("crs_present", found_crs is not None, label),
             verify.Check(
@@ -452,7 +635,14 @@ def tin_interpolation(
                 f"at {tuple(found_transform)[:6]}",
             ),
             verify.Check(
-                "result_not_empty", valid.size > 0, f"{valid.size}/{total} valid cells"
+                "result_not_empty",
+                valid.size > 0,
+                f"{valid.size}/{total} valid cells",
+                hint=(
+                    "no cell centre falls on a triangle: the cell size is larger than "
+                    "the triangles, the points are collinear to within rounding, or "
+                    "max_triangle_edge_length leaves no triangle"
+                ),
             ),
         ]
         if valid.size:
@@ -479,6 +669,7 @@ def tin_interpolation(
         "shape": [rows, columns],
         "valid_cells": counts["valid"],
         "total_cells": counts["total"],
+        "ambiguous_quadrilaterals": ambiguous,
         "provenance": manifest,
         "verified": True,
         **extras,

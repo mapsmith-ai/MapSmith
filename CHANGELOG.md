@@ -24,9 +24,15 @@ All notable changes to MapSmith are documented here, in the format of
   a layer that is not points, a field that is missing, not numeric or holding
   nulls, a geographic CRS. It runs on GEOS and GDAL — a Delaunay triangulation
   from shapely, the triangles burned onto the grid by rasterio — and nodata is
-  NaN, so no measurement can be mistaken for an empty cell. The check
-  `values_in_expected_range` is the data's own range: a linear interpolant
-  cannot leave it. Requires the `[raster]` extra.
+  NaN, so no measurement can be mistaken for an empty cell. A centre exactly on
+  the edge of the surface is part of it, whichever way the edge faces. Where
+  four samples lie on one circle — every square of a regular grid of samples —
+  the triangulation has two equally valid diagonals and takes one: the result
+  counts them in `ambiguous_quadrilaterals` and the record says so, because
+  the surface inside those quadrilaterals depends on it. A system that is
+  neither projected nor geographic (engineering, geocentric) is refused. The
+  check `values_in_expected_range` is the data's own range: a linear
+  interpolant cannot leave it. Requires the `[raster]` extra.
 - **`MAPSMITH_MAX_GRID_CELLS`**, the operator's limit on a grid an operation
   invents (default 10 000 000 cells), and
   **`MAPSMITH_MAX_TRIANGULATION_POINTS`** (default 30 000), the limit on the
