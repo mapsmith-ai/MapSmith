@@ -10,24 +10,53 @@ All notable changes to MapSmith are documented here, in the format of
 
 - **`tin_interpolation`: a surface that passes through its samples and stops
   where they stop.** Linear interpolation on the Delaunay triangulation of a
-  point layer. Each cell takes the value of the plane through the three samples
-  whose triangle contains its centre, so the surface is exact at every
-  measurement, never leaves the range of the data, and gives back a plane when
-  the samples lie on one (measured: error under 1e-13 at the cell centres, so
-  the grid needs no registration correction). Cells outside the convex hull are
+  point layer. Each cell takes the value, at its centre, of the plane through
+  the three samples whose triangle contains it, so the surface passes through
+  every measurement, never leaves the range of the data, and gives back a plane
+  when the samples lie on one (measured: error under 1e-13 at the cell centres,
+  so the grid needs no registration correction). A cell whose centre is not on
+  a sample does not hold that sample's value. Cells outside the convex hull are
   nodata, and the result reports `valid_cells` of `total_cells`; where
   `idw_interpolation` fills the whole rectangle and depends on an exponent, this
-  has no parameter that shapes the answer. Refused rather than answered: two
+  has no parameter that shapes the answer. Inside the hull every gap is bridged
+  unless `max_triangle_edge_length` is set. Refused rather than answered: two
   different values at one location (the library keeps one and drops the other),
-  fewer than three non-collinear locations, a layer that is not points, a
-  geographic CRS. `max_triangle_edge_length` keeps the surface from bridging a
-  gap in the sampling. The check `values_in_expected_range` is the data's own
+  a sample equal to the value the engine writes for an empty cell, fewer than
+  three non-collinear locations, a layer that is not points, a geographic CRS. The check `values_in_expected_range` is the data's own
   range: a linear interpolant cannot leave it. Requires the `[whitebox]` extra.
 - **`MAPSMITH_MAX_GRID_CELLS`**, the operator's limit on a grid an operation
   invents (default 25 000 000 cells). See `Fixed` and `SECURITY.md`.
 
+### Changed
+
+- **`idw_interpolation` declares that it takes points, and refuses the rest.**
+  A polygon or a row with no geometry in the layer used to be dropped by the
+  library with its value, and the surface built from what was left. Both are
+  refused now, and the catalogue entry carries `geometry: ["point"]`, so a
+  caller holding polygons is no longer offered it. A boolean field is refused
+  too: read from a GeoPackage it used to be interpolated as 0 and 1, read from
+  GeoParquet or a shapefile it was replaced by row numbers.
+
 ### Fixed
 
+- **Every terrain and hydrology writer verified a re-run against the previous
+  run's raster.** The read-back after the write went through the engine, and
+  whitebox-workflows 2.0.6 answers a read from a cache keyed by path that lasts
+  as long as the process: write a file, read it, overwrite it, read it again,
+  and the second read is the first file. A server is one process, so a second
+  run to the same output path was checked against the first run's output. Two
+  wrong answers followed. A correct output was refused — `hillshade` of a
+  12 x 12 grid over a path that had held an 8 x 8 one failed
+  `shape_preserved: expected (12, 12), got (8, 8)` with the right file on disk.
+  And a wrong output could pass: its checks described a raster that was no
+  longer there, beside an `output.sha256` of the one that was. The read-back
+  now goes through GDAL. **What the engine computes was never affected** — an
+  input changed at the same path is read fresh, measured on `slope`,
+  `focal_statistics` and `idw_interpolation` — only what the record said had
+  been checked. Present in every release since at least 0.2.0, on every raster
+  writer of the terrain engine; found by the conformance review of
+  `tin_interpolation`, which was the first writer whose range check made a
+  stale read visible.
 - **`idw_interpolation` returned a surface of row numbers, verified, for three
   ordinary mistakes.** A field name with a typo, a numeric field stored as text,
   and a point with no reading all ran to `verified: True`: whitebox falls back

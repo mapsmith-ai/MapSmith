@@ -114,6 +114,9 @@ def _rows():
                                  whitebox_engine.viewshed(r(), lyr, out, station_height=1.0))),
         ("watershed", "pour_points_path", {"point"},
          lambda lyr, L, r, out: (_whitebox(), whitebox_engine.watershed(r(), lyr, out))),
+        ("idw_interpolation", "points_path", {"point"},
+         lambda lyr, L, r, out: (_whitebox(), whitebox_engine.idw_interpolation(
+             lyr, out, field_name="v", cell_size=10.0))),
         ("tin_interpolation", "points_path", {"point"},
          lambda lyr, L, r, out: (_whitebox(), whitebox_engine.tin_interpolation(
              lyr, out, field_name="v", cell_size=10.0))),

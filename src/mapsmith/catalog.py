@@ -3652,7 +3652,9 @@ OPERATIONS: list[dict[str, Any]] = [
         # True since 0.3.0, and it was a claim rather than an oversight: a caller
         # who honestly passed projected=False was OFFERED an operation that
         # weights samples by distance, on a CRS where distance is degrees.
-        'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': 1},
+        # `geometry` declared after 0.12.2: the code now refuses anything but points,
+        # where it used to hand the layer to the library, which dropped the other rows.
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': 1, 'geometry': ['point']},
         'summary': 'Inverse-distance-weighted surface from a point layer; the field is '
                    'REQUIRED. Requires the [whitebox] extra',
         "phrasings": "a surface from scattered measurements; fill in between the gauges; interpolate the readings; continuous rainfall surface from station points; nearby points count much more than far ones; rebuild the terrain from scattered heights",
@@ -3730,13 +3732,15 @@ OPERATIONS: list[dict[str, Any]] = [
         # are joined into a triangle is decided by distances, so in degrees the
         # triangulation itself is a different one.
         'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': 1, 'geometry': ['point']},
-        'summary': 'Linear surface on the triangulation (TIN) of a point layer: passes exactly '
-                   'through every sample, leaves nodata outside them; the field is REQUIRED. '
-                   'Requires the [whitebox] extra',
-        "phrasings": "the surface must go exactly through the surveyed heights; do not invent values beyond the outermost points; a terrain model from spot heights by triangulation; leave blank where there are no measurements; interpolate without choosing a power or a radius; triangulated surface from survey points",
-        "distinguishes": "Joins the samples into triangles and reads each cell off the plane of its "
-        "triangle: exact at the samples, never outside their range, nodata beyond their convex "
-        "hull, and no parameter that shapes the result. Not idw_interpolation, which fills the "
+        'summary': 'Linear surface on the triangulation (TIN) of a point layer: the surface '
+                   'passes through every sample and is nodata beyond their convex hull; the '
+                   'field is REQUIRED. Requires the [whitebox] extra',
+        "phrasings": "the surface must go exactly through the surveyed heights; do not invent values beyond the outermost points; a terrain model from spot heights by triangulation; blank outside the surveyed area; interpolate without choosing a power or a radius; triangulated surface from survey points",
+        "distinguishes": "Joins the samples into triangles and reads each cell, at its centre, off "
+        "the plane of its triangle: the surface passes through the samples, never leaves their "
+        "range, is nodata beyond their convex hull, and has no parameter that shapes it. Inside "
+        "the hull it fills every gap unless max_triangle_edge_length says otherwise. Not "
+        "idw_interpolation, which fills the "
         "whole rectangle, depends on an exponent and flattens a trend into a bullseye around each "
         "point; not voronoi_polygons, which gives each point a hard territory instead of a gradient.",
         'description': 'Build a continuous surface from scattered point measurements by linear '
@@ -3744,8 +3748,11 @@ OPERATIONS: list[dict[str, Any]] = [
                        'of the plane through the three samples whose triangle contains its '
                        'centre, so the surface passes exactly through every measurement and '
                        'never leaves the range of the data; samples lying on a plane give that '
-                       'plane back. Cells outside the convex hull of the points are nodata — a '
-                       "triangulation does not extrapolate — and the result reports 'valid_cells' "
+                       'plane back. A cell holds the surface at its CENTRE, so a cell whose '
+                       'centre is not on a sample does not hold that sample\'s value. Cells '
+                       'outside the convex hull of the points are nodata — a triangulation does '
+                       'not extrapolate — but inside the hull every gap is bridged unless '
+                       "'max_triangle_edge_length' is set; the result reports 'valid_cells' "
                        "of 'total_cells'. Refused rather than answered: a field that is missing, "
                        'not numeric or holding nulls (the library would interpolate row numbers '
                        'in their place, with no warning), two different values at one location, '

@@ -310,6 +310,25 @@ def _read_dem(wbe: Any, dem_path: str):
         yield dem, (f"EPSG:{epsg}" if epsg else str(wkt)), crs_obj.is_geographic, note
 
 
+def _same_horizontal_crs(found: CRS, expect_epsg: int) -> bool:
+    """Whether the output carries the CRS the engine was given, horizontally.
+
+    Horizontally, because a GeoTIFF written by the engine keeps only that part:
+    a DEM in a compound CRS (EPSG:7415, RD New + NAP height) comes back as its
+    horizontal component (EPSG:28992), and the engine's own read of its own
+    output used to report the compound code regardless. Comparing the
+    horizontal parts keeps that case passing for the reason it is true.
+    """
+    expected = CRS.from_epsg(expect_epsg)
+    if expected.is_compound:
+        expected = expected.sub_crs_list[0]
+    if found.is_compound:
+        found = found.sub_crs_list[0]
+    return found.equals(expected) or (
+        found.to_epsg() is not None and found.to_epsg() == expected.to_epsg()
+    )
+
+
 def _raster_checks(
     wbe: Any,
     output_path: str,
@@ -318,32 +337,47 @@ def _raster_checks(
     expect_shape: tuple[int, int],
     value_range: tuple[float, float] | None = None,
 ) -> list[verify.Check]:
-    """Deterministic postconditions on a raster output, read back from disk."""
-    out = wbe.read_raster(str(output_path))
-    out_wkt = out.crs_wkt()
-    if out.crs_epsg():
-        crs_detail = f"EPSG:{out.crs_epsg()}"
-    elif out_wkt:
-        crs_detail = f"WKT: {str(out_wkt)[:60]}"
+    """Deterministic postconditions on a raster output, read back from disk.
+
+    Read back through GDAL, and NOT through the engine that wrote it. Until
+    0.12.2 this was `wbe.read_raster(output_path)`, and whitebox-workflows 2.0.6
+    answers that from a cache keyed by path that outlives the environment that
+    filled it: write a file, read it, overwrite it, read it again, and the
+    second read is the first file — measured with the two writes 2.5 s apart,
+    with a different shape, and from a fresh `WbEnvironment`. A server is one
+    long process and an agent retries to the same output path, so the second
+    run of any writer here was verified against the raster of the first. Both
+    wrong answers followed: a good output refused ("expected (5, 5), got (10,
+    10)"), and an all-nodata output returned `verified: True` beside a check
+    reading "100/100 valid cells". The values the engine COMPUTES were never
+    affected — a changed input at the same path is read fresh, measured on
+    `slope`, `focal_statistics` and both interpolators — only what the record
+    said had been checked. `wbe` stays in the signature for the callers; a
+    check that reads through it is the defect coming back.
+    """
+    import rasterio
+
+    with rasterio.open(output_path) as out:
+        crs = CRS.from_user_input(out.crs) if out.crs else None
+        shape = (out.height, out.width)
+        band = out.read(1, masked=True)
+    found_epsg = crs.to_epsg() if crs is not None else None
+    if found_epsg:
+        crs_detail = f"EPSG:{found_epsg}"
+    elif crs is not None:
+        crs_detail = f"WKT: {crs.to_wkt()[:60]}"
     else:
         crs_detail = "output has no CRS"
-    checks = [
-        verify.Check(
-            "crs_present",
-            bool(out.crs_epsg() or out_wkt),
-            crs_detail,
-        )
-    ]
+    checks = [verify.Check("crs_present", crs is not None, crs_detail)]
     if expect_epsg:
         checks.append(
             verify.Check(
                 "crs_matches",
-                out.crs_epsg() == expect_epsg,
-                f"expected EPSG:{expect_epsg}, got EPSG:{out.crs_epsg()}",
+                crs is not None and _same_horizontal_crs(crs, expect_epsg),
+                f"expected EPSG:{expect_epsg}, got "
+                + (f"EPSG:{found_epsg}" if found_epsg else crs_detail),
             )
         )
-    meta = out.metadata()
-    shape = (meta.rows, meta.columns)
     checks.append(
         verify.Check(
             "shape_preserved",
@@ -351,13 +385,11 @@ def _raster_checks(
             f"expected {expect_shape}, got {shape}",
         )
     )
-    arr = out.to_numpy(dtype="float64")
+    arr = np.ma.filled(band.astype("float64"), np.nan)
     # NaN is a common float nodata: NaN != NaN, so an equality mask alone would
-    # let nodata cells leak into the range check as NaN min/max.
-    if math.isnan(meta.nodata):
-        valid = arr[~np.isnan(arr)]
-    else:
-        valid = arr[(arr != meta.nodata) & ~np.isnan(arr)]
+    # let nodata cells leak into the range check as NaN min/max. The masked read
+    # has already turned the declared nodata into the mask.
+    valid = arr[~np.isnan(arr)]
     checks.append(
         verify.Check(
             "result_not_empty",
@@ -1347,7 +1379,32 @@ def _interpolation_values(
     because 1 is where it sits in the file. Nothing raises and the raster
     renders. Until 0.12.2 `idw_interpolation` checked only that the name was not
     blank, which is the one mistake of the four that cannot be made by accident.
+
+    The geometry is checked here too, for the same reason and with the same
+    measurement: a polygon or a row without a geometry in a point layer is
+    DROPPED by the library, value and all, and the surface is built from the
+    rest (three rows holding 1, 2 and 3, the third a polygon: a surface spanning
+    1 to 2, verified). A value belongs to a location, and which location a
+    polygon stands for is the caller's to say.
     """
+    geometry = layer.geometry
+    if len(layer) and (geometry.isna().any() or geometry.is_empty.any()):
+        raise ValueError(
+            f"{points_path} has rows with no point geometry; {operation} refuses "
+            "rather than run, because the library would drop them and their values "
+            "without a word. Drop them with select_features first."
+        )
+    other = sorted(set(geometry.geom_type) - {"Point", "MultiPoint"})
+    if other:
+        raise ValueError(
+            f"{operation} reads point layers, and {points_path} holds {other}. "
+            "A value belongs to a location: take centroid_layer or point_on_surface "
+            "first, and say which."
+        )
+    if len(layer) and not np.isfinite(shapely.get_coordinates(geometry.values)).all():
+        raise ValueError(
+            f"{points_path} has points whose coordinates are not finite numbers."
+        )
     geometry_name = layer.geometry.name
     if field_name not in layer.columns or field_name == geometry_name:
         numeric = sorted(
@@ -1506,6 +1563,10 @@ def idw_interpolation(
     }
 
 
+#: What whitebox-workflows 2.0.6 writes in a cell its interpolators give no value.
+TIN_NODATA = -32768.0
+
+
 def tin_interpolation(
     points_path: str,
     output_path: str,
@@ -1555,9 +1616,12 @@ def tin_interpolation(
             "field_name is required: whitebox interpolates FID by default, which "
             "produces a smooth and meaningless surface of row numbers, with no warning."
         )
-    if max_triangle_edge_length is not None and max_triangle_edge_length <= 0:
+    if max_triangle_edge_length is not None and not (
+        max_triangle_edge_length > 0 and math.isfinite(max_triangle_edge_length)
+    ):
         raise ValueError(
-            f"max_triangle_edge_length must be positive, got {max_triangle_edge_length}"
+            "max_triangle_edge_length must be positive and finite, got "
+            f"{max_triangle_edge_length}"
         )
     layer = readers.read_vector(points_path)
     if layer.crs is None:
@@ -1578,18 +1642,6 @@ def tin_interpolation(
             "Reproject to a projected CRS first."
         )
     geometry = layer.geometry
-    if len(layer) and (geometry.isna().any() or geometry.is_empty.any()):
-        raise ValueError(
-            f"{points_path} has points with no geometry; drop them with "
-            "select_features first."
-        )
-    other = sorted(set(geometry.geom_type) - {"Point", "MultiPoint"})
-    if other:
-        raise ValueError(
-            f"tin_interpolation reads point layers, and {points_path} holds {other}. "
-            "A value belongs to a location: take centroid_layer or point_on_surface "
-            "first, and say which."
-        )
     values = _interpolation_values(
         layer, field_name, points_path, cell_size, "tin_interpolation"
     )
@@ -1610,8 +1662,20 @@ def tin_interpolation(
             f"{conflicting.size} location(s) in {points_path} hold more than one value "
             f"of {field_name!r} (the first at {x:g}, {y:g}: {lowest[conflicting[0]]:g} "
             f"and {highest[conflicting[0]]:g}). tin_interpolation refuses rather than "
-            "run: the library keeps one and drops the other, with no warning. "
+            "run: the library keeps one and drops the other, with no warning. A "
+            "location is its x and y here; a z coordinate is not read. "
             "Aggregate them first, and say how."
+        )
+    # The engine writes -32768 for a cell with no value, so a sample that IS
+    # -32768 comes out indistinguishable from one: measured, four such samples
+    # give a surface reported as 4 valid cells of 100.
+    if (sample_values == TIN_NODATA).any():
+        raise ValueError(
+            f"{points_path} has a point whose {field_name!r} is {TIN_NODATA:g}, the "
+            "value the engine writes for a cell with NO value: in the output the two "
+            "could not be told apart. If it is a placeholder for a missing reading, "
+            "drop those points with select_features; if it is a measurement, rescale "
+            "the field with calculate_field first."
         )
     if len(distinct) < 3 or shapely.MultiPoint(distinct).convex_hull.area == 0.0:
         raise ValueError(
@@ -1652,6 +1716,14 @@ def tin_interpolation(
     meta = result.metadata()
     epsg = result.crs_epsg()
     surface = result.to_numpy(dtype="float64")
+    if not math.isnan(meta.nodata) and (sample_values == meta.nodata).any():
+        # TIN_NODATA is what 2.0.6 writes; this is the same refusal for a
+        # version that writes something else.
+        raise ValueError(
+            f"{points_path} has a point whose {field_name!r} is {meta.nodata:g}, the "
+            "value the engine wrote for cells with no value: the two cannot be told "
+            "apart in the output."
+        )
     if math.isnan(meta.nodata):
         valid_cells = int((~np.isnan(surface)).sum())
     else:
@@ -1680,6 +1752,12 @@ def tin_interpolation(
             f"{repeated} point(s) repeat a location already present with the same "
             "value; they add nothing to the triangulation"
         )
+    multipart = int((geometry.geom_type == "MultiPoint").sum())
+    if multipart:
+        record.notes.append(
+            f"{multipart} row(s) are MultiPoint: each of their parts was given the "
+            "row's value, as a sample of its own"
+        )
     # A linear interpolant cannot leave the range of its samples. The margin is
     # rounding and nothing else: measured error on a plane is under 1e-13.
     low, high = float(sample_values.min()), float(sample_values.max())
@@ -1691,7 +1769,10 @@ def tin_interpolation(
         return _raster_checks(
             wbe,
             output_path,
-            expect_epsg=epsg,
+            # The layer's own code where it has one, not the engine's reading
+            # of its own result: asking the engine what it wrote and then
+            # checking the file against that answer compares it with itself.
+            expect_epsg=crs.to_epsg() or epsg,
             expect_shape=(meta.rows, meta.columns),
             value_range=(low - margin, high + margin),
         )

@@ -471,18 +471,19 @@ was shown this catalog, because a model handed the entry writes a paraphrase of 
 
 | what the caller declares | candidates left | BM25, found@3 | embeddings, found@3 | **right answer in what comes back** |
 |---|---|---|---|---|
-| nothing — words alone | 82 | 47% | 32% | 47% |
+| nothing — words alone | 82 | 47% | 31% | 47% |
 | what data I have | 54 | 50% | 34% | 51% |
 | + what I want back | 33 | 61% | 52% | 67% |
 | + how many datasets I have | 18 | 66% | 62% | 89% |
 | **+ what geometry it holds** | **16** | **75%** | **72%** | **99%** |
 
-**The second row moved on 2026-11-26, and an operation moved it.** At 81 operations it read
-52%, 35% and 53%. `tin_interpolation` is the eighty-second, and it sits beside
-`idw_interpolation`: both take a point layer and return a surface, so a request to
-interpolate now has two entries answering to the same words and the ranking on the input
-kind alone lost two points. Every other row is where it was, and the last one — what a
-caller who declares what it knows is handed — did not move.
+**The first two rows moved on 2026-11-26, and an operation moved them.** At 81 operations
+they read 47%, 32%, 47% and 52%, 35%, 53%. `tin_interpolation` is the eighty-second, and it
+sits beside `idw_interpolation`: both take a point layer and return a surface, so a request
+to interpolate now has two entries answering to the same words. The ranking on the input
+kind alone lost two points under BM25 and one under embeddings, and the embeddings lost one
+on words alone. The other three rows are where they were, and the last one — what a caller
+who declares what it knows is handed — did not move.
 
 **The last row is new on 2026-09-29, and the row above it shows why.** Thirty-one operations
 now take one vector layer to another, one more than the threshold below, so a caller who
@@ -503,7 +504,7 @@ number that had never been reproducible on a machine without the model,
 published under a sentence promising it could be checked.
 
 The two also differ in a way worth seeing. In this run BM25 leads at every
-declaration level, by fifteen points on words alone. The embedding engine earns its
+declaration level, by sixteen points on words alone. The embedding engine earns its
 place on the phrasings it has never seen, not on the ranking once the set is small.
 
 The last column reports whether the accepted answer appears in the returned payload:

@@ -85,6 +85,14 @@ def test_the_default_grid_limit_admits_a_city_and_stops_a_millimetre_cell():
         limits.refuse_too_many_cells(20_000.0, 20_000.0, 0.001, "op")
 
 
+@pytest.mark.parametrize("cell_size", [1e-300, 1e-320])
+def test_a_cell_size_too_small_to_count_is_refused_as_a_size_not_as_an_overflow(cell_size):
+    """`math.floor(inf)` raises OverflowError; 1e-300 would print a hundred digits."""
+    with pytest.raises(ValueError, match="million billion cells") as refused:
+        limits.refuse_too_many_cells(100.0, 100.0, cell_size, "op")
+    assert len(str(refused.value)) < 300
+
+
 @pytest.mark.parametrize("raw", ["lots", "0", "-3"])
 def test_a_grid_limit_that_is_not_a_positive_whole_number_is_refused(monkeypatch, raw):
     monkeypatch.setenv(limits.MAX_GRID_CELLS_ENV, raw)

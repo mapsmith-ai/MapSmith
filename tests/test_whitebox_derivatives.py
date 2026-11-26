@@ -11,6 +11,7 @@ import math
 from pathlib import Path
 
 import geopandas as gpd
+import pandas as pd
 import pytest
 from shapely.geometry import Point
 
@@ -306,6 +307,121 @@ def test_an_interpolator_refuses_a_grid_over_the_operators_limit(
     )
 
 
+@pytest.mark.parametrize("operation", ["idw_interpolation", "tin_interpolation"])
+def test_a_second_run_to_the_same_path_is_verified_against_itself(operation, tmp_path):
+    """The read-back used to come from the engine's cache, keyed by path.
+
+    Written, read, overwritten, read again: whitebox-workflows 2.0.6 returns the
+    FIRST file on the second read, from any environment in the process. A server
+    is one process and an agent retries to the same output, so the second run
+    was checked against the raster of the first: here a 5 x 5 surface refused
+    with "expected (5, 5), got (10, 10)" while the file on disk was right.
+    """
+    source = _points(tmp_path, "sq", [1.0, 2.0, 3.0, 4.0], _SQUARE)
+    out = str(tmp_path / "same.tif")
+    run = getattr(engine, operation)
+    assert run(source, out, field_name="mm", cell_size=10.0)["shape"] == [10, 10]
+    second = run(source, out, field_name="mm", cell_size=20.0)
+    assert second["shape"] == [5, 5]
+    assert _read(out).shape == (5, 5)
+    assert all(_checks(second).values())
+
+
+def test_a_bad_second_run_is_not_passed_on_the_first_runs_raster(tmp_path):
+    """The dangerous direction of the same defect: a failure read as a success.
+
+    First a good surface, then, to the same path, one with no valid cell. The
+    second returned `verified: True` with a check reading "100/100 valid
+    cells" beside a note reading "0 of 100" — the check had looked at the
+    first run's file.
+    """
+    from mapsmith import verify
+
+    source = _points(tmp_path, "sparse", [1.0, 2.0, 3.0, 4.0, 5.0], [*_SQUARE, (50, 50)])
+    out = str(tmp_path / "same.tif")
+    engine.tin_interpolation(source, out, field_name="mm", cell_size=10.0)
+    with pytest.raises(verify.VerificationError, match="result_not_empty"):
+        engine.tin_interpolation(
+            source, out, field_name="mm", cell_size=10.0, max_triangle_edge_length=60.0
+        )
+
+
+def test_a_terrain_writer_rerun_on_a_different_grid_is_verified_against_itself(tmp_path):
+    """The same read-back serves every writer in this engine, not the two above."""
+    out = str(tmp_path / "shade.tif")
+    small = _write(tmp_path / "small.tif", np.fromfunction(lambda r, c: c * 10.0, (8, 8)))
+    large = _write(tmp_path / "large.tif", np.fromfunction(lambda r, c: c * 10.0, (12, 12)))
+    engine.hillshade(small, out)
+    assert all(_checks(engine.hillshade(large, out)).values())
+    assert _read(out).shape == (12, 12)
+
+
+@pytest.mark.parametrize("operation", ["idw_interpolation", "tin_interpolation"])
+def test_an_interpolator_refuses_a_row_the_library_would_drop(operation, tmp_path):
+    """Three rows holding 1, 2 and 3, the third a polygon.
+
+    Handed to the library, the polygon is dropped with its value and the surface
+    is built from the other two — or, for a row with no geometry at all, from
+    the rest — and nothing says a measurement went missing.
+    """
+    from shapely.geometry import Polygon
+
+    mixed = tmp_path / "mixed.parquet"
+    gpd.GeoDataFrame(
+        {"mm": [1.0, 2.0, 3.0, 4.0]},
+        geometry=[Point(0, 0), Point(100, 0), Point(0, 100),
+                  Polygon([(90, 90), (110, 90), (110, 110), (90, 110)])],
+        crs="EPSG:32632",
+    ).to_parquet(mixed)
+    with pytest.raises(ValueError, match="reads point layers"):
+        getattr(engine, operation)(
+            str(mixed), str(tmp_path / "x.tif"), field_name="mm", cell_size=10.0
+        )
+    missing = tmp_path / "missing.parquet"
+    gpd.GeoDataFrame(
+        {"mm": [1.0, 2.0, 3.0, 4.0]},
+        geometry=[Point(0, 0), Point(100, 0), Point(0, 100), None],
+        crs="EPSG:32632",
+    ).to_parquet(missing)
+    with pytest.raises(ValueError, match="no point geometry"):
+        getattr(engine, operation)(
+            str(missing), str(tmp_path / "y.tif"), field_name="mm", cell_size=10.0
+        )
+
+
+@pytest.mark.parametrize("operation", ["idw_interpolation", "tin_interpolation"])
+@pytest.mark.parametrize(
+    ("values", "said"),
+    [
+        ([True, False, True, False], "not a number"),
+        (pd.array([1, None, 3, 4], dtype="Int64"), "1 of 4 points"),
+    ],
+)
+def test_an_interpolator_refuses_booleans_and_nullable_gaps(operation, values, said, tmp_path):
+    source = tmp_path / "typed.parquet"
+    gpd.GeoDataFrame(
+        {"mm": values}, geometry=[Point(*xy) for xy in _SQUARE], crs="EPSG:32632"
+    ).to_parquet(source)
+    with pytest.raises(ValueError, match=said):
+        getattr(engine, operation)(
+            str(source), str(tmp_path / "x.tif"), field_name="mm", cell_size=10.0
+        )
+
+
+@pytest.mark.parametrize("operation", ["idw_interpolation", "tin_interpolation"])
+def test_an_interpolator_reads_a_nullable_integer_field_with_no_gaps(operation, tmp_path):
+    source = tmp_path / "ints.parquet"
+    gpd.GeoDataFrame(
+        {"mm": pd.array([7, 7, 7, 7], dtype="Int64")},
+        geometry=[Point(*xy) for xy in _SQUARE], crs="EPSG:32632",
+    ).to_parquet(source)
+    out = str(tmp_path / "ok.tif")
+    getattr(engine, operation)(str(source), out, field_name="mm", cell_size=10.0)
+    values = _read(out)
+    assert float(values.min()) == pytest.approx(7.0)
+    assert float(values.max()) == pytest.approx(7.0)
+
+
 # ------------------------------------------------------ tin_interpolation
 
 
@@ -497,12 +613,61 @@ def test_an_interpolator_refuses_a_cell_size_that_is_not_a_size(
         )
 
 
-def test_a_tin_refuses_a_non_positive_edge_limit(tmp_path):
+@pytest.mark.parametrize("limit", [0.0, -1.0, float("nan"), float("inf")])
+def test_a_tin_refuses_an_edge_limit_that_is_not_a_length(limit, tmp_path):
+    """NaN passed `<= 0` and went into the manifest as a NaN literal: not JSON."""
     source = _points(tmp_path, "sq", [1.0, 2.0, 3.0, 4.0], _SQUARE)
     with pytest.raises(ValueError, match="max_triangle_edge_length must be positive"):
         engine.tin_interpolation(
             source, str(tmp_path / "x.tif"), field_name="mm", cell_size=10.0,
-            max_triangle_edge_length=0.0,
+            max_triangle_edge_length=limit,
+        )
+
+
+def test_the_edge_limit_blanks_the_long_triangles_and_keeps_the_short_ones(tmp_path):
+    """Two clusters 1 km apart, each a 100 m square with its centre.
+
+    With no limit the triangulation bridges the gap and the whole 1100 m strip
+    is surface. Every triangle inside a cluster has sides of 100 m or 70.7 m;
+    every triangle across the gap has a side of 900 m or more. A limit of
+    150 m keeps the first kind only: 10 x 10 cells per cluster, 200 in all.
+    """
+    near = [*_SQUARE, (50, 50)]
+    far = [(x + 1000, y) for x, y in near]
+    source = _points(tmp_path, "fields", [5.0] * 10, [*near, *far])
+    bridged = engine.tin_interpolation(
+        source, str(tmp_path / "bridged.tif"), field_name="mm", cell_size=10.0
+    )
+    assert (bridged["valid_cells"], bridged["total_cells"]) == (1100, 1100)
+    capped = engine.tin_interpolation(
+        source, str(tmp_path / "capped.tif"), field_name="mm", cell_size=10.0,
+        max_triangle_edge_length=150.0,
+    )
+    assert capped["valid_cells"] == 200
+    xs, _ = _cell_centres(capped["output"])
+    blank = np.ma.getmaskarray(_read(capped["output"]))
+    assert (blank == ((xs > 100) & (xs < 1000))).all()
+
+
+def test_a_tin_refuses_a_sample_it_could_not_tell_from_an_empty_cell(tmp_path):
+    """-32768 is what the engine writes for a cell with no value."""
+    source = _points(tmp_path, "sentinel", [-32768.0, 2.0, 3.0, 4.0], _SQUARE)
+    with pytest.raises(ValueError, match="could not be told apart"):
+        engine.tin_interpolation(
+            source, str(tmp_path / "x.tif"), field_name="mm", cell_size=10.0
+        )
+
+
+def test_a_tin_reads_x_and_y_and_says_so_when_z_differs(tmp_path):
+    path = tmp_path / "stacked.parquet"
+    gpd.GeoDataFrame(
+        {"mm": [1.0, 9.0, 3.0, 4.0]},
+        geometry=[Point(0, 0, 10), Point(0, 0, 20), Point(100, 0, 0), Point(0, 100, 0)],
+        crs="EPSG:32632",
+    ).to_parquet(path)
+    with pytest.raises(ValueError, match="a z coordinate is not read"):
+        engine.tin_interpolation(
+            str(path), str(tmp_path / "x.tif"), field_name="mm", cell_size=10.0
         )
 
 

@@ -68,10 +68,20 @@ def refuse_too_many_cells(
     Returns the count, one more row and column than the extent strictly needs:
     the safe side for a limit, and the grid may round outwards.
     """
-    columns = math.floor(width / cell_size) + 1
-    rows = math.floor(height / cell_size) + 1
-    expected = columns * rows
     cap = max_grid_cells()
+    # In floating point first: a cell size of 1e-320 makes the quotient
+    # infinite, and `math.floor(inf)` raises an OverflowError nobody asked for;
+    # one of 1e-300 would print a count a hundred digits long.
+    across, down = width / cell_size, height / cell_size
+    if not (math.isfinite(across) and math.isfinite(down)) or (across + 1) * (down + 1) > 1e15:
+        raise ValueError(
+            f"{operation} with a cell size of {cell_size} over an extent of "
+            f"{width:g} x {height:g} would produce more than a million billion cells, "
+            f"over this server's limit of {cap:,}. Use a larger cell size."
+        )
+    columns = math.floor(across) + 1
+    rows = math.floor(down) + 1
+    expected = columns * rows
     if expected > cap:
         raise ValueError(
             f"{operation} with a cell size of {cell_size} over an extent of "
