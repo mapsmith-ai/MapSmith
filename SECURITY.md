@@ -203,6 +203,10 @@ below:
   A surface made by `idw_interpolation` from a layer with missing readings
   should be remade; a record of a terrain output written twice to one path by
   one server process should be regenerated before it is relied on.
+  Neither got an advisory, a decision taken on 2026-11-26 on the ground the
+  earlier cases in this bullet give: there is no attacker in either and
+  nothing leaves the workspace. What a reader affected by them should do is
+  the sentence above, here and in the CHANGELOG.
 - **No credentials in a manifest.** Manifests are meant to be shared — attached
   to a review, a bug report, a paper — so a credential must never reach one.
   Since 0.2.2 that is enforced in two layers, in this order:
