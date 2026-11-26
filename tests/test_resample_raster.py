@@ -119,6 +119,35 @@ def test_the_method_is_required_and_checked(landcover, tmp_path):
         raster.resample(landcover, str(tmp_path / "x.tif"), 0, "nearest")
 
 
+def test_a_cell_size_that_invents_a_huge_grid_is_refused_before_it_is_allocated(
+    landcover, tmp_path, monkeypatch
+):
+    """Four cells on 40 m, asked for at a centimetre: sixteen million cells.
+
+    Until 0.12.2 nothing counted them (measured by the security audit: a 10 x 10
+    raster re-gridded to 8000 x 8000, accepted). The limit yields to the size of
+    the input, sixteen times its cells, so it is the invention that is refused
+    and not a large raster; here sixteen times four is nothing, and the
+    operator's limit decides.
+    """
+    monkeypatch.setenv("MAPSMITH_MAX_GRID_CELLS", "1000")
+    out = tmp_path / "huge.tif"
+    with pytest.raises(ValueError, match="MAPSMITH_MAX_GRID_CELLS"):
+        raster.resample(landcover, str(out), 0.01, "nearest")
+    assert not out.exists()
+    with pytest.raises(ValueError, match="MAPSMITH_MAX_GRID_CELLS"):
+        raster.reproject_raster(
+            landcover, str(tmp_path / "huge2.tif"), target_crs="EPSG:32632",
+            resampling="nearest", resolution=0.01,
+        )
+    # 4 x 4 = 16 cells from 2 x 2: within sixteen times the input even at a limit of 1.
+    monkeypatch.setenv("MAPSMITH_MAX_GRID_CELLS", "1")
+    raster.resample(landcover, str(tmp_path / "ok.tif"), 13.5, "nearest")
+    for bad in (float("nan"), float("inf")):
+        with pytest.raises(ValueError, match="resolution must be positive"):
+            raster.resample(landcover, str(tmp_path / "x.tif"), bad, "nearest")
+
+
 def test_a_raster_without_a_crs_is_refused(tmp_path):
     naked = tmp_path / "naked.tif"
     with rasterio.open(

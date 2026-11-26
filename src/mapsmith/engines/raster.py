@@ -20,7 +20,7 @@ from typing import Any
 import geopandas as gpd
 import pandas as pd
 
-from .. import datum, grid, readers, verify
+from .. import datum, grid, limits, readers, verify
 from ..provenance import InputRecord, ProvenanceRecord, alignment_decisions, posix_path
 
 VALID_STATS = {
@@ -460,8 +460,8 @@ def resample(
     from rasterio.transform import from_origin
     from rasterio.warp import reproject as warp
 
-    if resolution <= 0:
-        raise ValueError(f"resolution must be positive, got {resolution}")
+    if not (resolution > 0 and math.isfinite(resolution)):
+        raise ValueError(f"resolution must be positive and finite, got {resolution}")
     valid = INTERPOLATING_RESAMPLING | CATEGORICAL_RESAMPLING | WARP_ONLY_RESAMPLING
     if resampling not in valid:
         raise ValueError(
@@ -496,6 +496,10 @@ def resample(
         # what `gdalwarp -tr` does, and what a caller means by "resample to 30 m".
         # `ceil` with a tolerance, so an extent that already divides evenly does
         # not gain a phantom column to floating-point noise.
+        limits.refuse_too_many_cells(
+            right - left, top - bottom, resolution, "resample_raster",
+            entitled=_REGRID_GROWTH * src.width * src.height,
+        )
         width = max(1, math.ceil((right - left) / resolution - _GRID_EPSILON))
         height = max(1, math.ceil((top - bottom) / resolution - _GRID_EPSILON))
         target_transform = from_origin(left, top, resolution, resolution)
@@ -621,6 +625,14 @@ def resample(
 #: micron must not lose a real one. Relative, because extents run from metres to
 #: millions of metres.
 _GRID_EPSILON = 1e-9
+
+#: How many times its own cell count a raster may be re-gridded to, whatever
+#: `MAPSMITH_MAX_GRID_CELLS` says: halving the cell size twice. The limit is
+#: there for a cell size that turns a hundred cells into sixty-four million
+#: (measured by the security audit of 0.12.2: 4.6 s and 488 MB from a 10 x 10
+#: raster, accepted), not to refuse
+#: a satellite scene for being the size it is.
+_REGRID_GROWTH = 16
 
 
 def _datum_shift_check(shift: dict[str, Any], twin: tuple[str, str] | None = None) -> Any:
@@ -1337,13 +1349,19 @@ def reproject_raster(
             src.crs, target_checked.to_wkt(), *src.bounds, densify_pts=21
         )
         if resolution is not None:
-            if resolution <= 0:
-                raise ValueError(f"resolution must be positive, got {resolution}")
+            if not (resolution > 0 and math.isfinite(resolution)):
+                raise ValueError(
+                    f"resolution must be positive and finite, got {resolution}"
+                )
             # Same rule as `resample`, and for the same reason: a caller who
             # names a cell size gets that cell size, and the extent grows
             # outward to the next whole cell. Deriving the size from the extent
             # instead delivered 33.24 x 33.47 for a requested 30 — not even
             # square — under a manifest that recorded 30.
+            limits.refuse_too_many_cells(
+                right - left, top - bottom, resolution, "reproject_raster",
+                entitled=_REGRID_GROWTH * src.width * src.height,
+            )
             width = max(1, math.ceil((right - left) / resolution - _GRID_EPSILON))
             height = max(1, math.ceil((top - bottom) / resolution - _GRID_EPSILON))
             transform = from_origin(left, top, resolution, resolution)

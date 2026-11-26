@@ -79,10 +79,40 @@ def test_a_grid_is_counted_from_its_extent_and_refused_before_it_is_allocated(mo
 
 
 def test_the_default_grid_limit_admits_a_city_and_stops_a_millimetre_cell():
-    # 20 km x 20 km at 5 m: 4001 x 4001, a little over sixteen million cells.
-    assert limits.refuse_too_many_cells(20_000.0, 20_000.0, 5.0, "op") == 4001 * 4001
+    # 15 km x 15 km at 5 m: 3001 x 3001, a little over nine million cells.
+    assert limits.refuse_too_many_cells(15_000.0, 15_000.0, 5.0, "op") == 3001 * 3001
     with pytest.raises(ValueError, match="MAPSMITH_MAX_GRID_CELLS"):
         limits.refuse_too_many_cells(20_000.0, 20_000.0, 0.001, "op")
+
+
+def test_a_raster_may_be_regridded_to_a_multiple_of_itself_whatever_the_limit(monkeypatch):
+    """The limit is for an invented grid, not for an input that is already large."""
+    monkeypatch.setenv(limits.MAX_GRID_CELLS_ENV, "100")
+    with pytest.raises(ValueError, match="MAPSMITH_MAX_GRID_CELLS"):
+        limits.refuse_too_many_cells(1000.0, 1000.0, 10.0, "op")
+    assert limits.refuse_too_many_cells(1000.0, 1000.0, 10.0, "op", entitled=20_000) == 101 * 101
+
+
+def test_a_triangulation_over_the_operators_limit_is_refused(monkeypatch):
+    limits.refuse_too_many_points(limits.DEFAULT_MAX_TRIANGULATION_POINTS, "op")
+    monkeypatch.setenv(limits.MAX_TRIANGULATION_POINTS_ENV, "1000")
+    with pytest.raises(ValueError, match="MAPSMITH_MAX_TRIANGULATION_POINTS"):
+        limits.refuse_too_many_points(1001, "op")
+
+
+def test_a_search_is_counted_as_the_cells_each_sample_reaches():
+    """The measured cases: 250 000 cells, 1 000 samples, cells of 2 on an extent of 1000.
+
+    As they are, nothing to count. A radius of 50 reaches pi * 25^2 = 1 963 cells
+    per sample, two million pairs: allowed. A radius wider than the layer reaches
+    every cell, 250 million pairs: refused, and so is asking every cell for all
+    thousand samples.
+    """
+    limits.refuse_too_much_search(250_000, 1000, 2.0, 0.0, 0, "op")
+    limits.refuse_too_much_search(250_000, 1000, 2.0, 50.0, 0, "op")
+    for radius, min_points in ((1e12, 0), (0.0, 1000), (float("inf"), 0)):
+        with pytest.raises(ValueError, match="cell-sample pairs"):
+            limits.refuse_too_much_search(250_000, 1000, 2.0, radius, min_points, "op")
 
 
 @pytest.mark.parametrize("cell_size", [1e-300, 1e-320])

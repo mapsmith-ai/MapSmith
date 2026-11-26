@@ -422,6 +422,59 @@ def test_an_interpolator_reads_a_nullable_integer_field_with_no_gaps(operation, 
     assert float(values.max()) == pytest.approx(7.0)
 
 
+def test_idw_refuses_a_search_that_turns_the_grid_into_cells_times_points(tmp_path):
+    """Measured: a radius wider than the layer makes every cell weigh every sample.
+
+    A hundred samples on a 1000 x 1000 extent at a cell of 0.5 is four million
+    cells: as they are it runs, with a radius of a kilometre it is four hundred
+    million pairs, over the hundred million this server allows by default.
+    """
+    rng = np.random.default_rng(3)
+    locations = [(0, 0), (1000, 1000), *((float(x), float(y)) for x, y in rng.random((98, 2)) * 1000)]
+    source = _points(tmp_path, "many", [1.0] * 100, locations)
+    with pytest.raises(ValueError, match="cell-sample pairs"):
+        engine.idw_interpolation(
+            source, str(tmp_path / "x.tif"), field_name="mm", cell_size=0.5, radius=1000.0
+        )
+    with pytest.raises(ValueError, match="more samples than the 100"):
+        engine.idw_interpolation(
+            source, str(tmp_path / "y.tif"), field_name="mm", cell_size=50.0, min_points=101
+        )
+    with pytest.raises(ValueError, match="radius must be zero or a positive finite"):
+        engine.idw_interpolation(
+            source, str(tmp_path / "z.tif"), field_name="mm", cell_size=50.0,
+            radius=float("nan"),
+        )
+    # The same radius on a grid it does not blow up: 441 cells, 44 100 pairs.
+    engine.idw_interpolation(
+        source, str(tmp_path / "ok.tif"), field_name="mm", cell_size=50.0, radius=1000.0
+    )
+
+
+def test_a_tin_over_the_operators_point_limit_is_refused(tmp_path, monkeypatch):
+    source = _points(tmp_path, "five", [1.0, 2.0, 3.0, 4.0, 5.0], [*_SQUARE, (50, 50)])
+    monkeypatch.setenv("MAPSMITH_MAX_TRIANGULATION_POINTS", "4")
+    with pytest.raises(ValueError, match="MAPSMITH_MAX_TRIANGULATION_POINTS"):
+        engine.tin_interpolation(
+            source, str(tmp_path / "x.tif"), field_name="mm", cell_size=10.0
+        )
+
+
+def test_a_refusal_does_not_quote_every_column_a_file_brought(tmp_path):
+    """The names are the file's: 1 500 of them made one message 104 000 characters."""
+    path = tmp_path / "wide.parquet"
+    columns = {f"column_{index:04d}": [1.0, 2.0, 3.0, 4.0] for index in range(300)}
+    gpd.GeoDataFrame(
+        columns, geometry=[Point(*xy) for xy in _SQUARE], crs="EPSG:32632"
+    ).to_parquet(path)
+    with pytest.raises(ValueError, match="and 280 more") as refused:
+        engine.tin_interpolation(
+            str(path), str(tmp_path / "x.tif"), field_name="nope", cell_size=10.0
+        )
+    assert "column_0019" in str(refused.value)
+    assert "column_0020" not in str(refused.value)
+
+
 # ------------------------------------------------------ tin_interpolation
 
 

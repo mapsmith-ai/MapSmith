@@ -183,6 +183,26 @@ below:
   from the pipeline it ran. No advisory under the criterion below: the record
   warned of a missing shift that was in fact applied, the direction a reader
   acts on by checking the data, and the data were right.
+
+  Broken in 0.12.2 and earlier, fixed in the release that follows it, found by
+  our own reviews while a new operation was being written, two more. First,
+  `idw_interpolation` (since 0.3.0) ran to `verified: true` on a surface built
+  partly or wholly from row numbers: a field name that is not in the layer and
+  a numeric field stored as text made the library interpolate each feature's
+  position in the file, a point with no reading had that position put in place
+  of the reading, and a polygon or a row without a geometry was dropped with
+  its value. The record named the field the caller asked for and the checks
+  passed, because none of them looked at the values. Second, every raster
+  writer of the terrain engine (since at least 0.2.0) verified a second run to
+  the same output path against the first run's raster: the read-back went
+  through the engine, which answers a read from a cache keyed by path for the
+  life of the process. A correct output could be refused, and a wrong one
+  recorded as checked — `checks` describing a raster that was no longer on
+  disk beside the `output.sha256` of the one that was. What the engine
+  computed was not affected: an input changed at the same path is read fresh.
+  A surface made by `idw_interpolation` from a layer with missing readings
+  should be remade; a record of a terrain output written twice to one path by
+  one server process should be regenerated before it is relied on.
 - **No credentials in a manifest.** Manifests are meant to be shared — attached
   to a review, a bug report, a paper — so a credential must never reach one.
   Since 0.2.2 that is enforced in two layers, in this order:
@@ -407,13 +427,39 @@ before taking the nearest, from 0.4.0 to 0.9.0: 100,000 points asked for
 no limit (pre-release review of 0.9.0, fixed in 0.10.0).
 
 `idw_interpolation` and `tin_interpolation` invent their grid: the extent comes
-from the points and the cell size from the agent, so four points 100 m apart and
-a cell of one millimetre ask for ten billion cells. Both count the cells first
-and refuse above **`MAPSMITH_MAX_GRID_CELLS`** (default 25 000 000, measured at
-493 MB and under five seconds from a 12 kB file), a second environment variable
-of the server. `idw_interpolation` had no such bound from 0.3.0 to 0.12.2; it
-was found while writing `tin_interpolation`, not reported. Operations that take a
-reference raster are bounded by it and do not consult this limit.
+from the points and the cell size from the agent, so a few points and a small
+enough cell ask for more cells than any machine holds. Both count the cells
+first and refuse above **`MAPSMITH_MAX_GRID_CELLS`** (default 10 000 000), a
+second environment variable of the server. Measured through the operations
+themselves, from a 12 kB file: 464 MB at peak at that size and 949 MB at
+twenty-five million cells, in three to fourteen seconds. `idw_interpolation`
+had no such bound from 0.3.0 to 0.12.2. `resample_raster` and
+`reproject_raster` take a cell size too, and had none either: they now consult
+the same limit, which yields to sixteen times the cells of the raster they were
+given, so that a large input is not refused for being large. Operations that
+take a reference raster are bounded by it.
+
+Two more arguments of `idw_interpolation` size the work rather than the
+output. A search `radius` makes every cell weigh every sample inside it, and
+`min_points` makes every cell go and find that many: with either, the cost is
+the cells times the samples reached (measured: 250 000 cells and 1 000 samples
+take 0.4 s as they are and 22 s with a radius wider than the layer). That
+product is counted and refused above one hundred times `MAPSMITH_MAX_SAMPLES`,
+and a `min_points` larger than the number of points is refused outright. Both
+were unbounded from 0.3.0 to 0.12.2.
+
+`tin_interpolation` triangulates, and triangulating grows faster than the
+points: measured with points scattered at random, 100 000 take 3 s, 300 000
+take 16 s and 0.8 GB, 600 000 take 69 s and 1.4 GB. It refuses above
+**`MAPSMITH_MAX_TRIANGULATION_POINTS`** (default 250 000). **That limit bounds
+the ordinary case and not the worst one, and this is open**: there are
+arrangements of a few thousand points on which the library takes many times
+longer than on the same number scattered, and no count separates them from a
+survey. Until the triangulation runs under a budget of its own, the bound on
+this operation is the one on the process.
+
+All of these were found by our own audit while `tin_interpolation` was being
+written, not reported.
 
 That is all there is, and it is not a general resource policy: other operations
 are bounded only by their inputs, and a server exposed over

@@ -25,7 +25,10 @@ All notable changes to MapSmith are documented here, in the format of
   three non-collinear locations, a layer that is not points, a geographic CRS. The check `values_in_expected_range` is the data's own
   range: a linear interpolant cannot leave it. Requires the `[whitebox]` extra.
 - **`MAPSMITH_MAX_GRID_CELLS`**, the operator's limit on a grid an operation
-  invents (default 25 000 000 cells). See `Fixed` and `SECURITY.md`.
+  invents (default 10 000 000 cells), and
+  **`MAPSMITH_MAX_TRIANGULATION_POINTS`** (default 250 000), the limit on the
+  distinct locations `tin_interpolation` will triangulate. The second bounds
+  the ordinary case only: `SECURITY.md` says what it does not bound.
 
 ### Changed
 
@@ -69,12 +72,22 @@ All notable changes to MapSmith are documented here, in the format of
   runs, naming the numeric fields the layer does have or how many points lack a
   value. Present since `idw_interpolation` was added in 0.3.0; **a surface made
   with it from a layer with nulls in the interpolated field should be remade.**
-- **`idw_interpolation` allocated whatever grid its cell size asked for.** The
-  extent comes from the points and the cell size from the caller, so a small
-  cell over a modest extent was a request for memory with no bound: 25 million
-  cells from a 12 kB file measured 493 MB. The cells are now counted first and
-  refused above `MAPSMITH_MAX_GRID_CELLS`. A cell size that is NaN or infinite
-  is refused as well, where it used to reach the engine.
+- **Four operations allocated whatever grid a cell size asked for, and one
+  searched whatever a radius asked for.** `idw_interpolation` takes its extent
+  from the points and its cell size from the caller; `resample_raster` and
+  `reproject_raster` take a `resolution`. None counted the cells: twenty-five
+  million of them from a 12 kB point file measured 949 MB through the
+  operation, and a 10 x 10 raster was re-gridded to 8000 x 8000 without a
+  question. The cells are now counted first and refused above
+  `MAPSMITH_MAX_GRID_CELLS`; for the two that re-grid a raster the limit yields
+  to sixteen times the cells of the input, so a large raster is not refused for
+  being large. `idw_interpolation`'s `radius` and `min_points` made every cell
+  weigh every sample (22 s for 250 000 cells and 1 000 points, where the
+  default takes 0.4 s): that product is refused above one hundred times
+  `MAPSMITH_MAX_SAMPLES`, and a `min_points` above the number of points is
+  refused outright. A cell size or a resolution that is NaN or infinite is
+  refused as well, where it used to reach the engine. All present since the
+  operations were added; found by the security audit of `tin_interpolation`.
 
 ## [0.12.2] - 2026-11-13
 

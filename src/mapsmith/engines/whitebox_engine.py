@@ -336,8 +336,13 @@ def _raster_checks(
     expect_epsg: int,
     expect_shape: tuple[int, int],
     value_range: tuple[float, float] | None = None,
+    counts: dict[str, int] | None = None,
 ) -> list[verify.Check]:
     """Deterministic postconditions on a raster output, read back from disk.
+
+    `counts`, when given, receives how many cells hold a value and how many
+    there are, from the same read: a writer that reports them does not read the
+    raster a second time to count.
 
     Read back through GDAL, and NOT through the engine that wrote it. Until
     0.12.2 this was `wbe.read_raster(output_path)`, and whitebox-workflows 2.0.6
@@ -385,16 +390,23 @@ def _raster_checks(
             f"expected {expect_shape}, got {shape}",
         )
     )
-    arr = np.ma.filled(band.astype("float64"), np.nan)
-    # NaN is a common float nodata: NaN != NaN, so an equality mask alone would
-    # let nodata cells leak into the range check as NaN min/max. The masked read
-    # has already turned the declared nodata into the mask.
-    valid = arr[~np.isnan(arr)]
+    # One copy, of the valid cells only: on a grid at the operator's limit every
+    # full-size temporary is 200 MB, and a float64 conversion plus a filled copy
+    # plus a boolean index made four of them. The masked read has already turned
+    # the declared nodata into the mask; NaN is a common float nodata and
+    # NaN != NaN, so it is dropped here rather than left to poison min and max.
+    total = int(band.size)
+    valid = np.ma.compressed(band)
+    del band
+    if valid.dtype.kind == "f":
+        valid = valid[~np.isnan(valid)]
+    if counts is not None:
+        counts["valid"], counts["total"] = int(valid.size), total
     checks.append(
         verify.Check(
             "result_not_empty",
             valid.size > 0,
-            f"{valid.size}/{arr.size} valid cells",
+            f"{valid.size}/{total} valid cells",
         )
     )
     if value_range is not None and valid.size:
@@ -1361,10 +1373,18 @@ def viewshed(
         }
 
 
+#: How many of a layer's field names a refusal quotes. They are the file's, not
+#: ours: a layer with 1 500 columns made one message 104 000 characters long.
+_FIELDS_QUOTED = 20
+
+
 def _interpolation_values(
     layer: Any, field_name: str, points_path: str, cell_size: float, operation: str
-) -> np.ndarray:
+) -> tuple[np.ndarray, int]:
     """The values an interpolator will read, as floats, or a refusal that says why.
+
+    Returns them with the number of cells the grid will have, by the limit's
+    own count.
 
     Every refusal here is a case where whitebox answers instead of failing, and
     answers with ROW NUMBERS. Measured on whitebox-workflows 2.0.6, for
@@ -1414,9 +1434,11 @@ def _interpolation_values(
             and pd.api.types.is_numeric_dtype(layer[column])
             and not pd.api.types.is_bool_dtype(layer[column])
         )
+        more = len(numeric) - _FIELDS_QUOTED
+        listed = f"{numeric[:_FIELDS_QUOTED]}" + (f" and {more} more" if more > 0 else "")
         raise ValueError(
             f"field {field_name!r} is not present in {points_path}; its numeric "
-            f"fields are {numeric}. {operation} refuses rather than run: the "
+            f"fields are {listed}. {operation} refuses rather than run: the "
             "library would interpolate the row number instead, with no warning."
         )
     series = layer[field_name]
@@ -1438,8 +1460,8 @@ def _interpolation_values(
             "Drop them with select_features first, or fill them in, and say which."
         )
     minx, miny, maxx, maxy = (float(bound) for bound in layer.total_bounds)
-    limits.refuse_too_many_cells(maxx - minx, maxy - miny, cell_size, operation)
-    return values
+    cells = limits.refuse_too_many_cells(maxx - minx, maxy - miny, cell_size, operation)
+    return values, cells
 
 
 def idw_interpolation(
@@ -1502,7 +1524,21 @@ def idw_interpolation(
             "a third and the surface is stretched east-west with nothing to show for "
             "it. Reproject to a projected CRS first."
         )
-    _interpolation_values(layer, field_name, points_path, cell_size, "idw_interpolation")
+    values, cells = _interpolation_values(
+        layer, field_name, points_path, cell_size, "idw_interpolation"
+    )
+    if not (radius >= 0 and math.isfinite(radius)):
+        raise ValueError(f"radius must be zero or a positive finite distance, got {radius}")
+    if min_points < 0:
+        raise ValueError(f"min_points must be zero or more, got {min_points}")
+    if min_points > len(values):
+        raise ValueError(
+            f"min_points={min_points} asks every cell for more samples than the "
+            f"{len(values)} that {points_path} holds."
+        )
+    limits.refuse_too_much_search(
+        cells, len(values), cell_size, radius, min_points, "idw_interpolation"
+    )
 
     wbe = wb.WbEnvironment()
     wbe.verbose = False
@@ -1642,7 +1678,7 @@ def tin_interpolation(
             "Reproject to a projected CRS first."
         )
     geometry = layer.geometry
-    values = _interpolation_values(
+    values, _cells = _interpolation_values(
         layer, field_name, points_path, cell_size, "tin_interpolation"
     )
     # One row per coordinate, with its value: a MultiPoint lends its value to
@@ -1684,6 +1720,7 @@ def tin_interpolation(
             + ": a triangulation needs at least three that are not collinear."
         )
     repeated = len(coordinates) - len(distinct)
+    limits.refuse_too_many_points(len(distinct), "tin_interpolation")
     pre = verify.verify_loaded_inputs("tin_interpolation", points_path=layer)
 
     wbe = wb.WbEnvironment()
@@ -1715,7 +1752,6 @@ def tin_interpolation(
         ) from exc
     meta = result.metadata()
     epsg = result.crs_epsg()
-    surface = result.to_numpy(dtype="float64")
     if not math.isnan(meta.nodata) and (sample_values == meta.nodata).any():
         # TIN_NODATA is what 2.0.6 writes; this is the same refusal for a
         # version that writes something else.
@@ -1724,11 +1760,6 @@ def tin_interpolation(
             "value the engine wrote for cells with no value: the two cannot be told "
             "apart in the output."
         )
-    if math.isnan(meta.nodata):
-        valid_cells = int((~np.isnan(surface)).sum())
-    else:
-        valid_cells = int(((surface != meta.nodata) & ~np.isnan(surface)).sum())
-    total_cells = int(surface.size)
     # Decided before the write, so a record written on failure carries it.
     record.crs_decisions = {
         "analysis_crs": f"EPSG:{epsg}" if epsg else verify.crs_label(crs),
@@ -1736,17 +1767,6 @@ def tin_interpolation(
         "projected — refused otherwise — so the cell size and the distances that "
         "decide the triangulation are both in that CRS's linear unit",
     }
-    record.notes.append(
-        f"{valid_cells} of {total_cells} cells hold a value: a cell outside the "
-        "convex hull of the points"
-        + (
-            ", or inside a triangle with a side longer than "
-            f"{max_triangle_edge_length:g},"
-            if max_triangle_edge_length is not None
-            else ""
-        )
-        + " is nodata, because a triangulation does not extrapolate"
-    )
     if repeated:
         record.notes.append(
             f"{repeated} point(s) repeat a location already present with the same "
@@ -1765,8 +1785,14 @@ def tin_interpolation(
     with verify.audit_on_failure(record, output_path, pre):
         wbe.write_raster(result, str(output_path))
 
+    # Counted from the file, in the read the checks make anyway. Counting from
+    # the engine's in-memory result cost 1.2 GB on a grid at the limit (measured
+    # by the security audit: `to_numpy` on a 200 MB surface) and described what
+    # the engine held rather than what it wrote.
+    counts: dict[str, int] = {}
+
     def checks() -> list[verify.Check]:
-        return _raster_checks(
+        found = _raster_checks(
             wbe,
             output_path,
             # The layer's own code where it has one, not the engine's reading
@@ -1775,7 +1801,20 @@ def tin_interpolation(
             expect_epsg=crs.to_epsg() or epsg,
             expect_shape=(meta.rows, meta.columns),
             value_range=(low - margin, high + margin),
+            counts=counts,
         )
+        record.notes.append(
+            f"{counts['valid']} of {counts['total']} cells hold a value: a cell "
+            "outside the convex hull of the points"
+            + (
+                ", or inside a triangle with a side longer than "
+                f"{max_triangle_edge_length:g},"
+                if max_triangle_edge_length is not None
+                else ""
+            )
+            + " is nodata, because a triangulation does not extrapolate"
+        )
+        return found
 
     manifest, extras = verify.audited(
         record, output_path, operation="tin_interpolation",
@@ -1787,8 +1826,8 @@ def tin_interpolation(
         "cell_size": cell_size,
         "max_triangle_edge_length": max_triangle_edge_length,
         "shape": [meta.rows, meta.columns],
-        "valid_cells": valid_cells,
-        "total_cells": total_cells,
+        "valid_cells": counts["valid"],
+        "total_cells": counts["total"],
         "provenance": manifest,
         "verified": True,
         **extras,
