@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 import geopandas as gpd
 
-from . import crs_policy
+from . import crs_policy, limits
 
 if TYPE_CHECKING:
     from pyproj import CRS
@@ -345,9 +345,43 @@ def read_vector(path: str) -> gpd.GeoDataFrame:
     """
     _refuse_declared(path)
     if str(path).lower().endswith(".parquet"):
+        _refuse_more_rows_than_the_file_pays_for(path)
         return _checked(_read_geoparquet(path, allow_no_geometry=False), path)
     refuse_ambiguous_container(path)
     return _checked(gpd.read_file(path), path)
+
+
+def _refuse_more_rows_than_the_file_pays_for(path: str) -> None:
+    """The one input format whose size on disk does not bound what reading it costs.
+
+    Parquet stores a repeated value once, so a file of rows that are all alike
+    is kilobytes for millions of them, and every one becomes a geometry object
+    in memory. The row count is in the footer, read without touching the data.
+    Here and not in :func:`_read_geoparquet`: verification reads back outputs
+    MapSmith wrote itself through :func:`read_vector_or_table`, and an output
+    is as large as the operation that was allowed to produce it.
+    """
+    import pyarrow.dataset as ds
+    import pyarrow.parquet as pq
+
+    # A directory of Parquet files is one dataset to GeoPandas, and was read as
+    # one before this check existed. Counted from the files the dataset reader
+    # itself will open, whatever they are called: a glob for `*.parquet` let a
+    # directory through with its rows in a file named `big.pq` (audit).
+    files = (
+        [Path(file) for file in ds.dataset(path, format="parquet").files]
+        if Path(path).is_dir()
+        else [Path(path)]
+    )
+    rows = 0
+    for file in files:
+        footer = pq.ParquetFile(file).metadata
+        # The file-level count is one field and the reader does not use it: it
+        # reads row group by row group. One byte of the footer rewritten made a
+        # file of 500 000 rows declare one (audit), so both are counted.
+        in_groups = sum(footer.row_group(i).num_rows for i in range(footer.num_row_groups))
+        rows += max(footer.num_rows, in_groups)
+    limits.refuse_too_many_features(rows, sum(file.stat().st_size for file in files), path)
 
 
 def read_named_layer(path: str, layer: str) -> gpd.GeoDataFrame:

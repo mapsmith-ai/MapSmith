@@ -82,6 +82,50 @@ def max_triangulation_points() -> int:
     )
 
 
+MAX_INPUT_FEATURES_ENV = "MAPSMITH_MAX_INPUT_FEATURES"
+
+#: The rows a file may hold however small it is on disk. Measured through
+#: `readers.read_vector`, points with two attributes: about 450 MB of memory
+#: per million rows, the same from GeoParquet, GeoPackage, shapefile and
+#: GeoJSON. What differs is the size on disk that buys them: 28 MB for a
+#: million scattered points in a shapefile, 30 MB in GeoParquet — and 20 kB in
+#: a GeoParquet whose rows are all alike, because Parquet stores a repeated
+#: value once. Fifty million such rows are a 0.77 MB file.
+DEFAULT_MAX_INPUT_FEATURES = 1_000_000
+
+#: Bytes on disk that entitle a file to one row beyond the limit, so that a
+#: large dataset is not refused for being large. An honest file is bounded by
+#: its own size, which is the operator's to bound; at this rate an entitled
+#: file costs at most about twice the memory an ordinary one of its size does
+#: (28 MB per megabyte on disk, against the 15 measured on scattered points).
+INPUT_BYTES_PER_FEATURE = 16
+
+
+def max_input_features() -> int:
+    return _whole_number_setting(MAX_INPUT_FEATURES_ENV, DEFAULT_MAX_INPUT_FEATURES)
+
+
+def refuse_too_many_features(rows: int, bytes_on_disk: int, path: str) -> None:
+    """Refuse to read a file that holds far more rows than its size on disk pays for.
+
+    The rows come from the file's own footer, before any of them is read. A
+    file within the limit is read whatever its size; above it, the file must
+    occupy `INPUT_BYTES_PER_FEATURE` bytes for each row, which every ordinary
+    dataset does and a file of repeated rows does not.
+    """
+    cap = max(max_input_features(), bytes_on_disk // INPUT_BYTES_PER_FEATURE)
+    if rows > cap:
+        raise ValueError(
+            f"{path} declares {rows:,} rows in {bytes_on_disk:,} bytes: more rows "
+            f"than this server reads from a file that small (its limit is {cap:,} "
+            f"for this file). Reading costs memory by the row, not by the byte on "
+            f"disk, and rows that repeat take almost none there. If the data are "
+            f"what they should be, ask the operator to raise "
+            f"{MAX_INPUT_FEATURES_ENV}: it is a setting of the server, not an "
+            "argument of the tool."
+        )
+
+
 def refuse_too_many_points(count: int, operation: str) -> None:
     """Refuse a triangulation over more locations than the operator allows."""
     cap = max_triangulation_points()
