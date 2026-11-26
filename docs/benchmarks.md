@@ -744,17 +744,20 @@ organisation on purpose: an evaluation that lives inside the thing it
 evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
-What it says about MapSmith 0.12.2 (all thirty families, engine tier, `spec_commit`
-[`b6051b2`](https://github.com/argleton/argleton/tree/main/results/2026-11-26-mapsmith-v0-12-2)):
+What it says about MapSmith 0.13.0 (all thirty families, engine tier, `spec_commit`
+[`9ce13a4`](https://github.com/argleton/argleton/tree/main/results/2026-11-26-mapsmith-v0-13-0)):
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
 | MapSmith | **0.00** | 1.00 | 33 | 0 |
 | naive composition (read file, take statistic) | 0.8788 | 1.00 | 33 | 0 |
 
-The current run measures the 0.12.2 release; every verdict matches the run of 2026-10-30
+The current run measures the 0.13.0 release; every verdict matches the run of 2026-10-30
 on 0.11.0, which added a multi-step selection with ordered IDs that MapSmith answers
-correctly, trap and clean control. The runs from
+correctly, trap and clean control. **The 0.00 does not cover interpolation**: no family
+of the suite interpolates, and the row read 0.00 through every release in which
+`idw_interpolation` could answer with row numbers under `verified: true` — found by our
+own review and fixed in 0.13.0, not caught by a probe. The runs from
 2026-08-30 to 2026-09-15 scored trap 024 against a wrong truth in MapSmith's favour: the
 [erratum](https://github.com/argleton/argleton/blob/main/results/README.md#erratum-2026-09-25-trap-024) recounts them,
 and the section below the next one says what the trap was and why the fix made it worse.
