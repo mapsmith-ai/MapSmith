@@ -79,6 +79,9 @@ def _calls(directory, dem, pour, values):
         "idw_interpolation": lambda: engine.idw_interpolation(
             values, out("idw.tif"), field_name="v", cell_size=0.001
         ),
+        "tin_interpolation": lambda: engine.tin_interpolation(
+            values, out("tin.tif"), field_name="v", cell_size=0.001
+        ),
     }
 
 

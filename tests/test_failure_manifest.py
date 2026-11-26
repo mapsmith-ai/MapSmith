@@ -142,6 +142,7 @@ _WRITE_UNREACHABLE = {
     "idw_interpolation",
     "run_sql",
     "slope",
+    "tin_interpolation",
     "viewshed",
     "watershed",
 }

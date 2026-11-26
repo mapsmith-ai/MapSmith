@@ -406,6 +406,15 @@ before taking the nearest, from 0.4.0 to 0.9.0: 100,000 points asked for
 149 GiB. It now queries a tree, in memory linear in the points, so it needs
 no limit (pre-release review of 0.9.0, fixed in 0.10.0).
 
+`idw_interpolation` and `tin_interpolation` invent their grid: the extent comes
+from the points and the cell size from the agent, so four points 100 m apart and
+a cell of one millimetre ask for ten billion cells. Both count the cells first
+and refuse above **`MAPSMITH_MAX_GRID_CELLS`** (default 25 000 000, measured at
+493 MB and under five seconds from a 12 kB file), a second environment variable
+of the server. `idw_interpolation` had no such bound from 0.3.0 to 0.12.2; it
+was found while writing `tin_interpolation`, not reported. Operations that take a
+reference raster are bounded by it and do not consult this limit.
+
 That is all there is, and it is not a general resource policy: other operations
 are bounded only by their inputs, and a server exposed over
 HTTP should also run under the memory and CPU limits of its container or pod

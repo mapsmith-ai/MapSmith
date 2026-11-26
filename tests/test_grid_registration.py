@@ -500,7 +500,7 @@ RASTER_WRITER_OPERATIONS = {
 
 #: Takes a vector layer, so there is no input raster whose registration could be
 #: carried: the grid it writes is one it invented.
-_NO_INPUT_RASTER = {"idw_interpolation"}
+_NO_INPUT_RASTER = {"idw_interpolation", "tin_interpolation"}
 
 
 def test_only_one_module_decides_where_a_cell_is(tmp_path):

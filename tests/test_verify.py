@@ -1534,6 +1534,9 @@ def _spec_fixtures(tmp_path):
         "idw_interpolation": lambda: whitebox_engine.idw_interpolation(
             str(quad), out("idw.tif"), field_name="v", cell_size=10.0
         ),
+        "tin_interpolation": lambda: whitebox_engine.tin_interpolation(
+            str(quad), out("tin.tif"), field_name="v", cell_size=10.0
+        ),
         "viewshed": lambda: whitebox_engine.viewshed(
             str(dem), str(pour), out("seen.tif"), station_height=2.0
         ),

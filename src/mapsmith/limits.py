@@ -26,17 +26,61 @@ MAX_SAMPLES_ENV = "MAPSMITH_MAX_SAMPLES"
 DEFAULT_MAX_SAMPLES = 1_000_000
 
 
-def max_samples() -> int:
-    raw = os.environ.get(MAX_SAMPLES_ENV, "").strip()
+MAX_GRID_CELLS_ENV = "MAPSMITH_MAX_GRID_CELLS"
+
+#: A 5000 x 5000 surface. Measured on whitebox-workflows 2.0.6 from four points
+#: in a 12 kB file: 493 MB at peak for either interpolator, 4.8 s for IDW. It is
+#: 50 km at 10 m, past what a surface built from scattered points usually
+#: covers; an operator who needs more says so.
+DEFAULT_MAX_GRID_CELLS = 25_000_000
+
+
+def _whole_number_setting(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
     if not raw:
-        return DEFAULT_MAX_SAMPLES
+        return default
     try:
         value = int(raw)
     except ValueError as exc:
-        raise ValueError(f"{MAX_SAMPLES_ENV} must be a whole number, got {raw!r}") from exc
+        raise ValueError(f"{name} must be a whole number, got {raw!r}") from exc
     if value < 1:
-        raise ValueError(f"{MAX_SAMPLES_ENV} must be at least 1, got {value}")
+        raise ValueError(f"{name} must be at least 1, got {value}")
     return value
+
+
+def max_samples() -> int:
+    return _whole_number_setting(MAX_SAMPLES_ENV, DEFAULT_MAX_SAMPLES)
+
+
+def max_grid_cells() -> int:
+    return _whole_number_setting(MAX_GRID_CELLS_ENV, DEFAULT_MAX_GRID_CELLS)
+
+
+def refuse_too_many_cells(
+    width: float, height: float, cell_size: float, operation: str
+) -> int:
+    """Count the cells a cell size will lay over an extent, and refuse before allocating.
+
+    For operations that INVENT their grid from a vector extent and a cell size the
+    caller chose: nothing bounds that product except this. A reference raster
+    bounds itself, so operations that take one do not come here.
+
+    Returns the count, one more row and column than the extent strictly needs:
+    the safe side for a limit, and the grid may round outwards.
+    """
+    columns = math.floor(width / cell_size) + 1
+    rows = math.floor(height / cell_size) + 1
+    expected = columns * rows
+    cap = max_grid_cells()
+    if expected > cap:
+        raise ValueError(
+            f"{operation} with a cell size of {cell_size} over an extent of "
+            f"{width:g} x {height:g} would produce about {expected:,} cells "
+            f"({columns:,} x {rows:,}), over this server's limit of {cap:,}. Use a "
+            f"larger cell size, or ask the operator to raise {MAX_GRID_CELLS_ENV}: "
+            "it is a setting of the server, not an argument of the tool."
+        )
+    return expected
 
 
 def refuse_too_many_samples(lengths: Iterable[float], spacing: float, operation: str) -> int:

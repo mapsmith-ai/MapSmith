@@ -24,9 +24,11 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
+import shapely
 from pyproj import CRS
 
-from .. import grid, readers, verify, workspace
+from .. import grid, limits, readers, verify, workspace
 from ..provenance import InputRecord, ProvenanceRecord, alignment_decisions
 
 HILLSHADE_MAX = 32767  # upstream scales hillshade to 0-32767 (basic_terrain_tools.rs)
@@ -1327,6 +1329,62 @@ def viewshed(
         }
 
 
+def _interpolation_values(
+    layer: Any, field_name: str, points_path: str, cell_size: float, operation: str
+) -> np.ndarray:
+    """The values an interpolator will read, as floats, or a refusal that says why.
+
+    Every refusal here is a case where whitebox answers instead of failing, and
+    answers with ROW NUMBERS. Measured on whitebox-workflows 2.0.6, for
+    `idw_interpolation` and `tin_interpolation` alike:
+
+        a field name that is not in the layer   -> the surface of FID
+        a text field, even one holding digits   -> the surface of FID
+        a null or NaN in one row                -> that row's FID in its place
+
+    The third is the quiet one: three gauges reading 800, 1000 and 1100 mm and a
+    fourth with no reading produce a surface that dips to 1 at the fourth gauge,
+    because 1 is where it sits in the file. Nothing raises and the raster
+    renders. Until 0.12.2 `idw_interpolation` checked only that the name was not
+    blank, which is the one mistake of the four that cannot be made by accident.
+    """
+    geometry_name = layer.geometry.name
+    if field_name not in layer.columns or field_name == geometry_name:
+        numeric = sorted(
+            str(column)
+            for column in layer.columns
+            if column != geometry_name
+            and pd.api.types.is_numeric_dtype(layer[column])
+            and not pd.api.types.is_bool_dtype(layer[column])
+        )
+        raise ValueError(
+            f"field {field_name!r} is not present in {points_path}; its numeric "
+            f"fields are {numeric}. {operation} refuses rather than run: the "
+            "library would interpolate the row number instead, with no warning."
+        )
+    series = layer[field_name]
+    if pd.api.types.is_bool_dtype(series) or not pd.api.types.is_numeric_dtype(series):
+        raise ValueError(
+            f"field {field_name!r} of {points_path} is {series.dtype}, not a number. "
+            f"{operation} refuses rather than run: the library would interpolate the "
+            "row number instead, with no warning. Convert it with calculate_field first."
+        )
+    values = series.to_numpy(dtype="float64", na_value=np.nan)
+    if len(values) == 0:
+        raise ValueError(f"{points_path} has no points to interpolate")
+    missing = int((~np.isfinite(values)).sum())
+    if missing:
+        raise ValueError(
+            f"{missing} of {len(values)} points in {points_path} have no finite value "
+            f"in {field_name!r}. {operation} refuses rather than run: the library "
+            "would put each such point's row number in its place, with no warning. "
+            "Drop them with select_features first, or fill them in, and say which."
+        )
+    minx, miny, maxx, maxy = (float(bound) for bound in layer.total_bounds)
+    limits.refuse_too_many_cells(maxx - minx, maxy - miny, cell_size, operation)
+    return values
+
+
 def idw_interpolation(
     points_path: str,
     output_path: str,
@@ -1358,8 +1416,8 @@ def idw_interpolation(
     "the cell size is read in that CRS's units" as though that settled it.
     """
     wb = _require()
-    if cell_size <= 0:
-        raise ValueError(f"cell_size must be positive, got {cell_size}")
+    if not (cell_size > 0 and math.isfinite(cell_size)):
+        raise ValueError(f"cell_size must be positive and finite, got {cell_size}")
     if not field_name or not str(field_name).strip():
         raise ValueError(
             "field_name is required: whitebox interpolates FID by default, which "
@@ -1387,6 +1445,7 @@ def idw_interpolation(
             "a third and the surface is stretched east-west with nothing to show for "
             "it. Reproject to a projected CRS first."
         )
+    _interpolation_values(layer, field_name, points_path, cell_size, "idw_interpolation")
 
     wbe = wb.WbEnvironment()
     wbe.verbose = False
@@ -1444,6 +1503,214 @@ def idw_interpolation(
         "shape": [meta.rows, meta.columns],
         "provenance": str(manifest),
         "verified": True,
+    }
+
+
+def tin_interpolation(
+    points_path: str,
+    output_path: str,
+    field_name: str,
+    cell_size: float,
+    max_triangle_edge_length: float | None = None,
+) -> dict[str, Any]:
+    """Linear surface on the Delaunay triangulation of a point layer.
+
+    Each cell takes the value of the plane through the three samples whose
+    triangle contains its centre. Three consequences, each of which is the
+    reason to choose this over `idw_interpolation` or to choose that instead:
+
+    - **It honours the samples and adds nothing.** The surface passes exactly
+      through every measurement and never leaves the range of the data, and no
+      parameter shapes it: two people given the same points get the same raster.
+      An IDW surface depends on an exponent somebody picked.
+    - **It does not extrapolate.** Cells outside the convex hull of the points
+      are nodata, where IDW fills the whole rectangle with numbers that look as
+      measured as the rest. `valid_cells` in the result says how much of the
+      grid the triangulation covered.
+    - **A trend is reproduced, not flattened.** Samples lying on a plane give
+      back that plane to machine precision; IDW bends it into a bullseye around
+      each point.
+
+    Measured on whitebox-workflows 2.0.6 before this was written: values are
+    exact at cell CENTRES on a plane (2x + 3y + 5, error under 1e-13), so the
+    grid registration needs no correction here, unlike `contour_lines`.
+
+    Refused, because the library answers each of these without complaint:
+    coincident points holding different values (it keeps one and drops the
+    other; which one is the truth is not something a triangulation can decide),
+    and everything `_interpolation_values` refuses. A geographic CRS is refused
+    for the reason `idw_interpolation` gives and one more: which three samples
+    make a triangle is decided by distances, and in degrees those are not
+    distances, so the triangulation itself comes out different.
+
+    `max_triangle_edge_length` leaves nodata in any triangle with a longer
+    side: the way to keep the surface from bridging a gap in the sampling. It
+    is in the layer's CRS units and it is recorded.
+    """
+    wb = _require()
+    if not (cell_size > 0 and math.isfinite(cell_size)):
+        raise ValueError(f"cell_size must be positive and finite, got {cell_size}")
+    if not field_name or not str(field_name).strip():
+        raise ValueError(
+            "field_name is required: whitebox interpolates FID by default, which "
+            "produces a smooth and meaningless surface of row numbers, with no warning."
+        )
+    if max_triangle_edge_length is not None and max_triangle_edge_length <= 0:
+        raise ValueError(
+            f"max_triangle_edge_length must be positive, got {max_triangle_edge_length}"
+        )
+    layer = readers.read_vector(points_path)
+    if layer.crs is None:
+        raise ValueError(
+            readers.no_crs_message(
+                layer,
+                f"{points_path} declares no CRS, so neither the cell size nor the "
+                "triangulation means anything.",
+            )
+        )
+    crs = layer.crs
+    if crs.is_geographic:
+        raise ValueError(
+            "tin_interpolation on a geographic CRS would choose its triangles by "
+            "distances in degrees, which are not distances: a degree of longitude "
+            "is 111 km at the equator and 83 km in Rome, so different samples end "
+            "up joined and the surface changes with nothing to show for it. "
+            "Reproject to a projected CRS first."
+        )
+    geometry = layer.geometry
+    if len(layer) and (geometry.isna().any() or geometry.is_empty.any()):
+        raise ValueError(
+            f"{points_path} has points with no geometry; drop them with "
+            "select_features first."
+        )
+    other = sorted(set(geometry.geom_type) - {"Point", "MultiPoint"})
+    if other:
+        raise ValueError(
+            f"tin_interpolation reads point layers, and {points_path} holds {other}. "
+            "A value belongs to a location: take centroid_layer or point_on_surface "
+            "first, and say which."
+        )
+    values = _interpolation_values(
+        layer, field_name, points_path, cell_size, "tin_interpolation"
+    )
+    # One row per coordinate, with its value: a MultiPoint lends its value to
+    # each of its parts, which is what the library does too (measured).
+    coordinates, owner = shapely.get_coordinates(geometry.values, return_index=True)
+    sample_values = values[owner]
+    distinct, inverse = np.unique(coordinates, axis=0, return_inverse=True)
+    inverse = np.asarray(inverse).reshape(-1)
+    lowest = np.full(len(distinct), np.inf)
+    highest = np.full(len(distinct), -np.inf)
+    np.minimum.at(lowest, inverse, sample_values)
+    np.maximum.at(highest, inverse, sample_values)
+    conflicting = np.flatnonzero(lowest != highest)
+    if conflicting.size:
+        x, y = (float(c) for c in distinct[conflicting[0]])
+        raise ValueError(
+            f"{conflicting.size} location(s) in {points_path} hold more than one value "
+            f"of {field_name!r} (the first at {x:g}, {y:g}: {lowest[conflicting[0]]:g} "
+            f"and {highest[conflicting[0]]:g}). tin_interpolation refuses rather than "
+            "run: the library keeps one and drops the other, with no warning. "
+            "Aggregate them first, and say how."
+        )
+    if len(distinct) < 3 or shapely.MultiPoint(distinct).convex_hull.area == 0.0:
+        raise ValueError(
+            f"{points_path} has {len(distinct)} distinct location(s)"
+            + (", all on one line" if len(distinct) >= 3 else "")
+            + ": a triangulation needs at least three that are not collinear."
+        )
+    repeated = len(coordinates) - len(distinct)
+    pre = verify.verify_loaded_inputs("tin_interpolation", points_path=layer)
+
+    wbe = wb.WbEnvironment()
+    wbe.verbose = False
+    points = wbe.read_vector(str(points_path))
+    record = ProvenanceRecord(
+        operation="tin_interpolation",
+        parameters={
+            "field_name": field_name,
+            "cell_size": cell_size,
+            "max_triangle_edge_length": max_triangle_edge_length,
+        },
+        inputs=[InputRecord.from_path(points_path, crs=verify.crs_label(crs))],
+        engine=_engine_info(),
+    )
+    options: dict[str, Any] = {}
+    if max_triangle_edge_length is not None:
+        options["max_triangle_edge_length"] = max_triangle_edge_length
+    try:
+        result = wbe.raster.general.tin_interpolation(
+            points=points, field_name=field_name, cell_size=cell_size, **options
+        )
+    except RuntimeError as exc:
+        # Points that are collinear to within the library's own tolerance but
+        # not exactly: the hull test above is exact, this is the engine's word.
+        raise ValueError(
+            f"whitebox could not triangulate {points_path}: {exc}. The points are "
+            "probably collinear or nearly so."
+        ) from exc
+    meta = result.metadata()
+    epsg = result.crs_epsg()
+    surface = result.to_numpy(dtype="float64")
+    if math.isnan(meta.nodata):
+        valid_cells = int((~np.isnan(surface)).sum())
+    else:
+        valid_cells = int(((surface != meta.nodata) & ~np.isnan(surface)).sum())
+    total_cells = int(surface.size)
+    # Decided before the write, so a record written on failure carries it.
+    record.crs_decisions = {
+        "analysis_crs": f"EPSG:{epsg}" if epsg else verify.crs_label(crs),
+        "reason": "the surface is built in the point layer's own CRS, which is "
+        "projected — refused otherwise — so the cell size and the distances that "
+        "decide the triangulation are both in that CRS's linear unit",
+    }
+    record.notes.append(
+        f"{valid_cells} of {total_cells} cells hold a value: a cell outside the "
+        "convex hull of the points"
+        + (
+            ", or inside a triangle with a side longer than "
+            f"{max_triangle_edge_length:g},"
+            if max_triangle_edge_length is not None
+            else ""
+        )
+        + " is nodata, because a triangulation does not extrapolate"
+    )
+    if repeated:
+        record.notes.append(
+            f"{repeated} point(s) repeat a location already present with the same "
+            "value; they add nothing to the triangulation"
+        )
+    # A linear interpolant cannot leave the range of its samples. The margin is
+    # rounding and nothing else: measured error on a plane is under 1e-13.
+    low, high = float(sample_values.min()), float(sample_values.max())
+    margin = 1e-9 * max(1.0, abs(low), abs(high))
+    with verify.audit_on_failure(record, output_path, pre):
+        wbe.write_raster(result, str(output_path))
+
+    def checks() -> list[verify.Check]:
+        return _raster_checks(
+            wbe,
+            output_path,
+            expect_epsg=epsg,
+            expect_shape=(meta.rows, meta.columns),
+            value_range=(low - margin, high + margin),
+        )
+
+    manifest, extras = verify.audited(
+        record, output_path, operation="tin_interpolation",
+        preconditions=pre, checks_fn=checks, repair=False,
+    )
+    return {
+        "output": str(output_path),
+        "field_name": field_name,
+        "cell_size": cell_size,
+        "max_triangle_edge_length": max_triangle_edge_length,
+        "shape": [meta.rows, meta.columns],
+        "valid_cells": valid_cells,
+        "total_cells": total_cells,
+        "provenance": manifest,
+        "verified": True,
+        **extras,
     }
 
 

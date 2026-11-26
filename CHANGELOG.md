@@ -6,6 +6,47 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+### Added
+
+- **`tin_interpolation`: a surface that passes through its samples and stops
+  where they stop.** Linear interpolation on the Delaunay triangulation of a
+  point layer. Each cell takes the value of the plane through the three samples
+  whose triangle contains its centre, so the surface is exact at every
+  measurement, never leaves the range of the data, and gives back a plane when
+  the samples lie on one (measured: error under 1e-13 at the cell centres, so
+  the grid needs no registration correction). Cells outside the convex hull are
+  nodata, and the result reports `valid_cells` of `total_cells`; where
+  `idw_interpolation` fills the whole rectangle and depends on an exponent, this
+  has no parameter that shapes the answer. Refused rather than answered: two
+  different values at one location (the library keeps one and drops the other),
+  fewer than three non-collinear locations, a layer that is not points, a
+  geographic CRS. `max_triangle_edge_length` keeps the surface from bridging a
+  gap in the sampling. The check `values_in_expected_range` is the data's own
+  range: a linear interpolant cannot leave it. Requires the `[whitebox]` extra.
+- **`MAPSMITH_MAX_GRID_CELLS`**, the operator's limit on a grid an operation
+  invents (default 25 000 000 cells). See `Fixed` and `SECURITY.md`.
+
+### Fixed
+
+- **`idw_interpolation` returned a surface of row numbers, verified, for three
+  ordinary mistakes.** A field name with a typo, a numeric field stored as text,
+  and a point with no reading all ran to `verified: True`: whitebox falls back
+  to the feature's position in the file, for the whole layer in the first two
+  cases and for the one point in the third. Four gauges reading 800, 900, 1000
+  and 1100 mm came back as a surface spanning 0 to 3 when the field was
+  misspelled, and spanning 1 to 1100 when the second reading was null — a dip to
+  1 mm at a gauge, because 1 is where it sits in the file. The operation checked
+  only that the name was not blank. All three are now refused before the engine
+  runs, naming the numeric fields the layer does have or how many points lack a
+  value. Present since `idw_interpolation` was added in 0.3.0; **a surface made
+  with it from a layer with nulls in the interpolated field should be remade.**
+- **`idw_interpolation` allocated whatever grid its cell size asked for.** The
+  extent comes from the points and the cell size from the caller, so a small
+  cell over a modest extent was a request for memory with no bound: 25 million
+  cells from a 12 kB file measured 493 MB. The cells are now counted first and
+  refused above `MAPSMITH_MAX_GRID_CELLS`. A cell size that is NaN or infinite
+  is refused as well, where it used to reach the engine.
+
 ## [0.12.2] - 2026-11-13
 
 Records continue to declare `spec_version` `1.0.0-draft.10`; no manifest key is

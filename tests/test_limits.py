@@ -68,6 +68,30 @@ def test_a_limit_that_is_not_a_positive_whole_number_is_refused(monkeypatch, raw
         limits.max_samples()
 
 
+def test_a_grid_is_counted_from_its_extent_and_refused_before_it_is_allocated(monkeypatch):
+    """1000 x 500 at 10 is 101 x 51 by the limit's count: one more than strictly needed."""
+    assert limits.refuse_too_many_cells(1000.0, 500.0, 10.0, "op") == 101 * 51
+    monkeypatch.setenv(limits.MAX_GRID_CELLS_ENV, "5000")
+    with pytest.raises(
+        ValueError, match=r"about 5,151 cells \(101 x 51\), over this server's limit of 5,000"
+    ):
+        limits.refuse_too_many_cells(1000.0, 500.0, 10.0, "op")
+
+
+def test_the_default_grid_limit_admits_a_city_and_stops_a_millimetre_cell():
+    # 20 km x 20 km at 5 m: 4001 x 4001, a little over sixteen million cells.
+    assert limits.refuse_too_many_cells(20_000.0, 20_000.0, 5.0, "op") == 4001 * 4001
+    with pytest.raises(ValueError, match="MAPSMITH_MAX_GRID_CELLS"):
+        limits.refuse_too_many_cells(20_000.0, 20_000.0, 0.001, "op")
+
+
+@pytest.mark.parametrize("raw", ["lots", "0", "-3"])
+def test_a_grid_limit_that_is_not_a_positive_whole_number_is_refused(monkeypatch, raw):
+    monkeypatch.setenv(limits.MAX_GRID_CELLS_ENV, raw)
+    with pytest.raises(ValueError, match=limits.MAX_GRID_CELLS_ENV):
+        limits.max_grid_cells()
+
+
 @pytest.mark.parametrize("spacing", [float("nan"), float("inf")])
 def test_points_along_lines_refuses_a_spacing_that_is_not_finite(line, tmp_path, spacing):
     with pytest.raises(ValueError, match="positive finite"):

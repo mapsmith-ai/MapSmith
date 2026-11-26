@@ -3656,7 +3656,9 @@ OPERATIONS: list[dict[str, Any]] = [
         'summary': 'Inverse-distance-weighted surface from a point layer; the field is '
                    'REQUIRED. Requires the [whitebox] extra',
         "phrasings": "a surface from scattered measurements; fill in between the gauges; interpolate the readings; continuous rainfall surface from station points; nearby points count much more than far ones; rebuild the terrain from scattered heights",
-        "distinguishes": "Builds a continuous surface from scattered point measurements. Not "
+        "distinguishes": "Builds a continuous surface from scattered point measurements, filling "
+        "the whole rectangle around them. Not tin_interpolation, which passes exactly through "
+        "the samples, has no exponent to choose and leaves nodata outside the points; not "
         "voronoi_polygons, which gives each point a hard territory instead of a gradient; "
         "not focal_statistics, which needs a grid to start from.",
         'description': 'Build a continuous surface from scattered point measurements by '
@@ -3718,6 +3720,79 @@ OPERATIONS: list[dict[str, Any]] = [
                                                                           'field_name': 'level_m',
                                                                           'cell_size': 50.0,
                                                                           'weight': 3.0}}}}]},
+    {   'name': 'tin_interpolation',
+        'status': 'available',
+        'tool': None,
+        'workload': 'raster',
+        'category': 'raster',
+        "produces": "dataset:raster",
+        # True for the reason idw_interpolation gives and one more: which samples
+        # are joined into a triangle is decided by distances, so in degrees the
+        # triangulation itself is a different one.
+        'applicability': {'inputs': ['vector'], 'requires_projected_crs': True, 'dataset_inputs': 1, 'geometry': ['point']},
+        'summary': 'Linear surface on the triangulation (TIN) of a point layer: passes exactly '
+                   'through every sample, leaves nodata outside them; the field is REQUIRED. '
+                   'Requires the [whitebox] extra',
+        "phrasings": "the surface must go exactly through the surveyed heights; do not invent values beyond the outermost points; a terrain model from spot heights by triangulation; leave blank where there are no measurements; interpolate without choosing a power or a radius; triangulated surface from survey points",
+        "distinguishes": "Joins the samples into triangles and reads each cell off the plane of its "
+        "triangle: exact at the samples, never outside their range, nodata beyond their convex "
+        "hull, and no parameter that shapes the result. Not idw_interpolation, which fills the "
+        "whole rectangle, depends on an exponent and flattens a trend into a bullseye around each "
+        "point; not voronoi_polygons, which gives each point a hard territory instead of a gradient.",
+        'description': 'Build a continuous surface from scattered point measurements by linear '
+                       'interpolation on their Delaunay triangulation. Each cell takes the value '
+                       'of the plane through the three samples whose triangle contains its '
+                       'centre, so the surface passes exactly through every measurement and '
+                       'never leaves the range of the data; samples lying on a plane give that '
+                       'plane back. Cells outside the convex hull of the points are nodata — a '
+                       "triangulation does not extrapolate — and the result reports 'valid_cells' "
+                       "of 'total_cells'. Refused rather than answered: a field that is missing, "
+                       'not numeric or holding nulls (the library would interpolate row numbers '
+                       'in their place, with no warning), two different values at one location, '
+                       "fewer than three non-collinear locations, a geographic CRS. "
+                       "'max_triangle_edge_length' leaves nodata in triangles with a longer "
+                       'side, to keep the surface from bridging a gap in the sampling. '
+                       'Requires: pip install mapsmith[whitebox].',
+        'parameters': [   {   'name': 'points_path',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Point layer with the values to interpolate'},
+                          {   'name': 'output_path',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Output GeoTIFF path'},
+                          {   'name': 'field_name',
+                              'type': 'str',
+                              'required': True,
+                              'description': 'Numeric attribute to interpolate — required: the '
+                                             'library default interpolates row numbers '
+                                             'without warning'},
+                          {   'name': 'cell_size',
+                              'type': 'float',
+                              'required': True,
+                              'description': "Output cell size, in the layer's CRS units"},
+                          {   'name': 'max_triangle_edge_length',
+                              'type': 'float',
+                              'required': False,
+                              'description': 'Leave nodata in triangles with a side longer '
+                                             'than this, in CRS units (default: no limit)'}],
+        'examples': [   {   'goal': 'Terrain surface that passes exactly through the surveyed '
+                                    'spot heights, blank outside them',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'tin_interpolation',
+                                                         'arguments': {   'points_path': 'spot_heights.gpkg',
+                                                                          'output_path': 'terrain.tif',
+                                                                          'field_name': 'elevation_m',
+                                                                          'cell_size': 5.0}}}},
+                        {   'goal': 'Water table from boreholes, without bridging the gap '
+                                    'between the two well fields',
+                            'call': {   'tool': 'run_operation',
+                                        'arguments': {   'operation': 'tin_interpolation',
+                                                         'arguments': {   'points_path': 'boreholes.parquet',
+                                                                          'output_path': 'water_table.tif',
+                                                                          'field_name': 'level_m',
+                                                                          'cell_size': 25.0,
+                                                                          'max_triangle_edge_length': 2000.0}}}}]},
     {   'name': 'voronoi_polygons',
         'status': 'available',
         'tool': None,
@@ -5299,6 +5374,8 @@ PARAMETER_CONTRACTS: dict[tuple[str, str], dict[str, Any]] = {
     ("hillshade", "altitude"): {"minimum": 0, "maximum": 90},
     ("extract_streams", "threshold"): {"exclusive_minimum": 0},
     ("idw_interpolation", "cell_size"): {"exclusive_minimum": 0},
+    ("tin_interpolation", "cell_size"): {"exclusive_minimum": 0},
+    ("tin_interpolation", "max_triangle_edge_length"): {"exclusive_minimum": 0},
     ("viewshed", "station_height"): {"minimum": 0},
     ("smooth_rates", "per"): {"exclusive_minimum": 0},
     ("aggregate_to_threshold", "minimum"): {"exclusive_minimum": 0},

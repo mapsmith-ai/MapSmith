@@ -114,6 +114,9 @@ def _rows():
                                  whitebox_engine.viewshed(r(), lyr, out, station_height=1.0))),
         ("watershed", "pour_points_path", {"point"},
          lambda lyr, L, r, out: (_whitebox(), whitebox_engine.watershed(r(), lyr, out))),
+        ("tin_interpolation", "points_path", {"point"},
+         lambda lyr, L, r, out: (_whitebox(), whitebox_engine.tin_interpolation(
+             lyr, out, field_name="v", cell_size=10.0))),
         ("network_shortest_path", "network_path", {"line"},
          lambda lyr, L, r, out: network.network_shortest_path(
              lyr, out, 0, 0, 100, 100, tolerance=5.0)),
