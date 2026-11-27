@@ -744,15 +744,15 @@ organisation on purpose: an evaluation that lives inside the thing it
 evaluates is dismissed in one line, and it would deserve it. Current results:
 [argleton.org](https://argleton.org), rendered by CI from real runs.
 
-What it says about MapSmith 0.13.0 (all thirty families, engine tier, `spec_commit`
-[`9ce13a4`](https://github.com/argleton/argleton/tree/main/results/2026-11-26-mapsmith-v0-13-0)):
+What it says about MapSmith 0.13.1 (all thirty families, engine tier, `spec_commit`
+[`9ef44c0`](https://github.com/argleton/argleton/tree/main/results/2026-11-27-mapsmith-v0-13-1)):
 
 | | silent error rate | completion rate | traps run | not applicable |
 |---|---|---|---|---|
 | MapSmith | **0.00** | 1.00 | 33 | 0 |
 | naive composition (read file, take statistic) | 0.8788 | 1.00 | 33 | 0 |
 
-The current run measures the 0.13.0 release; every verdict matches the run of 2026-10-30
+The current run measures the 0.13.1 release; every verdict matches the run of 2026-10-30
 on 0.11.0, which added a multi-step selection with ordered IDs that MapSmith answers
 correctly, trap and clean control. **The 0.00 does not cover interpolation**: no family
 of the suite interpolates, and the row read 0.00 through every release in which
