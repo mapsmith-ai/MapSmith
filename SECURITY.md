@@ -482,6 +482,39 @@ imagination is the one on the process.
 All of these were found by our own audit while `tin_interpolation` was being
 written, not reported.
 
+Reading a vector file costs memory by the row and by the decoded byte: about
+450 MB for a million points with two attributes, the same from GeoParquet,
+GeoPackage, shapefile and GeoJSON, and close to five times the size of the
+geometries where those are large (100 000 polygons of 100 vertices are 163 MB
+of WKB and peak 850 MB). In the other formats a row and a value cost bytes on
+disk too, so the size of the file bounds the read. Parquet stores a repeated
+value once: five million identical points are 80 kB and take 2 GB to open,
+fifty million fit in 0.77 MB, and a million identical polygons of 100
+vertices are 180 kB. Before a Parquet input is opened its cost is now
+estimated — 500 bytes for each row the footers count and five for each byte
+its binary and string columns decode to, counted a batch at a time without
+holding them — and the read is refused above
+**`MAPSMITH_MAX_INPUT_MEMORY`** (default 2 000 000 000, about three million
+points), a limit that yields to 24 bytes of memory for every byte the dataset
+occupies on disk, so that a large dataset is not refused for being large: a
+million scattered points are 30 MB and pass at any multiple. The files above
+are refused in 0.03 s, and counting adds about 0.1 s to opening a million
+ordinary points. The same check stands in front of `calculate_field` and the
+DuckDB and Sedona joins, which stream their input and then read their own
+output back whole. The read-back of an output is not limited: an output is as
+large as the operation that was allowed to produce it. Unbounded in every
+release up to 0.13.0, and found by our own review after it, not reported.
+
+Not covered, and measured where it could be. A zipped dataset is read through
+GDAL and counted by nothing: 200 000 identical features of GeoJSON are 30 MB
+as written and 115 kB zipped. `run_sql` streams what it reads and is bounded
+by what it is asked to write. The estimate takes the rows and the
+uncompressed sizes from the footers, and a file written to lie about both is
+stopped by the limits of the process, not by this one. Nested columns are not
+counted. And a regular grid of several million points costs as much to hold
+as a hostile file with the same rows, so it is refused with it until the
+operator raises the limit.
+
 That is all there is, and it is not a general resource policy: other operations
 are bounded only by their inputs, and a server exposed over
 HTTP should also run under the memory and CPU limits of its container or pod

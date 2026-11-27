@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .. import verify
+from .. import readers, verify
 from ..provenance import InputRecord, ProvenanceRecord
 
 
@@ -52,6 +52,8 @@ def spatial_join(
     }
 
     def _load(path: str, view: str) -> None:
+        # As in the DuckDB join: the engine streams, the read-back does not.
+        readers.refuse_costly_input(path)
         if str(path).lower().endswith(".parquet"):
             sd.read_parquet(path).to_view(view)
         else:

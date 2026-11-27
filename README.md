@@ -223,7 +223,10 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.13.0**, which is what that command installs. Its
+This page describes **0.13.0**, which is what that command installs. On `main`, the
+[Unreleased notes](CHANGELOG.md#unreleased) add a limit on what reading one Parquet input may
+cost: a GeoParquet of 80 kB could take 2 GB to open, and a very compressible layer of several
+million rows is now refused until the operator raises `MAPSMITH_MAX_INPUT_MEMORY`. The 0.13.0
 [release notes](CHANGELOG.md#0130---2026-11-26) add `tin_interpolation` and correct
 `idw_interpolation`, which answered with row numbers for a misspelled, textual or
 null field; a surface made with it from a layer with nulls should be remade. They also fix the

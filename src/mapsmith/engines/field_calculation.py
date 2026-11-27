@@ -355,6 +355,8 @@ def calculate_field(
     workspace.guard(input_path, "input_path")
     workspace.guard(output_path, "output_path")
     readers.refuse_ambiguous_container(input_path)
+    # The output has the input's rows and is read back whole to be verified.
+    readers.refuse_costly_input(input_path)
     source_crs = verify.probe_crs(input_path)
     if source_crs == verify.UNKNOWN_CRS:
         raise ValueError(f"{input_path} has no CRS, so calculate_field cannot preserve it")

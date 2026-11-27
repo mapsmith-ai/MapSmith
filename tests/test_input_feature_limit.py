@@ -1,9 +1,15 @@
-"""The rows a file may hold for the bytes it occupies, counted before any is read.
+"""What a vector read may cost, estimated before anything is materialised.
 
-Reading costs memory by the row. Every format but one pays for a row on disk
-too, so the size of the file bounds the read; Parquet stores a repeated value
-once, and measured through `readers.read_vector` a GeoParquet of 80 kB held
-five million rows and took 2 GB to open.
+Reading costs memory by the row and by the decoded byte. Every format but one
+pays for both on disk, so the size of the file bounds the read; Parquet stores
+a repeated value once. Measured through `readers.read_vector`: five million
+identical points are 80 kB on disk and 2 GB to open, and 100 000 identical
+polygons of 100 vertices are 32 kB and 541 MB.
+
+The first rule written for this counted rows against bytes on disk, and the
+audit took it apart: it refused regular grids and MapSmith's own outputs, did
+not see the size of a geometry, and was not consulted by the engines that
+open a file themselves. These tests are the cases it found.
 """
 
 from __future__ import annotations
@@ -13,11 +19,12 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pytest
-from shapely.geometry import Point
+from shapely.geometry import Point, Polygon
 
 from mapsmith import limits, readers
 
 CRS = "EPSG:32632"
+POINT_WKB = 21  # one byte of order, four of type, two doubles
 
 
 def _repeated(path: Path, rows: int) -> str:
@@ -43,61 +50,79 @@ def _scattered(path: Path, rows: int) -> str:
     return str(path)
 
 
-def test_the_cap_is_the_limit_or_one_row_for_every_sixteen_bytes(monkeypatch):
-    """Closed form: a limit of 1000, and 16 bytes on disk for each row beyond it."""
-    monkeypatch.setenv(limits.MAX_INPUT_FEATURES_ENV, "1000")
-    limits.refuse_too_many_features(1000, 0, "f.parquet")  # at the limit, any size
-    limits.refuse_too_many_features(1001, 16 * 1001, "f.parquet")  # paid for, to the byte
-    with pytest.raises(ValueError, match=r"declares 1,001 rows in 16,015 bytes"):
-        limits.refuse_too_many_features(1001, 16 * 1001 - 1, "f.parquet")
+def test_the_estimate_is_a_cost_per_row_and_a_cost_per_decoded_byte():
+    assert limits.estimated_read_memory(1000, 100) == 1000 * 500 + 100 * 5
+
+
+def test_the_allowance_is_the_budget_or_what_the_bytes_on_disk_entitle(monkeypatch):
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "1000000")
+    assert limits.input_memory_allowance(10) == 1_000_000
+    assert limits.input_memory_allowance(100_000) == 2_400_000
+    limits.refuse_too_costly_a_read(2000, 0, 10, "f.parquet")  # exactly the budget
+    with pytest.raises(ValueError, match=r"holds 2,001 rows and 0 bytes of values in 10 bytes"):
+        limits.refuse_too_costly_a_read(2001, 0, 10, "f.parquet")
+    limits.refuse_too_costly_a_read(2001, 0, 100_000, "f.parquet")  # the file pays for it
 
 
 def test_a_file_of_repeated_rows_is_refused_before_any_row_is_read(monkeypatch, tmp_path):
+    """5000 rows are 2.5 MB by the row alone: over a budget of 1 MB, in a file of kilobytes."""
     path = _repeated(tmp_path / "same.parquet", 5000)
-    # The premise, or the test is about nothing: far fewer bytes than the rows need.
-    assert Path(path).stat().st_size < limits.INPUT_BYTES_PER_FEATURE * 5000 // 4
-    monkeypatch.setenv(limits.MAX_INPUT_FEATURES_ENV, "1000")
+    size = Path(path).stat().st_size
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "1000000")
+    # The premise, or the test is about nothing: the file does not pay for itself.
+    assert limits.input_memory_allowance(size) == 1_000_000
 
     def never(*args, **kwargs):
         raise AssertionError("the file was opened for its rows")
 
     monkeypatch.setattr(readers.gpd, "read_parquet", never)
-    with pytest.raises(ValueError, match=r"declares 5,000 rows") as refusal:
+    with pytest.raises(ValueError, match=r"holds 5,000 rows") as refusal:
         readers.read_vector(path)
-    assert limits.MAX_INPUT_FEATURES_ENV in str(refusal.value)
-    assert "its limit is 1,000 for this file" in str(refusal.value)
+    assert limits.MAX_INPUT_MEMORY_ENV in str(refusal.value)
 
 
-def test_an_ordinary_file_over_the_limit_is_read_because_its_size_pays_for_it(
+def test_few_rows_of_one_large_geometry_are_counted_by_what_they_decode_to(monkeypatch, tmp_path):
+    """200 rows are 0.1 MB by the row. The polygon they repeat is 32 kB of WKB,
+    6.4 MB decoded and 32 MB to hold: the file is the size of one of them."""
+    ring = [(500000.0 + i, 4649776.0 + (i % 7)) for i in range(2000)]
+    polygon = Polygon(ring)
+    path = tmp_path / "big.parquet"
+    gpd.GeoDataFrame(geometry=[polygon] * 200, crs=CRS).to_parquet(path, compression="zstd")
+    decoded = 200 * len(polygon.wkb)
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "5000000")
+    assert limits.estimated_read_memory(200, 0) < 5_000_000 < limits.estimated_read_memory(200, decoded)
+    assert limits.input_memory_allowance(path.stat().st_size) == 5_000_000
+    with pytest.raises(ValueError, match=r"holds 200 rows and (at least )?[\d,]+ bytes of values"):
+        readers.read_vector(str(path))
+
+
+def test_an_ordinary_file_over_the_budget_is_read_because_its_size_pays_for_it(
     monkeypatch, tmp_path
 ):
     path = _scattered(tmp_path / "scattered.parquet", 5000)
-    assert Path(path).stat().st_size >= limits.INPUT_BYTES_PER_FEATURE * 5000
-    monkeypatch.setenv(limits.MAX_INPUT_FEATURES_ENV, "1000")
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "1000000")
+    estimate = limits.estimated_read_memory(5000, 5000 * POINT_WKB)
+    assert estimate > 1_000_000
+    assert limits.input_memory_allowance(Path(path).stat().st_size) >= estimate
     assert len(readers.read_vector(path)) == 5000
 
 
-def test_under_the_limit_a_file_of_repeated_rows_is_read(monkeypatch, tmp_path):
-    path = _repeated(tmp_path / "few.parquet", 500)
-    monkeypatch.setenv(limits.MAX_INPUT_FEATURES_ENV, "1000")
-    assert len(readers.read_vector(path)) == 500
-
-
-def test_a_directory_of_parquet_files_is_one_dataset_and_counted_as_one(monkeypatch, tmp_path):
-    """Two files of 3000 rows are 6000: over a limit of 5000 together, under it apart.
-
-    The directory was readable before the limit existed, and the first version
-    of the check broke it by asking a directory for a Parquet footer.
-    """
-    folder = tmp_path / "parts.parquet"
-    folder.mkdir()
-    _repeated(folder / "a.parquet", 3000)
-    _repeated(folder / "b.parquet", 3000)
-    monkeypatch.setenv(limits.MAX_INPUT_FEATURES_ENV, "5000")
-    with pytest.raises(ValueError, match=r"declares 6,000 rows"):
-        readers.read_vector(str(folder))
-    monkeypatch.setenv(limits.MAX_INPUT_FEATURES_ENV, "6000")
-    assert len(readers.read_vector(str(folder))) == 6000
+def test_a_regular_grid_within_the_budget_is_read_however_well_it_compresses(
+    monkeypatch, tmp_path
+):
+    """The case the first rule refused: honest, low-entropy, small on disk. 2500
+    lattice points with one constant attribute are 1.6 MB by the estimate."""
+    xs, ys = np.meshgrid(np.arange(50) * 10.0 + 500000.0, np.arange(50) * 10.0 + 4649000.0)
+    path = tmp_path / "grid.parquet"
+    gpd.GeoDataFrame(
+        {"class": ["forest"] * 2500},
+        geometry=gpd.points_from_xy(xs.ravel(), ys.ravel()),
+        crs=CRS,
+    ).to_parquet(path, compression="zstd")
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "2000000")
+    estimate = limits.estimated_read_memory(2500, 2500 * (POINT_WKB + len("forest")))
+    assert limits.input_memory_allowance(path.stat().st_size) == 2_000_000 >= estimate
+    assert len(readers.read_vector(str(path))) == 2500
 
 
 def test_a_directory_is_counted_from_the_files_that_will_be_read_not_from_their_names(
@@ -109,16 +134,18 @@ def test_a_directory_is_counted_from_the_files_that_will_be_read_not_from_their_
     folder.mkdir()
     _repeated(folder / "small.parquet", 1)
     _repeated(folder / "big.pq", 5000)
-    monkeypatch.setenv(limits.MAX_INPUT_FEATURES_ENV, "1000")
-    with pytest.raises(ValueError, match=r"declares 5,001 rows"):
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "1000000")
+    with pytest.raises(ValueError, match=r"holds 5,001 rows"):
         readers.read_vector(str(folder))
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "100000000")
+    assert len(readers.read_vector(str(folder))) == 5001
 
 
-def test_verification_reads_back_an_output_whatever_its_rows(monkeypatch, tmp_path):
+def test_verification_reads_back_an_output_whatever_it_holds(monkeypatch, tmp_path):
     """The limit is on inputs. An output is as large as the operation that was
     allowed to write it, and refusing to read it back would lose the checks."""
     path = _repeated(tmp_path / "output.parquet", 5000)
-    monkeypatch.setenv(limits.MAX_INPUT_FEATURES_ENV, "1000")
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "1000000")
     assert len(readers.read_vector_or_table(path)) == 5000
 
 
@@ -127,20 +154,46 @@ def test_an_operation_refuses_through_the_reader_and_writes_nothing(monkeypatch,
     from mapsmith.engines import interpolation
 
     path = _repeated(tmp_path / "same.parquet", 5000)
-    monkeypatch.setenv(limits.MAX_INPUT_FEATURES_ENV, "1000")
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "1000000")
     out = tmp_path / "surface.tif"
-    with pytest.raises(ValueError, match=limits.MAX_INPUT_FEATURES_ENV):
+    with pytest.raises(ValueError, match=limits.MAX_INPUT_MEMORY_ENV):
         interpolation.tin_interpolation(path, str(out), "value", 10.0)
     assert not out.exists()
     assert not Path(f"{out}.provenance.json").exists()
 
 
-def test_the_default_is_a_million_rows():
-    assert limits.max_input_features() == 1_000_000
+def test_the_engines_that_open_a_parquet_themselves_ask_first(monkeypatch, tmp_path):
+    """`calculate_field` and the DuckDB join stream their input and read their
+    output back whole: two million identical rows in 30 kB went through
+    `calculate_field` to `verified: true` at 926 MB (found by the audit)."""
+    pytest.importorskip("duckdb")
+    from mapsmith.engines import duckdb_engine, field_calculation
+
+    path = _repeated(tmp_path / "same.parquet", 5000)
+    other = _scattered(tmp_path / "other.parquet", 10)
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "1000000")
+    out = tmp_path / "out.parquet"
+    with pytest.raises(ValueError, match=limits.MAX_INPUT_MEMORY_ENV):
+        field_calculation.calculate_field(path, str(out), "double", "value * 2")
+    with pytest.raises(ValueError, match=limits.MAX_INPUT_MEMORY_ENV):
+        duckdb_engine.spatial_join(path, other, str(out))
+    with pytest.raises(ValueError, match=limits.MAX_INPUT_MEMORY_ENV):
+        duckdb_engine.spatial_join(other, path, str(out))
+    assert not out.exists()
+
+
+def test_the_size_on_disk_is_what_the_file_occupies(tmp_path):
+    """Never more than its length: a sparse file is long and holds nothing."""
+    path = Path(_scattered(tmp_path / "scattered.parquet", 5000))
+    assert 0 < readers._bytes_on_disk(path) <= path.stat().st_size
+
+
+def test_the_default_is_two_gigabytes():
+    assert limits.max_input_memory() == 2_000_000_000
 
 
 @pytest.mark.parametrize("raw", ["lots", "0", "-3"])
-def test_a_limit_that_is_not_a_positive_whole_number_is_refused(monkeypatch, raw):
-    monkeypatch.setenv(limits.MAX_INPUT_FEATURES_ENV, raw)
-    with pytest.raises(ValueError, match=limits.MAX_INPUT_FEATURES_ENV):
-        limits.max_input_features()
+def test_a_budget_that_is_not_a_positive_whole_number_is_refused(monkeypatch, raw):
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, raw)
+    with pytest.raises(ValueError, match=limits.MAX_INPUT_MEMORY_ENV):
+        limits.max_input_memory()

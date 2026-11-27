@@ -82,47 +82,71 @@ def max_triangulation_points() -> int:
     )
 
 
-MAX_INPUT_FEATURES_ENV = "MAPSMITH_MAX_INPUT_FEATURES"
+MAX_INPUT_MEMORY_ENV = "MAPSMITH_MAX_INPUT_MEMORY"
 
-#: The rows a file may hold however small it is on disk. Measured through
-#: `readers.read_vector`, points with two attributes: about 450 MB of memory
-#: per million rows, the same from GeoParquet, GeoPackage, shapefile and
-#: GeoJSON. What differs is the size on disk that buys them: 28 MB for a
-#: million scattered points in a shapefile, 30 MB in GeoParquet — and 20 kB in
-#: a GeoParquet whose rows are all alike, because Parquet stores a repeated
-#: value once. Fifty million such rows are a 0.77 MB file.
-DEFAULT_MAX_INPUT_FEATURES = 1_000_000
+#: Bytes of memory one read of a vector input may be estimated to take, however
+#: small the file is on disk. Chosen by the operator; 2 GB is about four million
+#: points, or fewer rows of larger geometries.
+DEFAULT_MAX_INPUT_MEMORY = 2_000_000_000
 
-#: Bytes on disk that entitle a file to one row beyond the limit, so that a
-#: large dataset is not refused for being large. An honest file is bounded by
-#: its own size, which is the operator's to bound; at this rate an entitled
-#: file costs at most about twice the memory an ordinary one of its size does
-#: (28 MB per megabyte on disk, against the 15 measured on scattered points).
-INPUT_BYTES_PER_FEATURE = 16
+#: What a row costs to hold whatever is in it: measured through
+#: `readers.read_vector` on points with two attributes, 435 to 520 MB per
+#: million rows, the same from GeoParquet, GeoPackage, shapefile and GeoJSON.
+INPUT_MEMORY_PER_ROW = 500
+
+#: What a byte of decoded value costs on top of that: the bytes are held as an
+#: Arrow column, as Python objects and as geometries before the first two are
+#: let go. Measured: 100 000 polygons of 100 vertices are 163 MB of WKB and
+#: peak 850 MB above the idle process, 4.9 times; an audit of an earlier rule
+#: measured 2.4 to 2.9 on three such layers, and the higher figure is the one
+#: a limit has to assume.
+INPUT_MEMORY_PER_VALUE_BYTE = 5
+
+#: Memory a file is entitled to for each byte it occupies on disk, so that a
+#: large dataset is not refused for being large: a million scattered points
+#: are 30 MB of GeoParquet and an estimated 625 MB to read, a factor of 21.
+INPUT_MEMORY_PER_BYTE_ON_DISK = 24
 
 
-def max_input_features() -> int:
-    return _whole_number_setting(MAX_INPUT_FEATURES_ENV, DEFAULT_MAX_INPUT_FEATURES)
+def max_input_memory() -> int:
+    return _whole_number_setting(MAX_INPUT_MEMORY_ENV, DEFAULT_MAX_INPUT_MEMORY)
 
 
-def refuse_too_many_features(rows: int, bytes_on_disk: int, path: str) -> None:
-    """Refuse to read a file that holds far more rows than its size on disk pays for.
+def estimated_read_memory(rows: int, value_bytes: int) -> int:
+    """Bytes a read is expected to peak at: a cost per row and one per decoded byte."""
+    return rows * INPUT_MEMORY_PER_ROW + value_bytes * INPUT_MEMORY_PER_VALUE_BYTE
 
-    The rows come from the file's own footer, before any of them is read. A
-    file within the limit is read whatever its size; above it, the file must
-    occupy `INPUT_BYTES_PER_FEATURE` bytes for each row, which every ordinary
-    dataset does and a file of repeated rows does not.
+
+def input_memory_allowance(bytes_on_disk: int) -> int:
+    """The operator's budget, or what the file's own size on disk entitles it to."""
+    return max(max_input_memory(), bytes_on_disk * INPUT_MEMORY_PER_BYTE_ON_DISK)
+
+
+def refuse_too_costly_a_read(
+    rows: int, value_bytes: int, bytes_on_disk: int, path: str, *, complete: bool = True
+) -> None:
+    """Refuse a dataset whose rows and values would take more memory than it may.
+
+    Reading costs memory by the row and by the decoded byte, and Parquet stores
+    a repeated value once: neither the size of the file nor its footer shows
+    what opening it takes. `value_bytes` is the decoded size of its
+    variable-width columns, counted without materialising them; `complete` is
+    False when the count stopped early because the estimate had already passed
+    the allowance.
     """
-    cap = max(max_input_features(), bytes_on_disk // INPUT_BYTES_PER_FEATURE)
-    if rows > cap:
+    allowance = input_memory_allowance(bytes_on_disk)
+    estimate = estimated_read_memory(rows, value_bytes)
+    if estimate > allowance:
         raise ValueError(
-            f"{path} declares {rows:,} rows in {bytes_on_disk:,} bytes: more rows "
-            f"than this server reads from a file that small (its limit is {cap:,} "
-            f"for this file). Reading costs memory by the row, not by the byte on "
-            f"disk, and rows that repeat take almost none there. If the data are "
-            f"what they should be, ask the operator to raise "
-            f"{MAX_INPUT_FEATURES_ENV}: it is a setting of the server, not an "
-            "argument of the tool."
+            f"{path} holds {rows:,} rows and "
+            + ("" if complete else "at least ")
+            + f"{value_bytes:,} bytes of values in {bytes_on_disk:,} bytes on disk: "
+            f"reading it would take about {estimate / 1e9:,.1f} GB"
+            + ("" if complete else " or more")
+            + f", over this server's limit of {allowance / 1e9:,.1f} GB for this "
+            "dataset. Reduce it first with an operation that does not hold it in "
+            f"memory (run_sql), or ask the operator to raise {MAX_INPUT_MEMORY_ENV}: "
+            "it is a setting of the server, not an argument of the tool."
         )
 
 

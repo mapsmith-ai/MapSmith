@@ -14,7 +14,7 @@ from typing import Any
 
 import duckdb
 
-from .. import sql_policy, verify, workspace
+from .. import readers, sql_policy, verify, workspace
 from ..provenance import InputRecord, ProvenanceRecord
 
 _PREVIEW_ROWS = 50
@@ -346,6 +346,10 @@ def spatial_join(
     predicates = {"intersects": "ST_Intersects", "within": "ST_Within", "contains": "ST_Contains"}
     if predicate not in predicates:
         raise ValueError(f"predicate must be one of {sorted(predicates)}, got {predicate!r}")
+    # DuckDB streams the inputs; the output is read back whole to be verified,
+    # and it holds the left layer's rows at least once for every match.
+    readers.refuse_costly_input(left_path)
+    readers.refuse_costly_input(right_path)
     con = _connect()
     left_crs = verify.probe_crs(left_path)
     record = ProvenanceRecord(
