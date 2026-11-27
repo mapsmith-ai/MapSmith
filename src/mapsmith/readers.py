@@ -364,18 +364,14 @@ def _refuse_more_rows_than_the_file_pays_for(path: str) -> None:
     refuse_costly_parquet(path)
 
 
-#: Bytes one counting batch may materialise, and the most rows it may hold.
-_COUNTING_BATCH_BYTES = 16_000_000
-_COUNTING_BATCH_ROWS = 65_536
-
-
 def _bytes_on_disk(file: Path) -> int:
     """What the file occupies, not what it says it is long.
 
     A sparse file reports its logical length and holds almost nothing: a 3 GiB
     hole between the data and the footer of a 770 kB Parquet bought fifty
     million rows of entitlement (audit). Where the filesystem does not say what
-    is allocated, the length is all there is to go by.
+    is allocated — some network and FUSE mounts report nothing for every file —
+    the length is all there is to go by, and `SECURITY.md` says so.
     """
     length = file.stat().st_size
     allocated = 0
@@ -394,45 +390,55 @@ def _bytes_on_disk(file: Path) -> int:
     return min(length, allocated) if allocated else length
 
 
-def _variable_columns(file: Path) -> list[str]:
-    """The binary and string columns: the ones whose values have a size of their own."""
+#: Bytes a value of each fixed-width Parquet physical type decodes to. A
+#: FIXED_LEN_BYTE_ARRAY carries its own length in the schema.
+_FIXED_WIDTHS = {"BOOLEAN": 1, "INT32": 4, "FLOAT": 4, "INT64": 8, "DOUBLE": 8, "INT96": 12}
+
+
+def _is_binary_like(kind: Any) -> bool:
     import pyarrow as pa
-    import pyarrow.parquet as pq
 
-    names = []
-    for field in pq.read_schema(file):
-        kind = getattr(field.type, "storage_type", field.type)
-        if (
-            pa.types.is_binary(kind)
-            or pa.types.is_large_binary(kind)
-            or pa.types.is_string(kind)
-            or pa.types.is_large_string(kind)
-        ):
-            names.append(field.name)
-    return names
+    return (
+        pa.types.is_binary(kind)
+        or pa.types.is_large_binary(kind)
+        or pa.types.is_string(kind)
+        or pa.types.is_large_string(kind)
+    )
 
 
-def _longest_dictionary_value(file: Path, group: int, names: list[str]) -> int:
-    """Bytes of the longest value a row of this row group can stand for.
+def _variable_bytes(array: Any) -> int:
+    """Bytes the binary and string values inside an Arrow array decode to.
 
-    One row read with the dictionary kept: where the column is dictionary
-    encoded that hands back the whole dictionary and an index, without the
-    values being repeated. A value that is 1.6 MB long and stored once is what
-    makes a hundred rows cost 160 MB, and this is where it shows.
+    Inside, because they are not always at the top: a list of binaries, a
+    struct with a string in it and a column typed as a dictionary of binaries
+    all cost what their values add up to, and a count that looked only at
+    top-level binary columns took them for nothing (audit: 249 MB to open
+    where the estimate said 1). Fixed-width values are not counted here; the
+    footer counts those.
     """
     import pyarrow as pa
     import pyarrow.compute as pc
-    import pyarrow.parquet as pq
 
-    reader = pq.ParquetFile(file, read_dictionary=names)
-    longest = 0
-    for batch in reader.iter_batches(batch_size=1, row_groups=[group], columns=names):
-        for column in batch.columns:
-            column = getattr(column, "storage", column)
-            if pa.types.is_dictionary(column.type) and len(column.dictionary):
-                longest = max(longest, pc.max(pc.binary_length(column.dictionary)).as_py() or 0)
-        break
-    return longest
+    array = getattr(array, "storage", array)
+    kind = array.type
+    if pa.types.is_dictionary(kind):
+        if not _is_binary_like(array.dictionary.type) or not len(array.dictionary):
+            return 0
+        lengths = pc.binary_length(array.dictionary)
+        return pc.sum(pc.take(lengths, array.indices)).as_py() or 0
+    if _is_binary_like(kind):
+        return pc.sum(pc.binary_length(array)).as_py() or 0
+    if pa.types.is_struct(kind):
+        return sum(_variable_bytes(array.field(i)) for i in range(kind.num_fields))
+    if pa.types.is_map(kind):
+        return _variable_bytes(array.keys) + _variable_bytes(array.items)
+    if (
+        pa.types.is_list(kind)
+        or pa.types.is_large_list(kind)
+        or pa.types.is_fixed_size_list(kind)
+    ):
+        return _variable_bytes(array.flatten())
+    return 0
 
 
 def refuse_costly_input(path: str) -> None:
@@ -453,17 +459,24 @@ def refuse_costly_parquet(path: str) -> None:
 
     Every path that opens a caller's Parquet comes here first: this reader,
     and the engines that hand the file to DuckDB or Sedona and then read their
-    own output back in full. Three counts, each cheaper than the next and each
-    able to refuse on its own: the rows, from the footers; the uncompressed
-    bytes the footers declare, which a reader has to hold at least once; and
-    the bytes the binary and string columns decode to, read a batch at a time.
-    `limits.refuse_too_costly_a_read` has the arithmetic and the measurements.
+    own output back in full. `limits.refuse_too_costly_a_read` has the
+    arithmetic and the measurements; this is where the two numbers it wants
+    come from.
 
-    The last count reads plainly, because reading with the dictionary kept
-    costs as much as the read it guards when the values do not repeat (0.46 s
-    and 320 MB for a million scattered points, against 0.03 s). What makes a
-    plain batch safe is its size: no more rows than fit the budget of one batch
-    at the longest value the row group's dictionary holds.
+    The rows are the most any count in the footer says: the file's, the row
+    groups', and the values of every column that holds one value per row. The
+    reader goes by the last, so a footer rewritten to declare one row still
+    read a million (audit).
+
+    The bytes are those every column decodes to. Fixed-width columns are
+    counted from the footer, values times width, which costs nothing and is
+    what a table of two hundred numbers per row is made of. Binary and string
+    values, wherever they sit, are read and their lengths added up — from the
+    dictionary and its indices where the values are far longer than the row
+    group spends per row, which is what repetition looks like, and plainly
+    otherwise, which is ten times faster on values that do not repeat. What
+    bounds the memory of that pass is the uncompressed size the footer
+    declares, checked first: a reader has to hold that much at least once.
     """
     import pyarrow as pa
     import pyarrow.compute as pc
@@ -482,51 +495,77 @@ def refuse_costly_parquet(path: str) -> None:
     on_disk = sum(_bytes_on_disk(file) for file in files)
     allowance = limits.input_memory_allowance(on_disk)
 
-    rows = declared = 0
+    rows = fixed = declared = 0
     plans = []
     for file in files:
-        footer = pq.ParquetFile(file).metadata
-        names = _variable_columns(file)
-        groups = [footer.row_group(i) for i in range(footer.num_row_groups)]
-        # The file-level count is one field and the reader does not use it: it
-        # reads row group by row group. One byte of the footer rewritten made a
-        # file of 500 000 rows declare one (audit), so both are counted.
-        rows += max(footer.num_rows, sum(group.num_rows for group in groups))
-        for index, group in enumerate(groups):
-            chunks = [group.column(j) for j in range(group.num_columns)]
-            uncompressed = sum(
-                chunk.total_uncompressed_size for chunk in chunks if chunk.path_in_schema in names
-            )
-            declared += uncompressed
-            if names and group.num_rows:
-                plans.append((file, index, names, uncompressed / group.num_rows))
-    # The rows alone, then what the footers say has to be decompressed: both
-    # before any page is touched.
-    limits.refuse_too_costly_a_read(rows, 0, on_disk, path, complete=False)
-    limits.refuse_too_costly_a_read(rows, declared, on_disk, path, complete=False)
-
-    value_bytes = 0
-    for file, index, names, average in plans:
-        in_dictionary = _longest_dictionary_value(file, index, names)
-        longest = max(average, in_dictionary, 1)
-        batch_rows = int(min(_COUNTING_BATCH_ROWS, max(1, _COUNTING_BATCH_BYTES // longest)))
-        # Values far longer than the row group spends per row are values that
-        # repeat: counted from the dictionary and its indices, they are never
-        # written out. Anything else is read plainly, which is ten times faster
-        # on values that do not repeat.
-        repeated = in_dictionary > 8 * average
-        reader = pq.ParquetFile(file, read_dictionary=names) if repeated else pq.ParquetFile(file)
-        for batch in reader.iter_batches(batch_size=batch_rows, row_groups=[index], columns=names):
-            for column in batch.columns:
-                column = getattr(column, "storage", column)
-                if pa.types.is_dictionary(column.type):
-                    lengths = pc.binary_length(column.dictionary)
-                    value_bytes += pc.sum(pc.take(lengths, column.indices)).as_py() or 0
+        # One reader for the footer and the plain pass, whatever the number of
+        # row groups: opening the file again for each made a thousand groups
+        # take 9 s to count (audit).
+        plain = pq.ParquetFile(file)
+        footer, schema = plain.metadata, plain.schema
+        leaves = [schema.column(j) for j in range(footer.num_columns)]
+        in_groups = 0
+        for index in range(footer.num_row_groups):
+            group = footer.row_group(index)
+            group_rows = group.num_rows
+            variable = 0
+            for j, leaf in enumerate(leaves):
+                chunk = group.column(j)
+                if leaf.max_repetition_level == 0:
+                    group_rows = max(group_rows, chunk.num_values)
+                if leaf.physical_type == "BYTE_ARRAY":
+                    variable += chunk.total_uncompressed_size
                 else:
-                    value_bytes += pc.sum(pc.binary_length(column)).as_py() or 0
+                    width = _FIXED_WIDTHS.get(leaf.physical_type) or max(leaf.length, 1)
+                    fixed += chunk.num_values * width
+            in_groups += group_rows
+            declared += variable
+            if variable:
+                plans.append((file, plain, index, variable / max(group_rows, 1)))
+        rows += max(footer.num_rows, in_groups)
+    # The rows and the fixed-width values, then what the footers say has to be
+    # decompressed: all before any page is touched.
+    limits.refuse_too_costly_a_read(rows, fixed, on_disk, path, complete=False)
+    limits.refuse_too_costly_a_read(rows, fixed + declared, on_disk, path, complete=False)
+
+    value_bytes = fixed
+    # Per file: the columns that hold binary or string values somewhere, those
+    # of them that are such a column at the top level, and a second reader
+    # that keeps the dictionaries of the latter.
+    columns: dict[Path, tuple[list[str], list[str], Any]] = {}
+    for file, plain, index, average in plans:
+        if file not in columns:
+            names = sorted(
+                {
+                    plain.schema.column(j).path.split(".")[0]
+                    for j in range(plain.metadata.num_columns)
+                    if plain.schema.column(j).physical_type == "BYTE_ARRAY"
+                }
+            )
+            kinds = {field.name: field.type for field in plain.schema_arrow}
+            flat = [
+                name
+                for name in names
+                if _is_binary_like(getattr(kinds[name], "storage_type", kinds[name]))
+            ]
+            keeping = pq.ParquetFile(file, read_dictionary=flat) if flat else None
+            columns[file] = (names, flat, keeping)
+        names, flat, keeping = columns[file]
+        longest = 0
+        if keeping is not None:
+            for batch in keeping.iter_batches(batch_size=1, row_groups=[index], columns=flat):
+                for column in batch.columns:
+                    column = getattr(column, "storage", column)
+                    if pa.types.is_dictionary(column.type) and len(column.dictionary):
+                        lengths = pc.binary_length(column.dictionary)
+                        longest = max(longest, pc.max(lengths).as_py() or 0)
+                break
+        reader = keeping if keeping is not None and longest > 8 * average else plain
+        for batch in reader.iter_batches(row_groups=[index], columns=names):
+            value_bytes += sum(_variable_bytes(column) for column in batch.columns)
             if limits.estimated_read_memory(rows, value_bytes) > allowance:
                 limits.refuse_too_costly_a_read(rows, value_bytes, on_disk, path, complete=False)
-    limits.refuse_too_costly_a_read(rows, max(value_bytes, declared), on_disk, path)
+    limits.refuse_too_costly_a_read(rows, max(value_bytes, fixed + declared), on_disk, path)
 
 
 def read_named_layer(path: str, layer: str) -> gpd.GeoDataFrame:

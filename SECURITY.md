@@ -485,35 +485,51 @@ written, not reported.
 Reading a vector file costs memory by the row and by the decoded byte: about
 450 MB for a million points with two attributes, the same from GeoParquet,
 GeoPackage, shapefile and GeoJSON, and close to five times the size of the
-geometries where those are large (100 000 polygons of 100 vertices are 163 MB
-of WKB and peak 850 MB). In the other formats a row and a value cost bytes on
-disk too, so the size of the file bounds the read. Parquet stores a repeated
-value once: five million identical points are 80 kB and take 2 GB to open,
-fifty million fit in 0.77 MB, and a million identical polygons of 100
-vertices are 180 kB. Before a Parquet input is opened its cost is now
-estimated — 500 bytes for each row the footers count and five for each byte
-its binary and string columns decode to, counted a batch at a time without
-holding them — and the read is refused above
-**`MAPSMITH_MAX_INPUT_MEMORY`** (default 2 000 000 000, about three million
-points), a limit that yields to 24 bytes of memory for every byte the dataset
-occupies on disk, so that a large dataset is not refused for being large: a
-million scattered points are 30 MB and pass at any multiple. The files above
-are refused in 0.03 s, and counting adds about 0.1 s to opening a million
-ordinary points. The same check stands in front of `calculate_field` and the
-DuckDB and Sedona joins, which stream their input and then read their own
-output back whole. The read-back of an output is not limited: an output is as
-large as the operation that was allowed to produce it. Unbounded in every
-release up to 0.13.0, and found by our own review after it, not reported.
+values where those are large (100 000 polygons of 100 vertices are 163 MB of
+WKB and peak 850 MB; two hundred numbers a row are 6.7 kB a row). In the other
+formats a row and a value cost bytes on disk too, so the size of the file
+bounds the read. Parquet stores a repeated value once: five million identical
+points are 80 kB and take 2 GB to open, fifty million fit in 0.77 MB, and a
+million identical polygons of 100 vertices are 180 kB. Before a Parquet input
+is opened its cost is now estimated — 300 bytes for each row and five for each
+byte its columns decode to — and the read is refused above
+**`MAPSMITH_MAX_INPUT_MEMORY`** (default 2 000 000 000, about four million
+points with two attributes), a limit that yields to 24 bytes of memory for
+every byte the dataset occupies on disk, so that a large dataset is not
+refused for being large: a million scattered points are 30 MB and pass at any
+multiple. The rows are the most any count in the footer says, the values of
+each column included, because the reader goes by those: a footer rewritten to
+declare one row still read a million. Fixed-width columns are counted from
+the footer; binary and string values are read and their lengths added up,
+wherever they sit — in a list, in a struct, behind a dictionary. The files
+above are refused in 0.03 s, and counting adds about 0.1 s to opening a
+million ordinary points. `calculate_field` and the DuckDB and Sedona joins,
+which hand the file to another engine and then read their own output back
+whole, ask first too. Unbounded in every release up to 0.13.0, and found by
+our own review after it, not reported.
 
-Not covered, and measured where it could be. A zipped dataset is read through
-GDAL and counted by nothing: 200 000 identical features of GeoJSON are 30 MB
-as written and 115 kB zipped. `run_sql` streams what it reads and is bounded
-by what it is asked to write. The estimate takes the rows and the
-uncompressed sizes from the footers, and a file written to lie about both is
-stopped by the limits of the process, not by this one. Nested columns are not
-counted. And a regular grid of several million points costs as much to hold
-as a hostile file with the same rows, so it is refused with it until the
-operator raises the limit.
+Not covered, and measured where it could be:
+
+- **What an operation writes.** The limit is on each input, not on the call.
+  A join of a thousand points with a thousand polygons that all overlap writes
+  a million rows from two files of 13 kB, and the output is read back whole to
+  be verified; `merge_layers` holds all its inputs at once.
+- **The check itself**, which may use as much memory as it allows: it reads
+  what the footer declares, a row group at a time, and a single value of
+  100 MB stored once cost it 500 MB before it refused.
+- **A zipped dataset**, read through GDAL and counted by nothing: 200 000
+  identical features of GeoJSON are 30 MB as written and 115 kB zipped.
+- **`run_sql`**, which streams what it reads and is bounded by what it is
+  asked to write.
+- **Sizes a footer declares.** The row counts are cross-checked; the
+  uncompressed sizes are taken as written.
+- **Filesystems that do not report what a file occupies** (some network and
+  FUSE mounts): there the length is used, and a sparse file is credited with
+  bytes it does not hold.
+- **Honest data that costs what hostile data costs.** A regular grid of five
+  million points is 6 MB on disk and estimated at 2.2 GB to hold, so it is
+  refused with the file of identical rows until the operator raises the
+  limit; three million, measured at 1 GB, are admitted.
 
 That is all there is, and it is not a general resource policy: other operations
 are bounded only by their inputs, and a server exposed over

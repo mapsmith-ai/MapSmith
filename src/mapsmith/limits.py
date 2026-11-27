@@ -89,22 +89,26 @@ MAX_INPUT_MEMORY_ENV = "MAPSMITH_MAX_INPUT_MEMORY"
 #: points, or fewer rows of larger geometries.
 DEFAULT_MAX_INPUT_MEMORY = 2_000_000_000
 
-#: What a row costs to hold whatever is in it: measured through
-#: `readers.read_vector` on points with two attributes, 435 to 520 MB per
-#: million rows, the same from GeoParquet, GeoPackage, shapefile and GeoJSON.
-INPUT_MEMORY_PER_ROW = 500
+#: What a row costs to hold before anything in it is counted: a geometry
+#: object and a place in every column. With the next figure it reproduces what
+#: was measured through `readers.read_vector` — points with two attributes,
+#: 435 to 520 bytes a row, the same from GeoParquet, GeoPackage, shapefile and
+#: GeoJSON, against 500 estimated.
+INPUT_MEMORY_PER_ROW = 300
 
-#: What a byte of decoded value costs on top of that: the bytes are held as an
-#: Arrow column, as Python objects and as geometries before the first two are
-#: let go. Measured: 100 000 polygons of 100 vertices are 163 MB of WKB and
-#: peak 850 MB above the idle process, 4.9 times; an audit of an earlier rule
-#: measured 2.4 to 2.9 on three such layers, and the higher figure is the one
-#: a limit has to assume.
+#: What a byte of decoded value costs on top of that, in any column: the bytes
+#: are held as an Arrow column, as Python objects and as geometries before the
+#: first two are let go. Measured: 100 000 polygons of 100 vertices are 163 MB
+#: of WKB and peak 840 to 850 MB above the idle process, 845 estimated; a table
+#: of two hundred numbers a row peaks at 6.7 kB a row, 8.3 estimated. Where
+#: the two measurements of a layer differed, the higher is the one a limit has
+#: to assume.
 INPUT_MEMORY_PER_VALUE_BYTE = 5
 
 #: Memory a file is entitled to for each byte it occupies on disk, so that a
 #: large dataset is not refused for being large: a million scattered points
-#: are 30 MB of GeoParquet and an estimated 625 MB to read, a factor of 21.
+#: with one attribute are 30 MB of GeoParquet and an estimated 465 MB to read,
+#: a factor of 15.
 INPUT_MEMORY_PER_BYTE_ON_DISK = 24
 
 
@@ -129,24 +133,29 @@ def refuse_too_costly_a_read(
 
     Reading costs memory by the row and by the decoded byte, and Parquet stores
     a repeated value once: neither the size of the file nor its footer shows
-    what opening it takes. `value_bytes` is the decoded size of its
-    variable-width columns, counted without materialising them; `complete` is
-    False when the count stopped early because the estimate had already passed
-    the allowance.
+    what opening it takes. `value_bytes` is what its columns decode to;
+    `complete` is False when the count stopped early because the estimate had
+    already passed the allowance.
     """
     allowance = input_memory_allowance(bytes_on_disk)
     estimate = estimated_read_memory(rows, value_bytes)
     if estimate > allowance:
+        values = (
+            f" and {'' if complete else 'at least '}{value_bytes:,} bytes of values"
+            if value_bytes
+            else ""
+        )
+        megabytes = math.ceil(estimate / 1e6)
         raise ValueError(
-            f"{path} holds {rows:,} rows and "
-            + ("" if complete else "at least ")
-            + f"{value_bytes:,} bytes of values in {bytes_on_disk:,} bytes on disk: "
-            f"reading it would take about {estimate / 1e9:,.1f} GB"
+            f"{path} holds {rows:,} rows{values} in {bytes_on_disk:,} bytes on disk. "
+            f"Reading it is estimated to take {megabytes:,} MB"
             + ("" if complete else " or more")
-            + f", over this server's limit of {allowance / 1e9:,.1f} GB for this "
-            "dataset. Reduce it first with an operation that does not hold it in "
-            f"memory (run_sql), or ask the operator to raise {MAX_INPUT_MEMORY_ENV}: "
-            "it is a setting of the server, not an argument of the tool."
+            + f", over this server's limit of {math.floor(allowance / 1e6):,} MB for "
+            "this dataset. The estimate counts rows and what their values decode to, "
+            "not the size of the file: values that repeat take almost nothing on "
+            f"disk. Reduce the dataset, or ask the operator to raise "
+            f"{MAX_INPUT_MEMORY_ENV}: it is a setting of the server, not an argument "
+            "of the tool."
         )
 
 

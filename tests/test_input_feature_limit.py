@@ -51,21 +51,21 @@ def _scattered(path: Path, rows: int) -> str:
 
 
 def test_the_estimate_is_a_cost_per_row_and_a_cost_per_decoded_byte():
-    assert limits.estimated_read_memory(1000, 100) == 1000 * 500 + 100 * 5
+    assert limits.estimated_read_memory(1000, 100) == 1000 * 300 + 100 * 5
 
 
 def test_the_allowance_is_the_budget_or_what_the_bytes_on_disk_entitle(monkeypatch):
     monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "1000000")
     assert limits.input_memory_allowance(10) == 1_000_000
     assert limits.input_memory_allowance(100_000) == 2_400_000
-    limits.refuse_too_costly_a_read(2000, 0, 10, "f.parquet")  # exactly the budget
-    with pytest.raises(ValueError, match=r"holds 2,001 rows and 0 bytes of values in 10 bytes"):
-        limits.refuse_too_costly_a_read(2001, 0, 10, "f.parquet")
-    limits.refuse_too_costly_a_read(2001, 0, 100_000, "f.parquet")  # the file pays for it
+    limits.refuse_too_costly_a_read(3333, 0, 10, "f.parquet")  # 999,900: within the budget
+    with pytest.raises(ValueError, match=r"holds 3,334 rows in 10 bytes on disk"):
+        limits.refuse_too_costly_a_read(3334, 0, 10, "f.parquet")
+    limits.refuse_too_costly_a_read(3334, 0, 100_000, "f.parquet")  # the file pays for it
 
 
 def test_a_file_of_repeated_rows_is_refused_before_any_row_is_read(monkeypatch, tmp_path):
-    """5000 rows are 2.5 MB by the row alone: over a budget of 1 MB, in a file of kilobytes."""
+    """5000 rows are 1.5 MB by the row alone: over a budget of 1 MB, in a file of kilobytes."""
     path = _repeated(tmp_path / "same.parquet", 5000)
     size = Path(path).stat().st_size
     monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "1000000")
@@ -82,7 +82,7 @@ def test_a_file_of_repeated_rows_is_refused_before_any_row_is_read(monkeypatch, 
 
 
 def test_few_rows_of_one_large_geometry_are_counted_by_what_they_decode_to(monkeypatch, tmp_path):
-    """200 rows are 0.1 MB by the row. The polygon they repeat is 32 kB of WKB,
+    """200 rows are 0.06 MB by the row. The polygon they repeat is 32 kB of WKB,
     6.4 MB decoded and 32 MB to hold: the file is the size of one of them."""
     ring = [(500000.0 + i, 4649776.0 + (i % 7)) for i in range(2000)]
     polygon = Polygon(ring)
@@ -111,7 +111,7 @@ def test_a_regular_grid_within_the_budget_is_read_however_well_it_compresses(
     monkeypatch, tmp_path
 ):
     """The case the first rule refused: honest, low-entropy, small on disk. 2500
-    lattice points with one constant attribute are 1.6 MB by the estimate."""
+    lattice points with one constant attribute are 1.1 MB by the estimate."""
     xs, ys = np.meshgrid(np.arange(50) * 10.0 + 500000.0, np.arange(50) * 10.0 + 4649000.0)
     path = tmp_path / "grid.parquet"
     gpd.GeoDataFrame(
@@ -180,6 +180,75 @@ def test_the_engines_that_open_a_parquet_themselves_ask_first(monkeypatch, tmp_p
     with pytest.raises(ValueError, match=limits.MAX_INPUT_MEMORY_ENV):
         duckdb_engine.spatial_join(other, path, str(out))
     assert not out.exists()
+
+
+def test_a_table_of_many_numbers_per_row_is_counted_from_the_footer(monkeypatch, tmp_path):
+    """2000 rows of fifty float64 are 0.6 MB by the row and 0.8 MB of values,
+    4.6 MB to hold: under a budget of 2 MB by the rows, over it by what is in
+    them. The first estimate counted only binary and string columns, and a
+    table of two hundred numbers a row cost ten times what it said (audit)."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    path = tmp_path / "wide.parquet"
+    pq.write_table(
+        pa.table({f"c{i}": np.full(2000, 1.5) for i in range(50)}), path, compression="zstd"
+    )
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "2000000")
+    assert limits.estimated_read_memory(2000, 0) < 2_000_000
+    assert limits.estimated_read_memory(2000, 2000 * 50 * 8) == 4_600_000
+    with pytest.raises(ValueError, match=r"holds 2,000 rows and at least 800,000 bytes of values"):
+        readers.refuse_costly_parquet(str(path))
+
+
+def test_values_inside_a_list_and_values_typed_as_a_dictionary_are_counted(monkeypatch, tmp_path):
+    """Neither is a binary column at the top level, and both were taken for
+    nothing: a list of binaries 496 times over the estimate, a geometry stored
+    as a dictionary of one polygon without limit (audit)."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    value = b"x" * 1000
+    nested = tmp_path / "nested.parquet"
+    pq.write_table(
+        pa.table({"parts": pa.array([[value] * 10] * 300, pa.list_(pa.binary()))}),
+        nested, compression="zstd",
+    )
+    typed = tmp_path / "typed.parquet"
+    pq.write_table(
+        pa.table({"g": pa.DictionaryArray.from_arrays(pa.array([0] * 3000, pa.int32()), [value])}),
+        typed, compression="zstd",
+    )
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "5000000")
+    for path, rows in ((nested, 300), (typed, 3000)):
+        # 3 MB of values in a file of kilobytes, and few enough rows to pass on those.
+        assert path.stat().st_size < 50_000
+        assert limits.estimated_read_memory(rows, 0) < 5_000_000
+        with pytest.raises(ValueError, match=rf"holds {rows:,} rows and .*bytes of values"):
+            readers.refuse_costly_parquet(str(path))
+
+
+def test_counting_opens_a_file_a_fixed_number_of_times_however_many_row_groups(
+    monkeypatch, tmp_path
+):
+    """Opening the file again for every row group made a thousand groups take
+    9 s to count (audit). Two hundred groups, and at most three readers."""
+    import pyarrow.parquet as pq
+
+    path = tmp_path / "groups.parquet"
+    frame = gpd.read_parquet(_scattered(tmp_path / "source.parquet", 2000))
+    frame.to_parquet(path, row_group_size=10)
+    assert pq.ParquetFile(path).metadata.num_row_groups == 200
+    opened = []
+    real = pq.ParquetFile
+
+    def counting(*args, **kwargs):
+        opened.append(args)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(pq, "ParquetFile", counting)
+    readers.refuse_costly_parquet(str(path))
+    assert len(opened) <= 3
 
 
 def test_the_size_on_disk_is_what_the_file_occupies(tmp_path):
