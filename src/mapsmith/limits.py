@@ -85,16 +85,18 @@ def max_triangulation_points() -> int:
 MAX_INPUT_MEMORY_ENV = "MAPSMITH_MAX_INPUT_MEMORY"
 
 #: Bytes of memory one read of a vector input may be estimated to take, however
-#: small the file is on disk. Chosen by the operator; 2 GB is about three
-#: million points with two attributes, or fewer rows of larger geometries.
+#: small the file is on disk. Chosen by the operator; 2 GB is about two and a
+#: half million points with a name and a number, or fewer rows of larger
+#: geometries.
 DEFAULT_MAX_INPUT_MEMORY = 2_000_000_000
 
-#: What a row costs to hold before anything in it is counted: a geometry
-#: object and a place in every column. With the next figure it reproduces what
-#: was measured through `readers.read_vector` — points with two attributes,
-#: 435 to 520 bytes a row, the same from GeoParquet, GeoPackage, shapefile and
-#: GeoJSON, against 500 estimated.
-INPUT_MEMORY_PER_ROW = 300
+#: What a row costs to hold before anything in it is counted: its place in the
+#: frame and its index. What is in it is counted value by value, and a value
+#: that becomes an object costs about 150 bytes for being one, which the reader
+#: adds to the bytes it counts. Together: points with a string and a number are
+#: estimated at 700 bytes a row and measured, through `readers.read_vector`, at
+#: 435 to 520 — the same from GeoParquet, GeoPackage, shapefile and GeoJSON.
+INPUT_MEMORY_PER_ROW = 100
 
 #: What a byte of decoded value costs on top of that where the value becomes
 #: an object: a geometry, a string, anything in a list. The bytes are held as
@@ -112,10 +114,12 @@ INPUT_MEMORY_PER_VALUE_BYTE = 8
 INPUT_MEMORY_PER_NUMBER_BYTE = 5
 
 #: Memory a file is entitled to for each byte it occupies on disk, so that a
-#: large dataset is not refused for being large: a million scattered points
-#: with one attribute are 30 MB of GeoParquet and an estimated 540 MB to read,
-#: a factor of 18.
-INPUT_MEMORY_PER_BYTE_ON_DISK = 24
+#: large dataset is not refused for being large. A million scattered points
+#: with a name and a number are 30 MB of GeoParquet, 460 MB to read and 790
+#: estimated, a factor of 26: at 24, which this was until the values that
+#: become objects were priced for being objects, three million such points
+#: were over both the budget and their entitlement, and refused.
+INPUT_MEMORY_PER_BYTE_ON_DISK = 32
 
 
 def max_input_memory() -> int:

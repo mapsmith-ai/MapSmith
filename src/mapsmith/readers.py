@@ -396,12 +396,22 @@ def _bytes_on_disk(file: Path) -> int:
 #: FIXED_LEN_BYTE_ARRAY carries its own length in the schema.
 _FIXED_WIDTHS = {"BOOLEAN": 1, "INT32": 4, "FLOAT": 4, "INT64": 8, "DOUBLE": 8, "INT96": 12}
 
-#: Fixed-width on disk and an object in memory: pandas holds a decimal as a
-#: Python `Decimal`, a date as a `date` and a time as a `time`, measured at
-#: about 150, 50 and 140 bytes a value (audit: a hundred decimal columns
-#: estimated at 73 MB read at 456; a hundred `time32` columns 2.8 times over
-#: their estimate). Priced in the bytes the estimate multiplies by eight.
-_OBJECT_VALUE_BYTES = {"DECIMAL": 19, "DATE": 6, "TIME": 18}
+#: What a value costs for being an object, in the bytes the estimate multiplies
+#: by eight: about 150 bytes each, whatever the value holds. A binary or a
+#: string becomes a Python object and so does a decimal, a date or a time;
+#: measured, a hundred decimal columns estimated at 73 MB by their width read
+#: at 456, and eighty columns of 65 536 distinct two-byte values read at 221
+#: bytes a value (audit, twice).
+_OBJECT_VALUE_BYTES = 19
+_OBJECT_LOGICAL_TYPES = {"DECIMAL", "DATE", "TIME"}
+
+#: What a list and a struct cost for being one, in actual bytes: each list in a
+#: column becomes an array and each struct a dictionary. Three million structs
+#: of one small number in a list were 1.1 MB on disk, 129 MB by their widths
+#: and 700 MB to read, 233 bytes a struct; three million short inner lists 168
+#: bytes each (audit).
+_LIST_OBJECT_BYTES = 170
+_STRUCT_OBJECT_BYTES = 230
 
 #: Bytes one counting batch may materialise, and the most rows it may hold.
 #: The first is sized from what the footer says a row weighs, and a footer can
@@ -412,6 +422,12 @@ _OBJECT_VALUE_BYTES = {"DECIMAL": 19, "DATE": 6, "TIME": 18}
 #: file then peaks at 195 MB.
 _COUNTING_BATCH_BYTES = 16_000_000
 _COUNTING_BATCH_ROWS = 1024
+
+#: Memory one look at a row group's dictionaries may take. Decoding a
+#: dictionary costs about 150 bytes a distinct value however short, and a
+#: single look at eighty columns of 65 536 values cost 990 MB (audit): the
+#: columns are looked at in groups that fit this.
+_DICTIONARY_PROBE_BYTES = 64_000_000
 
 
 def _is_binary_like(kind: Any) -> bool:
@@ -464,6 +480,28 @@ def _variable_bytes(array: Any) -> int:
     return sum(_variable_bytes(child) for child in _children(array))
 
 
+def _object_bytes(array: Any) -> int:
+    """Bytes the lists and structs inside an Arrow array cost for being objects.
+
+    The footer counts the values at the bottom of a nested column and says
+    nothing of how many lists and structs hold them, which is what they cost:
+    one array for every list and one dictionary for every struct, at every
+    level.
+    """
+    import pyarrow as pa
+
+    array = getattr(array, "storage", array)
+    kind = array.type
+    if pa.types.is_dictionary(kind):
+        return 0
+    own = 0
+    if pa.types.is_struct(kind):
+        own = len(array) * _STRUCT_OBJECT_BYTES
+    elif _children(array):
+        own = len(array) * _LIST_OBJECT_BYTES
+    return own + sum(_object_bytes(child) for child in _children(array))
+
+
 def _longest_dictionary_value(array: Any) -> int:
     """Bytes of the longest value a dictionary inside this array holds.
 
@@ -485,8 +523,8 @@ def _longest_dictionary_value(array: Any) -> int:
     return max((_longest_dictionary_value(child) for child in _children(array)), default=0)
 
 
-def _counted_from_the_footer(file: Path, plain: Any, path: str) -> tuple[int, int, int, list[tuple[int, float]]]:
-    """`(rows, bytes of numbers, bytes of other fixed values, row groups to read)`.
+def _counted_from_the_footer(plain: Any, path: str) -> tuple[int, int, int, list[dict[str, Any]]]:
+    """`(rows, bytes of numbers, bytes of values, row groups that must be read)`.
 
     Refuses a footer that disagrees with itself. The file's row count, each row
     group's and the value count of every column that holds one value a row are
@@ -501,45 +539,75 @@ def _counted_from_the_footer(file: Path, plain: Any, path: str) -> tuple[int, in
     to_read = []
     for index in range(footer.num_row_groups):
         group = footer.row_group(index)
-        variable = 0
+        variable = nested = 0
+        columns: dict[str, int] = {}  # top-level columns to read, and what a look at their dictionaries may cost
         for j, leaf in enumerate(leaves):
             chunk = group.column(j)
             flat = leaf.max_repetition_level == 0
+            top = leaf.path.split(".")[0]
             if flat and chunk.num_values != group.num_rows:
                 raise ValueError(
                     f"{path} is not a Parquet file MapSmith will read: row group {index} "
                     f"declares a row count of {group.num_rows:,} and its column "
                     f"{leaf.path!r} holds {chunk.num_values:,} values. A writer produces "
-                    "the same number for "
-                    "both; a file where they differ cannot be sized before it is read."
+                    "the same number for both; a file where they differ cannot be sized "
+                    "before it is read."
                 )
+            if "." in leaf.path:
+                columns.setdefault(top, 0)  # lists and structs are counted by reading
             if leaf.physical_type == "BYTE_ARRAY":
                 variable += chunk.total_uncompressed_size
+                values += chunk.num_values * _OBJECT_VALUE_BYTES
+                look = chunk.num_values * 150 + chunk.total_uncompressed_size
+                columns[top] = columns.get(top, 0) + (look if chunk.has_dictionary_page else 0)
                 continue
             logical = getattr(leaf.logical_type, "type", "")
-            if logical in _OBJECT_VALUE_BYTES:
-                values += chunk.num_values * _OBJECT_VALUE_BYTES[logical]
+            if logical in _OBJECT_LOGICAL_TYPES:
+                values += chunk.num_values * _OBJECT_VALUE_BYTES
                 continue
             width = _FIXED_WIDTHS.get(leaf.physical_type) or max(leaf.length, 1)
             if flat and "." not in leaf.path:
                 numbers += chunk.num_values * width
             elif flat:
-                # A field of a struct: each row becomes a dictionary, and every
-                # field an object in it whatever its width. Two hundred
-                # booleans a row were 65 MB by their width and 362 read (audit).
+                # A field of a struct: every field is an object in the row's
+                # dictionary whatever its width. Two hundred booleans a row
+                # were 65 MB by their width and 362 read (audit).
                 values += chunk.num_values * max(width, 8)
             else:
-                # Numbers in a list are not held as a column of numbers.
-                values += chunk.num_values * width
+                # Numbers in a list stay numbers; the lists are counted on reading.
+                numbers += chunk.num_values * width
+                nested += chunk.num_values * width
         rows += group.num_rows
-        if variable:
-            to_read.append((index, variable / max(group.num_rows, 1)))
+        if columns and group.num_rows:
+            to_read.append({
+                "index": index,
+                "columns": columns,
+                "declared": variable,
+                "per_row": (variable + nested) / group.num_rows,
+            })
     if footer.num_rows != rows:
         raise ValueError(
             f"{path} is not a Parquet file MapSmith will read: it declares "
             f"{footer.num_rows:,} rows and its row groups {rows:,}."
         )
     return rows, numbers, values, to_read
+
+
+def _dictionary_lengths(keeping: Any, index: int, columns: dict[str, int]) -> dict[str, int]:
+    """The longest dictionary value of each column of a row group, a few columns at a time."""
+    longest = dict.fromkeys(columns, 0)
+    pending = [name for name, look in columns.items() if look]
+    while pending:
+        pack, cost = [pending.pop(0)], 0
+        cost = columns[pack[0]]
+        while pending and cost + columns[pending[0]] <= _DICTIONARY_PROBE_BYTES:
+            cost += columns[pending[0]]
+            pack.append(pending.pop(0))
+        for batch in keeping.iter_batches(batch_size=1, row_groups=[index], columns=pack):
+            for name, column in zip(batch.schema.names, batch.columns, strict=True):
+                longest[name] = _longest_dictionary_value(column)
+            break
+    return longest
 
 
 def refuse_costly_input(path: str) -> None:
@@ -563,16 +631,16 @@ def refuse_costly_parquet(path: str) -> None:
     own output back in full. `limits.refuse_too_costly_a_read` has the
     arithmetic and the measurements; this is where its numbers come from.
 
-    Rows and fixed-width values are counted from the footer, which costs
-    nothing and is what a table of two hundred numbers a row is made of.
-    Binary and string values, wherever they sit, are read and their lengths
-    added up: from the dictionary and its indices where the longest value a
-    row group's dictionaries hold is far longer than the group spends per row,
-    which is what repetition looks like, and plainly otherwise, which is ten
-    times faster on values that do not repeat. A plain batch holds no more
-    rows than fit `_COUNTING_BATCH_BYTES` at that longest value, and the pass
-    as a whole is bounded by the uncompressed size the footer declares, which
-    is checked first.
+    Rows, fixed-width values and the number of values that become objects are
+    counted from the footer, which costs nothing. Binary and string values,
+    wherever they sit, are read and their lengths added up, and so are the
+    lists and structs of nested columns, which the footer does not count. A
+    column whose dictionary holds a value far longer than its row group spends
+    per row is a column of repeated values: it is read alone, from the
+    dictionary and its indices, and the values are never written out. The rest
+    is read plainly, which is ten times faster on values that do not repeat,
+    a thousand rows at a time. The pass as a whole is bounded by the
+    uncompressed size the footer declares, which is checked first.
     """
     import pyarrow.dataset as ds
     import pyarrow.parquet as pq
@@ -596,48 +664,57 @@ def refuse_costly_parquet(path: str) -> None:
         # row groups: opening the file again for each made a thousand groups
         # take 9 s to count (audit).
         plain = pq.ParquetFile(file)
-        in_file, file_numbers, file_values, to_read = _counted_from_the_footer(file, plain, path)
+        in_file, file_numbers, file_values, to_read = _counted_from_the_footer(plain, path)
         rows += in_file
         numbers += file_numbers
         values += file_values
-        for index, average in to_read:
-            declared += round(average * plain.metadata.row_group(index).num_rows)
-            plans.append((file, plain, index, average))
+        declared += sum(group["declared"] for group in to_read)
+        plans.extend((file, plain, group) for group in to_read)
 
     def refuse_if_over(counted: int, *, complete: bool) -> None:
         limits.refuse_too_costly_a_read(
             rows, counted, on_disk, path, number_bytes=numbers, complete=complete
         )
 
-    # The rows and the fixed-width values, then what the footers say has to be
+    # The rows and what the footer counts, then what it says has to be
     # decompressed: all before any page is touched.
     refuse_if_over(values, complete=False)
     refuse_if_over(values + declared, complete=False)
 
-    # Per file: the top-level columns that hold binary or string values
-    # somewhere, and a second reader that keeps the dictionaries of every such
-    # leaf, nested ones by their path.
-    columns: dict[Path, tuple[list[str], Any]] = {}
-    read = 0
-    for file, plain, index, average in plans:
-        if file not in columns:
-            leaves = [plain.schema.column(j) for j in range(plain.metadata.num_columns)]
-            paths = [leaf.path for leaf in leaves if leaf.physical_type == "BYTE_ARRAY"]
-            names = sorted({leaf_path.split(".")[0] for leaf_path in paths})
-            columns[file] = (names, pq.ParquetFile(file, read_dictionary=paths))
-        names, keeping = columns[file]
-        longest = 0
-        for batch in keeping.iter_batches(batch_size=1, row_groups=[index], columns=names):
-            longest = max(_longest_dictionary_value(column) for column in batch.columns)
-            break
-        widest = max(average, longest, 1)
-        batch_rows = int(min(_COUNTING_BATCH_ROWS, max(1, _COUNTING_BATCH_BYTES // widest)))
-        reader = keeping if longest > 8 * average else plain
+    keepers: dict[Path, Any] = {}
+    read = objects = 0
+
+    def count(reader: Any, index: int, names: list[str], batch_rows: int) -> None:
+        nonlocal read, objects
         for batch in reader.iter_batches(batch_size=batch_rows, row_groups=[index], columns=names):
             read += sum(_variable_bytes(column) for column in batch.columns)
-            if limits.estimated_read_memory(rows, values + read, numbers) > allowance:
-                refuse_if_over(values + read, complete=False)
-    refuse_if_over(values + max(read, declared), complete=True)
+            objects += sum(_object_bytes(column) for column in batch.columns)
+            counted = values + read + objects // limits.INPUT_MEMORY_PER_VALUE_BYTE
+            if limits.estimated_read_memory(rows, counted, numbers) > allowance:
+                refuse_if_over(counted, complete=False)
+
+    for file, plain, group in plans:
+        if file not in keepers:
+            leaves = [plain.schema.column(j) for j in range(plain.metadata.num_columns)]
+            paths = [leaf.path for leaf in leaves if leaf.physical_type == "BYTE_ARRAY"]
+            keepers[file] = pq.ParquetFile(file, read_dictionary=paths) if paths else None
+        keeping, index, per_row = keepers[file], group["index"], group["per_row"]
+        longest = (
+            _dictionary_lengths(keeping, index, group["columns"])
+            if keeping is not None
+            else dict.fromkeys(group["columns"], 0)
+        )
+        repeated = [name for name, length in longest.items() if length > 8 * per_row]
+        ordinary = [name for name in longest if name not in repeated]
+        widest = max([per_row, 1, *(longest[name] for name in ordinary)])
+        if ordinary:
+            rows_at_once = int(min(_COUNTING_BATCH_ROWS, max(1, _COUNTING_BATCH_BYTES // widest)))
+            count(plain, index, ordinary, rows_at_once)
+        for name in repeated:
+            count(keeping, index, [name], _COUNTING_BATCH_ROWS)
+    refuse_if_over(
+        values + max(read, declared) + objects // limits.INPUT_MEMORY_PER_VALUE_BYTE, complete=True
+    )
 
 
 def read_named_layer(path: str, layer: str) -> gpd.GeoDataFrame:
