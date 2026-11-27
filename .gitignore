@@ -39,6 +39,10 @@ tests/data/*
 # scenarios, never from this catalog. It is tracked BECAUSE it is a dataset — an
 # evaluation set nobody can inspect is a claim, not a measurement.
 !tests/data/discovery_queries.json
+# A Parquet file whose footer was rewritten by hand to declare one row where
+# its column holds two thousand values. It cannot be produced by a writer,
+# which is the point of the test that reads it, so it is kept as bytes (1.2 kB).
+!tests/data/footer_declares_one_row_of_2000.parquet
 
 # Scratch databases: probing the DuckDB sandbox (ATTACH, COPY) drops these in
 # the repo root, and one of them reached a public commit before we noticed.
