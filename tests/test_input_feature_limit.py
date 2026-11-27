@@ -291,6 +291,40 @@ def test_a_large_value_repeated_inside_a_struct_is_counted_from_its_dictionary(
     readers.refuse_costly_parquet(str(path))  # 0.12 MB of rows and 160 MB of values: admitted
 
 
+def test_the_fields_of_a_struct_and_times_of_day_are_priced_as_objects(monkeypatch, tmp_path):
+    """A struct becomes a dictionary a row and a time a `datetime.time`: two
+    hundred booleans in a struct read at 5.6 times their estimate and a hundred
+    `time32` columns at 2.8 (audit). 2000 rows of fifty booleans in a struct
+    are 100 000 values, 0.1 MB by their width and 0.8 at eight bytes each;
+    2000 rows of twenty times are 40 000 values, 0.16 MB and 0.72 at eighteen."""
+    import datetime
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    struct = tmp_path / "struct_of_booleans.parquet"
+    pq.write_table(
+        pa.table({"s": pa.array([{f"b{i}": True for i in range(50)}] * 2000)}),
+        struct, compression="zstd",
+    )
+    times = tmp_path / "times.parquet"
+    column = pa.array([datetime.time(12, 30)] * 2000, pa.time32("s"))
+    pq.write_table(pa.table({f"t{i}": column for i in range(20)}), times, compression="zstd")
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "3000000")
+    assert limits.estimated_read_memory(2000, 0, 100_000) < 3_000_000
+    with pytest.raises(ValueError, match=r"holds 2,000 rows and at least 800,000 bytes of values"):
+        readers.refuse_costly_parquet(str(struct))
+    with pytest.raises(ValueError, match=r"holds 2,000 rows and at least 720,000 bytes of values"):
+        readers.refuse_costly_parquet(str(times))
+
+
+def test_a_counting_batch_holds_a_thousand_rows_whatever_the_footer_says_they_weigh():
+    """The batch is sized from the footer's bytes per row, and a footer
+    rewritten to declare none made the check decode 6000 rows of 50 kB at once,
+    775 MB (audit). The cap on rows is the part no footer can move."""
+    assert readers._COUNTING_BATCH_ROWS <= 1024
+
+
 def test_counting_opens_a_file_a_fixed_number_of_times_however_many_row_groups(
     monkeypatch, tmp_path
 ):

@@ -19,7 +19,7 @@ All notable changes to MapSmith are documented here, in the format of
   bytes, about three million points with two attributes). The limit yields to
   24 bytes of memory for every byte the dataset occupies on disk, so an
   ordinary layer passes at any size: a million scattered points are 30 MB.
-  The files above are refused in 0.03 s; counting adds about 0.1 s to opening
+  The files above are refused in 0.03 s; counting adds about 0.2 s to opening
   a million ordinary points. A footer whose row counts disagree with the
   values its columns hold is refused outright. `calculate_field` and the
   DuckDB and Sedona joins, which open their input themselves and read their

@@ -504,7 +504,7 @@ string values are read and their lengths added up, wherever they sit — in a
 list, in a struct, behind a dictionary. A footer whose row counts disagree
 with the values its columns hold is refused outright: with the two row counts
 rewritten to 1, a reader still read a million rows. The files above are
-refused in 0.03 s; counting adds about 0.1 s to opening a million ordinary
+refused in 0.03 s; counting adds about 0.2 s to opening a million ordinary
 points and grows with the number of row groups, about a second for four
 thousand. `calculate_field` and the DuckDB and Sedona joins, which hand the
 file to another engine and then read their own output back whole, ask first
@@ -525,7 +525,10 @@ Not covered, and measured where it could be:
 - **`run_sql`**, which streams what it reads and is bounded by what it is
   asked to write.
 - **Sizes a footer declares.** The row counts are cross-checked; the
-  uncompressed sizes are taken as written.
+  uncompressed sizes are taken as written. A footer that understates them
+  cannot make the count wrong, because the bytes are read, but the count then
+  holds a thousand rows at a time whatever they weigh: 6000 rows of 50 kB
+  behind such a footer cost the check 195 MB, and larger values cost more.
 - **Filesystems that do not report what a file occupies** (some network and
   FUSE mounts): there the length is used, and a sparse file is credited with
   bytes it does not hold.

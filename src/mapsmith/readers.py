@@ -397,14 +397,21 @@ def _bytes_on_disk(file: Path) -> int:
 _FIXED_WIDTHS = {"BOOLEAN": 1, "INT32": 4, "FLOAT": 4, "INT64": 8, "DOUBLE": 8, "INT96": 12}
 
 #: Fixed-width on disk and an object in memory: pandas holds a decimal as a
-#: Python `Decimal` and a date as a `date`, measured at about 150 and 50 bytes
-#: a value (audit: a hundred decimal columns estimated at 73 MB read at 456).
-#: Priced in the bytes the estimate multiplies, so that it comes out there.
-_OBJECT_VALUE_BYTES = {"DECIMAL": 19, "DATE": 6}
+#: Python `Decimal`, a date as a `date` and a time as a `time`, measured at
+#: about 150, 50 and 140 bytes a value (audit: a hundred decimal columns
+#: estimated at 73 MB read at 456; a hundred `time32` columns 2.8 times over
+#: their estimate). Priced in the bytes the estimate multiplies by eight.
+_OBJECT_VALUE_BYTES = {"DECIMAL": 19, "DATE": 6, "TIME": 18}
 
 #: Bytes one counting batch may materialise, and the most rows it may hold.
+#: The first is sized from what the footer says a row weighs, and a footer can
+#: say anything: with its uncompressed size rewritten to nothing, 6000 rows of
+#: 50 kB were decoded in one batch and the check itself peaked at 775 MB
+#: (audit). The second does not depend on the footer. A thousand rows at a time
+#: costs 0.2 s on a million ordinary points where 65 536 cost 0.1, and the same
+#: file then peaks at 195 MB.
 _COUNTING_BATCH_BYTES = 16_000_000
-_COUNTING_BATCH_ROWS = 65_536
+_COUNTING_BATCH_ROWS = 1024
 
 
 def _is_binary_like(kind: Any) -> bool:
@@ -514,8 +521,13 @@ def _counted_from_the_footer(file: Path, plain: Any, path: str) -> tuple[int, in
                 values += chunk.num_values * _OBJECT_VALUE_BYTES[logical]
                 continue
             width = _FIXED_WIDTHS.get(leaf.physical_type) or max(leaf.length, 1)
-            if flat:
+            if flat and "." not in leaf.path:
                 numbers += chunk.num_values * width
+            elif flat:
+                # A field of a struct: each row becomes a dictionary, and every
+                # field an object in it whatever its width. Two hundred
+                # booleans a row were 65 MB by their width and 362 read (audit).
+                values += chunk.num_values * max(width, 8)
             else:
                 # Numbers in a list are not held as a column of numbers.
                 values += chunk.num_values * width
