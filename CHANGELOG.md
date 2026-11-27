@@ -6,6 +6,11 @@ All notable changes to MapSmith are documented here, in the format of
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-11-27
+
+Records continue to declare `spec_version` `1.0.0-draft.10`; no manifest key is
+new or renamed in this release.
+
 ### Fixed
 
 - **A GeoParquet of 80 kB could take 2 GB to open.** Reading a vector file

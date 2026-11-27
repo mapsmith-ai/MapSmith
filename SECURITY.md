@@ -536,16 +536,20 @@ Not covered, and measured where it could be:
 - **Honest data that costs what hostile data costs.** A regular grid of five
   million points is 6 MB on disk and estimated at 2.4 to 3.1 GB to hold, by
   its attributes, so it is refused with the file of identical rows until the
-  operator raises the limit; three million, measured at 1 to 1.2 GB, are
-  admitted.
+  operator raises the limit; three million, measured at 0.9 to 1.2 GB, are
+  admitted. So is refused a layer of three million named points sorted by
+  coordinate and written with the strongest compression, which is 40 MB on
+  disk and estimated at 2.3 GB: a file that small is entitled to less than
+  the limit, and the limit is what it meets.
 - **How close the estimate is.** It is an estimate, set to err high on
   ordinary layers and by how much depends on the layer: a million scattered
   points with two attributes are estimated at 790 to 1010 MB and read at 460
   to 570, polygons stored as GeoArrow up to three times over, a column of
   categories at what it would expand to, and a table of a hundred columns of
-  short distinct strings seven times over: ten million of them read at
-  306 MB and are refused at the default. Five audits looked for shapes it gets low, and
-  what they found is priced now; the lowest it was left on what they built is
+  short distinct strings seven to nine times over: ten million of them read
+  at about 300 MB and are refused at the default. Seven audits looked for
+  shapes it gets low, and what they found is priced now; the lowest it was
+  left on what they built is
   1.3 times under, for multipolygons in WKB and for a dictionary of many 10 kB
   values.
 

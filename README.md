@@ -45,7 +45,7 @@ MapSmith's private output: JSON Schema, a toolchain-free validator, a conformanc
 hundred-line emitter that never imports MapSmith. Records carry `spec_version`, and CI validates
 real MapSmith output against the spec's own validator. The specification is archived and citable
 as [10.5281/zenodo.22205213](https://doi.org/10.5281/zenodo.22205213), a concept DOI that
-resolves to the latest *archived* draft. Records written by 0.8.0 to 0.13.0 declare `1.0.0-draft.10`, and
+resolves to the latest *archived* draft. Records written by 0.8.0 to 0.13.1 declare `1.0.0-draft.10`, and
 0.7.x's declare `1.0.0-draft.8`; if the DOI shows an earlier one, the archive has not caught up, and the
 [repository](https://github.com/mapsmith-ai/manifest-spec) holds the text they are written against. The names MapSmith puts
 in a record beyond the ones the specification defines — every extension check name, and every
@@ -223,15 +223,15 @@ or from a terminal: `code --add-mcp '{"name":"mapsmith","command":"uvx","args":[
 To check it runs before wiring a client, `uvx mapsmith` starts the server on stdio
 (Ctrl-C to quit) — it speaks MCP, not a CLI, so a silent prompt means it is working.
 
-This page describes **0.13.0**, which is what that command installs. On `main`, the
-[Unreleased notes](CHANGELOG.md#unreleased) add a limit on what reading one Parquet input may
+This page describes **0.13.1**, which is what that command installs. Its
+[release notes](CHANGELOG.md#0131---2026-11-27) add a limit on what reading one Parquet input may
 cost: a GeoParquet of 80 kB could take 2 GB to open, and a very compressible layer of several
-million rows is now refused until the operator raises `MAPSMITH_MAX_INPUT_MEMORY`. The 0.13.0
-[release notes](CHANGELOG.md#0130---2026-11-26) add `tin_interpolation` and correct
-`idw_interpolation`, which answered with row numbers for a misspelled, textual or
-null field; a surface made with it from a layer with nulls should be remade. They also fix the
+million rows is now refused until the operator raises `MAPSMITH_MAX_INPUT_MEMORY`. **New in
+0.13.0** ([release notes](CHANGELOG.md#0130---2026-11-26)): `tin_interpolation`, and a correction
+to `idw_interpolation`, which answered with row numbers for a misspelled, textual or
+null field; a surface made with it from a layer with nulls should be remade. It also fixed the
 read-back of terrain and hydrology outputs, which checked a second run to the same path against
-the first run's raster, and add `MAPSMITH_MAX_GRID_CELLS` and
+the first run's raster, and added `MAPSMITH_MAX_GRID_CELLS` and
 `MAPSMITH_MAX_TRIANGULATION_POINTS`, above which a grid or a triangulation is refused. What the
 engine computed was not affected, but the checks recorded for a terrain output written twice to
 one path by one server process describe the earlier raster: re-run it if you rely on
@@ -329,7 +329,7 @@ for it:
 ```json
 {
   "spec_version": "1.0.0-draft.10",
-  "producer": {"name": "mapsmith", "version": "0.13.0"},
+  "producer": {"name": "mapsmith", "version": "0.13.1"},
   "operation": "buffer_layer",
   "parameters": {"distance_meters": 300.0},
   "inputs": [{
