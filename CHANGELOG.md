@@ -16,20 +16,21 @@ All notable changes to MapSmith are documented here, in the format of
   The cost of a Parquet input is now estimated before it is opened — from the
   rows its footers count and the bytes every column decodes to — and the read
   is refused above **`MAPSMITH_MAX_INPUT_MEMORY`** (default 2 000 000 000
-  bytes, about four million points with two attributes). The limit yields to
+  bytes, about three million points with two attributes). The limit yields to
   24 bytes of memory for every byte the dataset occupies on disk, so an
   ordinary layer passes at any size: a million scattered points are 30 MB.
   The files above are refused in 0.03 s; counting adds about 0.1 s to opening
-  a million ordinary points. `calculate_field` and the DuckDB and Sedona
-  joins, which open their input themselves and read their output back whole,
-  ask first too. **What changes for honest data**: a layer that is both very
-  compressible and several million rows costs as much to hold as a hostile
-  file and is refused with it — a regular grid of five million points, where
-  three million are admitted; the message names the setting an operator
-  raises. Present in every release up to 0.13.0; found by our own review after
-  it. `SECURITY.md` lists what this does not cover: what an operation writes
-  (a join's fan-out, the sum of what `merge_layers` reads), a zipped dataset,
-  `run_sql`, and the sizes a footer declares.
+  a million ordinary points. A footer whose row counts disagree with the
+  values its columns hold is refused outright. `calculate_field` and the
+  DuckDB and Sedona joins, which open their input themselves and read their
+  output back whole, ask first too. **What changes for honest data**: a layer
+  that is both very compressible and several million rows costs as much to
+  hold as a hostile file and is refused with it — a regular grid of five
+  million points, where three million are admitted; the message names the
+  setting an operator raises. Present in every release up to 0.13.0; found by
+  our own review after it. `SECURITY.md` lists what this does not cover: what
+  an operation writes (a join's fan-out, the sum of what `merge_layers`
+  reads), a zipped dataset, `run_sql`, and the sizes a footer declares.
 
 ## [0.13.0] - 2026-11-26
 

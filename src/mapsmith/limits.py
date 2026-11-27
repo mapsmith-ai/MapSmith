@@ -85,8 +85,8 @@ def max_triangulation_points() -> int:
 MAX_INPUT_MEMORY_ENV = "MAPSMITH_MAX_INPUT_MEMORY"
 
 #: Bytes of memory one read of a vector input may be estimated to take, however
-#: small the file is on disk. Chosen by the operator; 2 GB is about four million
-#: points, or fewer rows of larger geometries.
+#: small the file is on disk. Chosen by the operator; 2 GB is about three
+#: million points with two attributes, or fewer rows of larger geometries.
 DEFAULT_MAX_INPUT_MEMORY = 2_000_000_000
 
 #: What a row costs to hold before anything in it is counted: a geometry
@@ -96,19 +96,25 @@ DEFAULT_MAX_INPUT_MEMORY = 2_000_000_000
 #: GeoJSON, against 500 estimated.
 INPUT_MEMORY_PER_ROW = 300
 
-#: What a byte of decoded value costs on top of that, in any column: the bytes
-#: are held as an Arrow column, as Python objects and as geometries before the
-#: first two are let go. Measured: 100 000 polygons of 100 vertices are 163 MB
-#: of WKB and peak 840 to 850 MB above the idle process, 845 estimated; a table
-#: of two hundred numbers a row peaks at 6.7 kB a row, 8.3 estimated. Where
-#: the two measurements of a layer differed, the higher is the one a limit has
-#: to assume.
-INPUT_MEMORY_PER_VALUE_BYTE = 5
+#: What a byte of decoded value costs on top of that where the value becomes
+#: an object: a geometry, a string, anything in a list. The bytes are held as
+#: an Arrow column, as Python objects and as geometries before the first two
+#: are let go. Measured through the reader on 163 MB of WKB, 100 000 polygons
+#: of 100 vertices: 840 MB above the idle process when they are all alike and
+#: 1.0 to 1.1 GB when they differ; 25 000 parcels of 200 vertices, 80 MB of
+#: WKB, 633 MB. That is 5 to 8 times, and the higher is the one a limit has to
+#: assume.
+INPUT_MEMORY_PER_VALUE_BYTE = 8
+
+#: What a byte of a column of numbers costs: held as an Arrow column and as an
+#: array, and copied once on the way. Measured: two hundred float columns are
+#: 1.6 kB of numbers a row and 6.7 kB of memory, 8.3 estimated.
+INPUT_MEMORY_PER_NUMBER_BYTE = 5
 
 #: Memory a file is entitled to for each byte it occupies on disk, so that a
 #: large dataset is not refused for being large: a million scattered points
-#: with one attribute are 30 MB of GeoParquet and an estimated 465 MB to read,
-#: a factor of 15.
+#: with one attribute are 30 MB of GeoParquet and an estimated 540 MB to read,
+#: a factor of 18.
 INPUT_MEMORY_PER_BYTE_ON_DISK = 24
 
 
@@ -116,9 +122,17 @@ def max_input_memory() -> int:
     return _whole_number_setting(MAX_INPUT_MEMORY_ENV, DEFAULT_MAX_INPUT_MEMORY)
 
 
-def estimated_read_memory(rows: int, value_bytes: int) -> int:
-    """Bytes a read is expected to peak at: a cost per row and one per decoded byte."""
-    return rows * INPUT_MEMORY_PER_ROW + value_bytes * INPUT_MEMORY_PER_VALUE_BYTE
+def estimated_read_memory(rows: int, value_bytes: int, number_bytes: int = 0) -> int:
+    """Bytes a read is expected to peak at: a cost per row and one per decoded byte.
+
+    `value_bytes` are those of values that become objects, `number_bytes`
+    those of columns of numbers, which cost less each.
+    """
+    return (
+        rows * INPUT_MEMORY_PER_ROW
+        + value_bytes * INPUT_MEMORY_PER_VALUE_BYTE
+        + number_bytes * INPUT_MEMORY_PER_NUMBER_BYTE
+    )
 
 
 def input_memory_allowance(bytes_on_disk: int) -> int:
@@ -127,7 +141,13 @@ def input_memory_allowance(bytes_on_disk: int) -> int:
 
 
 def refuse_too_costly_a_read(
-    rows: int, value_bytes: int, bytes_on_disk: int, path: str, *, complete: bool = True
+    rows: int,
+    value_bytes: int,
+    bytes_on_disk: int,
+    path: str,
+    *,
+    number_bytes: int = 0,
+    complete: bool = True,
 ) -> None:
     """Refuse a dataset whose rows and values would take more memory than it may.
 
@@ -138,11 +158,12 @@ def refuse_too_costly_a_read(
     already passed the allowance.
     """
     allowance = input_memory_allowance(bytes_on_disk)
-    estimate = estimated_read_memory(rows, value_bytes)
+    estimate = estimated_read_memory(rows, value_bytes, number_bytes)
     if estimate > allowance:
+        counted = value_bytes + number_bytes
         values = (
-            f" and {'' if complete else 'at least '}{value_bytes:,} bytes of values"
-            if value_bytes
+            f" and {'' if complete else 'at least '}{counted:,} bytes of values"
+            if counted
             else ""
         )
         megabytes = math.ceil(estimate / 1e6)

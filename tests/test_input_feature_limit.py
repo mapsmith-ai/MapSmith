@@ -51,7 +51,9 @@ def _scattered(path: Path, rows: int) -> str:
 
 
 def test_the_estimate_is_a_cost_per_row_and_a_cost_per_decoded_byte():
-    assert limits.estimated_read_memory(1000, 100) == 1000 * 300 + 100 * 5
+    assert limits.estimated_read_memory(1000, 100) == 1000 * 300 + 100 * 8
+    # A byte of a column of numbers costs less than one of a value that becomes an object.
+    assert limits.estimated_read_memory(1000, 100, 40) == 1000 * 300 + 100 * 8 + 40 * 5
 
 
 def test_the_allowance_is_the_budget_or_what_the_bytes_on_disk_entitle(monkeypatch):
@@ -142,8 +144,9 @@ def test_a_directory_is_counted_from_the_files_that_will_be_read_not_from_their_
 
 
 def test_verification_reads_back_an_output_whatever_it_holds(monkeypatch, tmp_path):
-    """The limit is on inputs. An output is as large as the operation that was
-    allowed to write it, and refusing to read it back would lose the checks."""
+    """The limit is on inputs. Refusing to read an output back would lose its
+    checks, so that read is not limited — and an output can be larger than its
+    inputs, which `SECURITY.md` declares rather than this test pretending not."""
     path = _repeated(tmp_path / "output.parquet", 5000)
     monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "1000000")
     assert len(readers.read_vector_or_table(path)) == 5000
@@ -196,7 +199,7 @@ def test_a_table_of_many_numbers_per_row_is_counted_from_the_footer(monkeypatch,
     )
     monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "2000000")
     assert limits.estimated_read_memory(2000, 0) < 2_000_000
-    assert limits.estimated_read_memory(2000, 2000 * 50 * 8) == 4_600_000
+    assert limits.estimated_read_memory(2000, 0, 2000 * 50 * 8) == 4_600_000
     with pytest.raises(ValueError, match=r"holds 2,000 rows and at least 800,000 bytes of values"):
         readers.refuse_costly_parquet(str(path))
 
@@ -226,6 +229,66 @@ def test_values_inside_a_list_and_values_typed_as_a_dictionary_are_counted(monke
         assert limits.estimated_read_memory(rows, 0) < 5_000_000
         with pytest.raises(ValueError, match=rf"holds {rows:,} rows and .*bytes of values"):
             readers.refuse_costly_parquet(str(path))
+
+
+def test_a_footer_that_disagrees_with_itself_is_refused(monkeypatch):
+    """The fixture is an honest file of 2000 rows, each a 50 kB value stored
+    once, with two integers of its footer rewritten: the file and its row group
+    declare one row, the column still two thousand values. A reader goes by the
+    column and read all of them, 209 MB; a count that went by the row group saw
+    one and admitted it at a limit of 100 MB (audit, after the first fix, which
+    took the larger count for the rows and still read the values of one)."""
+    path = Path(__file__).parent / "data" / "footer_declares_one_row_of_2000.parquet"
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "100000000")
+    with pytest.raises(
+        ValueError, match=r"declares a row count of 1 and its column '\w+' holds 2,000 values"
+    ):
+        readers.refuse_costly_parquet(str(path))
+    with pytest.raises(ValueError, match="cannot be sized before it is read"):
+        readers.read_vector(str(path))
+
+
+def test_a_decimal_is_priced_as_the_object_it_becomes(monkeypatch, tmp_path):
+    """Four bytes on disk and a Python `Decimal` in memory, about 150 bytes: a
+    hundred decimal columns estimated at 73 MB read at 456 (audit). 20 columns
+    of 2000 are 40 000 values, 6.1 MB at 19 counted bytes each and 0.8 at 4."""
+    import decimal
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    path = tmp_path / "decimals.parquet"
+    column = pa.array([decimal.Decimal("12.50")] * 2000, pa.decimal128(9, 2))
+    pq.write_table(pa.table({f"d{i}": column for i in range(20)}), path, compression="zstd")
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "3000000")
+    assert limits.estimated_read_memory(2000, 0, 40_000 * 4) < 3_000_000
+    assert limits.estimated_read_memory(2000, 40_000 * 19) > 3_000_000
+    with pytest.raises(ValueError, match=r"holds 2,000 rows and at least 760,000 bytes of values"):
+        readers.refuse_costly_parquet(str(path))
+
+
+def test_a_large_value_repeated_inside_a_struct_is_counted_from_its_dictionary(
+    monkeypatch, tmp_path
+):
+    """Not a binary column at the top level, so the first version read it
+    plainly, 65 536 rows at a time: 8000 rows of a 50 kB value in 130 kB of
+    file took the CHECK to 820 MB before it refused (audit). 400 rows are
+    20 MB of values; the count must come to exactly that, which it only does
+    cheaply by adding up the dictionary's one length 400 times."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    blob = b"y" * 50_000
+    path = tmp_path / "struct.parquet"
+    pq.write_table(
+        pa.table({"st": pa.array([{"blob": blob, "i": 1}] * 400)}), path, compression="zstd"
+    )
+    assert path.stat().st_size < 100_000
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "10000000")
+    with pytest.raises(ValueError, match=r"holds 400 rows and (at least )?[\d,]+ bytes of values"):
+        readers.refuse_costly_parquet(str(path))
+    monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "1000000000")
+    readers.refuse_costly_parquet(str(path))  # 0.12 MB of rows and 160 MB of values: admitted
 
 
 def test_counting_opens_a_file_a_fixed_number_of_times_however_many_row_groups(
