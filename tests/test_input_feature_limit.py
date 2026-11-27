@@ -59,7 +59,7 @@ def test_the_estimate_is_a_cost_per_row_and_a_cost_per_decoded_byte():
 def test_the_allowance_is_the_budget_or_what_the_bytes_on_disk_entitle(monkeypatch):
     monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "1000000")
     assert limits.input_memory_allowance(10) == 1_000_000
-    assert limits.input_memory_allowance(100_000) == 3_200_000
+    assert limits.input_memory_allowance(100_000) == 4_800_000
     limits.refuse_too_costly_a_read(10_000, 0, 10, "f.parquet")  # exactly the budget
     with pytest.raises(ValueError, match=r"holds 10,001 rows in 10 bytes on disk"):
         limits.refuse_too_costly_a_read(10_001, 0, 10, "f.parquet")
@@ -330,17 +330,24 @@ def test_three_million_named_points_would_be_entitled_by_their_own_size(monkeypa
     """An ordinary layer must pass at any size, and the arithmetic that decides
     it is checked here on a small one: 5000 scattered points with a distinct
     name and a number. Their estimate over their size on disk has to stay under
-    the entitlement, with room — at a factor of 24 it was 26, and three million
-    of them were refused (found while re-measuring after the fifth audit)."""
+    the entitlement, with room, however the file is compressed: at a factor of
+    24 the default writer's file was at 26 and at 32 the zstd one was at 36,
+    and each time three million such points were refused (found while
+    re-measuring after the fifth audit, then by the sixth)."""
     rng = np.random.default_rng(11)
-    path = tmp_path / "named.parquet"
-    gpd.GeoDataFrame(
+    frame = gpd.GeoDataFrame(
         {"value": rng.random(5000), "name": [f"station {i}" for i in range(5000)]},
         geometry=gpd.points_from_xy(rng.uniform(4e5, 6e5, 5000), rng.uniform(4.5e6, 4.7e6, 5000)),
         crs=CRS,
-    ).to_parquet(path)
+    )
     monkeypatch.setenv(limits.MAX_INPUT_MEMORY_ENV, "1")  # nothing passes on the budget
-    readers.refuse_costly_parquet(str(path))  # passes on what the file occupies
+    for compression in ("snappy", "zstd"):
+        path = tmp_path / f"named_{compression}.parquet"
+        frame.to_parquet(path, compression=compression)
+        readers.refuse_costly_parquet(str(path))  # passes on what the file occupies
+    native = tmp_path / "named_geoarrow_zstd.parquet"
+    frame.to_parquet(native, compression="zstd", geometry_encoding="geoarrow")
+    readers.refuse_costly_parquet(str(native))
 
 
 def test_lists_and_structs_are_counted_as_the_objects_they_become(monkeypatch, tmp_path):

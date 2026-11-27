@@ -16,8 +16,8 @@ All notable changes to MapSmith are documented here, in the format of
   The cost of a Parquet input is now estimated before it is opened — from the
   rows its footers count, the bytes every column decodes to, and the objects
   its values, lists and structs become — and the read is refused above
-  **`MAPSMITH_MAX_INPUT_MEMORY`** (default 2 000 000 000 bytes, about two and
-  a half million points with a name and a number). The limit yields to 32
+  **`MAPSMITH_MAX_INPUT_MEMORY`** (default 2 000 000 000 bytes, about two
+  million points with a name and a number). The limit yields to 48
   bytes of memory for every byte the dataset occupies on disk, so an ordinary
   layer passes at any size: a million scattered points are 30 MB. The files
   above are refused in 0.03 s; counting adds about 0.2 s to opening a million

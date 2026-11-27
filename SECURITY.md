@@ -482,8 +482,8 @@ imagination is the one on the process.
 All of these were found by our own audit while `tin_interpolation` was being
 written, not reported.
 
-Reading a vector file costs memory by the row and by the decoded byte: about
-450 MB for a million points with two attributes, the same from GeoParquet,
+Reading a vector file costs memory by the row and by the decoded byte: 450 to
+570 MB for a million points with two attributes, the same from GeoParquet,
 GeoPackage, shapefile and GeoJSON, and five to eight times the size of the
 values where those are large (100 000 polygons of 100 vertices are 163 MB of
 WKB and peak between 0.85 and 1.1 GB; two hundred numbers a row are 6.7 kB a
@@ -496,8 +496,8 @@ each row; eight for each byte of a value that becomes an object in memory (a
 geometry, a string, a decimal, a date) and about 150 more for each such value
 for being one; five for each byte of a column of numbers; 170 for each list
 and 230 for each struct of a nested column — and the read is refused above
-**`MAPSMITH_MAX_INPUT_MEMORY`** (default 2 000 000 000, about two and a half
-million points with a name and a number), a limit that yields to 32 bytes of
+**`MAPSMITH_MAX_INPUT_MEMORY`** (default 2 000 000 000, about two million
+points with a name and a number), a limit that yields to 48 bytes of
 memory for every byte the dataset occupies on disk, so that a large dataset
 is not refused for being large: a million scattered points are 30 MB and pass
 at any multiple. Rows and fixed-width values are counted from the footer;
@@ -534,14 +534,17 @@ Not covered, and measured where it could be:
   FUSE mounts): there the length is used, and a sparse file is credited with
   bytes it does not hold.
 - **Honest data that costs what hostile data costs.** A regular grid of five
-  million points is 6 MB on disk and estimated at 2.4 GB to hold, so it is
-  refused with the file of identical rows until the operator raises the
-  limit; three million, measured at 1 GB, are admitted.
+  million points is 6 MB on disk and estimated at 2.4 to 3.1 GB to hold, by
+  its attributes, so it is refused with the file of identical rows until the
+  operator raises the limit; three million, measured at 1 to 1.2 GB, are
+  admitted.
 - **How close the estimate is.** It is an estimate, set to err high on
   ordinary layers and by how much depends on the layer: a million scattered
-  points with two attributes are estimated at 790 MB and read at 460,
-  polygons stored as GeoArrow up to three times over, a column of categories
-  at what it would expand to. Five audits looked for shapes it gets low, and
+  points with two attributes are estimated at 790 to 1010 MB and read at 460
+  to 570, polygons stored as GeoArrow up to three times over, a column of
+  categories at what it would expand to, and a table of a hundred columns of
+  short distinct strings seven times over: ten million of them read at
+  306 MB and are refused at the default. Five audits looked for shapes it gets low, and
   what they found is priced now; the lowest it was left on what they built is
   1.3 times under, for multipolygons in WKB and for a dictionary of many 10 kB
   values.

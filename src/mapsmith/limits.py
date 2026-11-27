@@ -85,8 +85,8 @@ def max_triangulation_points() -> int:
 MAX_INPUT_MEMORY_ENV = "MAPSMITH_MAX_INPUT_MEMORY"
 
 #: Bytes of memory one read of a vector input may be estimated to take, however
-#: small the file is on disk. Chosen by the operator; 2 GB is about two and a
-#: half million points with a name and a number, or fewer rows of larger
+#: small the file is on disk. Chosen by the operator; 2 GB is about two
+#: million points with a name and a number, or fewer rows of larger
 #: geometries.
 DEFAULT_MAX_INPUT_MEMORY = 2_000_000_000
 
@@ -114,12 +114,15 @@ INPUT_MEMORY_PER_VALUE_BYTE = 8
 INPUT_MEMORY_PER_NUMBER_BYTE = 5
 
 #: Memory a file is entitled to for each byte it occupies on disk, so that a
-#: large dataset is not refused for being large. A million scattered points
-#: with a name and a number are 30 MB of GeoParquet, 460 MB to read and 790
-#: estimated, a factor of 26: at 24, which this was until the values that
-#: become objects were priced for being objects, three million such points
-#: were over both the budget and their entitlement, and refused.
-INPUT_MEMORY_PER_BYTE_ON_DISK = 32
+#: large dataset is not refused for being large. It has to clear what an
+#: ordinary layer is ESTIMATED at for each byte it occupies, and the estimate
+#: errs high: a million scattered points with a name and a number read at 460
+#: to 570 MB and are estimated at 790 to 1010, which is 26 to 28 times their
+#: size as GeoPandas writes them and 35 to 36 times their size under zstd. At
+#: 24 and then at 32, three million such points were over both the budget and
+#: their entitlement, and refused (found while re-measuring, then by an
+#: audit). What a file can buy by occupying space is bounded by this figure.
+INPUT_MEMORY_PER_BYTE_ON_DISK = 48
 
 
 def max_input_memory() -> int:
